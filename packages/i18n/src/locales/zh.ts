@@ -1,0 +1,37 @@
+export default {
+	common: {
+		welcome: "欢迎",
+		loading: "加载中...",
+		error: "出错了",
+		confirm: "确认",
+		cancel: "取消",
+		save: "保存",
+		delete: "删除",
+		edit: "编辑",
+		search: "搜索",
+		noData: "暂无数据",
+		back: "返回",
+	},
+	nav: {
+		home: "首页",
+		settings: "设置",
+		profile: "个人中心",
+		about: "关于",
+	},
+	settings: {
+		language: "语言",
+		theme: "主题",
+	},
+	auth: {
+		login: "登录",
+		logout: "退出登录",
+		loginSubtitle: "登录您的账号",
+		email: "邮箱",
+		emailPlaceholder: "your@email.com",
+		password: "密码",
+		passwordPlaceholder: "请输入密码",
+		fillRequired: "请填写邮箱和密码",
+		loginFailed: "登录失败，请重试",
+		loggedInAs: "当前登录",
+	},
+} as const;

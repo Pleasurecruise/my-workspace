@@ -1,0 +1,12 @@
+{
+	"extends": "@my-monorepo/tsconfig/react-app.json",
+	"compilerOptions": {
+		"allowArbitraryExtensions": true,
+		"paths": {
+			"@/*": ["./src/*"],
+			"@my-monorepo/ui/*": ["../../packages/ui/src/*"]
+		}
+	},
+	"include": ["src", "vite.config.ts"],
+	"exclude": ["node_modules", "src-tauri"]
+}

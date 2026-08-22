@@ -1,0 +1,9 @@
+[package]
+name = "my-monorepo-cli"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.95"
+
+[[bin]]
+name = "my-monorepo"
+path = "src/main.rs"

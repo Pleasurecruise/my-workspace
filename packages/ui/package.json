@@ -1,0 +1,30 @@
+{
+	"name": "@my-monorepo/ui",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		"./components/*": "./src/components/*.tsx",
+		"./lib/*": "./src/lib/*.ts",
+		"./styles/*": "./src/styles/*.css"
+	},
+	"scripts": {
+		"lint": "vp lint",
+		"lint:fix": "vp lint --fix",
+		"format": "vp fmt",
+		"format:check": "vp fmt --check",
+		"check": "vp check",
+		"test": "vp test --run",
+		"test:coverage": "vp test --run --coverage"
+	},
+	"dependencies": {
+		"@radix-ui/react-slot": "1.3.3",
+		"class-variance-authority": "0.7.1",
+		"clsx": "2.1.1",
+		"tailwind-merge": "3.6.0"
+	},
+	"devDependencies": {
+		"@my-monorepo/tsconfig": "workspace:*",
+		"tailwindcss": "4.3.3"
+	}
+}

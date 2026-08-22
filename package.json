@@ -1,0 +1,48 @@
+{
+  "name": "my-monorepo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:api": "vp run --filter ./apps/api dev",
+    "dev:cli": "vp run --filter ./apps/cli dev",
+    "dev:web": "vp run --filter ./apps/web dev",
+    "dev:tauri": "vp run --filter ./apps/tauri dev",
+    "build:cli": "vp run --filter ./apps/cli build",
+    "build:web": "vp run --filter ./apps/web build",
+    "build:tauri": "vp run --filter ./apps/tauri build",
+    "cli:install": "cargo install --path apps/cli --locked",
+    "cli:uninstall": "cargo uninstall my-monorepo-cli",
+    "lint": "vp run -r lint && manypkg check",
+    "lint:fix": "vp run -r lint:fix",
+    "format": "vp run -r format",
+    "format:check": "vp run -r format:check",
+    "check": "vp run -r check && manypkg check",
+    "test": "vp run -r test",
+    "test:coverage": "vp run -r test:coverage",
+    "precommit": "pnpm run check && pnpm run test",
+    "precommit:fix": "pnpm run format && pnpm run lint:fix && manypkg fix"
+  },
+  "devDependencies": {
+    "@manypkg/cli": "0.25.1",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "26.2.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.1.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "simple-git-hooks": "2.13.1",
+    "typescript": "7.0.2",
+    "vite-plus": "0.2.9"
+  },
+  "packageManager": "pnpm@11.22.0",
+  "simple-git-hooks": {
+    "pre-commit": "pnpm run precommit"
+  },
+  "manypkg": {
+    "ignoredRules": [
+      "EXTERNAL_MISMATCH"
+    ]
+  }
+}

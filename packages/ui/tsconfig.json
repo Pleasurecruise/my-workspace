@@ -1,0 +1,10 @@
+{
+	"extends": "@my-monorepo/tsconfig/react-library.json",
+	"compilerOptions": {
+		"paths": {
+			"@my-monorepo/ui/*": ["./src/*"]
+		}
+	},
+	"include": ["."],
+	"exclude": ["node_modules", "dist"]
+}

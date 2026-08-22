@@ -1,0 +1,27 @@
+{
+	"name": "@my-monorepo/i18n",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./core": "./src/core.ts",
+		"./react": "./src/react.ts",
+		"./locales/*": "./src/locales/*.ts"
+	},
+	"scripts": {
+		"lint": "vp lint",
+		"lint:fix": "vp lint --fix",
+		"format": "vp fmt",
+		"format:check": "vp fmt --check",
+		"check": "vp check",
+		"test": "vp test --run",
+		"test:coverage": "vp test --run --coverage"
+	},
+	"dependencies": {
+		"i18next": "26.4.0"
+	},
+	"devDependencies": {
+		"@my-monorepo/tsconfig": "workspace:*"
+	}
+}

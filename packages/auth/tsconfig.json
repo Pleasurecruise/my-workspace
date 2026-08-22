@@ -1,0 +1,10 @@
+{
+	"extends": "@my-monorepo/tsconfig/base.json",
+	"compilerOptions": {
+		"paths": {
+			"*": ["./*"]
+		}
+	},
+	"include": ["src"],
+	"exclude": ["node_modules", "dist", "src/generated"]
+}

@@ -1,0 +1,33 @@
+{
+	"name": "@my-monorepo/web",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vp dev",
+		"build": "vp build",
+		"check": "vp check",
+		"lint": "vp lint",
+		"lint:fix": "vp lint --fix",
+		"format": "vp fmt",
+		"format:check": "vp fmt --check",
+		"test": "vp test --run",
+		"test:coverage": "vp test --run --coverage"
+	},
+	"dependencies": {
+		"@my-monorepo/auth": "workspace:*",
+		"@my-monorepo/env": "workspace:*",
+		"@my-monorepo/i18n": "workspace:*",
+		"@my-monorepo/ui": "workspace:*",
+		"@my-monorepo/utils": "workspace:*",
+		"@tanstack/react-query": "5.101.4",
+		"@tanstack/react-router": "1.170.31",
+		"@tanstack/react-start": "1.168.48",
+		"@trpc/client": "11.18.0",
+		"@trpc/tanstack-react-query": "11.18.0"
+	},
+	"devDependencies": {
+		"@my-monorepo/api": "workspace:*",
+		"@my-monorepo/tsconfig": "workspace:*"
+	}
+}

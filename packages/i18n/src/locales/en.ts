@@ -1,0 +1,37 @@
+export default {
+	common: {
+		welcome: "Welcome",
+		loading: "Loading...",
+		error: "Something went wrong",
+		confirm: "Confirm",
+		cancel: "Cancel",
+		save: "Save",
+		delete: "Delete",
+		edit: "Edit",
+		search: "Search",
+		noData: "No data",
+		back: "Back",
+	},
+	nav: {
+		home: "Home",
+		settings: "Settings",
+		profile: "Profile",
+		about: "About",
+	},
+	settings: {
+		language: "Language",
+		theme: "Theme",
+	},
+	auth: {
+		login: "Login",
+		logout: "Logout",
+		loginSubtitle: "Sign in to your account",
+		email: "Email",
+		emailPlaceholder: "your@email.com",
+		password: "Password",
+		passwordPlaceholder: "Password",
+		fillRequired: "Please fill in email and password",
+		loginFailed: "Login failed, please try again",
+		loggedInAs: "Logged in as",
+	},
+} as const;

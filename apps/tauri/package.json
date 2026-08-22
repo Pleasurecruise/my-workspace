@@ -1,0 +1,36 @@
+{
+	"name": "@my-monorepo/tauri",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "tauri dev",
+		"build": "tauri build",
+		"frontend:dev": "vp dev",
+		"frontend:build": "vp build",
+		"check": "vp check",
+		"lint": "vp lint",
+		"lint:fix": "vp lint --fix",
+		"format": "vp fmt",
+		"format:check": "vp fmt --check",
+		"test": "vp test --run",
+		"test:coverage": "vp test --run --coverage"
+	},
+	"dependencies": {
+		"@my-monorepo/auth": "workspace:*",
+		"@my-monorepo/env": "workspace:*",
+		"@my-monorepo/i18n": "workspace:*",
+		"@my-monorepo/ui": "workspace:*",
+		"@my-monorepo/utils": "workspace:*",
+		"@tanstack/react-query": "5.101.4",
+		"@tauri-apps/api": "2.11.1",
+		"@tauri-apps/plugin-opener": "2.5.4",
+		"@trpc/client": "11.18.0",
+		"@trpc/tanstack-react-query": "11.18.0"
+	},
+	"devDependencies": {
+		"@my-monorepo/api": "workspace:*",
+		"@my-monorepo/tsconfig": "workspace:*",
+		"@tauri-apps/cli": "2.11.4"
+	}
+}
