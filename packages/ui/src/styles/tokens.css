@@ -1,0 +1,58 @@
+@import "./palette.css";
+
+:root {
+  --color-background: var(--palette-light-paper);
+  --color-muted: var(--palette-light-cloud);
+  --color-foreground: var(--palette-light-ink);
+  --color-muted-foreground: var(--palette-light-fog);
+  --color-border: var(--palette-light-oat);
+  --color-border-strong: var(--palette-light-sand);
+  --color-divider: var(--palette-light-oat);
+  --color-accent: var(--palette-brand-light);
+  --color-accent-foreground: var(--palette-light-paper);
+  --color-success: var(--palette-success-light);
+  --color-warning: var(--palette-warning-light);
+  --color-error: var(--palette-error-light);
+
+  --font-sans:
+    "Geist", "Inter", system-ui, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-serif: "Lora", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", "Fira Code", Consolas, Monaco, monospace;
+
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 7px;
+  --radius-xl: 10px;
+  --radius-full: 9999px;
+
+  --shadow-xs: 0 1px 2px color-mix(in srgb, #000 4%, transparent);
+  --shadow-sm:
+    0 1px 3px color-mix(in srgb, #000 5%, transparent),
+    0 1px 2px -1px color-mix(in srgb, #000 5%, transparent);
+  --shadow-md:
+    0 4px 8px -2px color-mix(in srgb, #000 6%, transparent),
+    0 2px 4px -2px color-mix(in srgb, #000 4%, transparent);
+  --shadow-lg:
+    0 10px 20px -4px color-mix(in srgb, #000 8%, transparent),
+    0 4px 6px -4px color-mix(in srgb, #000 5%, transparent);
+
+  --duration-fast: 100ms;
+  --duration-base: 180ms;
+  --duration-slow: 320ms;
+}
+
+.dark {
+  --color-background: var(--palette-dark-base);
+  --color-muted: var(--palette-dark-muted);
+  --color-foreground: var(--palette-dark-text);
+  --color-muted-foreground: var(--palette-dark-text-dim);
+  --color-border: var(--palette-dark-border);
+  --color-border-strong: var(--palette-dark-border-strong);
+  --color-divider: var(--palette-dark-muted);
+  --color-accent: var(--palette-brand-dark);
+  --color-accent-foreground: var(--palette-dark-base);
+  --color-success: var(--palette-success-dark);
+  --color-warning: var(--palette-warning-dark);
+  --color-error: var(--palette-error-dark);
+}

@@ -1,56 +1,27 @@
-# Project Structure
+# Architecture
 
-## Apps
+The repository is the starting point for a local-first CMS distribution platform. It currently has
+two deliverables and two shared Rust crates:
 
-- [`@my-monorepo/api`](../apps/api) - Bun runtime API using Hono + tRPC, with shared AI/auth/env/logging/utilities. Dev server via `bun --watch`.
-- [`@my-monorepo/web`](../apps/web) - React app built with TanStack Router/React Query/TanStack Start on Vite.
-- [`@my-monorepo/tauri`](../apps/tauri) - Tauri v2 desktop app (Rust core) with a React + Vite frontend.
+- `apps/desktop` packages the Tauri application. Svelte owns rendering and calls Rust through Tauri
+  commands; business logic must not move into the view layer.
+- `apps/cli` builds the `my-workspace` executable.
+- `crates/cms-core` is the shared business boundary. It contains Hello World only until concrete CMS
+  behavior is specified.
+- `crates/logger` configures `tracing` for both Rust binaries.
 
-## Packages
+Frontend-only packages are limited to `packages/ui` and `packages/tsconfig`. The UI design system has
+three layers:
 
-- [`@my-monorepo/tsconfig`](../packages/tsconfig) - Shared TypeScript base configs (base, hono, react-app, react-library).
-- [`@my-monorepo/utils`](../packages/utils) - Cross-app helpers for crypto/format/validation and shared libs (zod, validator, date-fns, superjson, jose, etc.).
-- [`@my-monorepo/env`](../packages/env) - Type-safe environment variable validation using Zod.
-- [`@my-monorepo/i18n`](../packages/i18n) - i18next setup with locale bundles and React hooks.
-- [`@my-monorepo/ui`](../packages/ui) - Shared UI components/styles for web (shadcn/ui, Radix, Tailwind, CVA/clsx).
-- [`@my-monorepo/logger`](../packages/logger) - Pino-based logger with contextual helpers.
-- [`@my-monorepo/auth`](../packages/auth) - Authentication layer using better-auth with Prisma adapter.
-- [`@my-monorepo/db`](../packages/db) - Prisma client wrapper for database access.
-- [`@my-monorepo/ai`](../packages/ai) - AI SDK wrapper (ai-sdk + OpenAI-compatible provider).
-
-## Dependency Graph
-
-```mermaid
-graph BT
-    subgraph Packages
-        UTILS[utils]
-        ENV[env]
-        I18N[i18n]
-        UI[ui]
-        LOGGER[logger]
-        DB[db]
-        AUTH[auth]
-        AI[ai]
-    end
-
-    subgraph Apps
-        API[api]
-        WEB[web]
-        TAURI[tauri]
-    end
-
-    %% package → package
-    DB --> AUTH
-    UTILS --> AUTH & AI
-    ENV --> AUTH
-
-    %% packages → API
-    LOGGER & AI --> API
-    AUTH --> API & WEB & TAURI
-    UTILS & ENV --> API & WEB & TAURI
-
-    %% packages → WEB / TAURI
-    I18N & UI --> WEB & TAURI
+```text
+palette.css  -> physical color values
+tokens.css   -> light/dark semantic roles
+theme.css    -> Tailwind utility mapping
 ```
 
-> All packages depend on `tsconfig` (omitted for clarity). Apps use `api` as a devDependency for tRPC type inference.
+Application and component code consumes semantic tokens only. Palette variables never leave
+`tokens.css`, and raw colors do not belong in components.
+
+Future distribution adapters may target `my-memos` and `my-knowledge`. They are not implemented in
+the Hello World foundation. `voidPlugin()` is reserved for a future Cloudflare Worker boundary; it is
+not a general environment loader for packaged desktop or CLI binaries.

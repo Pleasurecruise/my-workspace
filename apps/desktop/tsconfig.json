@@ -1,0 +1,10 @@
+{
+  "extends": "@my-workspace/tsconfig/svelte.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["node_modules", "src-tauri"]
+}

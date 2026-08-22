@@ -1,30 +1,30 @@
 {
-  "name": "@my-workspace/ui",
+  "name": "@my-workspace/desktop",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "exports": {
-    "./components/*": "./src/components/*.svelte",
-    "./lib/*": "./src/lib/*.ts",
-    "./styles": "./src/styles/app.css",
-    "./styles/*": "./src/styles/*.css"
-  },
   "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "frontend:dev": "vp dev",
+    "frontend:build": "vp build",
+    "check": "svelte-check --tsconfig ./tsconfig.json && vp check",
     "lint": "vp lint",
     "lint:fix": "vp lint --fix",
     "format": "vp fmt",
     "format:check": "vp fmt --check",
-    "check": "svelte-check --tsconfig ./tsconfig.json && vp check",
     "test": "vp test --run"
   },
   "dependencies": {
-    "class-variance-authority": "0.7.1",
-    "clsx": "2.1.1",
-    "tailwind-merge": "3.6.0"
+    "@my-workspace/ui": "workspace:*",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-opener": "2.5.4"
   },
   "devDependencies": {
     "@my-workspace/tsconfig": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@tauri-apps/cli": "2.11.4",
     "svelte": "5.56.10",
     "svelte-check": "4.7.6",
     "tailwindcss": "4.3.3"

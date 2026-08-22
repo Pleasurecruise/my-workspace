@@ -1,9 +1,13 @@
 [package]
-name = "my-monorepo-cli"
+name = "my-workspace-cli"
 version = "1.0.0"
-edition = "2024"
-rust-version = "1.95"
+edition.workspace = true
+rust-version.workspace = true
 
 [[bin]]
-name = "my-monorepo"
+name = "my-workspace"
 path = "src/main.rs"
+
+[dependencies]
+my-workspace-cms-core.workspace = true
+my-workspace-logger.workspace = true

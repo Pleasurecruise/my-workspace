@@ -1,16 +1,9 @@
 packages:
-  - 'packages/*'
-  - 'apps/*'
+  - "packages/*"
+  - "apps/*"
 
 allowBuilds:
-  '@prisma/engines': true
   esbuild: true
-  prisma: true
   simple-git-hooks: true
-
-overrides:
-  postcss: 8.5.14
-  '@hono/node-server@<2.0.3': '>=2.0.3'
-  fast-uri: '>=3.1.2'
 
 # minimumReleaseAge: 1440

@@ -1,22 +1,14 @@
-fn create_greeting(name: &str) -> String {
-    format!("Hello, {name}!")
-}
-
 fn main() {
-    println!("{}", create_greeting("world"));
+    my_workspace_logger::init().expect("failed to initialize logging");
+    my_workspace_logger::info!("starting CLI");
+
+    println!("{}", my_workspace_cms_core::hello());
 }
 
 #[cfg(test)]
 mod tests {
-    use super::create_greeting;
-
     #[test]
-    fn greets_the_world() {
-        assert_eq!(create_greeting("world"), "Hello, world!");
-    }
-
-    #[test]
-    fn greets_a_provided_name() {
-        assert_eq!(create_greeting("Codex"), "Hello, Codex!");
+    fn reads_the_shared_core() {
+        assert_eq!(my_workspace_cms_core::hello(), "Hello, world!");
     }
 }

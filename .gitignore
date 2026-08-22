@@ -1,53 +1,51 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies and package-manager state
+# Dependencies and package-manager state
 node_modules/
 .pnpm-store/
-.pnp
-.pnp.js
+.npm/
+.pnp*
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
 
-# test and build outputs
-**/coverage/
+# Build and test output
+coverage/
+dist/
+target/
 **/dist/
-**/build/
 **/target/
+.vite/
+.svelte-kit/
+.turbo/
 
-# next.js
-**/.next/
-**/out/
+# Tool state
+.wrangler/
+.void/
+**/src-tauri/gen/
+*.tsbuildinfo
 
-# misc
-.DS_Store
-*.pem
-
-# debug
+# Logs
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
 
-# local environment files
-.env
+# Local environment and secrets
+.env*
+.dev.vars*
+!.env.example
+*.pem
 
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# editors and local agents
+# Editors and local agents
 .idea/
 .vscode/
+.vscode-test/
 .claude/
 .codex/
 .cursor/
 
-# task caches left by tooling
-.turbo/
-
-# tanstack start
-.tanstack/
-.output/
-
-# tauri
-**/src-tauri/gen/
+# OS files
+.DS_Store

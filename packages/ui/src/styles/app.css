@@ -1,0 +1,20 @@
+@import "tailwindcss";
+@import "./tokens.css";
+@import "./theme.css";
+
+@source "../../../../apps/*/src/**/*.{ts,svelte}";
+@source "../components/**/*.{ts,svelte}";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+}

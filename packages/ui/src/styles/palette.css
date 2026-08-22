@@ -1,0 +1,24 @@
+:root {
+  --palette-light-paper: #faf7eb;
+  --palette-light-cloud: #f5f2ec;
+  --palette-light-oat: #e8e0d0;
+  --palette-light-sand: #d4c5a9;
+  --palette-light-fog: #726e69;
+  --palette-light-ink: #1a1a1a;
+
+  --palette-dark-base: #1a1917;
+  --palette-dark-muted: #242220;
+  --palette-dark-border: #332f2c;
+  --palette-dark-border-strong: #46413d;
+  --palette-dark-text: #e6e3dc;
+  --palette-dark-text-dim: #9a948d;
+
+  --palette-brand-light: #963c5a;
+  --palette-brand-dark: #d8a0b2;
+  --palette-success-light: #4d5e38;
+  --palette-success-dark: #a8b890;
+  --palette-warning-light: #7a5520;
+  --palette-warning-dark: #d4b88e;
+  --palette-error-light: #a03030;
+  --palette-error-dark: #d06464;
+}

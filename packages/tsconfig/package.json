@@ -1,12 +1,10 @@
 {
-	"name": "@my-monorepo/tsconfig",
-	"private": true,
-	"version": "1.0.0",
-	"type": "module",
-	"files": [
-		"base.json",
-		"hono.json",
-		"react-app.json",
-		"react-library.json"
-	]
+  "name": "@my-workspace/tsconfig",
+  "version": "1.0.0",
+  "private": true,
+  "files": [
+    "base.json",
+    "svelte.json"
+  ],
+  "type": "module"
 }
