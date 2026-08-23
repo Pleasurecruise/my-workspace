@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  ci:
-    name: CI
+  typescript:
+    name: Frontend
     runs-on: ubuntu-latest
 
     steps:
@@ -27,5 +27,50 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: CI
-        run: pnpm run precommit
+      - name: Check formatting
+        run: pnpm run format:check:frontend
+
+      - name: Lint
+        run: pnpm run lint:frontend
+
+      - name: Check
+        run: pnpm run check:frontend
+
+      - name: Test
+        run: pnpm run test:frontend
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes \
+            build-essential \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Check
+        run: cargo check --workspace --all-targets
+
+      - name: Test
+        run: cargo test --workspace --all-targets

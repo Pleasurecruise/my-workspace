@@ -6,4 +6,8 @@ allowBuilds:
   esbuild: true
   simple-git-hooks: true
 
-# minimumReleaseAge: 1440
+update:
+  ignoreDeps:
+    - typescript
+
+minimumReleaseAge: 1440

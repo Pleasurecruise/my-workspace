@@ -8,7 +8,7 @@
     "build": "tauri build",
     "frontend:dev": "vp dev",
     "frontend:build": "vp build",
-    "check": "svelte-check --tsconfig ./tsconfig.json && vp check",
+    "check": "svelte-check --tsgo --tsconfig ./tsconfig.json && vp check",
     "lint": "vp lint",
     "lint:fix": "vp lint --fix",
     "format": "vp fmt",
@@ -16,9 +16,11 @@
     "test": "vp test --run"
   },
   "dependencies": {
+    "@lucide/svelte": "1.33.0",
     "@my-workspace/ui": "workspace:*",
     "@tauri-apps/api": "2.11.1",
-    "@tauri-apps/plugin-opener": "2.5.4"
+    "@tauri-apps/plugin-opener": "2.5.4",
+    "thumbhash": "0.1.1"
   },
   "devDependencies": {
     "@my-workspace/tsconfig": "workspace:*",

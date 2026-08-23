@@ -1,4 +1,4 @@
 declare module "@my-workspace/ui/styles" {
-  const _: string;
-  export default _;
+  const stylesheet: string;
+  export default stylesheet;
 }

@@ -1,27 +1,16 @@
-# Architecture
+# Documentation
 
-The repository is the starting point for a local-first CMS distribution platform. It currently has
-two deliverables and two shared Rust crates:
+Maintainer-facing documentation is split by responsibility:
 
-- `apps/desktop` packages the Tauri application. Svelte owns rendering and calls Rust through Tauri
-  commands; business logic must not move into the view layer.
-- `apps/cli` builds the `my-workspace` executable.
-- `crates/cms-core` is the shared business boundary. It contains Hello World only until concrete CMS
-  behavior is specified.
-- `crates/logger` configures `tracing` for both Rust binaries.
+| Document                                     | Scope                                                                                         |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| [Architecture](ARCHITECTURE.md)              | Workspace boundaries, data flow, storage, desktop consumers, and current limitations          |
+| [Dashboard integrations](DASHBOARD.md)       | UGOS protocol, AI usage providers, credentials, polling, and failure isolation                |
+| [Development and operations](DEVELOPMENT.md) | Commands, local setup, R2 publication, credential handling, and verification                  |
+| [Local-to-consumer workflow](WORKFLOW.md)    | Local artifacts, R2 uploads, consumer API synchronization, rollback, and ownership boundaries |
+| [Markdown pipeline](MARKDOWN.md)             | Current compilation boundary, rendering safety, and lessons adopted from Waku                 |
+| [Design system](DESIGN.md)                   | UI token layers, component ownership, themes, and accessibility                               |
+| [Code style](STYLEGUIDE.md)                  | Rust, TypeScript, Svelte, naming, errors, helpers, packages, and review rules                 |
 
-Frontend-only packages are limited to `packages/ui` and `packages/tsconfig`. The UI design system has
-three layers:
-
-```text
-palette.css  -> physical color values
-tokens.css   -> light/dark semantic roles
-theme.css    -> Tailwind utility mapping
-```
-
-Application and component code consumes semantic tokens only. Palette variables never leave
-`tokens.css`, and raw colors do not belong in components.
-
-Future distribution adapters may target `my-memos` and `my-knowledge`. They are not implemented in
-the Hello World foundation. `voidPlugin()` is reserved for a future Cloudflare Worker boundary; it is
-not a general environment loader for packaged desktop or CLI binaries.
+Keep the root [README](../README.md) short. Update the owning document when runtime behavior,
+directory responsibilities, credentials, external protocols, or engineering rules change.

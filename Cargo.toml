@@ -1,5 +1,13 @@
 [workspace]
-members = ["apps/cli", "apps/desktop/src-tauri", "crates/cms-core", "crates/logger"]
+members = [
+  "apps/cli",
+  "apps/desktop/src-tauri",
+  "crates/cms-core",
+  "crates/credentials",
+  "crates/logger",
+  "crates/ugos",
+  "crates/useage",
+]
 resolver = "3"
 
 [workspace.package]
@@ -7,6 +15,44 @@ edition = "2024"
 rust-version = "1.95"
 
 [workspace.dependencies]
-my-workspace-cms-core = { path = "crates/cms-core" }
+aws-config = "1"
+aws-credential-types = "1"
+aws-sdk-s3 = "1"
+aws-types = "1"
+base64 = "0.22"
+der = "0.7"
+dotenvy = "0.15"
+dirs = "6"
+futures-util = "0.3"
+cms-core = { path = "crates/cms-core" }
+hex = "0.4"
+keyring = "4.1.6"
 my-workspace-logger = { path = "crates/logger" }
+pulldown-cmark = "0.13.4"
+useage = { path = "crates/useage" }
+reqwest = { version = "0.12", default-features = false, features = [
+  "cookies",
+  "json",
+  "rustls-tls",
+] }
+rusqlite = { version = "0.40", features = ["bundled"] }
+rsa = "0.9"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = [
+  "fs",
+  "io-util",
+  "macros",
+  "process",
+  "rt-multi-thread",
+  "sync",
+  "time",
+] }
 tracing = "0.1.44"
+ugos = { path = "crates/ugos" }
+vesper-credentials = { path = "crates/credentials" }
+time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
+uuid = { version = "1", features = ["v4"] }

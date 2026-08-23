@@ -13,6 +13,9 @@
   --color-success: var(--palette-success-light);
   --color-warning: var(--palette-warning-light);
   --color-error: var(--palette-error-light);
+  --color-overlay: color-mix(in srgb, var(--palette-black) 35%, transparent);
+  --color-image-scrim: color-mix(in srgb, var(--palette-black) 78%, transparent);
+  --color-on-dark: var(--palette-white);
 
   --font-sans:
     "Geist", "Inter", system-ui, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
@@ -26,20 +29,23 @@
   --radius-xl: 10px;
   --radius-full: 9999px;
 
-  --shadow-xs: 0 1px 2px color-mix(in srgb, #000 4%, transparent);
+  --shadow-xs: 0 1px 2px color-mix(in srgb, var(--palette-black) 4%, transparent);
   --shadow-sm:
-    0 1px 3px color-mix(in srgb, #000 5%, transparent),
-    0 1px 2px -1px color-mix(in srgb, #000 5%, transparent);
+    0 1px 3px color-mix(in srgb, var(--palette-black) 5%, transparent),
+    0 1px 2px -1px color-mix(in srgb, var(--palette-black) 5%, transparent);
   --shadow-md:
-    0 4px 8px -2px color-mix(in srgb, #000 6%, transparent),
-    0 2px 4px -2px color-mix(in srgb, #000 4%, transparent);
+    0 4px 8px -2px color-mix(in srgb, var(--palette-black) 6%, transparent),
+    0 2px 4px -2px color-mix(in srgb, var(--palette-black) 4%, transparent);
   --shadow-lg:
-    0 10px 20px -4px color-mix(in srgb, #000 8%, transparent),
-    0 4px 6px -4px color-mix(in srgb, #000 5%, transparent);
+    0 10px 20px -4px color-mix(in srgb, var(--palette-black) 8%, transparent),
+    0 4px 6px -4px color-mix(in srgb, var(--palette-black) 5%, transparent);
 
   --duration-fast: 100ms;
   --duration-base: 180ms;
   --duration-slow: 320ms;
+  --duration-progress: 500ms;
+  --duration-spinner: 800ms;
+  --duration-skeleton: 1500ms;
 }
 
 .dark {

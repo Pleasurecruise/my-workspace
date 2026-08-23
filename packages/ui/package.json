@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./components/*": "./src/components/*.svelte",
+    ".": "./src/index.ts",
     "./lib/*": "./src/lib/*.ts",
     "./styles": "./src/styles/app.css",
     "./styles/*": "./src/styles/*.css"
@@ -14,11 +14,10 @@
     "lint:fix": "vp lint --fix",
     "format": "vp fmt",
     "format:check": "vp fmt --check",
-    "check": "svelte-check --tsconfig ./tsconfig.json && vp check",
+    "check": "svelte-check --tsgo --tsconfig ./tsconfig.json && vp check",
     "test": "vp test --run"
   },
   "dependencies": {
-    "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "tailwind-merge": "3.6.0"
   },
@@ -26,7 +25,6 @@
     "@my-workspace/tsconfig": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
     "svelte": "5.56.10",
-    "svelte-check": "4.7.6",
-    "tailwindcss": "4.3.3"
+    "svelte-check": "4.7.6"
   }
 }

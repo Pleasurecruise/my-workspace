@@ -1,13 +1,7 @@
-pub const fn hello() -> &'static str {
-    "Hello, world!"
-}
-
-#[cfg(test)]
-mod tests {
-    use super::hello;
-
-    #[test]
-    fn returns_hello_world() {
-        assert_eq!(hello(), "Hello, world!");
-    }
-}
+pub mod api;
+pub mod build;
+pub mod consumer;
+pub mod markdown;
+pub mod publish;
+pub mod r2;
+pub mod todo;

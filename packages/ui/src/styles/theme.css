@@ -11,6 +11,9 @@
   --color-success: var(--color-success);
   --color-warning: var(--color-warning);
   --color-error: var(--color-error);
+  --color-overlay: var(--color-overlay);
+  --color-image-scrim: var(--color-image-scrim);
+  --color-on-dark: var(--color-on-dark);
 
   --font-sans: var(--font-sans);
   --font-serif: var(--font-serif);

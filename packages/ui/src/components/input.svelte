@@ -2,14 +2,23 @@
 	import type { HTMLInputAttributes } from "svelte/elements";
 	import { cn } from "../lib/utils";
 
-	let { class: className, value = $bindable(), ...rest }: HTMLInputAttributes = $props();
+	export interface InputProps extends HTMLInputAttributes {
+		error?: boolean;
+	}
+
+	const base = cn(
+		"flex h-9 w-full rounded-md border bg-background px-3 py-1",
+		"font-sans text-sm text-foreground placeholder:text-muted-foreground",
+		"outline-none transition-colors duration-100",
+		"focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+		"disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
+	);
+
+	let { error, class: className = "", value = $bindable(), ...rest }: InputProps = $props();
 </script>
 
 <input
-	class={cn(
-		"h-11 w-full rounded-md border border-border bg-background px-4 text-sm text-foreground shadow-xs outline-none transition placeholder:text-muted-foreground focus:border-border-strong focus:ring-2 focus:ring-accent/20",
-		className,
-	)}
+	class={cn(base, error ? "border-error focus-visible:ring-error" : "border-border focus-visible:ring-accent", className)}
 	bind:value
 	{...rest}
 />

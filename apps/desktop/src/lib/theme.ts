@@ -12,11 +12,17 @@ function getTheme(): AppTheme {
   return "auto";
 }
 
-export function initTheme(): void {
+export function initTheme(): boolean {
   const theme = getTheme();
   const resolved = theme === "auto" ? getSystemTheme() : theme;
+  applyTheme(resolved === "dark");
+  return resolved === "dark";
+}
+
+export function applyTheme(dark: boolean): void {
   const root = document.documentElement;
   root.classList.remove("light", "dark");
-  root.classList.add(resolved);
-  root.style.colorScheme = resolved;
+  root.classList.add(dark ? "dark" : "light");
+  root.style.colorScheme = dark ? "dark" : "light";
+  localStorage.setItem(STORAGE_KEY, dark ? "dark" : "light");
 }

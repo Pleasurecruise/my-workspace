@@ -16,6 +16,7 @@ target/
 **/target/
 .vite/
 .svelte-kit/
+.svelte-check/
 .turbo/
 
 # Tool state

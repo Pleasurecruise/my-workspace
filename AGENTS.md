@@ -1,47 +1,54 @@
 # Repository Guidelines
 
+## Read first
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Dashboard integrations](docs/DASHBOARD.md)
+- [Development and operations](docs/DEVELOPMENT.md)
+- [Design system](docs/DESIGN.md)
+- [Code style](docs/STYLEGUIDE.md)
+
 ## Architecture
 
-- `apps/desktop`: Tauri v2 application. The frontend uses Svelte 5 and Vite; Rust owns commands and
-  application behavior under `src-tauri`.
-- `apps/cli`: Rust command-line binary.
-- `crates/cms-core`: shared Rust CMS boundary; keep it at Hello World until concrete behavior is
-  requested.
-- `crates/logger`: shared Rust `tracing` initialization.
-- `packages/ui`: Svelte components and design tokens.
+- `apps/desktop`: Tauri v2 application. Svelte 5 owns the view layer; Rust owns commands and runtime
+  behavior below `src-tauri` and the shared crates.
+- `apps/cli`: Rust `vesper` command-line binary.
+- `crates/cms-core`: Markdown, content builds, publication, memo operations, consumer projections,
+  and R2 access.
+- `crates/credentials`: operating-system credential-store boundary.
+- `crates/ugos`: read-only UGOS Pro boundary.
+- `crates/useage`: read-only AI subscription and credit providers. The spelling is intentional.
+- `crates/logger`: shared `tracing` initialization.
+- `packages/ui`: reusable Svelte components and design tokens.
 - `packages/tsconfig`: UI-only TypeScript configuration.
 
 Except for the Svelte view layer and its build configuration, new application code should be Rust.
-Do not create a package until it is genuinely shared or owns a stable independent responsibility.
+Create a package only when it owns a stable independent responsibility or is genuinely shared.
 
-## Tooling
+## Working expectations
 
-- `pnpm dev` runs the desktop application.
-- `pnpm build:desktop` and `pnpm build:cli` build the two deliverables.
-- `pnpm check`, `pnpm lint`, `pnpm test`, and `pnpm format:check` cover both pnpm and Cargo workspaces.
-- Use Vite Plus for frontend formatting, linting, tests, and task orchestration.
+- Prefer root commands from `package.json`.
+- Use Vite Plus for frontend formatting, linting, tests, and orchestration.
 - Use Cargo fmt, Clippy, check, and test for Rust.
-
-TypeScript/Svelte uses tabs and double quotes. Rust follows `cargo fmt`. Dependencies owned by this
-workspace use `workspace:*` in pnpm and workspace dependencies in Cargo.
+- TypeScript and Svelte use tabs and double quotes. Rust follows `cargo fmt`.
+- Workspace-owned dependencies use `workspace:*` in pnpm and workspace dependencies in Cargo.
+- Preserve unrelated user changes. Commit messages follow Conventional Commits.
+- Do not embed secrets in packaged code, logs, or source files. Provider responses must not expose
+  credentials; the typed Settings read command may return stored values solely to prefill its form.
+- Do not add broad `try/catch` blocks, one-line helper wrappers, or generic utility modules without a
+  real boundary or repeated policy.
 
 ## UI tokens
 
-The three layers are `palette.css`, `tokens.css`, and `theme.css`. Components and application styles
-consume semantic `--color-*`, `--font-*`, `--radius-*`, `--shadow-*`, and `--duration-*` tokens only.
-Never reference `--palette-*` outside `tokens.css`; add new physical values to `palette.css` first.
+The token layers are `palette.css`, `tokens.css`, and `theme.css`. Application and component code
+consumes semantic `--color-*`, `--font-*`, `--radius-*`, `--shadow-*`, and `--duration-*` tokens only.
+Never reference `--palette-*` outside `tokens.css`.
 
-## Environment
+## Change checklist
 
-Packaged desktop and CLI code must not embed secrets. `RUST_LOG` controls local Rust logging.
-Wrangler owns environment variables and secrets only when a Cloudflare Worker exists. Use
-`voidPlugin()` only in that Worker app, not in the Tauri frontend.
-
-Preserve unrelated user changes. Commit messages follow Conventional Commits.
-
-<!-- context7 -->
-
-Use the `ctx7` CLI to fetch current documentation whenever the user asks about a library, framework,
-SDK, API, CLI tool, or cloud service. Resolve the library before fetching docs and do not run more
-than three Context7 commands per question.
-<!-- context7 -->
+1. Run formatting, Clippy, checks, tests, and the relevant build.
+2. Update `docs/ARCHITECTURE.md` for boundary, storage, or data-flow changes.
+3. Update `docs/DASHBOARD.md` for provider, credential, UGOS, or polling changes.
+4. Update `docs/DESIGN.md` for token or reusable UI changes.
+5. Update `docs/STYLEGUIDE.md` for engineering-rule changes.
+6. Keep the root README concise.
