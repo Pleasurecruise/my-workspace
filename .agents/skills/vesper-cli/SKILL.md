@@ -49,19 +49,31 @@ does not remove destination-only objects.
 
 ## Memo
 
-Memo writes go through the my-memos REST API so the consumer can coordinate R2 bodies, D1 metadata,
-and KV invalidation. Reads resolve metadata through the API and Markdown bodies through R2.
+Memo reads and writes go through the my-memos REST API so the consumer can coordinate R2 bodies, D1
+metadata, and KV invalidation. List and search responses already include the mirrored Markdown body.
 
 ```sh
 vesper memo tags
 vesper memo list [limit]
+vesper memo page '<json>'
 vesper memo search <query>
 vesper memo create <markdown>
 vesper memo update <id> <markdown>
+vesper memo patch <id> '<json>'
+vesper memo visibility <id> <public|private>
+vesper memo pin <id>
+vesper memo unpin <id>
+vesper memo favorite <id>
+vesper memo unfavorite <id>
+vesper memo archive <id>
+vesper memo restore <id>
 vesper memo delete <id>
 ```
 
-The list limit must be between 1 and 20. Quote Markdown that contains shell metacharacters.
+The list limit must be between 1 and 25. `page` accepts `cursor`, `limit`, `search`, `tags`,
+`sortByUpdated`, `archivedOnly`, and `favoritesOnly`; the last two are mutually exclusive. `patch`
+accepts the optional fields in `cms_core::api::memos::Update` and rejects an empty object. Quote
+Markdown and JSON that contain shell metacharacters.
 
 ## Knowledge
 
@@ -85,12 +97,14 @@ use the Rust input types in `crates/cms-core/src/api/knowledge.rs` as the local 
 ## Moment
 
 Moment metadata goes through the my-moment REST API. Image bytes intentionally use the R2 SDK.
-Upload the original and thumbnail first, then register the exact object keys in one metadata request.
+Prefer `upload-photo` for a coordinated create; use the separate object upload and metadata commands
+for explicit recovery workflows.
 
 ```sh
 vesper moment tags
 vesper moment list [cursor]
 vesper moment search <query>
+vesper moment upload-photo '<json>' <original.png> <thumbnail.jpg>
 vesper moment upload <r2-key> <local-path>
 vesper moment create '<json-with-r2Key-and-thumbnailR2Key>'
 vesper moment update <id> '<json>'
@@ -98,6 +112,10 @@ vesper moment download <r2-key> <local-path>
 vesper moment delete <id>
 vesper moment remove-object <r2-key>
 ```
+
+`upload-photo` uses the desktop's coordinated Rust workflow. Its JSON follows
+`cms_core::api::moment::Upload`; the files must already be a PNG original and JPEG thumbnail. Rust
+generates keys and rolls back objects written by the operation when a later step fails.
 
 If metadata creation fails after an upload, retry metadata creation before removing anything.
 `remove-object` is only for a verified orphan and can break an existing photo if its key is still

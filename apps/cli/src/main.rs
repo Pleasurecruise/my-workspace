@@ -99,9 +99,18 @@ fn print_help() {
          publish --live    compile, upload with the SDK, then remove temporary output\n  \
          memo tags                   list memo tags with counts\n  \
          memo list [limit]            list newest memos as JSON\n  \
+         memo page <json>             list a filtered or paginated memo page\n  \
          memo search <query>          search memo bodies as JSON\n  \
          memo create <markdown>       create a private memo\n  \
          memo update <id> <markdown>  replace a memo body\n  \
+         memo patch <id> <json>       update typed memo fields\n  \
+         memo visibility <id> <public|private>  change memo visibility\n  \
+         memo pin <id>                 pin a memo\n  \
+         memo unpin <id>               unpin a memo\n  \
+         memo favorite <id>            favorite a memo\n  \
+         memo unfavorite <id>          remove a memo from favorites\n  \
+         memo archive <id>             archive a memo\n  \
+         memo restore <id>             restore an archived memo\n  \
          memo delete <id>             permanently delete a memo\n  \
          knowledge list [cursor]       list Knowledge articles\n  \
          knowledge get <id>            read one Knowledge article\n  \
@@ -114,6 +123,7 @@ fn print_help() {
          moment list [cursor]          list photos\n  \
          moment search <query>         search photo metadata\n  \
          moment create <json>          register uploaded R2 image keys and metadata\n  \
+         moment upload-photo <json> <original.png> <thumbnail.jpg>\n  \
          moment update <id> <json>     update photo metadata\n  \
          moment delete <id>            delete photo metadata\n  \
          moment upload <key> <path>     upload an original or thumbnail through the R2 SDK\n  \

@@ -1,18 +1,33 @@
 <script lang="ts">
-	import { Archive, Check, Globe, Heart, Lock, Pencil, Share2, Star, Trash2, X } from "@lucide/svelte";
+	import { Archive, Check, ChevronRight, Clock3, Globe, Heart, Lock, Pencil, Share2, Star, Trash2, X } from "@lucide/svelte";
 	import { Alert, AlertDescription, Badge, Button, Input } from "@my-workspace/ui";
-	import type { CommandResponse, MemoUpdateInput, MemoView } from "../consumer";
+	import { openUrl } from "@tauri-apps/plugin-opener";
+	import { onMount, tick } from "svelte";
+	import type { CommandResponse, MemoTagCount, MemoUpdate, MemoView } from "../consumer";
 	import MemoEditor from "./MemoEditor.svelte";
 
 	let {
 		memos,
+		tags,
+		display,
+		onfilter,
+		onopenmemo,
 		oncreate,
 		onupdate,
 		ondelete,
 	}: {
 		memos: MemoView[];
+		tags: MemoTagCount[];
+		display: "active" | "favorites" | "archived";
+		onfilter: (
+			search: string,
+			tags: string[],
+			sortByUpdated: boolean,
+			display: "active" | "favorites" | "archived",
+		) => Promise<string | null>;
+		onopenmemo: (id: string) => Promise<boolean>;
 		oncreate: (content: string, visibility: "public" | "private") => Promise<CommandResponse<MemoView>>;
-		onupdate: (id: string, input: MemoUpdateInput) => Promise<CommandResponse<MemoView>>;
+		onupdate: (id: string, input: MemoUpdate) => Promise<CommandResponse<MemoView>>;
 		ondelete: (id: string) => Promise<CommandResponse<string>>;
 	} = $props();
 
@@ -21,6 +36,11 @@
 	let draft = $state("");
 	let visibility = $state<"public" | "private">("private");
 	let search = $state("");
+	let selectedTags = $state<string[]>([]);
+	let pinnedOpen = $state(false);
+	let sortByUpdated = $state(false);
+	let filtering = $state(false);
+	let filterVersion = 0;
 	let saving = $state(false);
 	let error = $state("");
 	let editingId = $state<string | null>(null);
@@ -33,15 +53,44 @@
 	let sharedId = $state<string | null>(null);
 	let confirmingDelete = $state<string | null>(null);
 	let deleting = $state(false);
+	let highlightedId = $state<string | null>(null);
+	let memoList = $state<HTMLDivElement | null>(null);
+	let focusVersion = 0;
+	let filtersReady = false;
 
-	let filtered = $derived(
-		memos.filter(
-			(memo) =>
-				!memo.archived &&
-				(memo.content.toLowerCase().includes(search.toLowerCase()) ||
-					memo.tags.some((tag) => tag.includes(search.toLowerCase()))),
-		),
+	$effect(() => {
+		const query = search.trim();
+		const activeTags = selectedTags;
+		const updatedOrder = sortByUpdated;
+		const activeDisplay = display;
+		if (!filtersReady) {
+			filtersReady = true;
+			return;
+		}
+		const version = ++filterVersion;
+		filtering = true;
+		const timer = window.setTimeout(
+			() =>
+				void onfilter(query, activeTags, updatedOrder, activeDisplay).then((message) => {
+					if (version !== filterVersion) return;
+					filtering = false;
+					error = message === null ? "" : message;
+				}),
+			250,
+		);
+		return () => window.clearTimeout(timer);
+	});
+
+	let hasFilters = $derived(search.trim() !== "" || selectedTags.length > 0 || display !== "active");
+	let visible = $derived(
+		display === "archived"
+			? memos.filter((memo) => memo.archived)
+			: display === "favorites"
+				? memos.filter((memo) => memo.favorite && !memo.archived)
+				: memos.filter((memo) => !memo.archived),
 	);
+	let pinned = $derived(visible.filter((memo) => memo.pinned));
+	let unpinned = $derived(visible.filter((memo) => !memo.pinned));
 
 	function relativeTime(value: string) {
 		const seconds = Math.round((Date.parse(value) - Date.now()) / 1_000);
@@ -130,7 +179,13 @@
 		error = "";
 		const response = await onupdate(memo.id, { pinned: !memo.pinned });
 		mutatingId = null;
-		if (response.status === "failed") error = response.message;
+		if (response.status === "failed") {
+			error = response.message;
+			return;
+		}
+		if (response.data.pinned) pinnedOpen = true;
+		await tick();
+		document.getElementById(`memo-${memo.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
 	}
 
 	async function toggleFavorite(memo: MemoView) {
@@ -142,24 +197,24 @@
 		if (response.status === "failed") error = response.message;
 	}
 
-	async function archive(memo: MemoView) {
+	async function toggleArchive(memo: MemoView) {
 		if (mutatingId !== null) return;
 		mutatingId = memo.id;
 		error = "";
-		const response = await onupdate(memo.id, { archived: true });
+		const response = await onupdate(memo.id, { archived: !memo.archived });
 		mutatingId = null;
 		if (response.status === "failed") error = response.message;
 	}
 
 	function share(memo: MemoView) {
-		void navigator.clipboard
-			.writeText(`https://memos.you-find.me/memo/${memo.id}`)
-			.then(() => {
+		void navigator.clipboard.writeText(`https://memos.you-find.me/memo/${memo.id}`).then(
+			() => {
 				sharedId = memo.id;
-			})
-			.catch(() => {
+			},
+			() => {
 				error = "Could not copy the memo link.";
-			});
+			},
+		);
 	}
 
 	async function remove(memo: MemoView) {
@@ -174,25 +229,79 @@
 		}
 		confirmingDelete = null;
 	}
+
+	async function openMemoLink(event: MouseEvent | KeyboardEvent) {
+		if (event instanceof KeyboardEvent && event.key !== "Enter") return;
+		const anchor = event.composedPath().find((target) => target instanceof HTMLAnchorElement);
+		if (!(anchor instanceof HTMLAnchorElement)) return;
+		const url = new URL(anchor.href);
+		if (url.protocol !== "http:" && url.protocol !== "https:") return;
+		event.preventDefault();
+		const memoPath = "/memo/";
+		if (url.origin !== "https://memos.you-find.me" || !url.pathname.startsWith(memoPath)) {
+			void openUrl(url.href);
+			return;
+		}
+		const id = url.pathname.slice(memoPath.length);
+		if (id === "" || id.includes("/")) {
+			void openUrl(url.href);
+			return;
+		}
+
+		const version = ++focusVersion;
+		const found = await onopenmemo(id);
+		if (!found || version !== focusVersion) {
+			error = "The linked memo could not be found in this feed.";
+			return;
+		}
+		const memo = memos.find((item) => item.id === id);
+		if (memo?.pinned) {
+			pinnedOpen = true;
+			await tick();
+		}
+		const target = document.getElementById(`memo-${id}`);
+		if (target === null) {
+			error = "The linked memo could not be displayed in this feed.";
+			return;
+		}
+		target.scrollIntoView({ behavior: "smooth", block: "center" });
+		highlightedId = id;
+		window.setTimeout(() => {
+			if (version === focusVersion) highlightedId = null;
+		}, 2_500);
+	}
+
+	onMount(() => {
+		if (memoList === null) throw new Error("The memo feed was not mounted");
+		const feed = memoList;
+		feed.addEventListener("click", openMemoLink);
+		feed.addEventListener("keydown", openMemoLink);
+		return () => {
+			feed.removeEventListener("click", openMemoLink);
+			feed.removeEventListener("keydown", openMemoLink);
+		};
+	});
 </script>
 
 <section class="home" aria-label="Memo feed">
-	<div class="composer">
-		<MemoEditor
-			bind:value={draft}
-			placeholder="What's on your mind? Markdown is supported."
-			onsubmit={saveDraft}
-		/>
-		<div class="composer-toolbar">
-			<Button variant="outline" size="sm" class="gap-1.5 font-normal text-muted-foreground" onclick={() => (visibility = visibility === "public" ? "private" : "public")}>
-				{#if visibility === "public"}<Globe size={11} /> Public{:else}<Lock size={11} /> Private{/if}
-			</Button>
-			<span class="shortcut">⌘ Enter</span>
-			<Button size="sm" disabled={saving || draft.trim() === ""} onclick={saveDraft}>
-				{saving ? "Saving..." : "Save"}
-			</Button>
+	{#if display !== "archived"}
+		<div class="composer">
+			<MemoEditor
+				bind:value={draft}
+				placeholder="What's on your mind? Markdown is supported."
+				onsubmit={saveDraft}
+			/>
+			<div class="composer-toolbar">
+				<Button variant="outline" size="sm" class="gap-1.5 font-normal text-muted-foreground" onclick={() => (visibility = visibility === "public" ? "private" : "public")}>
+					{#if visibility === "public"}<Globe size={11} /> Public{:else}<Lock size={11} /> Private{/if}
+				</Button>
+				<span class="shortcut">⌘ Enter</span>
+				<Button size="sm" disabled={saving || draft.trim() === ""} onclick={saveDraft}>
+					{saving ? "Saving..." : "Save"}
+				</Button>
+			</div>
 		</div>
-	</div>
+	{/if}
 
 	{#if error}
 		<Alert class="mb-5 flex items-center gap-3" variant="error">
@@ -201,17 +310,45 @@
 		</Alert>
 	{/if}
 
-	<label class="search">
-		<span aria-hidden="true">⌕</span>
-		<Input class="h-10 px-10 text-sm focus-visible:border-accent" bind:value={search} placeholder="Search memos..." />
-		{#if search}
-			<button type="button" onclick={() => (search = "")} aria-label="Clear search">×</button>
-		{/if}
-	</label>
+	{#if tags.length > 0}
+		<div class="tag-index" aria-label="Memo tags">
+			<span>tags</span>
+			{#each tags as tag (tag.name)}
+				<button
+					type="button"
+					class:active={selectedTags.includes(tag.name)}
+					aria-pressed={selectedTags.includes(tag.name)}
+					onclick={() =>
+						(selectedTags = selectedTags.includes(tag.name)
+							? selectedTags.filter((name) => name !== tag.name)
+							: [...selectedTags, tag.name])}
+				>
+					# {tag.name} <small>{tag.count}</small>
+				</button>
+			{/each}
+		</div>
+	{/if}
 
-	<div class="memo-list">
-		{#each filtered as memo (memo.id)}
-			<article id="memo-{memo.id}" class:editing={editingId === memo.id}>
+	<div class="search">
+		<span aria-hidden="true">⌕</span>
+		<Input class="h-10 px-10 pr-18 text-sm focus-visible:border-accent focus-visible:ring-0 focus-visible:ring-offset-0" bind:value={search} placeholder="Search memos..." aria-label="Search memos" />
+		{#if search}<button class="clear-search" type="button" onclick={() => (search = "")} aria-label="Clear search" title="Clear search">×</button>{/if}
+		<button
+			class="sort-updated"
+			class:active={sortByUpdated}
+			type="button"
+			onclick={() => (sortByUpdated = !sortByUpdated)}
+			aria-pressed={sortByUpdated}
+			aria-label={sortByUpdated ? "Sort by creation time" : "Sort by last updated time"}
+			title={sortByUpdated ? "Currently sorted by last update; switch to creation time" : "Sort by last updated time"}
+		>
+			<Clock3 size={13} />
+		</button>
+	</div>
+
+	<div bind:this={memoList} class="memo-list" role="feed" aria-label="Memos">
+		{#snippet memoCard(memo: MemoView)}
+			<article id="memo-{memo.id}" class:editing={editingId === memo.id} class:highlighted={highlightedId === memo.id}>
 				<header>
 					<time datetime={memo.createdAt}>{relativeTime(memo.createdAt)}</time>
 					{#if memo.metadataComplete}
@@ -233,7 +370,13 @@
 
 				{#if memo.tags.length > 0 && editingId !== memo.id}
 					<div class="tags">
-						{#each memo.tags as tag (tag)}<button type="button" onclick={() => (search = tag)}><Badge variant="outline" class="border-accent/25 text-accent hover:bg-accent/8">#{tag}</Badge></button>{/each}
+						{#each memo.tags as tag (tag)}<button
+								type="button"
+								onclick={() =>
+									(selectedTags = selectedTags.includes(tag)
+										? selectedTags.filter((name) => name !== tag)
+										: [...selectedTags, tag])}
+							><Badge variant="outline" class="border-accent/25 text-accent hover:bg-accent/8">#{tag}</Badge></button>{/each}
 					</div>
 				{/if}
 
@@ -262,17 +405,50 @@
 							<Button variant="ghost" size="sm" class={memo.pinned ? "gap-1.5 font-normal text-accent" : "gap-1.5 font-normal text-muted-foreground"} disabled={mutatingId === memo.id} onclick={() => togglePin(memo)} title={memo.pinned ? "Unpin memo" : "Pin memo"}><Star size={12} fill={memo.pinned ? "currentColor" : "none"} />{memo.pinned ? "Unpin" : "Pin"}</Button>
 							<Button variant="ghost" size="sm" class={memo.favorite ? "gap-1.5 font-normal text-accent" : "gap-1.5 font-normal text-muted-foreground"} disabled={mutatingId === memo.id} onclick={() => toggleFavorite(memo)} title={memo.favorite ? "Unfavorite memo" : "Favorite memo"}><Heart size={12} fill={memo.favorite ? "currentColor" : "none"} />{memo.favorite ? "Unfavorite" : "Favorite"}</Button>
 							<Button variant="ghost" size="sm" class="gap-1.5 font-normal text-muted-foreground" disabled={updating} onclick={() => startEdit(memo)}><Pencil size={12} /> Edit</Button>
-							<Button variant="ghost" size="sm" class="gap-1.5 font-normal text-muted-foreground" disabled={mutatingId === memo.id} onclick={() => archive(memo)}><Archive size={12} />{mutatingId === memo.id ? "Archiving…" : "Archive"}</Button>
+							<Button variant="ghost" size="sm" class="gap-1.5 font-normal text-muted-foreground" disabled={mutatingId === memo.id} onclick={() => toggleArchive(memo)}><Archive size={12} />{mutatingId === memo.id ? "Saving…" : memo.archived ? "Restore" : "Archive"}</Button>
 							<Button variant="ghost" size="sm" class="gap-1.5 font-normal text-muted-foreground" onclick={() => share(memo)}><Share2 size={12} />{sharedId === memo.id ? "Copied" : memo.visibility === "public" ? "Share" : "Copy link"}</Button>
 							<Button variant="destructive" size="sm" class="ml-auto gap-1.5 font-normal" onclick={() => (confirmingDelete = memo.id)}><Trash2 size={12} /> Delete</Button>
 						{/if}
 					{/if}
 				</footer>
 			</article>
-		{/each}
+		{/snippet}
 
-		{#if filtered.length === 0}
-			<p class="empty">No memos found.</p>
+		{#if hasFilters}
+			{#each visible as memo (memo.id)}
+				{@render memoCard(memo)}
+			{/each}
+		{:else}
+			{#if pinned.length > 0}
+				<section class="pinned-group">
+					<button
+						type="button"
+						class="pinned-trigger"
+						aria-expanded={pinnedOpen}
+						onclick={() => (pinnedOpen = !pinnedOpen)}
+					>
+						<ChevronRight size={14} class={pinnedOpen ? "open" : ""} />
+						<code>pinned</code>
+						<span>{pinned.length} {pinned.length === 1 ? "entry" : "entries"}</span>
+					</button>
+					{#if pinnedOpen}
+						<div class="pinned-list">
+							{#each pinned as memo (memo.id)}
+								{@render memoCard(memo)}
+							{/each}
+						</div>
+					{/if}
+				</section>
+			{/if}
+			{#each unpinned as memo (memo.id)}
+				{@render memoCard(memo)}
+			{/each}
+		{/if}
+
+		{#if visible.length === 0 && filtering}
+			<p class="empty">Filtering…</p>
+		{:else if visible.length === 0}
+			<p class="empty">{display === "archived" ? "No archived memos." : display === "favorites" ? "No favorite memos." : "No memos found."}</p>
 		{/if}
 	</div>
 </section>
@@ -323,6 +499,54 @@
 		margin-bottom: 1.25rem;
 	}
 
+	.tag-index {
+		display: flex;
+		gap: 0.4rem;
+		margin-bottom: 0.75rem;
+		padding-bottom: 0.75rem;
+		overflow-x: auto;
+		border-bottom: 1px solid var(--color-divider);
+	}
+
+	.tag-index > span {
+		align-self: center;
+		color: var(--color-muted-foreground);
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+
+	.tag-index button,
+	.pinned-trigger {
+		border: 1px solid var(--color-border);
+		background: transparent;
+		color: var(--color-muted-foreground);
+		cursor: pointer;
+	}
+
+	.tag-index button {
+		flex: 0 0 auto;
+		padding: 0.25rem 0.55rem;
+		border-radius: var(--radius-full);
+		font-size: 0.68rem;
+	}
+
+	.tag-index button.active {
+		border-color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+		color: var(--color-accent);
+	}
+
+	.tag-index small { margin-left: 0.2rem; font-family: var(--font-mono); opacity: 0.65; }
+	.pinned-group { margin-bottom: 0.75rem; }
+	.pinned-trigger { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.15rem 0.3rem; border-color: transparent; border-radius: var(--radius-sm); font-size: 0.7rem; }
+	.pinned-trigger:hover { background: var(--color-muted); color: var(--color-foreground); }
+	.pinned-trigger :global(svg) { transition: rotate var(--duration-base); }
+	.pinned-trigger :global(svg.open) { rotate: 90deg; }
+	.pinned-trigger code { color: var(--color-foreground); }
+	.pinned-list { display: grid; gap: 0.75rem; margin-top: 0.75rem; }
+
 	.search > span {
 		position: absolute;
 		top: 50%;
@@ -331,6 +555,16 @@
 		color: var(--color-muted-foreground);
 		font-size: 1rem;
 		pointer-events: none;
+		transition: color var(--duration-fast);
+	}
+
+	.search:focus-within > span {
+		color: var(--color-accent);
+	}
+
+	.search :global(input:focus-visible) {
+		border-color: var(--color-accent);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent);
 	}
 
 	.search button {
@@ -348,6 +582,30 @@
 		font-family: inherit;
 	}
 
+	.search button:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 1px;
+	}
+
+	.search .clear-search {
+		right: 2.25rem;
+	}
+
+	.search .sort-updated {
+		display: grid;
+		place-items: center;
+	}
+
+	.search .sort-updated:hover {
+		background: var(--color-muted);
+		color: var(--color-foreground);
+	}
+
+	.search .sort-updated.active {
+		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+		color: var(--color-accent);
+	}
+
 	.memo-list {
 		display: grid;
 		gap: 0.75rem;
@@ -363,6 +621,20 @@
 	article:hover {
 		border-color: var(--color-border-strong);
 		box-shadow: var(--shadow-sm);
+	}
+
+	article.highlighted {
+		animation: memo-highlight 2.5s ease-out forwards;
+	}
+
+	@keyframes memo-highlight {
+		0%,
+		60% {
+			background: color-mix(in srgb, var(--color-accent) 10%, var(--color-background));
+		}
+		100% {
+			background: var(--color-background);
+		}
 	}
 
 	article header {

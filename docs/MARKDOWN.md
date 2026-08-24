@@ -2,12 +2,12 @@
 
 Vesper compiles Markdown in Rust. The Svelte layer receives rendered HTML and display metadata; it
 does not own parsing rules. This keeps Desktop and CLI behavior aligned and prevents consumer-specific
-frontend parsers from producing different output for the same R2 object.
+frontend parsers from producing different output for the same Markdown source.
 
 ## Current pipeline
 
 ```text
-R2 Markdown
+API or local Markdown
   -> cms-core::markdown
   -> pulldown-cmark events
   -> HTML + table of contents + excerpt
@@ -18,7 +18,7 @@ R2 Markdown
 `render_memo` converts soft line breaks into hard line breaks to preserve the compact writing style
 used by my-memos. `compile_knowledge` assigns stable, de-duplicated heading IDs and produces the table
 of contents and excerpt in the same pass boundary as HTML compilation. Consumers continue to own
-metadata; R2 continues to own the original Markdown body.
+storage and metadata; Vesper does not retain a second Markdown mirror.
 
 ## What Waku does
 

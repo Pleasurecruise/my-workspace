@@ -14,7 +14,7 @@ publication artifacts; this repository does not run a cloud application backend.
 | `crates/credentials` | Typed records in macOS Keychain, Windows Credential Manager, or Linux Secret Service.     |
 | `crates/logger`      | Shared `tracing` initialization.                                                          |
 | `crates/ugos`        | Read-only UGOS Pro authentication, certificate pinning, and Task Manager telemetry.       |
-| `crates/useage`      | Read-only AI subscription and account-credit integrations. The spelling is intentional.   |
+| `crates/useage`      | AI subscription and account-credit integrations. The spelling is intentional.             |
 | `packages/ui`        | Reusable Svelte primitives and design tokens.                                             |
 | `packages/tsconfig`  | Shared frontend TypeScript configuration.                                                 |
 
@@ -37,14 +37,16 @@ Trusted device
        ├─ ugos ─────────── Tailscale ───────── UGOS Pro NAS
        └─ useage
             ├─ local Codex app-server
-            └─ read-only provider HTTPS APIs
+            └─ provider HTTPS APIs and existing local sessions
 
 Remote consumer projects
   └─ their own Cloudflare Workers and R2 bindings
 ```
 
 There is no application login, database, Worker, Wrangler configuration, or server-side session in
-this repository. Each online consumer remains responsible for its public presentation and runtime.
+this repository. The sidebar's editable local profile badge is presentation-only and does not
+represent an authenticated session; its display name and cropped avatar remain in WebView local
+storage. Each online consumer remains responsible for its public presentation and runtime.
 
 ## Desktop boundary
 
@@ -57,13 +59,38 @@ The Tauri layer maps transport input and output. Domain and protocol behavior st
 crate. Commands return a tagged `ready` or `failed` response so expected provider and storage errors
 remain data rather than uncaught frontend exceptions.
 
-The main window is visible as soon as Tauri creates it. The frontend requests one `InitialViews`
-snapshot asynchronously, so a slow or unavailable consumer API cannot block application startup.
-Memo metadata and Knowledge load through authenticated APIs. Memo bodies and Moment images use the
-shared R2 repository. The first Moment page remains cached for the desktop session. Memo pages use
-the cached first page for immediate display, then refresh from the API whenever the view opens and
-every 60 seconds while it remains active. Each photo immediately decodes its ThumbHash;
-once the card approaches the viewport, the original R2 object loads and fades over that preview.
+App Lock is a local privacy boundary, not content encryption. Rust owns password storage and
+verification; Svelte only makes the application shell inert and renders the unlock surface. Debug
+credential resolution and the Settings prefill exception are documented in
+[DEVELOPMENT.md](DEVELOPMENT.md).
+
+The main window is visible as soon as Tauri creates it. On macOS it retains the complete native title
+bar, including the system title, traffic-light controls, and drag behavior. The frontend requests one
+`InitialViews` snapshot asynchronously, so a slow or unavailable consumer API cannot block
+application startup.
+
+Memos and Knowledge load through authenticated APIs; Moment metadata uses its API while image bytes
+use R2. At startup, Rust may reuse an unfiltered first page for up to 30 seconds. Normal reads bypass
+that cache, and writes or credential changes invalidate it. Svelte retains settled pages while
+refreshing active content near the top of its scroll container every 60 seconds. Tag indexes load
+independently so they do not delay the first content page. R2 object reads have a 20-second deadline.
+Consumer API requests have a 30-second deadline so normal network latency does not abort otherwise
+valid paginated responses.
+The Memos active, archived, and favorites views request independent API projections with the
+`archivedOnly` and `favoritesOnly` query filters, so pagination never derives those views from the
+default non-archived page.
+
+Rust renders Memo and Knowledge Markdown. Memo rendering also links bare web addresses without
+rewriting code or explicit Markdown links.
+
+Moment cards decode their ThumbHash immediately and fetch the R2 thumbnail only when approaching the
+viewport; the viewer requests the original. Rust retains up to 64 recently used image objects within
+a 128 MiB process-memory limit. R2 credential changes clear that cache.
+
+Newspaper is a frontend projection of Knowledge. It selects the latest Programmer Daily and Personal
+Daily editions from established tags and excludes those editions from the regular Knowledge index.
+The desktop refreshes Knowledge daily at 08:05 local time. Inbox remains an independent, currently
+empty destination; the registered operating-system notification adapter is dormant.
 
 Dashboard architecture and external protocol details are documented separately in
 [DASHBOARD.md](DASHBOARD.md).
@@ -75,16 +102,16 @@ does not access GitHub or receive the CLI's credentials. GitHub query and projec
 
 ## Content production
 
-Three producer paths converge on the Rust content boundary:
+Content changes converge on the Rust boundaries that own storage and remote protocols:
 
 - Tailscale or AirDrop supplies local images. The current compiler preserves files without image
   transformation or content-addressed renaming.
 - The `Session to Blog` skill uses the CLI path. It is not a desktop command or editor action.
-- The desktop memo editor calls the authenticated my-memos REST endpoint. The Worker coordinates R2
-  bodies, D1 metadata, and KV invalidation.
+- Desktop Memo and Knowledge editors call their authenticated APIs. Moment upload prepares image
+  variants in the WebView, then Rust coordinates R2 upload and API metadata registration.
 
-Memo editing is intentionally separate from the temporary publication build. The desktop does not
-write memo bodies around the Worker boundary and does not create a retained local mirror.
+Consumer editing is separate from the temporary publication build. The desktop does not bypass
+consumer APIs for Memo or Knowledge bodies and does not create a retained local mirror.
 
 ## Build pipeline
 
@@ -113,19 +140,20 @@ deployments and R2 bindings; Vesper does not contain Wrangler or Worker runtime 
 
 ### Memos
 
-Memos use `https://memos.you-find.me/api/v1`. List and search requests return D1 metadata, including
-the R2 object key and cursor. Rust then reads each Markdown body directly from R2 with bounded
-concurrency and compiles it for the desktop card presentation. Creation, body updates, and deletion
-still pass through the REST Worker so its R2, D1, and KV changes remain one coordinated operation.
+Memos use `https://memos.you-find.me/api/v1`. List and search requests return complete D1 records,
+including the mirrored Markdown body, R2 object key, and cursor. Rust compiles the returned body for
+desktop presentation without repeating an R2 read. Creation, body updates, and deletion pass through
+the REST Worker so its R2, D1, and KV changes remain one coordinated operation.
 
 ### Moment
 
 Moment uses `https://moment.you-find.me/api/v1` for complete D1 photo metadata, including original
-and thumbnail R2 keys. The desktop exposes 24-photo pages, renders the metadata ThumbHash immediately,
-and reads original image bytes only for cards approaching the viewport. Uploads
-place image objects in R2 before registering their metadata through the REST API; metadata updates
-and deletion remain Worker operations. The current remote list endpoint
-has no cursor and returns at most 100 records, so the desktop cursor pages only that returned set.
+and thumbnail R2 keys. Upload preparation runs in the trusted WebView and produces a PNG original,
+JPEG thumbnail, and ThumbHash. Rust assigns both `img/` keys, uploads the objects, and registers the
+metadata. If thumbnail upload or metadata registration fails, Rust removes objects already written
+by that operation. Listing, tags, metadata edits, and deletion remain authenticated Worker
+operations. The current remote list endpoint has no cursor and returns at most 100 records, so the
+desktop cursor pages only that returned set.
 
 ### Knowledge
 
@@ -133,8 +161,9 @@ Knowledge uses `https://knowledge.you-find.me/api/articles` with a generated Bea
 returns D1 summaries and an optional cursor. Rust follows those summaries with bounded-concurrency
 detail reads so the Worker can enforce its D1 authorization before resolving KV and R2 content. Rust
 then compiles the Chinese Markdown into HTML, heading identifiers, a table of contents, and an
-excerpt. Create, patch, visibility, and delete transports live with the rest of the Knowledge
-feature, while the current desktop editor remains preview-only.
+excerpt. YAML front matter returned with an edition is excluded from both the editable body and the
+compiled reader output. The desktop editor creates and updates drafts through the same API with
+content-hash conflict detection; visibility and delete transports remain available to the CLI.
 
 ## Local Todo persistence
 
@@ -150,15 +179,14 @@ preserving history. A deliberately selected historical or future date remains se
 ## CLI consumer surface
 
 The CLI groups commands by feature in `todo.rs`, `memo.rs`, `knowledge.rs`, and `moment.rs`. The three
-consumer features reuse the same typed REST modules as the desktop. Memo bodies are read from R2
-after API discovery; Knowledge remains entirely behind its Worker API; Moment exposes explicit R2
-binary transfer before REST metadata registration. Todo commands reuse `cms_core::todo`. Detailed
-sequencing and rollback rules live in [WORKFLOW.md](WORKFLOW.md).
+consumer features reuse the same typed REST modules as the desktop. Memo and Knowledge content stays
+behind their Worker APIs; Moment exposes explicit R2 binary transfer before REST metadata
+registration. Todo commands reuse `cms_core::todo`. Detailed sequencing and rollback rules live in
+[WORKFLOW.md](WORKFLOW.md).
 
 ## Current limitations
 
-- The desktop Knowledge editor does not yet submit mutations.
-- Images are copied without transformations.
+- Static publication copies non-Markdown assets without transformations.
 - Publication does not reconcile or delete destination-only objects.
 - UGOS compatibility depends on the responses observed from the configured device.
 - Provider usage APIs can change independently of this application.

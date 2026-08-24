@@ -1,4 +1,5 @@
 use super::ApiError;
+use crate::r2::Store;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use vesper_credentials::{ConsumerApi, Stored};
@@ -68,6 +69,19 @@ pub struct Create {
     pub aspect_ratio: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Upload {
+    pub title: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub date: Option<String>,
+    pub geo: Option<Geo>,
+    pub thumb_hash: String,
+    pub width: u32,
+    pub height: u32,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -219,6 +233,97 @@ pub async fn create(input: &Create) -> Result<Photo, ApiError> {
     Ok(result.photo)
 }
 
+pub async fn upload(
+    store: &Store,
+    input: Upload,
+    original: Vec<u8>,
+    thumbnail: Vec<u8>,
+) -> Result<Photo, ApiError> {
+    if original.is_empty() || thumbnail.is_empty() {
+        return Err(ApiError::Protocol(
+            "photo upload contains an empty image object".to_owned(),
+        ));
+    }
+    if input.title.trim().is_empty()
+        || input.title.chars().count() > 120
+        || input
+            .description
+            .as_ref()
+            .is_some_and(|description| description.chars().count() > 500)
+        || input.tags.len() > 10
+        || input
+            .tags
+            .iter()
+            .any(|tag| tag.trim().is_empty() || tag.chars().count() > 50)
+        || input.width == 0
+        || input.height == 0
+        || input.thumb_hash.is_empty()
+        || !input.thumb_hash.len().is_multiple_of(2)
+        || !input
+            .thumb_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+        || input.geo.as_ref().is_some_and(|geo| {
+            !(-90.0..=90.0).contains(&geo.lat) || !(-180.0..=180.0).contains(&geo.lng)
+        })
+    {
+        return Err(ApiError::Protocol(
+            "photo upload metadata is invalid".to_owned(),
+        ));
+    }
+    let id = uuid::Uuid::new_v4();
+    let r2_key = format!("img/{id}.png");
+    let thumbnail_r2_key = format!("img/thumbnails/{id}.jpg");
+    store.put(&r2_key, original, "image/png").await?;
+    if let Err(error) = store.put(&thumbnail_r2_key, thumbnail, "image/jpeg").await {
+        return match store.delete(&r2_key).await {
+            Ok(()) => Err(error.into()),
+            Err(cleanup) => Err(ApiError::Protocol(format!(
+                "thumbnail upload failed: {error}; original cleanup failed: {cleanup}"
+            ))),
+        };
+    }
+    let metadata = Create {
+        r2_key: r2_key.clone(),
+        thumbnail_r2_key: thumbnail_r2_key.clone(),
+        title: input.title,
+        description: input.description,
+        tags: input
+            .tags
+            .into_iter()
+            .map(|tag| tag.trim().to_lowercase())
+            .collect(),
+        date: input.date,
+        geo: input.geo,
+        thumb_hash: Some(input.thumb_hash),
+        width: input.width,
+        height: input.height,
+        aspect_ratio: Some(f64::from(input.width) / f64::from(input.height)),
+        format: Some("PNG".to_owned()),
+    };
+    match create(&metadata).await {
+        Ok(photo) => Ok(photo),
+        Err(error) => {
+            let original_cleanup = store.delete(&r2_key).await;
+            let thumbnail_cleanup = store.delete(&thumbnail_r2_key).await;
+            match (original_cleanup, thumbnail_cleanup) {
+                (Ok(()), Ok(())) => Err(error),
+                (Err(cleanup), Ok(())) => Err(ApiError::Protocol(format!(
+                    "photo metadata creation failed: {error}; original cleanup failed: {cleanup}"
+                ))),
+                (Ok(()), Err(cleanup)) => Err(ApiError::Protocol(format!(
+                    "photo metadata creation failed: {error}; thumbnail cleanup failed: {cleanup}"
+                ))),
+                (Err(original_cleanup), Err(thumbnail_cleanup)) => {
+                    Err(ApiError::Protocol(format!(
+                        "photo metadata creation failed: {error}; original cleanup failed: {original_cleanup}; thumbnail cleanup failed: {thumbnail_cleanup}"
+                    )))
+                }
+            }
+        }
+    }
+}
+
 pub async fn update(id: &str, input: &Update) -> Result<Photo, ApiError> {
     let client = Client::load()?;
     let response = client
@@ -259,7 +364,7 @@ pub async fn delete(id: &str) -> Result<(), ApiError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Photo, Update};
+    use super::{Photo, Update, Upload};
 
     #[test]
     fn decodes_the_complete_photo_contract() {
@@ -300,5 +405,24 @@ mod tests {
         assert_eq!(value.get("date"), Some(&serde_json::Value::Null));
         assert_eq!(value.get("geo"), Some(&serde_json::Value::Null));
         assert!(value.get("title").is_none());
+    }
+
+    #[test]
+    fn decodes_the_desktop_upload_contract_without_object_keys() {
+        let upload: Upload = serde_json::from_value(serde_json::json!({
+            "title": "Shanghai",
+            "description": "Evening",
+            "tags": ["city"],
+            "date": "2026-08-24T12:00:00.000Z",
+            "geo": { "lat": 31.2304, "lng": 121.4737 },
+            "thumbHash": "aabbccdd",
+            "width": 1600,
+            "height": 900
+        }))
+        .expect("desktop upload should match the command contract");
+
+        assert_eq!(upload.title, "Shanghai");
+        assert_eq!(upload.tags, ["city"]);
+        assert_eq!(upload.width, 1600);
     }
 }

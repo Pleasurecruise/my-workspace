@@ -1,16 +1,27 @@
 <script lang="ts">
-	import { ArrowLeft, ArrowUp, Pencil, Plus } from "@lucide/svelte";
-	import type { CommandResponse, CompiledKnowledge, KnowledgeDocument } from "../consumer";
+	import { Library, Pencil, Plus } from "@lucide/svelte";
+	import type { CommandResponse, KnowledgeDocument, KnowledgeDraft, KnowledgeUpdate } from "../consumer";
 	import KnowledgeHeader from "./KnowledgeHeader.svelte";
 	import KnowledgeToc from "./KnowledgeToc.svelte";
 
-	let { documents, loading, oncompile }: { documents: KnowledgeDocument[]; loading: boolean; oncompile: (source: string) => Promise<CommandResponse<CompiledKnowledge>> } = $props();
+	let {
+		documents,
+		loading,
+		oncreate,
+		onupdate,
+	}: {
+		documents: KnowledgeDocument[];
+		loading: boolean;
+		oncreate: (input: KnowledgeDraft) => Promise<CommandResponse<KnowledgeDocument>>;
+		onupdate: (id: string, input: KnowledgeUpdate) => Promise<CommandResponse<KnowledgeDocument>>;
+	} = $props();
 	let selected = $state<KnowledgeDocument | null>(null);
 	let editing = $state(false);
 	let draftTitle = $state("");
 	let draftSummary = $state("");
+	let draftTags = $state("");
 	let draftSource = $state("");
-	let compiling = $state(false);
+	let saving = $state(false);
 	let error = $state("");
 
 	type KnowledgeMonth = {
@@ -23,10 +34,28 @@
 		count: number;
 		months: KnowledgeMonth[];
 	};
+	const newspaperEditionTags = new Set([
+		"programmer-daily",
+		"developer-daily",
+		"personal-daily",
+		"newspaper/programmer",
+		"newspaper/developer",
+		"newspaper/programmer-daily",
+		"newspaper/personal",
+		"newspaper/personal-daily",
+		"程序员日报",
+		"个人日报",
+	]);
 
 	let groups = $derived.by(() => {
 		const years: KnowledgeYear[] = [];
 		for (const document of documents) {
+			const tags = new Set(document.tags.map((tag) => tag.trim().toLowerCase()));
+			if (
+				tags.has("newspaper/daily") ||
+				(tags.has("newspaper") && tags.has("daily")) ||
+				[...tags].some((tag) => newspaperEditionTags.has(tag))
+			) continue;
 			const date = new Date(document.createdAt);
 			const year = date.getFullYear();
 			const month = date.getMonth();
@@ -64,6 +93,7 @@
 		selected = null;
 		draftTitle = "";
 		draftSummary = "";
+		draftTags = "";
 		draftSource = "";
 		error = "";
 		editing = true;
@@ -72,6 +102,7 @@
 	function startEdit(document: KnowledgeDocument) {
 		draftTitle = document.title;
 		draftSummary = document.summary;
+		draftTags = document.tags.join(", ");
 		draftSource = document.source;
 		error = "";
 		editing = true;
@@ -82,32 +113,48 @@
 		error = "";
 	}
 
-	async function preview() {
-		if (compiling || draftTitle.trim() === "") return;
-		compiling = true;
+	function parsedTags() {
+		return Array.from(
+			new Set(
+				draftTags
+					.split(",")
+					.map((tag) => tag.trim())
+					.filter(Boolean),
+			),
+		);
+	}
+
+	async function save() {
+		if (saving) return;
+		const title = draftTitle.trim();
+		const summary = draftSummary.trim();
+		const tags = parsedTags();
+		if (title === "" || summary === "" || draftSource.trim() === "") {
+			error = "Title, summary, and Markdown are required.";
+			return;
+		}
+		if (tags.length > 5) {
+			error = "Use at most 5 tags.";
+			return;
+		}
+		saving = true;
 		error = "";
-		const response = await oncompile(draftSource);
-		compiling = false;
+		const input: KnowledgeDraft = {
+			title,
+			summary,
+			body: draftSource,
+			tags,
+		};
+		const current = selected;
+		const response = current === null
+			? await oncreate(input)
+			: await onupdate(current.id, { ...input, expectedHash: current.contentHash });
+		saving = false;
 		if (response.status === "failed") {
 			error = response.message;
 			return;
 		}
-		const current = selected;
-		const now = new Date().toISOString();
-		selected = {
-			id: current === null ? "preview" : current.id,
-			slug: current === null ? "preview" : current.slug,
-			title: draftTitle.trim(),
-			summary: draftSummary.trim(),
-			tags: current === null ? [] : current.tags,
-			visibility: current === null ? "private" : current.visibility,
-			contentHash: current === null ? "" : current.contentHash,
-			createdAt: current === null ? now : current.createdAt,
-			updatedAt: now,
-			source: draftSource,
-			html: response.data.html,
-			toc: response.data.toc,
-		};
+		selected = response.data;
 		editing = false;
 	}
 </script>
@@ -115,34 +162,25 @@
 {#if editing}
 	<section class="editor" aria-label="Knowledge editor">
 		<header>
-			<div><h1>{selected ? "Edit knowledge" : "New knowledge"}</h1><p>Markdown preview is compiled by Rust. R2 persistence will be connected separately.</p></div>
-			<div class="editor-actions"><button onclick={cancelEdit}>Cancel</button><button class="preview" disabled={compiling || draftTitle.trim() === ""} onclick={preview}>{compiling ? "Compiling..." : "Preview"}</button></div>
+			<div><h1>{selected ? "Edit knowledge" : "New knowledge"}</h1><p>Markdown is compiled by Rust and saved through my-knowledge.</p></div>
+			<div class="editor-actions"><button disabled={saving} onclick={cancelEdit}>Cancel</button><button class="save" disabled={saving} onclick={save}>{saving ? "Saving..." : "Save"}</button></div>
 		</header>
-		{#if error}<p class="editor-error">{error}</p>{/if}
+		{#if error}<p class="editor-error" role="alert">{error}</p>{/if}
 		<div class="fields">
-			<label>Title<input bind:value={draftTitle} placeholder="Untitled knowledge" /></label>
-			<label>Summary<input bind:value={draftSummary} placeholder="A short summary" /></label>
+			<label>Title<input bind:value={draftTitle} maxlength="240" placeholder="Untitled knowledge" /></label>
+			<label>Summary<input bind:value={draftSummary} maxlength="500" placeholder="A short summary" /></label>
 		</div>
-		<label class="markdown">Markdown<textarea bind:value={draftSource} placeholder="Start writing..." spellcheck="true"></textarea></label>
+		<label class="tags">Tags<input bind:value={draftTags} placeholder="rust, api" /></label>
+		<label class="markdown">Markdown<textarea bind:value={draftSource} maxlength="500000" placeholder="Start writing..." spellcheck="true"></textarea></label>
 	</section>
 {:else if selected}
 	<section class="reader" id="knowledge-article">
-		<div class="article-heading">
-			<KnowledgeHeader title={selected.title} text={selected.source} />
-			<div class="mobile-actions">
-				<button onclick={() => (selected = null)} aria-label="All knowledge"><ArrowLeft size={15} /></button>
-				<button onclick={() => selected !== null && startEdit(selected)} aria-label="Edit"><Pencil size={15} /></button>
-			</div>
-		</div>
+		<KnowledgeHeader title={selected.title} text={selected.source} />
 		<KnowledgeToc entries={selected.toc} />
 		<article class="prose">{@html selected.html}</article>
 		<aside class="article-actions" aria-label="Article actions">
-			<button onclick={() => (selected = null)} title="All knowledge"><ArrowLeft size={16} /></button>
-			<button onclick={() => selected !== null && startEdit(selected)} title="Edit"><Pencil size={16} /></button>
-			<button onclick={() => {
-				const article = document.getElementById("knowledge-article");
-				if (article !== null) article.scrollIntoView({ behavior: "smooth" });
-			}} title="Back to top"><ArrowUp size={16} /></button>
+			<button type="button" onclick={() => (selected = null)} aria-label="All knowledge" title="All knowledge"><Library size={16} /></button>
+			<button type="button" onclick={() => selected !== null && startEdit(selected)} aria-label="Edit article" title="Edit article"><Pencil size={16} /></button>
 		</aside>
 	</section>
 {:else}
@@ -166,7 +204,7 @@
 				{/each}
 			</section>
 		{/each}
-		{#if documents.length === 0 && !loading}<p class="empty">No knowledge documents found.</p>{/if}
+		{#if groups.length === 0 && !loading}<p class="empty">No knowledge documents found.</p>{/if}
 	</section>
 {/if}
 
@@ -178,9 +216,10 @@
 	.editor header p { margin: 0.5rem 0 0; color: var(--color-muted-foreground); font-size: 0.75rem; }
 	.editor-actions { display: flex; gap: 0.5rem; }
 	.editor-actions button { height: 2rem; padding: 0 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-muted-foreground); font-size: 0.75rem; }
-	.editor-actions .preview { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-foreground); }
+	.editor-actions .save { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-foreground); }
 	.editor-actions button:disabled { opacity: 0.5; }
 	.fields { display: grid; grid-template-columns: 3fr 2fr; gap: 1rem; margin-bottom: 1rem; }
+	.tags { margin-bottom: 1rem; }
 	.editor label { display: grid; gap: 0.5rem; color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; }
 	.editor input, .editor textarea { box-sizing: border-box; width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-family: var(--font-sans); font-size: 0.875rem; letter-spacing: normal; text-transform: none; }
 	.editor input { height: 2.5rem; padding: 0 0.75rem; }
@@ -191,7 +230,7 @@
 	.index-header div { position: relative; }
 	.index-header h1 { margin: 0; font-family: var(--font-serif); font-size: 1.75rem; line-height: 1; }
 	.index-header div span { position: absolute; bottom: -0.4rem; left: 0; width: 2rem; height: 2px; border-radius: var(--radius-full); background: var(--color-accent); }
-	.index-header button, .mobile-actions button, .article-actions button { display: inline-flex; align-items: center; gap: 0.25rem; border: 0; background: transparent; color: var(--color-muted-foreground); font-size: 0.75rem; }
+	.index-header button, .article-actions button { display: inline-flex; align-items: center; gap: 0.25rem; border: 0; background: transparent; color: var(--color-muted-foreground); font-size: 0.75rem; }
 	.lede { margin: 1.25rem 0 2rem; color: var(--color-muted-foreground); font-size: 0.875rem; }
 	.year { margin: 1.25rem 0; }
 	.year h2 { margin: 0 0 1rem; font-size: 0.875rem; font-weight: 500; }
@@ -204,17 +243,52 @@
 	li button:hover { color: var(--color-accent); text-decoration: underline; text-underline-offset: 0.25rem; }
 	li span { color: var(--color-muted-foreground); font-size: 0.75rem; }
 	.empty { padding: 4rem 0; color: var(--color-muted-foreground); font-size: 0.875rem; text-align: center; }
-	.reader { position: relative; width: min(100%, 40.625rem); margin: 1rem auto 0; }
-	.article-heading { display: flex; align-items: center; gap: 1rem; }
-	.mobile-actions { display: none; margin-left: auto; }
-	.prose { min-width: 0; margin-top: 2rem; color: var(--color-foreground); font-size: 0.95rem; line-height: 1.8; overflow-wrap: anywhere; }
-	.prose :global(img) { max-width: 100%; height: auto; }
-	.prose :global(pre) { overflow-x: auto; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-muted); }
-	.prose :global(a) { color: var(--color-accent); }
-	.prose :global(h1), .prose :global(h2), .prose :global(h3) { scroll-margin-top: 4rem; line-height: 1.35; }
-	.article-actions { position: fixed; top: 50%; display: grid; gap: 0.25rem; width: 2.5rem; margin-left: calc(40.625rem + 2rem); translate: 0 -50%; }
-	.article-actions button { display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border-radius: var(--radius-full); cursor: pointer; }
-	.article-actions button:hover { color: var(--color-foreground); }
-	@media (max-width: 1180px) { .article-actions { display: none; } .mobile-actions { display: flex; } }
+	.reader { position: relative; width: min(100%, 40.625rem); margin: 2rem auto 0; }
+	.prose { min-width: 0; margin-top: 2rem; color: var(--color-foreground); font-family: var(--font-sans); font-size: 0.95rem; line-height: 1.65; overflow-wrap: break-word; word-break: break-word; }
+	.prose :global(h1), .prose :global(h2), .prose :global(h3), .prose :global(h4), .prose :global(h5), .prose :global(h6) { position: relative; margin: 2em 0 0.6em; font-family: var(--font-sans); font-weight: 600; letter-spacing: normal; line-height: 1.45; scroll-margin-top: 4rem; }
+	.prose :global(h1) { font-size: 1.55em; }
+	.prose :global(h2) { padding-bottom: 0.3em; border-bottom: 1px solid var(--color-border); font-size: 1.25em; }
+	.prose :global(h3) { font-size: 1.12em; }
+	.prose :global(h4) { font-size: 1.05em; }
+	.prose :global(h5) { font-size: 0.95em; }
+	.prose :global(h6) { color: var(--color-muted-foreground); font-size: 0.875em; }
+	.prose :global(p), .prose :global(ul), .prose :global(ol) { margin: 1em 0; }
+	.prose :global(ul), .prose :global(ol) { padding-left: 1.6em; }
+	.prose :global(ul) { list-style: disc; }
+	.prose :global(ol) { list-style: decimal; }
+	.prose :global(li) { margin: 0.4em 0; line-height: 1.7; }
+	.prose :global(li > ul), .prose :global(li > ol) { margin: 0.25em 0; }
+	.prose :global(blockquote) { margin: 1.5em 0; padding: 0.1em 0 0.1em 1.25em; border-left: 2px solid var(--color-muted-foreground); color: var(--color-muted-foreground); font-style: italic; }
+	.prose :global(blockquote p) { margin: 0.3em 0; }
+	.prose :global(strong) { font-weight: 700; }
+	.prose :global(hr) { margin: 2.5em 0; border: 0; border-top: 1px solid var(--color-border); }
+	.prose :global(img) { display: block; max-width: 100%; height: auto; margin: 1.5em auto; border-radius: var(--radius-md); }
+	.prose :global(a) { color: var(--color-accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+	.prose :global(pre) { max-width: 100%; overflow-x: auto; margin: 1.75em 0; padding: 0.875rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-muted); font-family: var(--font-mono); font-size: 0.8125rem; line-height: 1.65; }
+	.prose :global(:not(pre) > code) { padding: 0.15em 0.4em; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-muted); font-family: var(--font-mono); font-size: 0.875em; line-height: 1.5; }
+	.prose :global(table) { display: block; overflow-x: auto; width: 100%; margin: 1.5em 0; border-collapse: collapse; font-size: 0.9em; }
+	.prose :global(th), .prose :global(td) { padding: 0.6rem; border: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+	.article-actions { position: fixed; top: 50%; z-index: 20; display: grid; gap: 0.25rem; width: 2.5rem; margin-left: calc(40.625rem + 2rem); translate: 0 -50%; }
+	.article-actions button { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: var(--radius-full); cursor: pointer; }
+	.article-actions button:hover { background: var(--color-muted); color: var(--color-foreground); }
+	@media (max-width: 1180px) {
+		.article-actions {
+			top: auto;
+			right: 1.5rem;
+			bottom: 4.75rem;
+			display: grid;
+			width: auto;
+			margin-left: 0;
+			translate: 0;
+		}
+		.article-actions button {
+			border: 1px solid var(--color-border);
+			background: color-mix(in srgb, var(--color-background) 90%, transparent);
+			box-shadow: var(--shadow-xs);
+			backdrop-filter: blur(12px);
+		}
+	}
 	@media (max-width: 640px) { .editor header { display: grid; } .fields { grid-template-columns: 1fr; } }
+	@media (max-width: 700px) { .article-actions { right: 1rem; bottom: 4.5rem; } }
+	@media (min-width: 640px) { .prose { font-size: 1rem; line-height: 1.5; } .prose :global(p) { text-align: justify; } }
 </style>

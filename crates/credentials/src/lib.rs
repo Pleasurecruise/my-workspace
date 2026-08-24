@@ -9,6 +9,7 @@ const R2_ACCOUNT: &str = "cloudflare-r2";
 const MEMOS_API_ACCOUNT: &str = "my-memos-api";
 const MOMENT_API_ACCOUNT: &str = "my-moment-api";
 const KNOWLEDGE_API_ACCOUNT: &str = "my-knowledge-api";
+const APP_LOCK_ACCOUNT: &str = "app-lock";
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -54,6 +55,11 @@ pub struct R2Credentials {
     pub secret_access_key: String,
 }
 
+pub struct AppLock {
+    pub password: String,
+    pub development: bool,
+}
+
 pub enum Stored<T> {
     Missing,
     Ready(T),
@@ -67,6 +73,8 @@ pub enum CredentialError {
     Decode(#[from] serde_json::Error),
     #[error("credential field {0} cannot be empty")]
     Empty(&'static str),
+    #[error("credential field {0} must contain at least {1} characters")]
+    TooShort(&'static str, usize),
     #[error("development credential {0} is incomplete")]
     IncompleteDevelopment(&'static str),
     #[error("development credential {0} is not valid Unicode")]
@@ -289,6 +297,55 @@ pub fn save_consumer_api(api: ConsumerApi, api_key: &str) -> Result<(), Credenti
     }
     keyring::Entry::new(SERVICE, api.account())?.set_password(api_key.trim())?;
     Ok(())
+}
+
+pub fn app_lock() -> Result<Stored<AppLock>, CredentialError> {
+    let entry = keyring::Entry::new(SERVICE, APP_LOCK_ACCOUNT)?;
+    match entry.get_password() {
+        Ok(password) => Ok(Stored::Ready(AppLock {
+            password,
+            development: false,
+        })),
+        Err(keyring::Error::NoEntry) => {
+            #[cfg(debug_assertions)]
+            if let Some(password) = std::env::var_os("APP_LOCK_PASSWORD") {
+                let password = password
+                    .into_string()
+                    .map_err(|_| CredentialError::InvalidDevelopment("app lock password"))?;
+                validate_app_lock(&password)?;
+                return Ok(Stored::Ready(AppLock {
+                    password,
+                    development: true,
+                }));
+            }
+            Ok(Stored::Missing)
+        }
+        Err(error) => Err(CredentialError::Store(error)),
+    }
+}
+
+pub fn save_app_lock(password: &str) -> Result<(), CredentialError> {
+    validate_app_lock(password)?;
+    keyring::Entry::new(SERVICE, APP_LOCK_ACCOUNT)?.set_password(password)?;
+    Ok(())
+}
+
+fn validate_app_lock(password: &str) -> Result<(), CredentialError> {
+    if password.trim().is_empty() {
+        return Err(CredentialError::Empty("app lock password"));
+    }
+    if password.chars().count() < 4 {
+        return Err(CredentialError::TooShort("app lock password", 4));
+    }
+    Ok(())
+}
+
+pub fn delete_app_lock() -> Result<(), CredentialError> {
+    let entry = keyring::Entry::new(SERVICE, APP_LOCK_ACCOUNT)?;
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(CredentialError::Store(error)),
+    }
 }
 
 #[cfg(test)]

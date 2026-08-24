@@ -32,6 +32,18 @@ Tauri Linux build dependencies and explicitly runs rustfmt, Clippy with warnings
 and the complete workspace test suite. The `:frontend` and `:rust` root-script suffixes expose the
 same individual checks for local diagnosis.
 
+## Desktop releases
+
+The `Release` GitHub Actions workflow is manual-only. It has only a `workflow_dispatch` trigger and
+does not run for pushes, tags, pull requests, schedules, or GitHub Release events. Before starting it
+from the Actions page, update the application version in `apps/desktop/src-tauri/tauri.conf.json` and
+the desktop crate version in `apps/desktop/src-tauri/Cargo.toml`.
+
+A successful run creates a draft `v<version>` GitHub Release and uploads Tauri bundles for macOS
+Apple Silicon, macOS Intel, Linux, and Windows. After every matrix job succeeds, verify that all
+expected assets are present and publish the draft manually. Releasing the same version again targets
+the same tag, so advance the version before every new release.
+
 ## R2 configuration
 
 Open Settings in Vesper and save the R2 Access Key ID and Secret Access Key. The token should be
@@ -39,8 +51,9 @@ restricted to the project bucket. Vesper stores the pair in the operating-system
 and passes it directly to the Rust S3 SDK. It does not read `rclone.conf` or persist secrets in the
 repository.
 
-R2 remains available for memo bodies, Moment image reads, and publication artifacts. Consumer
-metadata uses the deployed APIs so the desktop cannot bypass D1 and KV coordination.
+R2 remains available for Moment image transfer, explicit Moment CLI operations, and publication
+artifacts. Memo and Knowledge reads use their deployed APIs so the desktop cannot bypass D1 and KV
+coordination.
 
 ## Consumer API configuration
 
@@ -54,8 +67,9 @@ outside that view.
 ## macOS development credentials
 
 An unsigned or ad-hoc-signed `tauri dev` executable changes its macOS code identity whenever it is
-rebuilt. Keychain may therefore request access again after an ordinary source edit. Debug builds read
-credentials only from process environment variables and never attempt a Keychain read:
+rebuilt. Keychain may therefore request access again after an ordinary source edit. To avoid those
+prompts, debug builds resolve UGOS, R2, and consumer API credentials only from process environment
+variables:
 
 ```sh
 export UGOS_USERNAME="..."
@@ -88,9 +102,15 @@ object requires a separate, explicit operation outside the current publisher.
 ## Credential boundaries
 
 - R2, UGOS, and all three consumer API credentials belong to `crates/credentials` and the operating-system store.
+- Debug builds may read App Lock from `APP_LOCK_PASSWORD` in the repository-root `.env` when the
+  operating-system credential store has no App Lock value. Saving a password in Settings makes the
+  credential-store value take precedence. Release builds use only the operating-system credential
+  store. The typed Settings read response includes the resolved password solely to prefill the local
+  form; verification remains in Rust.
 - Codex reuses the authenticated local CLI session.
-- Provider API keys come from the existing pi `auth.json` and `models.json` files, as documented in
-  [DASHBOARD.md](DASHBOARD.md).
+- Provider credentials reuse existing Codex, pi, and Cherry Studio sessions, as documented in
+  [DASHBOARD.md](DASHBOARD.md). A successful CherryIN token refresh may conditionally update the
+  matching Cherry Studio OAuth record.
 - Packaged desktop and CLI code must not embed secrets.
 - Only the typed Settings read command may return stored credentials to Svelte for form prefill.
 - Logs may identify a provider or failed operation but must not include tokens, passwords, response

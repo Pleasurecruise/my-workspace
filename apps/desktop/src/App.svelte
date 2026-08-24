@@ -1,35 +1,45 @@
 <script lang="ts">
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
-	import { BookOpen, CloudOff, Home, Image, LayoutDashboard, Menu, Moon, Settings, Sun, X } from "@lucide/svelte";
+	import { Archive, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, Lock, Menu, Moon, Newspaper as NewspaperIcon, Settings, Sun, X } from "@lucide/svelte";
 	import { onMount, tick } from "svelte";
 	import MemosView from "./lib/components/MemosView.svelte";
 	import MomentView from "./lib/components/MomentView.svelte";
 	import KnowledgeView from "./lib/components/KnowledgeView.svelte";
+	import InboxView from "./lib/components/InboxView.svelte";
+	import NewspaperView from "./lib/components/NewspaperView.svelte";
 	import DashboardView from "./lib/components/DashboardView.svelte";
 	import SettingsView from "./lib/components/SettingsView.svelte";
+	import ScrollToTop from "./lib/components/ScrollToTop.svelte";
 	import type {
-		ApiConfigurationInput,
+		ApiConfiguration,
 		Channel,
 		ChannelView,
 		CommandResponse,
-		CompiledKnowledge,
 		ConfigurationStatus,
 		DashboardQueryResults,
 		DashboardState,
 		InitialViews,
+		KnowledgeDocument,
+		KnowledgeDraft,
+		KnowledgeUpdate,
+		MemoTagCount,
 		MemoView,
-		MemoUpdateInput,
+		MemoUpdate,
+		PhotoUpdate,
+		PhotoItem,
 		QueryState,
-		R2ConfigurationInput,
+		R2Configuration,
 		TodoList,
-		UgosConfigurationInput,
+		UgosConfiguration,
 	} from "./lib/consumer";
 	import { applyTheme, initTheme } from "./lib/theme";
 
-	type View = "dashboard" | "settings" | Channel;
+	type View = "dashboard" | "inbox" | "newspaper" | "settings" | Channel;
+	type MemoDisplay = "active" | "favorites" | "archived";
 	const navigation: Array<{ id: View; label: string }> = [
 		{ id: "dashboard", label: "Dashboard" },
+		{ id: "newspaper", label: "Newspaper" },
 		{ id: "memos", label: "Memos" },
 		{ id: "moment", label: "Moment" },
 		{ id: "knowledge", label: "Knowledge" },
@@ -37,8 +47,16 @@
 	];
 	const consumerChannels: Channel[] = ["memos", "moment", "knowledge"];
 	const memoPageSize = 25;
+	const defaultProfileAvatar = new URL("./assets/pleasure1234-avatar.png", import.meta.url).href;
+	const profileNameKey = "vesper.profile.name";
+	const profileAvatarKey = "vesper.profile.avatar";
+	const sidebarWidthKey = "vesper.sidebar.width";
+	const minimumSidebarWidth = 220;
+	const maximumSidebarWidth = 360;
 
 	let selected = $state<View>("dashboard");
+	let previousView = $state<Exclude<View, "inbox">>("dashboard");
+	let memoDisplay = $state<MemoDisplay>("active");
 	let content = $state<ChannelView | null>(null);
 	let error = $state<string | null>(null);
 	let cache = $state<Record<Channel, ChannelView | null>>({
@@ -52,8 +70,15 @@
 		knowledge: null,
 	});
 	let loading = $state(false);
+	let loadingMore = $state(false);
+	let mainElement = $state<HTMLElement | null>(null);
 	let request = 0;
-	let sentinel = $state<HTMLDivElement | null>(null);
+	let memoFilterRequest = 0;
+	let memoSearch = "";
+	let memoTags: string[] = [];
+	let memoSortByUpdated = false;
+	let memoTagIndex: MemoTagCount[] = [];
+	let momentTagIndex: string[] = [];
 	let dark = $state(initTheme());
 	let sidebarOpen = $state(false);
 	let dashboard = $state<DashboardState>({
@@ -66,6 +91,7 @@
 		github: { data: null, error: null, loading: false },
 	});
 	let dashboardRefreshing = $state(false);
+	const dashboardRequestVersions = new Map<keyof DashboardQueryResults, number>();
 	let todos = $state<QueryState<TodoList>>({ data: null, error: null, loading: false });
 	const initialTodoDate = currentDate();
 	let todayDate = $state(initialTodoDate);
@@ -73,6 +99,19 @@
 	let todoRequest = 0;
 	let configuration = $state<ConfigurationStatus | null>(null);
 	let configurationError = $state<string | null>(null);
+	let locked = $state(false);
+	let unlockPassword = $state("");
+	let unlockError = $state<string | null>(null);
+	let unlocking = $state(false);
+	let unlockInput = $state<HTMLInputElement | null>(null);
+	let profileName = $state("Pleasure1234");
+	let profileAvatar = $state(defaultProfileAvatar);
+	let profileEditing = $state(false);
+	let profileNameDraft = $state("Pleasure1234");
+	let profileAvatarDraft = $state(defaultProfileAvatar);
+	let profileError = $state<string | null>(null);
+	let profileAvatarInput = $state<HTMLInputElement | null>(null);
+	let sidebarWidth = $state(240);
 
 	function currentDate() {
 		return new Intl.DateTimeFormat("en-CA").format(new Date());
@@ -91,11 +130,15 @@
 	async function loadQuery<K extends keyof DashboardQueryResults>(
 		command: K,
 		state: QueryState<NoInfer<DashboardQueryResults[K]>>,
+		force = false,
 	) {
-		if (state.loading) return;
+		if (state.loading && !force) return;
+		const version = (dashboardRequestVersions.get(command) ?? 0) + 1;
+		dashboardRequestVersions.set(command, version);
 		state.loading = true;
 		state.error = null;
 		const response = await invoke<CommandResponse<DashboardQueryResults[K]>>(command);
+		if (dashboardRequestVersions.get(command) !== version) return;
 		state.loading = false;
 		if (response.status === "ready") state.data = response.data;
 		else state.error = response.message;
@@ -105,13 +148,14 @@
 		if (dashboardRefreshing) return;
 		dashboardRefreshing = true;
 		await Promise.all([
-			loadQuery("read_task_manager", dashboard.taskManager),
-			loadQuery("read_codex_usage", dashboard.codex),
-			loadQuery("read_opencode_usage", dashboard.openCode),
-			loadQuery("read_deepseek_balance", dashboard.deepSeek),
-			loadQuery("read_cherryin_balance", dashboard.cherryIn),
-			loadQuery("read_weather", dashboard.weather),
-			loadQuery("read_github", dashboard.github),
+			loadQuery("read_task_manager", dashboard.taskManager, true),
+			loadQuery("read_codex_usage", dashboard.codex, true),
+			loadQuery("read_opencode_usage", dashboard.openCode, true),
+			loadQuery("read_deepseek_balance", dashboard.deepSeek, true),
+			loadQuery("read_cherryin_balance", dashboard.cherryIn, true),
+			loadQuery("read_weather", dashboard.weather, true),
+			loadQuery("read_github", dashboard.github, true),
+			loadTodos(todoDate),
 		]);
 		dashboardRefreshing = false;
 	}
@@ -179,39 +223,65 @@
 	}
 
 	async function select(view: View) {
+		if (view === "inbox") {
+			if (selected === "inbox") view = previousView;
+			else previousView = selected;
+		}
 		request += 1;
 		selected = view;
 		sidebarOpen = false;
-		if (view === "dashboard" || view === "settings") {
+		if (view === "dashboard" || view === "inbox" || view === "settings") {
 			content = null;
 			error = null;
 			loading = false;
+			loadingMore = false;
 			if (view === "dashboard") void loadQuery("read_github", dashboard.github);
 			return;
 		}
-		const channel = view;
+		const channel: Channel = view === "newspaper" ? "knowledge" : view;
 		content = cache[channel];
 		error = content === null ? errors[channel] : null;
 		loading = false;
-		if (channel !== "memos" && (content !== null || error !== null)) return;
+		loadingMore = false;
+		if (content !== null && error === null) {
+			await tick();
+			if (
+				mainElement !== null &&
+				mainElement.scrollHeight - mainElement.scrollTop - mainElement.clientHeight < 600
+			) loadMore();
+			return;
+		}
 		await load(channel, null, true, request);
 	}
 
-	async function load(channel: Channel, cursor: string | null, replace: boolean, version: number) {
+	async function load(channel: Channel, cursor: string | null, replace: boolean, viewVersion: number) {
 		if (loading) return;
 		loading = true;
-		const response = await invoke<CommandResponse<ChannelView>>("read_consumer_channel", {
-			channel,
-			cursor,
+		loadingMore = cursor !== null;
+		const response = await invoke<CommandResponse<ChannelView>>("read_channel", {
+			query: {
+				channel,
+				cursor,
+				search: channel === "memos" && memoSearch !== "" ? memoSearch : null,
+				tags: channel === "memos" ? memoTags : [],
+				sortByUpdated: channel === "memos" && memoSortByUpdated,
+				archivedOnly: channel === "memos" && memoDisplay === "archived",
+				favoritesOnly: channel === "memos" && memoDisplay === "favorites",
+			},
 		});
+		if (viewVersion !== request) return;
 		loading = false;
-		if (version !== request) return;
+		loadingMore = false;
 		if (response.status === "failed") {
 			errors[channel] = response.message;
 			if (content === null || content.channel !== channel) error = response.message;
 			return;
 		}
-		const page = response.data;
+		const page = response.data.channel === "memos"
+			? { ...response.data, tags: memoTagIndex }
+			: response.data.channel === "moment"
+				? { ...response.data, tags: momentTagIndex }
+				: response.data;
 		if (replace && content?.channel === "memos" && page.channel === "memos") {
 			const tail = content.memos.slice(memoPageSize);
 			const refreshedIds = new Set(page.memos.map((memo) => memo.id));
@@ -223,21 +293,301 @@
 		} else if (replace) {
 			content = page;
 		} else if (content?.channel === "memos" && page.channel === "memos") {
-			content = { ...page, memos: [...content.memos, ...page.memos] };
+			content = { ...page, memos: [...content.memos, ...page.memos], tags: content.tags };
 		} else if (content?.channel === "moment" && page.channel === "moment") {
-			content = { ...page, photos: [...content.photos, ...page.photos] };
+			content = { ...page, photos: [...content.photos, ...page.photos], tags: content.tags };
 		} else if (content?.channel === "knowledge" && page.channel === "knowledge") {
 			content = { ...page, knowledge: [...content.knowledge, ...page.knowledge] };
 		}
 		cache[channel] = content;
 		errors[channel] = null;
 		await tick();
-		if (sentinel && sentinel.getBoundingClientRect().top < window.innerHeight + 600) loadMore();
+		if (
+			mainElement !== null &&
+			mainElement.scrollHeight - mainElement.scrollTop - mainElement.clientHeight < 600
+		) loadMore();
+	}
+
+	async function filterMemos(
+		search: string,
+		tags: string[],
+		sortByUpdated: boolean,
+		display: MemoDisplay,
+	): Promise<string | null> {
+		const version = ++memoFilterRequest;
+		const requestVersion = ++request;
+		memoSearch = search;
+		memoTags = tags;
+		memoSortByUpdated = sortByUpdated;
+		loading = true;
+		loadingMore = false;
+		const response = await invoke<CommandResponse<ChannelView>>("read_channel", {
+			query: {
+				channel: "memos",
+				cursor: null,
+				search: search === "" ? null : search,
+				tags,
+				sortByUpdated,
+				archivedOnly: display === "archived",
+				favoritesOnly: display === "favorites",
+			},
+		});
+		if (version !== memoFilterRequest || requestVersion !== request || selected !== "memos") return null;
+		loading = false;
+		loadingMore = false;
+		if (response.status === "failed") {
+			return response.message;
+		}
+		if (response.data.channel !== "memos") return "The memo command returned the wrong channel.";
+		const page = { ...response.data, tags: memoTagIndex };
+		content = page;
+		cache.memos = page;
+		errors.memos = null;
+		error = null;
+		await tick();
+		if (
+			mainElement !== null &&
+			mainElement.scrollHeight - mainElement.scrollTop - mainElement.clientHeight < 600
+		) loadMore();
+		return null;
+	}
+
+	async function revealMemo(id: string): Promise<boolean> {
+		if (selected !== "memos" || content === null || content.channel !== "memos") return false;
+		if (content.memos.some((memo) => memo.id === id)) return true;
+		if (loading) return false;
+
+		while (content.nextCursor !== null) {
+			const cursor = content.nextCursor;
+			await load("memos", cursor, false, request);
+			if (content === null || content.channel !== "memos") return false;
+			if (content.memos.some((memo) => memo.id === id)) return true;
+			if (content.nextCursor === cursor) return false;
+		}
+		return false;
 	}
 
 	function loadMore() {
-		if (selected === "dashboard" || selected === "settings" || loading || content === null || content.nextCursor === null) return;
+		if (selected === "dashboard" || selected === "inbox" || selected === "newspaper" || selected === "settings" || loading || content === null || content.nextCursor === null) return;
 		void load(selected, content.nextCursor, false, request);
+	}
+
+	async function lockApp() {
+		if (configuration?.appLock.status !== "ready") {
+			await select("settings");
+			return;
+		}
+		locked = true;
+		sidebarOpen = false;
+		unlockPassword = "";
+		unlockError = null;
+		await tick();
+		unlockInput?.focus();
+	}
+
+	async function unlockApp(event: SubmitEvent) {
+		event.preventDefault();
+		if (unlocking || unlockPassword === "") return;
+		unlocking = true;
+		unlockError = null;
+		const response = await invoke<CommandResponse<string>>("unlock_app", { password: unlockPassword });
+		unlocking = false;
+		if (response.status === "failed") {
+			unlockError = response.message;
+			unlockPassword = "";
+			await tick();
+			unlockInput?.focus();
+			return;
+		}
+		unlockPassword = "";
+		locked = false;
+		void refreshConsumers();
+	}
+
+	async function refreshConsumers() {
+		const version = ++request;
+		loading = false;
+		loadingMore = false;
+		const responses = await Promise.all(
+			consumerChannels.map(async (channel) => {
+				return {
+					channel,
+					response: await invoke<CommandResponse<ChannelView>>("read_channel", {
+						query: {
+							channel,
+							cursor: null,
+							search: channel === "memos" && memoSearch !== "" ? memoSearch : null,
+							tags: channel === "memos" ? memoTags : [],
+							sortByUpdated: channel === "memos" && memoSortByUpdated,
+							archivedOnly: channel === "memos" && memoDisplay === "archived",
+							favoritesOnly: channel === "memos" && memoDisplay === "favorites",
+						},
+					}),
+				};
+			}),
+		);
+		if (version !== request) return;
+		for (const { channel, response } of responses) {
+			if (response.status === "failed") {
+				errors[channel] = response.message;
+				continue;
+			}
+			const page = response.data.channel === "memos"
+				? { ...response.data, tags: memoTagIndex }
+				: response.data.channel === "moment"
+					? { ...response.data, tags: momentTagIndex }
+					: response.data;
+			cache[channel] = page;
+			errors[channel] = null;
+			const selectedChannel = selected === "newspaper" ? "knowledge" : selected;
+			if (selectedChannel === channel) {
+				content = page;
+				error = null;
+			}
+		}
+	}
+
+	async function refreshKnowledge() {
+		const response = await invoke<CommandResponse<ChannelView>>("read_channel", {
+			query: {
+				channel: "knowledge",
+				cursor: null,
+				search: null,
+				tags: [],
+				sortByUpdated: false,
+				archivedOnly: false,
+				favoritesOnly: false,
+			},
+		});
+		if (response.status === "failed") {
+			errors.knowledge = response.message;
+			if (selected === "knowledge" || selected === "newspaper") error = response.message;
+			return;
+		}
+		cache.knowledge = response.data;
+		errors.knowledge = null;
+		if (selected === "knowledge" || selected === "newspaper") {
+			content = response.data;
+			error = null;
+		}
+	}
+
+	function loadProfile() {
+		profileName = localStorage.getItem(profileNameKey) ?? "Pleasure1234";
+		profileAvatar = localStorage.getItem(profileAvatarKey) ?? defaultProfileAvatar;
+		const savedSidebarWidth = Number(localStorage.getItem(sidebarWidthKey));
+		if (Number.isFinite(savedSidebarWidth) && savedSidebarWidth >= minimumSidebarWidth && savedSidebarWidth <= maximumSidebarWidth) {
+			sidebarWidth = savedSidebarWidth;
+		}
+	}
+
+	function beginSidebarResize(event: PointerEvent & { currentTarget: HTMLButtonElement }) {
+		if (window.innerWidth < 768) return;
+		const handle = event.currentTarget;
+		const pointerId = event.pointerId;
+		const startingX = event.clientX;
+		const startingWidth = sidebarWidth;
+		handle.setPointerCapture(pointerId);
+
+		const resize = (moveEvent: PointerEvent) => {
+			sidebarWidth = Math.min(
+				maximumSidebarWidth,
+				Math.max(minimumSidebarWidth, startingWidth + moveEvent.clientX - startingX),
+			);
+		};
+		const finish = () => {
+			handle.removeEventListener("pointermove", resize);
+			handle.removeEventListener("pointerup", finish);
+			handle.removeEventListener("pointercancel", finish);
+			if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+			localStorage.setItem(sidebarWidthKey, String(sidebarWidth));
+		};
+
+		handle.addEventListener("pointermove", resize);
+		handle.addEventListener("pointerup", finish);
+		handle.addEventListener("pointercancel", finish);
+	}
+
+	function resizeSidebarWithKeyboard(event: KeyboardEvent) {
+		if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+		event.preventDefault();
+		const delta = event.key === "ArrowLeft" ? -8 : 8;
+		sidebarWidth = Math.min(maximumSidebarWidth, Math.max(minimumSidebarWidth, sidebarWidth + delta));
+		localStorage.setItem(sidebarWidthKey, String(sidebarWidth));
+	}
+
+	function toggleProfileEditor() {
+		profileEditing = !profileEditing;
+		profileNameDraft = profileName;
+		profileAvatarDraft = profileAvatar;
+		profileError = null;
+	}
+
+	async function changeProfileAvatar(input: HTMLInputElement) {
+		const files = input.files;
+		input.value = "";
+		if (files === null) return;
+		const file = files.item(0);
+		if (file === null) return;
+		if (!file.type.startsWith("image/")) {
+			profileError = "Choose an image file.";
+			return;
+		}
+		let image: ImageBitmap | null = null;
+		try {
+			image = await createImageBitmap(file);
+			const canvas = document.createElement("canvas");
+			canvas.width = 256;
+			canvas.height = 256;
+			const context = canvas.getContext("2d");
+			if (context === null) {
+				profileError = "The image processor is unavailable.";
+				return;
+			}
+			const sourceSize = Math.min(image.width, image.height);
+			context.drawImage(
+				image,
+				(image.width - sourceSize) / 2,
+				(image.height - sourceSize) / 2,
+				sourceSize,
+				sourceSize,
+				0,
+				0,
+				canvas.width,
+				canvas.height,
+			);
+			profileAvatarDraft = canvas.toDataURL("image/png");
+			profileError = null;
+		} catch {
+			profileError = "This image could not be opened.";
+		} finally {
+			image?.close();
+		}
+	}
+
+	function saveProfile(event: SubmitEvent) {
+		event.preventDefault();
+		const name = profileNameDraft.trim();
+		if (name === "") {
+			profileError = "Enter a username.";
+			return;
+		}
+		try {
+			localStorage.setItem(profileNameKey, name);
+			localStorage.setItem(profileAvatarKey, profileAvatarDraft);
+		} catch {
+			profileError = "The profile could not be saved on this device.";
+			return;
+		}
+		profileName = name;
+		profileAvatar = profileAvatarDraft;
+		profileEditing = false;
+	}
+
+	function resetProfileDraft() {
+		profileNameDraft = "Pleasure1234";
+		profileAvatarDraft = defaultProfileAvatar;
+		profileError = null;
 	}
 
 	function toggleTheme() {
@@ -246,7 +596,7 @@
 	}
 
 	async function createMemo(markdown: string, visibility: "public" | "private"): Promise<CommandResponse<MemoView>> {
-		const response = await invoke<CommandResponse<MemoView>>("create_consumer_memo", {
+		const response = await invoke<CommandResponse<MemoView>>("create_memo", {
 			content: markdown,
 			visibility,
 		});
@@ -257,8 +607,8 @@
 		return response;
 	}
 
-	async function updateMemo(id: string, input: MemoUpdateInput): Promise<CommandResponse<MemoView>> {
-		const response = await invoke<CommandResponse<MemoView>>("update_consumer_memo", {
+	async function updateMemo(id: string, input: MemoUpdate): Promise<CommandResponse<MemoView>> {
+		const response = await invoke<CommandResponse<MemoView>>("update_memo", {
 			id,
 			input,
 		});
@@ -273,7 +623,7 @@
 	}
 
 	async function deleteMemo(id: string): Promise<CommandResponse<string>> {
-		const response = await invoke<CommandResponse<string>>("delete_consumer_memo", { id });
+		const response = await invoke<CommandResponse<string>>("delete_memo", { id });
 		if (response.status === "ready" && content !== null && content.channel === "memos") {
 			content = { ...content, memos: content.memos.filter((memo) => memo.id !== id) };
 			cache.memos = content;
@@ -281,11 +631,75 @@
 		return response;
 	}
 
-	function compileKnowledge(source: string): Promise<CommandResponse<CompiledKnowledge>> {
-		return invoke<CommandResponse<CompiledKnowledge>>("compile_knowledge", { source });
+	function addUploadedPhoto(photo: PhotoItem) {
+		if (content === null || content.channel !== "moment") return;
+		content = {
+			...content,
+			photos: [photo, ...content.photos],
+			tags: Array.from(new Set([...content.tags, ...photo.tags])).sort(),
+			total: content.total + 1,
+		};
+		cache.moment = content;
 	}
 
-	async function saveUgosConfiguration(input: UgosConfigurationInput): Promise<CommandResponse<string>> {
+	async function updatePhoto(id: string, input: PhotoUpdate): Promise<CommandResponse<PhotoItem>> {
+		const response = await invoke<CommandResponse<PhotoItem>>("update_photo", { id, input });
+		if (response.status === "ready" && content !== null && content.channel === "moment") {
+			content = {
+				...content,
+				photos: content.photos.map((photo) => (photo.id === id ? response.data : photo)),
+				tags: Array.from(
+					new Set(content.photos.flatMap((photo) => (photo.id === id ? response.data.tags : photo.tags))),
+				).sort(),
+			};
+			cache.moment = content;
+		}
+		return response;
+	}
+
+	async function deletePhoto(id: string): Promise<CommandResponse<string>> {
+		const response = await invoke<CommandResponse<string>>("delete_photo", { id });
+		if (response.status === "ready" && content !== null && content.channel === "moment") {
+			const photos = content.photos.filter((photo) => photo.id !== id);
+			content = {
+				...content,
+				photos,
+				tags: Array.from(new Set(photos.flatMap((photo) => photo.tags))).sort(),
+				total: content.total - 1,
+			};
+			cache.moment = content;
+		}
+		return response;
+	}
+
+	async function createKnowledge(input: KnowledgeDraft): Promise<CommandResponse<KnowledgeDocument>> {
+		const response = await invoke<CommandResponse<KnowledgeDocument>>("create_knowledge", { input });
+		if (response.status === "ready" && content?.channel === "knowledge") {
+			content = { ...content, knowledge: [response.data, ...content.knowledge] };
+			cache.knowledge = content;
+		}
+		return response;
+	}
+
+	async function updateKnowledge(
+		id: string,
+		input: KnowledgeUpdate,
+	): Promise<CommandResponse<KnowledgeDocument>> {
+		const response = await invoke<CommandResponse<KnowledgeDocument>>("update_knowledge", {
+			id,
+			input,
+		});
+		if (response.status === "ready" && content?.channel === "knowledge") {
+			content = {
+				...content,
+				knowledge: content.knowledge.map((document) => (document.id === id ? response.data : document)),
+			};
+			cache.knowledge = content;
+		}
+		return response;
+	}
+
+	async function saveUgosConfiguration(input: UgosConfiguration): Promise<CommandResponse<string>> {
 		const response = await invoke<CommandResponse<string>>("save_ugos_configuration", {
 			username: input.username,
 			password: input.password,
@@ -297,7 +711,7 @@
 		return response;
 	}
 
-	async function saveR2Configuration(input: R2ConfigurationInput): Promise<CommandResponse<string>> {
+	async function saveR2Configuration(input: R2Configuration): Promise<CommandResponse<string>> {
 		const response = await invoke<CommandResponse<string>>("save_r2_configuration", {
 			accessKeyId: input.accessKeyId,
 			secretAccessKey: input.secretAccessKey,
@@ -309,7 +723,7 @@
 		return response;
 	}
 
-	async function saveApiConfiguration(input: ApiConfigurationInput): Promise<CommandResponse<string>> {
+	async function saveApiConfiguration(input: ApiConfiguration): Promise<CommandResponse<string>> {
 		const response = await invoke<CommandResponse<string>>("save_api_configuration", {
 			service: input.service,
 			apiKey: input.apiKey,
@@ -321,28 +735,63 @@
 		return response;
 	}
 
+	async function saveAppLock(password: string): Promise<CommandResponse<string>> {
+		const response = await invoke<CommandResponse<string>>("save_app_lock", { password });
+		if (response.status === "ready") await loadConfiguration();
+		return response;
+	}
+
+	async function removeAppLock(): Promise<CommandResponse<string>> {
+		const response = await invoke<CommandResponse<string>>("remove_app_lock");
+		if (response.status === "ready") await loadConfiguration();
+		return response;
+	}
+
 	async function initializeConsumers() {
-		const initial = await invoke<InitialViews>("initialize_consumer_views");
+		const initial = await invoke<InitialViews>("initialize_views");
 		for (const id of consumerChannels) {
 			const response = initial[id];
 			if (response.status === "ready") {
-				cache[id] = response.data;
+				cache[id] = response.data.channel === "memos"
+					? { ...response.data, tags: memoTagIndex }
+					: response.data.channel === "moment"
+						? { ...response.data, tags: momentTagIndex }
+						: response.data;
 				errors[id] = null;
 			} else {
 				errors[id] = response.message;
 			}
 		}
-		if (selected === "dashboard" || selected === "settings") {
+		if (selected === "dashboard" || selected === "inbox" || selected === "settings") {
 			content = null;
 			error = null;
 		} else {
-			content = cache[selected];
-			error = errors[selected];
+			const channel: Channel = selected === "newspaper" ? "knowledge" : selected;
+			content = cache[channel];
+			error = errors[channel];
 		}
 		await tick();
 	}
 
+	async function loadConsumerTags() {
+		const [memos, moment] = await Promise.all([
+			invoke<CommandResponse<MemoTagCount[]>>("read_memo_tags"),
+			invoke<CommandResponse<string[]>>("read_moment_tags"),
+		]);
+		if (memos.status === "ready") {
+			memoTagIndex = memos.data;
+			if (cache.memos?.channel === "memos") cache.memos = { ...cache.memos, tags: memoTagIndex };
+			if (content?.channel === "memos") content = { ...content, tags: memoTagIndex };
+		}
+		if (moment.status === "ready") {
+			momentTagIndex = moment.data;
+			if (cache.moment?.channel === "moment") cache.moment = { ...cache.moment, tags: momentTagIndex };
+			if (content?.channel === "moment") content = { ...content, tags: momentTagIndex };
+		}
+	}
+
 	onMount(() => {
+		loadProfile();
 		void loadConfiguration();
 		void loadQuery("read_task_manager", dashboard.taskManager);
 		void loadQuery("read_codex_usage", dashboard.codex);
@@ -363,16 +812,7 @@
 				todos.loading = false;
 			}
 		});
-		void initializeConsumers();
-		const observer = new IntersectionObserver(
-			(entries) => {
-				for (const entry of entries) {
-					if (entry.isIntersecting) loadMore();
-				}
-			},
-			{ rootMargin: "600px" },
-		);
-		if (sentinel) observer.observe(sentinel);
+		void initializeConsumers().then(loadConsumerTags);
 		const taskManagerTimer = window.setInterval(() => {
 			if (selected === "dashboard") void loadQuery("read_task_manager", dashboard.taskManager);
 		}, 2_000);
@@ -389,17 +829,33 @@
 		const weatherTimer = window.setInterval(() => {
 			if (selected === "dashboard") void loadQuery("read_weather", dashboard.weather);
 		}, 900_000);
-		const memosTimer = window.setInterval(() => {
-			if (selected === "memos" && !loading) void load("memos", null, true, request);
+		const contentTimer = window.setInterval(() => {
+			if (
+				(selected === "memos" || selected === "moment" || selected === "knowledge") &&
+				!loading &&
+				mainElement !== null &&
+				mainElement.scrollTop < 200
+			) {
+				void load(selected, null, true, request);
+			}
 		}, 60_000);
+		const nextNewspaperRefresh = new Date();
+		nextNewspaperRefresh.setHours(8, 5, 0, 0);
+		if (nextNewspaperRefresh.getTime() <= Date.now()) nextNewspaperRefresh.setDate(nextNewspaperRefresh.getDate() + 1);
+		let newspaperTimer: number | null = null;
+		const newspaperStartTimer = window.setTimeout(() => {
+			void refreshKnowledge();
+			newspaperTimer = window.setInterval(() => void refreshKnowledge(), 24 * 60 * 60 * 1_000);
+		}, nextNewspaperRefresh.getTime() - Date.now());
 		return () => {
-			observer.disconnect();
 			window.clearInterval(taskManagerTimer);
 			window.clearInterval(subscriptionUsageTimer);
 			window.clearInterval(todoTimer);
 			void unlistenTodo.then((unlisten) => unlisten());
 			window.clearInterval(weatherTimer);
-			window.clearInterval(memosTimer);
+			window.clearInterval(contentTimer);
+			window.clearTimeout(newspaperStartTimer);
+			if (newspaperTimer !== null) window.clearInterval(newspaperTimer);
 		};
 	});
 </script>
@@ -409,7 +865,7 @@
 	<meta name="description" content="Local previews for Memos and Moment." />
 </svelte:head>
 
-<div class="shell">
+<div class="shell" class:locked inert={locked} style:--sidebar-width={`${sidebarWidth}px`}>
 	<button
 		type="button"
 		class:open={sidebarOpen}
@@ -419,9 +875,7 @@
 	></button>
 
 	<aside class:open={sidebarOpen}>
-		<div class="brand">
-			<span class="brand-mark" aria-hidden="true">◆</span>
-			<strong>vesper</strong>
+		<div class="sidebar-header">
 			<button type="button" class="close-sidebar" onclick={() => (sidebarOpen = false)} aria-label="Close sidebar">
 				<X size={15} />
 			</button>
@@ -435,7 +889,7 @@
 					aria-current={selected === item.id ? "page" : "false"}
 					onclick={() => void select(item.id)}
 				>
-					{#if item.id === "dashboard"}<LayoutDashboard size={15} />{:else if item.id === "memos"}<Home size={15} />{:else if item.id === "moment"}<Image size={15} />{:else if item.id === "knowledge"}<BookOpen size={15} />{:else}<Settings size={15} />{/if}
+					{#if item.id === "dashboard"}<LayoutDashboard size={15} />{:else if item.id === "memos"}<Home size={15} />{:else if item.id === "moment"}<Image size={15} />{:else if item.id === "newspaper"}<NewspaperIcon size={15} />{:else if item.id === "knowledge"}<BookOpen size={15} />{:else}<Settings size={15} />{/if}
 					{item.label}
 				</button>
 			{/each}
@@ -452,16 +906,65 @@
 			{#if configuration === null}<small>Checking credential store</small>{:else}<small>Managed in Settings</small>{/if}
 		</div>
 
+		{#if profileEditing}
+			<form class="profile-editor" onsubmit={saveProfile}>
+				<div class="profile-editor-heading">
+					<img src={profileAvatarDraft} alt="Profile preview" />
+					<div><strong>Local profile</strong><span>Display only</span></div>
+				</div>
+				<label for="profile-name">Username</label>
+				<input id="profile-name" maxlength="24" autocomplete="off" bind:value={profileNameDraft} />
+				<input class="avatar-input" bind:this={profileAvatarInput} type="file" accept="image/*" onchange={(event) => void changeProfileAvatar(event.currentTarget)} />
+				<div class="profile-editor-actions">
+					<button type="button" onclick={() => profileAvatarInput?.click()}>Change photo</button>
+					<button type="button" onclick={resetProfileDraft}>Reset</button>
+					<button type="submit">Save</button>
+				</div>
+				{#if profileError !== null}<p role="alert">{profileError}</p>{/if}
+			</form>
+		{/if}
+
 		<div class="sidebar-footer">
-			<button type="button" onclick={toggleTheme} aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}>
-				{#if dark}<Sun size={15} />{:else}<Moon size={15} />{/if}
+			<button class="user-profile" type="button" onclick={toggleProfileEditor} aria-expanded={profileEditing} aria-label={`Edit local profile for ${profileName}`} title="Edit local profile">
+				<img src={profileAvatar} alt="" />
+				<span>{profileName}</span>
 			</button>
+			<div class="footer-controls">
+				<div class="footer-navigation">
+					<button class:active={selected === "inbox"} type="button" onclick={() => void select("inbox")} aria-label={selected === "inbox" ? "Return to previous view" : "Open inbox"} title={selected === "inbox" ? "Back" : "Inbox"}>
+						<Bell size={15} />
+					</button>
+				</div>
+				<div class="footer-actions">
+					<button type="button" onclick={lockApp} aria-label={configuration?.appLock.status === "ready" ? "Lock Vesper" : "Configure App Lock"} title={configuration?.appLock.status === "ready" ? "Lock Vesper" : "Configure App Lock in Settings"}>
+						<Lock size={15} />
+					</button>
+					<button type="button" onclick={toggleTheme} aria-label={dark ? "Switch to light mode" : "Switch to dark mode"} title={dark ? "Light mode" : "Dark mode"}>
+						{#if dark}<Sun size={15} />{:else}<Moon size={15} />{/if}
+					</button>
+				</div>
+			</div>
 		</div>
+		<button
+			type="button"
+			class="sidebar-resizer"
+			aria-label={`Resize sidebar, currently ${sidebarWidth} pixels wide`}
+			onpointerdown={beginSidebarResize}
+			onkeydown={resizeSidebarWithKeyboard}
+		></button>
 	</aside>
 
-	<main>
-		<header class="mobile-header">
-			<button type="button" onclick={() => (sidebarOpen = true)} aria-label="Open sidebar">
+	<main
+		bind:this={mainElement}
+		onscroll={() => {
+			if (
+				mainElement !== null &&
+				mainElement.scrollHeight - mainElement.scrollTop - mainElement.clientHeight < 600
+			) loadMore();
+		}}
+	>
+		<header class="topbar">
+			<button class="menu-button" type="button" onclick={() => (sidebarOpen = true)} aria-label="Open sidebar">
 				<Menu size={18} />
 			</button>
 			<strong>vesper</strong>
@@ -496,12 +999,14 @@
 					onrefresh={refreshDashboard}
 				/>
 			{:else if selected === "settings"}
-				<SettingsView {configuration} error={configurationError} onsaveugos={saveUgosConfiguration} onsaver2={saveR2Configuration} onsaveapi={saveApiConfiguration} />
+				<SettingsView {configuration} error={configurationError} onsaveugos={saveUgosConfiguration} onsaver2={saveR2Configuration} onsaveapi={saveApiConfiguration} onsaveapplock={saveAppLock} onremoveapplock={removeAppLock} />
+			{:else if selected === "inbox"}
+				<InboxView />
 			{:else if error}
 				<section class="consumer-error">
 					<header>
 						<p>{selected === "moment" ? "Cloudflare R2" : "Consumer API"}</p>
-						{#if selected === "memos"}<h1>Memos</h1>{:else if selected === "moment"}<h1>Moment</h1>{:else}<h1>Knowledge</h1>{/if}
+						{#if selected === "memos"}<h1>Memos</h1>{:else if selected === "moment"}<h1>Moment</h1>{:else if selected === "newspaper"}<h1>Newspaper</h1>{:else}<h1>Knowledge</h1>{/if}
 					</header>
 					<div class="error" role="alert">
 						<CloudOff size={18} />
@@ -511,11 +1016,13 @@
 				</section>
 			{:else if content !== null}
 				{#if content.channel === "memos"}
-					<MemosView memos={content.memos} oncreate={createMemo} onupdate={updateMemo} ondelete={deleteMemo} />
+					<MemosView memos={content.memos} tags={content.tags} display={memoDisplay} onfilter={filterMemos} onopenmemo={revealMemo} oncreate={createMemo} onupdate={updateMemo} ondelete={deleteMemo} />
 				{:else if content.channel === "moment"}
-					<MomentView photos={content.photos} total={content.total} />
+					<MomentView photos={content.photos} tags={content.tags} total={content.total} onuploaded={addUploadedPhoto} onupdate={updatePhoto} ondelete={deletePhoto} />
+				{:else if selected === "newspaper"}
+					<NewspaperView documents={content.knowledge} {loading} />
 				{:else}
-					<KnowledgeView documents={content.knowledge} {loading} oncompile={compileKnowledge} />
+					<KnowledgeView documents={content.knowledge} {loading} oncreate={createKnowledge} onupdate={updateKnowledge} />
 				{/if}
 			{:else}
 				<div class="loading" aria-live="polite" aria-label="Loading view">
@@ -530,13 +1037,54 @@
 					</div>
 				</div>
 			{/if}
-			<div bind:this={sentinel} class="sentinel" aria-hidden="true"></div>
-			{#if loading && content}
+			<div class="sentinel" aria-hidden="true"></div>
+			{#if loadingMore && content}
 				<p class="loading-more">Loading more…</p>
 			{/if}
 		</div>
+		<div class="global-scroll-action">
+			{#if selected === "memos"}
+				<button
+					class="memo-filter-action"
+					class:active={memoDisplay === "archived"}
+					type="button"
+					onclick={() => (memoDisplay = memoDisplay === "archived" ? "active" : "archived")}
+					aria-pressed={memoDisplay === "archived"}
+					aria-label={memoDisplay === "archived" ? "Show active memos" : "Show archived memos"}
+					title={memoDisplay === "archived" ? "Active memos" : "Archived memos"}
+				>
+					<Archive size={15} />
+				</button>
+				<button
+					class="memo-filter-action"
+					class:active={memoDisplay === "favorites"}
+					type="button"
+					onclick={() => (memoDisplay = memoDisplay === "favorites" ? "active" : "favorites")}
+					aria-pressed={memoDisplay === "favorites"}
+					aria-label={memoDisplay === "favorites" ? "Show active memos" : "Show favorite memos"}
+					title={memoDisplay === "favorites" ? "Active memos" : "Favorite memos"}
+				>
+					<Heart size={15} fill={memoDisplay === "favorites" ? "currentColor" : "none"} />
+				</button>
+			{/if}
+			<ScrollToTop />
+		</div>
 	</main>
 </div>
+
+{#if locked}
+	<div class="lock-screen" role="dialog" aria-modal="true" aria-labelledby="lock-title">
+		<div class="lock-card">
+			<h1 id="lock-title">Locked</h1>
+			<form onsubmit={unlockApp}>
+				<label for="unlock-password">Password</label>
+				<input bind:this={unlockInput} id="unlock-password" type="password" bind:value={unlockPassword} autocomplete="current-password" placeholder="Enter password" />
+				{#if unlockError}<p class="unlock-error" role="alert">{unlockError}</p>{/if}
+				<button type="submit" disabled={unlocking || unlockPassword === ""}>{unlocking ? "Unlocking…" : "Unlock"}</button>
+			</form>
+		</div>
+	</div>
+{/if}
 
 <style>
 	:global(html),
@@ -561,16 +1109,19 @@
 
 	.shell {
 		display: grid;
-		grid-template-columns: 15rem minmax(0, 1fr);
+		grid-template-columns: var(--sidebar-width, 15rem) minmax(0, 1fr);
 		height: 100vh;
 		overflow: hidden;
 	}
+
+	.shell.locked { filter: blur(1rem); }
 
 	.sidebar-overlay {
 		display: none;
 	}
 
 	aside {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		height: 100vh;
@@ -579,28 +1130,35 @@
 		background: var(--color-background);
 	}
 
-	.brand {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 1.25rem 1.25rem 1rem;
-		color: var(--color-accent);
+	.sidebar-header { display: none; }
+
+	.sidebar-resizer {
+		position: absolute;
+		top: 0;
+		right: -0.2rem;
+		bottom: 0;
+		z-index: 4;
+		width: 0.4rem;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		cursor: col-resize;
+		touch-action: none;
 	}
 
-	.brand-mark {
-		display: grid;
-		width: 1rem;
-		height: 1rem;
-		place-items: center;
-		color: var(--color-accent);
-		font-size: 0.65rem;
+	.sidebar-resizer::after {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: calc(50% - 0.5px);
+		width: 1px;
+		background: var(--color-accent);
+		content: "";
+		opacity: 0;
 	}
 
-	.brand strong {
-		font-family: var(--font-serif);
-		font-size: 1.15rem;
-		letter-spacing: -0.02em;
-	}
+	.sidebar-resizer:hover::after,
+	.sidebar-resizer:focus-visible::after { opacity: 1; }
 
 	.close-sidebar {
 		display: none;
@@ -617,7 +1175,7 @@
 	nav {
 		display: grid;
 		gap: 0.125rem;
-		padding: 0 0.75rem;
+		padding: 1.25rem 0.75rem 0;
 	}
 
 	nav button {
@@ -688,19 +1246,130 @@
 		font-size: 0.68rem;
 	}
 
+	.user-profile {
+		display: flex;
+		flex: 1 1 auto;
+		align-items: center;
+		gap: 0.375rem;
+		min-width: 0;
+		height: 2rem;
+		padding: 0 0.125rem;
+		border: 0;
+		border-radius: var(--radius-md);
+		background: transparent;
+		cursor: pointer;
+		text-align: left;
+	}
+
+	.user-profile:hover { background: var(--color-muted); }
+
+	.user-profile img {
+		width: 1.75rem;
+		height: 1.75rem;
+		flex: 0 0 auto;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-full);
+		object-fit: cover;
+	}
+
+	.user-profile span {
+		overflow: hidden;
+		color: var(--color-foreground);
+		font-size: 0.65rem;
+		font-weight: 500;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
 	.sidebar-footer {
 		display: flex;
-		justify-content: flex-end;
+		align-items: center;
+		gap: 0.25rem;
 		margin-top: auto;
-		padding: 1rem 0.75rem;
+		padding: 0.625rem 0.5rem;
 		border-top: 1px solid var(--color-border);
 	}
 
-	.sidebar-footer button,
-	.mobile-header button {
+	.profile-editor {
+		position: absolute;
+		right: 0.5rem;
+		bottom: 3.65rem;
+		left: 0.5rem;
+		z-index: 2;
 		display: grid;
-		width: 2rem;
-		height: 2rem;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		background: var(--color-background);
+		box-shadow: var(--shadow-lg);
+	}
+
+	.profile-editor-heading { display: flex; align-items: center; gap: 0.625rem; }
+	.profile-editor-heading img { width: 2.5rem; height: 2.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-full); object-fit: cover; }
+	.profile-editor-heading div { display: grid; gap: 0.1rem; }
+	.profile-editor-heading strong { font-size: 0.75rem; font-weight: 600; }
+	.profile-editor-heading span,
+	.profile-editor label { color: var(--color-muted-foreground); font-size: 0.65rem; }
+	.profile-editor input:not(.avatar-input) { min-width: 0; height: 1.9rem; box-sizing: border-box; padding: 0 0.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-size: 0.72rem; }
+	.profile-editor input:not(.avatar-input):focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+	.avatar-input { display: none; }
+	.profile-editor-actions { display: flex; gap: 0.3rem; }
+	.profile-editor-actions button { height: 1.7rem; padding: 0 0.45rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: transparent; color: var(--color-foreground); cursor: pointer; font-size: 0.62rem; }
+	.profile-editor-actions button:last-child { margin-left: auto; border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-foreground); }
+	.profile-editor p { margin: 0; color: var(--color-error); font-size: 0.62rem; }
+
+	.footer-controls {
+		display: flex;
+		flex: 0 0 auto;
+		align-items: center;
+	}
+
+	.footer-navigation,
+	.footer-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.0625rem;
+	}
+
+	.footer-actions {
+		padding-left: 0.0625rem;
+	}
+
+	.lock-screen {
+		position: fixed;
+		inset: 0;
+		z-index: 100;
+		display: grid;
+		place-items: center;
+		padding: 1.5rem;
+		background: color-mix(in srgb, var(--color-background) 96%, var(--color-muted));
+	}
+
+	.lock-card {
+		display: grid;
+		width: min(100%, 18rem);
+		justify-items: center;
+		gap: 0.9rem;
+		box-sizing: border-box;
+		padding: 1rem;
+		text-align: center;
+	}
+
+	.lock-card h1 { margin: 0 0 0.35rem; font-size: 1rem; font-weight: 600; }
+	.lock-card form { display: grid; width: 100%; gap: 0.55rem; text-align: left; }
+	.lock-card label { color: var(--color-muted-foreground); font-size: 0.65rem; }
+	.lock-card input { min-width: 0; height: 2rem; box-sizing: border-box; padding: 0 0.625rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-size: 0.75rem; }
+	.lock-card input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+	.lock-card button { height: 1.75rem; margin-top: 0.15rem; padding: 0 0.625rem; border: 1px solid var(--color-accent); border-radius: var(--radius-md); background: var(--color-accent); color: var(--color-accent-foreground); cursor: pointer; font-size: 0.68rem; font-weight: 400; }
+	.lock-card button:disabled { cursor: default; opacity: 0.55; }
+	.unlock-error { margin: 0.2rem 0 0; color: var(--color-error); font-size: 0.68rem; }
+
+	.footer-controls button,
+	.topbar button {
+		display: grid;
+		width: 1.65rem;
+		height: 1.65rem;
 		place-items: center;
 		border: 0;
 		border-radius: var(--radius-md);
@@ -709,12 +1378,13 @@
 		cursor: pointer;
 	}
 
-	.sidebar-footer button:hover,
-	.mobile-header button:hover,
+	.footer-controls button:hover,
+	.topbar button:hover,
 	.close-sidebar:hover {
 		background: var(--color-muted);
 		color: var(--color-foreground);
 	}
+	.footer-controls button.active { background: color-mix(in srgb, var(--color-accent) 10%, transparent); color: var(--color-accent); }
 
 	main {
 		min-width: 0;
@@ -722,15 +1392,76 @@
 		overflow-y: auto;
 	}
 
-	.mobile-header {
+	.topbar {
+		position: sticky;
+		top: 0;
+		z-index: 10;
 		display: none;
+		height: 3rem;
+		align-items: center;
+		justify-content: flex-end;
+		padding: 0 0.75rem;
+		border-bottom: 1px solid var(--color-border);
+		background: color-mix(in srgb, var(--color-background) 92%, transparent);
+		backdrop-filter: blur(12px);
 	}
+
+	.topbar .menu-button,
+	.topbar strong { display: none; }
 
 	.canvas {
 		width: min(100% - 2rem, 66rem);
 		margin: 0 auto;
 		padding: 2rem 1rem 5rem;
 		box-sizing: border-box;
+	}
+
+	.global-scroll-action {
+		position: fixed;
+		right: 1.25rem;
+		bottom: 1.25rem;
+		z-index: 30;
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+	}
+
+	.memo-filter-action {
+		display: grid;
+		width: 2.75rem;
+		height: 2.75rem;
+		padding: 0;
+		place-items: center;
+		border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
+		border-radius: var(--radius-full);
+		background: color-mix(in srgb, var(--color-background) 82%, transparent);
+		box-shadow: var(--shadow-sm);
+		color: var(--color-muted-foreground);
+		cursor: pointer;
+		backdrop-filter: blur(14px);
+		transition:
+			border-color var(--duration-fast),
+			background var(--duration-fast),
+			color var(--duration-fast),
+			translate var(--duration-fast);
+	}
+
+	.memo-filter-action:hover {
+		border-color: var(--color-border-strong);
+		background: color-mix(in srgb, var(--color-background) 94%, var(--color-muted));
+		color: var(--color-foreground);
+		translate: 0 -2px;
+	}
+
+	.memo-filter-action.active {
+		border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+		background: color-mix(in srgb, var(--color-accent) 12%, var(--color-background));
+		color: var(--color-accent);
+	}
+
+	.memo-filter-action:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
 	}
 
 	.consumer-error {
@@ -901,21 +1632,26 @@
 			display: grid;
 		}
 
-		.mobile-header {
-			position: sticky;
-			top: 0;
-			z-index: 10;
+		.sidebar-resizer { display: none; }
+
+		.sidebar-header {
 			display: flex;
-			height: 3rem;
-			align-items: center;
-			gap: 0.5rem;
-			padding: 0 0.75rem;
-			border-bottom: 1px solid var(--color-border);
-			background: color-mix(in srgb, var(--color-background) 92%, transparent);
-			backdrop-filter: blur(12px);
+			justify-content: flex-end;
+			padding: 0.75rem 0.75rem 0.25rem;
 		}
 
-		.mobile-header strong {
+		nav { padding-top: 0.25rem; }
+
+		.topbar {
+			display: flex;
+			gap: 0.5rem;
+			justify-content: flex-start;
+		}
+
+		.topbar .menu-button { display: grid; }
+
+		.topbar strong {
+			display: block;
 			font-family: var(--font-serif);
 			font-size: 0.95rem;
 		}

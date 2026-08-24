@@ -27,6 +27,7 @@ futures-util = "0.3"
 cms-core = { path = "crates/cms-core" }
 hex = "0.4"
 keyring = "4.1.6"
+linkify = "0.10"
 my-workspace-logger = { path = "crates/logger" }
 pulldown-cmark = "0.13.4"
 useage = { path = "crates/useage" }

@@ -5,12 +5,14 @@ use aws_types::region::Region;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::path::Path;
+use std::time::Duration;
 use vesper_credentials::{R2Credentials, Stored};
 
 pub const BUCKET: &str = "cherry-studio";
 pub const PUBLISH_PREFIX: &str = "blog";
 const REGION: &str = "auto";
 const ENDPOINT: &str = "https://fb71c4eceaf623ae1b19b8b37d7a38cf.r2.cloudflarestorage.com";
+const OBJECT_READ_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Clone)]
 pub struct Store {
@@ -22,6 +24,7 @@ pub enum StoreError {
     Credentials(vesper_credentials::CredentialError),
     MissingCredentials,
     MissingObject(String),
+    ReadTimeout(String),
     Request(String),
     Body(String),
     Read {
@@ -36,6 +39,7 @@ impl Display for StoreError {
             Self::Credentials(source) => Display::fmt(source, formatter),
             Self::MissingCredentials => write!(formatter, "R2 credentials are not configured"),
             Self::MissingObject(key) => write!(formatter, "R2 object does not exist: {key}"),
+            Self::ReadTimeout(key) => write!(formatter, "R2 object read timed out: {key}"),
             Self::Request(message) => write!(formatter, "R2 request failed: {message}"),
             Self::Body(message) => write!(formatter, "could not read R2 response body: {message}"),
             Self::Read { path, source } => {
@@ -52,6 +56,7 @@ impl Error for StoreError {
             Self::Read { source, .. } => Some(source),
             Self::MissingCredentials
             | Self::MissingObject(..)
+            | Self::ReadTimeout(..)
             | Self::Request(..)
             | Self::Body(..) => None,
         }
@@ -100,8 +105,9 @@ impl Store {
     }
 
     pub async fn get(&self, key: &str) -> Result<Vec<u8>, StoreError> {
-        let response =
-            self.client
+        tokio::time::timeout(OBJECT_READ_TIMEOUT, async {
+            let response = self
+                .client
                 .get_object()
                 .bucket(BUCKET)
                 .key(key)
@@ -119,12 +125,15 @@ impl Store {
                         StoreError::Request(error.to_string())
                     }
                 })?;
-        let bytes = response
-            .body
-            .collect()
-            .await
-            .map_err(|error| StoreError::Body(error.to_string()))?;
-        Ok(bytes.into_bytes().to_vec())
+            let bytes = response
+                .body
+                .collect()
+                .await
+                .map_err(|error| StoreError::Body(error.to_string()))?;
+            Ok(bytes.into_bytes().to_vec())
+        })
+        .await
+        .map_err(|_| StoreError::ReadTimeout(key.to_owned()))?
     }
 
     pub async fn put_file(&self, key: &str, path: &Path) -> Result<(), StoreError> {
@@ -138,6 +147,24 @@ impl Store {
             .put_object()
             .bucket(BUCKET)
             .key(key)
+            .body(bytes.into())
+            .send()
+            .await
+            .map_err(|error| StoreError::Request(error.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn put(
+        &self,
+        key: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+    ) -> Result<(), StoreError> {
+        self.client
+            .put_object()
+            .bucket(BUCKET)
+            .key(key)
+            .content_type(content_type)
             .body(bytes.into())
             .send()
             .await

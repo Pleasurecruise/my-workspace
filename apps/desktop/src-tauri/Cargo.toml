@@ -31,3 +31,4 @@ tokio.workspace = true
 tracing.workspace = true
 ugos.workspace = true
 vesper-credentials.workspace = true
+tauri-plugin-notification = "2"

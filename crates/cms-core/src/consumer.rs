@@ -27,16 +27,22 @@ impl TryFrom<&str> for Channel {
 }
 
 #[derive(Clone, Debug, Serialize)]
-#[serde(tag = "channel", rename_all = "camelCase")]
+#[serde(
+    tag = "channel",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum ChannelView {
     Memos {
         connected: bool,
         memos: Vec<MemoView>,
+        tags: Vec<crate::api::memos::TagCount>,
         next_cursor: Option<String>,
     },
     Moment {
         connected: bool,
         photos: Vec<PhotoItem>,
+        tags: Vec<String>,
         total: usize,
         next_cursor: Option<String>,
     },

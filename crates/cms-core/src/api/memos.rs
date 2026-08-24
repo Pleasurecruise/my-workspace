@@ -1,13 +1,11 @@
 use super::ApiError;
-use crate::r2::Store;
-use futures_util::stream::{self, StreamExt, TryStreamExt};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use vesper_credentials::{ConsumerApi, Stored};
 
 const ENDPOINT: &str = "https://memos.you-find.me/api/v1";
-const READ_CONCURRENCY: usize = 8;
+pub const PAGE_SIZE: usize = 25;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -16,7 +14,7 @@ pub enum Visibility {
     Private,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Update {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -70,6 +68,16 @@ pub struct Page {
     pub next_cursor: Option<String>,
 }
 
+#[derive(Default)]
+pub struct ListFilters {
+    pub limit: Option<usize>,
+    pub search: Option<String>,
+    pub tags: Vec<String>,
+    pub sort_by_updated: bool,
+    pub archived_only: bool,
+    pub favorites_only: bool,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RemotePage {
@@ -87,7 +95,7 @@ struct TagResponse {
     tags: Vec<TagCount>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TagCount {
     pub name: String,
     pub count: u64,
@@ -124,14 +132,14 @@ impl Client {
 }
 
 impl RemoteMemo {
-    fn into_view(self, content: String) -> MemoView {
-        let html = crate::markdown::render_memo(&strip_tags(&content));
+    fn into_view(self) -> MemoView {
+        let html = crate::markdown::render_memo(&strip_tags(&self.content));
         MemoView {
             metadata_complete: true,
             memo: Memo {
                 id: self.id,
                 r2_key: self.r2_key,
-                content,
+                content: self.content,
                 tags: self.tags,
                 created_at: self.created_at,
                 updated_at: self.updated_at,
@@ -145,15 +153,35 @@ impl RemoteMemo {
     }
 }
 
-pub async fn list(store: &Store, cursor: Option<String>) -> Result<Page, ApiError> {
+pub async fn list(cursor: Option<String>, filters: &ListFilters) -> Result<Page, ApiError> {
     let client = Client::load()?;
+    let limit = filters.limit.unwrap_or(PAGE_SIZE).to_string();
     let mut request = client
         .http
         .get(format!("{ENDPOINT}/memos"))
         .bearer_auth(&client.api_key)
-        .query(&[("limit", "25")]);
+        .query(&[("limit", limit)]);
     if let Some(cursor) = cursor.as_deref() {
         request = request.query(&[("cursor", cursor)]);
+    }
+    if let Some(search) = filters
+        .search
+        .as_deref()
+        .filter(|search| !search.is_empty())
+    {
+        request = request.query(&[("search", search)]);
+    }
+    if !filters.tags.is_empty() {
+        request = request.query(&[("tags", filters.tags.join(","))]);
+    }
+    if filters.sort_by_updated {
+        request = request.query(&[("sortByUpdated", "true")]);
+    }
+    if filters.archived_only {
+        request = request.query(&[("archivedOnly", "true")]);
+    }
+    if filters.favorites_only {
+        request = request.query(&[("favoritesOnly", "true")]);
     }
     let response = request.send().await?;
     let status = response.status();
@@ -164,30 +192,14 @@ pub async fn list(store: &Store, cursor: Option<String>) -> Result<Page, ApiErro
         });
     }
     let page: RemotePage = response.json().await?;
-    let memos = stream::iter(page.memos)
-        .map(|memo| async move {
-            let bytes = store.get(&memo.r2_key).await?;
-            let content = match String::from_utf8(bytes) {
-                Ok(content) => content,
-                Err(source) => {
-                    return Err(ApiError::InvalidMemoBody {
-                        key: memo.r2_key.clone(),
-                        source,
-                    });
-                }
-            };
-            Ok::<MemoView, ApiError>(memo.into_view(content))
-        })
-        .buffered(READ_CONCURRENCY)
-        .try_collect()
-        .await?;
+    let memos = page.memos.into_iter().map(RemoteMemo::into_view).collect();
     Ok(Page {
         memos,
         next_cursor: page.next_cursor,
     })
 }
 
-pub async fn search(store: &Store, query: &str) -> Result<Page, ApiError> {
+pub async fn search(query: &str) -> Result<Page, ApiError> {
     let client = Client::load()?;
     let response = client
         .http
@@ -204,23 +216,7 @@ pub async fn search(store: &Store, query: &str) -> Result<Page, ApiError> {
         });
     }
     let page: RemotePage = response.json().await?;
-    let memos = stream::iter(page.memos)
-        .map(|memo| async move {
-            let bytes = store.get(&memo.r2_key).await?;
-            let content = match String::from_utf8(bytes) {
-                Ok(content) => content,
-                Err(source) => {
-                    return Err(ApiError::InvalidMemoBody {
-                        key: memo.r2_key.clone(),
-                        source,
-                    });
-                }
-            };
-            Ok::<MemoView, ApiError>(memo.into_view(content))
-        })
-        .buffered(READ_CONCURRENCY)
-        .try_collect()
-        .await?;
+    let memos = page.memos.into_iter().map(RemoteMemo::into_view).collect();
     Ok(Page {
         memos,
         next_cursor: page.next_cursor,
@@ -268,8 +264,7 @@ pub async fn create(content: &str, visibility: Visibility) -> Result<MemoView, A
         });
     }
     let result: MemoResponse = response.json().await?;
-    let content = result.memo.content.clone();
-    Ok(result.memo.into_view(content))
+    Ok(result.memo.into_view())
 }
 
 pub async fn update(id: &str, input: &Update) -> Result<MemoView, ApiError> {
@@ -289,8 +284,7 @@ pub async fn update(id: &str, input: &Update) -> Result<MemoView, ApiError> {
         });
     }
     let result: MemoResponse = response.json().await?;
-    let content = result.memo.content.clone();
-    Ok(result.memo.into_view(content))
+    Ok(result.memo.into_view())
 }
 
 pub async fn delete(id: &str) -> Result<(), ApiError> {
@@ -362,5 +356,25 @@ mod tests {
     fn strips_my_memos_hashtags_from_the_rendered_body() {
         let content = "Body #Rust #rust #长文\nnext line";
         assert_eq!(strip_tags(content), "Body \nnext line");
+    }
+
+    #[test]
+    fn projects_the_body_already_returned_by_the_list_api() {
+        let view = RemoteMemo {
+            id: "memo".to_owned(),
+            r2_key: "memos/memo.md".to_owned(),
+            content: "Complete API body".to_owned(),
+            tags: Vec::new(),
+            created_at: "2026-08-25T00:00:00.000Z".to_owned(),
+            updated_at: "2026-08-25T00:00:00.000Z".to_owned(),
+            visibility: Visibility::Private,
+            pinned: false,
+            favorite: false,
+            archived: false,
+        }
+        .into_view();
+
+        assert_eq!(view.memo.content, "Complete API body");
+        assert!(view.html.contains("Complete API body"));
     }
 }

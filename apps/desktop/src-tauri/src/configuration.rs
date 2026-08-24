@@ -7,6 +7,8 @@ pub(crate) struct ConfigurationStatus {
     ugos: StoredConfiguration<UgosConfiguration>,
     r2: StoredConfiguration<R2Configuration>,
     api: ApiConfiguration,
+    app_lock: StoredConfiguration<String>,
+    app_lock_dev: bool,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -79,6 +81,18 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
         Ok(configuration) => configuration,
         Err(message) => return CommandResponse::Failed { message },
     };
+    let (app_lock, app_lock_dev) = match vesper_credentials::app_lock() {
+        Ok(vesper_credentials::Stored::Ready(app_lock)) => (
+            StoredConfiguration::Ready(app_lock.password),
+            app_lock.development,
+        ),
+        Ok(vesper_credentials::Stored::Missing) => (StoredConfiguration::Missing, false),
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
     CommandResponse::Ready {
         data: ConfigurationStatus {
             ugos,
@@ -88,6 +102,8 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
                 moment,
                 knowledge,
             },
+            app_lock,
+            app_lock_dev,
         },
     }
 }
@@ -152,5 +168,80 @@ pub(crate) async fn save_api_configuration(
         Err(error) => CommandResponse::Failed {
             message: error.to_string(),
         },
+    }
+}
+
+#[tauri::command]
+pub(crate) fn save_app_lock(password: String) -> CommandResponse<String> {
+    match vesper_credentials::save_app_lock(&password) {
+        Ok(()) => CommandResponse::Ready {
+            data: "app-lock".to_owned(),
+        },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) fn remove_app_lock() -> CommandResponse<String> {
+    match vesper_credentials::delete_app_lock() {
+        Ok(()) => CommandResponse::Ready {
+            data: "app-lock".to_owned(),
+        },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) fn unlock_app(password: String) -> CommandResponse<String> {
+    let stored = match vesper_credentials::app_lock() {
+        Ok(vesper_credentials::Stored::Ready(app_lock)) => app_lock.password,
+        Ok(vesper_credentials::Stored::Missing) => {
+            return CommandResponse::Failed {
+                message: "App Lock is not configured.".to_owned(),
+            };
+        }
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
+    if !passwords_match(&stored, &password) {
+        return CommandResponse::Failed {
+            message: "Incorrect password.".to_owned(),
+        };
+    }
+    CommandResponse::Ready {
+        data: "app-lock".to_owned(),
+    }
+}
+
+fn passwords_match(stored: &str, supplied: &str) -> bool {
+    if stored.len() != supplied.len() {
+        return false;
+    }
+    stored
+        .as_bytes()
+        .iter()
+        .zip(supplied.as_bytes())
+        .fold(0_u8, |difference, (left, right)| {
+            difference | (left ^ right)
+        })
+        == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::passwords_match;
+
+    #[test]
+    fn compares_app_lock_passwords_without_accepting_partial_values() {
+        assert!(passwords_match("correct horse", "correct horse"));
+        assert!(!passwords_match("correct horse", "correct"));
+        assert!(!passwords_match("correct horse", "correct house"));
     }
 }

@@ -46,25 +46,41 @@ dropped. Publication is additive and does not delete destination-only objects.
 
 Memo metadata operations use the my-memos REST API. Create, update, and delete requests must pass
 through the Worker so R2 bodies, D1 metadata, and KV invalidation remain one server-coordinated
-transaction. List and search return metadata plus each `r2Key`; Vesper then reads those Markdown
-bodies with `r2.rs` and renders them locally.
+transaction. List and search return the D1 body mirror with each `r2Key`; Vesper renders that body
+locally without a second R2 read.
 
 CLI surface:
 
 ```text
 vesper memo tags
 vesper memo list [limit]
+vesper memo page <json>
 vesper memo search <query>
 vesper memo create <markdown>
 vesper memo update <id> <markdown>
+vesper memo patch <id> <json>
+vesper memo visibility <id> <public|private>
+vesper memo pin <id>
+vesper memo unpin <id>
+vesper memo favorite <id>
+vesper memo unfavorite <id>
+vesper memo archive <id>
+vesper memo restore <id>
 vesper memo delete <id>
 ```
+
+`memo page` accepts `cursor`, `limit`, `search`, `tags`, `sortByUpdated`, `archivedOnly`, and
+`favoritesOnly`, matching desktop feed reads. The two final filters are mutually exclusive. `memo
+patch` accepts the same optional `content`, `visibility`, `tags`, `pinned`, `favorite`, and
+`archived` fields as the desktop command contract and rejects an empty object.
 
 ## Knowledge
 
 Knowledge always enters through the authenticated my-knowledge REST API. The Worker performs D1
 authorization before resolving KV or R2 data. Updates and deletion include the current
 `expectedHash`; a stale local copy fails instead of overwriting a newer article.
+The desktop Knowledge editor creates drafts and sends edits through the same API, preserving the
+loaded content hash for conflict detection.
 
 Complex create and update payloads are passed as one quoted JSON argument. This keeps multilingual
 documents and optional fields aligned with the API contract rather than inventing a second CLI
@@ -87,9 +103,16 @@ first, then register their exact object keys with the REST API. The consumer res
 from D1 and reads the image objects from R2.
 
 ```text
+vesper moment upload-photo <json> <original.png> <thumbnail.jpg>
 vesper moment upload <r2-key> <local-path>
 vesper moment create '<json-with-r2Key-and-thumbnailR2Key>'
 ```
+
+`moment upload-photo` is the coordinated path shared with the desktop. Its JSON uses the `Upload`
+contract, while the two files must already be a PNG original and JPEG thumbnail. Rust generates the
+object keys, uploads both files, registers metadata, and removes objects written by the operation if
+a later step fails. The lower-level `upload` and `create` commands remain available for explicit
+recovery workflows.
 
 If metadata registration fails, the uploaded objects are orphans. Inspect the error, retry the same
 metadata request, or explicitly remove the orphan with `vesper moment remove-object <r2-key>`. Do not
@@ -106,6 +129,12 @@ vesper moment update <id> <json>
 vesper moment download <r2-key> <local-path>
 vesper moment delete <id>
 ```
+
+The desktop prepares its PNG original, JPEG thumbnail, and hexadecimal ThumbHash from one image up
+to 20 MB before entering that same Rust workflow. The desktop viewer sends title, description, and
+tag edits to the authenticated Moment update endpoint and sends confirmed deletion through the
+Moment delete endpoint, which remains responsible for coordinating metadata and stored-image
+removal.
 
 ## Todo
 

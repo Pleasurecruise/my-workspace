@@ -3,10 +3,7 @@ use crate::{CommandResponse, github, weather};
 #[tauri::command]
 pub(crate) async fn read_task_manager() -> CommandResponse<ugos::TaskManagerSnapshot> {
     match ugos::task_manager().await {
-        Ok(data) => {
-            tracing::info!("loaded UGOS Task Manager");
-            CommandResponse::Ready { data }
-        }
+        Ok(data) => CommandResponse::Ready { data },
         Err(error) => {
             tracing::error!(error = %error, "failed to load UGOS Task Manager");
             CommandResponse::Failed {

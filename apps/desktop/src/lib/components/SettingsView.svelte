@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CircleCheck, Cloud, Eye, EyeOff, KeyRound } from "@lucide/svelte";
+	import { CircleCheck, Cloud, Eye, EyeOff, KeyRound, Lock } from "@lucide/svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -14,11 +14,11 @@
 		Label,
 	} from "@my-workspace/ui";
 	import type {
-		ApiConfigurationInput,
+		ApiConfiguration,
 		CommandResponse,
 		ConfigurationStatus,
-		R2ConfigurationInput,
-		UgosConfigurationInput,
+		R2Configuration,
+		UgosConfiguration,
 	} from "../consumer";
 
 	let {
@@ -27,12 +27,16 @@
 		onsaveugos,
 		onsaver2,
 		onsaveapi,
+		onsaveapplock,
+		onremoveapplock,
 	}: {
 		configuration: ConfigurationStatus | null;
 		error: string | null;
-		onsaveugos: (input: UgosConfigurationInput) => Promise<CommandResponse<string>>;
-		onsaver2: (input: R2ConfigurationInput) => Promise<CommandResponse<string>>;
-		onsaveapi: (input: ApiConfigurationInput) => Promise<CommandResponse<string>>;
+		onsaveugos: (input: UgosConfiguration) => Promise<CommandResponse<string>>;
+		onsaver2: (input: R2Configuration) => Promise<CommandResponse<string>>;
+		onsaveapi: (input: ApiConfiguration) => Promise<CommandResponse<string>>;
+		onsaveapplock: (password: string) => Promise<CommandResponse<string>>;
+		onremoveapplock: () => Promise<CommandResponse<string>>;
 	} = $props();
 
 	let username = $state("");
@@ -42,13 +46,15 @@
 	let memosApiKey = $state("");
 	let momentApiKey = $state("");
 	let knowledgeApiKey = $state("");
-	let saving = $state<"ugos" | "r2" | "memos" | "moment" | "knowledge" | null>(null);
+	let appLockPassword = $state("");
+	let saving = $state<"app-lock" | "ugos" | "r2" | "memos" | "moment" | "knowledge" | null>(null);
 	let formError = $state<string | null>(null);
 	let passwordVisible = $state(false);
 	let secretVisible = $state(false);
 	let memosKeyVisible = $state(false);
 	let momentKeyVisible = $state(false);
 	let knowledgeKeyVisible = $state(false);
+	let appLockPasswordVisible = $state(false);
 
 	$effect(() => {
 		if (configuration !== null && configuration.ugos.status === "ready") {
@@ -62,6 +68,7 @@
 		if (configuration !== null && configuration.api.memos.status === "ready") memosApiKey = configuration.api.memos.data;
 		if (configuration !== null && configuration.api.moment.status === "ready") momentApiKey = configuration.api.moment.data;
 		if (configuration !== null && configuration.api.knowledge.status === "ready") knowledgeApiKey = configuration.api.knowledge.data;
+		if (configuration !== null && configuration.appLock.status === "ready") appLockPassword = configuration.appLock.data;
 	});
 
 	async function saveUgos(event: SubmitEvent) {
@@ -102,6 +109,32 @@
 			return;
 		}
 	}
+
+	async function saveAppLock(event: SubmitEvent) {
+		event.preventDefault();
+		formError = null;
+		saving = "app-lock";
+		const response = await onsaveapplock(appLockPassword);
+		saving = null;
+		if (response.status === "failed") {
+			formError = response.message;
+			return;
+		}
+		appLockPasswordVisible = false;
+	}
+
+	async function removeAppLock() {
+		saving = "app-lock";
+		formError = null;
+		const response = await onremoveapplock();
+		saving = null;
+		if (response.status === "failed") {
+			formError = response.message;
+			return;
+		}
+		appLockPassword = "";
+		appLockPasswordVisible = false;
+	}
 </script>
 
 <section class="settings" aria-label="Vesper configuration">
@@ -118,6 +151,32 @@
 	<div class="sections">
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
+			<span class="icon"><Lock size={16} /></span>
+			<div><CardTitle class="settings-card-title">App Lock</CardTitle><CardDescription class="settings-card-description">Hide Vesper behind a local password while it remains open.</CardDescription></div>
+			{#if configuration?.appLockDev}<span class="configured"><CircleCheck size={14} /> Environment</span>{:else if configuration?.appLock.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
+		</CardHeader>
+		<form onsubmit={saveAppLock}>
+			<CardContent class="settings-card-content">
+			<div class="setting-row">
+				<div><Label for="app-lock-password">Password</Label><p>Saved passwords use the operating system credential store.</p></div>
+				<div class="secret-field">
+					<Input id="app-lock-password" class="settings-input settings-secret-input" type={appLockPasswordVisible ? "text" : "password"} bind:value={appLockPassword} autocomplete="new-password" autocapitalize="none" spellcheck="false" minlength={4} required />
+					<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (appLockPasswordVisible = !appLockPasswordVisible)} aria-label={appLockPasswordVisible ? "Hide App Lock password" : "Show App Lock password"}>{#if appLockPasswordVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
+				</div>
+			</div>
+			</CardContent>
+			<CardFooter class="settings-card-footer">
+				<span class="settings-footer-copy">This is a privacy screen, not content encryption.</span>
+				<div class="lock-actions">
+					{#if configuration?.appLock.status === "ready" && !configuration.appLockDev}<Button variant="ghost" size="sm" type="button" disabled={saving !== null} onclick={removeAppLock}>Remove</Button>{/if}
+					<Button class="settings-save-button" size="sm" type="submit" disabled={saving !== null || appLockPassword.length < 4}>{saving === "app-lock" ? "Saving…" : "Save"}</Button>
+				</div>
+			</CardFooter>
+		</form>
+	</Card>
+
+	<Card>
+		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="icon"><KeyRound size={16} /></span>
 			<div><CardTitle class="settings-card-title">UGOS</CardTitle><CardDescription class="settings-card-description">Connect to Task Manager through ugreen:9443.</CardDescription></div>
 			{#if configuration !== null && configuration.ugos.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
@@ -131,8 +190,8 @@
 			<div class="setting-row">
 				<div><Label for="ugos-password">Password</Label><p>Stored in the operating system credential store.</p></div>
 				<div class="secret-field">
-					<Input id="ugos-password" class="settings-input settings-secret-input" type={passwordVisible ? "text" : "password"} bind:value={password} autocomplete="current-password" required />
-					<Button class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (passwordVisible = !passwordVisible)} aria-label={passwordVisible ? "Hide password" : "Show password"}>{#if passwordVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
+					<Input id="ugos-password" class="settings-input settings-secret-input" type={passwordVisible ? "text" : "password"} bind:value={password} autocomplete="current-password" autocapitalize="none" spellcheck="false" required />
+					<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (passwordVisible = !passwordVisible)} aria-label={passwordVisible ? "Hide password" : "Show password"}>{#if passwordVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
 				</div>
 			</div>
 			</CardContent>
@@ -150,10 +209,10 @@
 				<div><Label for="memos-api-key">my-memos API key</Label><p>Bearer key generated by the my-memos REST API settings.</p></div>
 				<div class="api-input">
 					<div class="secret-field">
-						<Input id="memos-api-key" class="settings-input settings-secret-input" type={memosKeyVisible ? "text" : "password"} bind:value={memosApiKey} autocomplete="off" placeholder="Bearer API key" />
-						<Button class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (memosKeyVisible = !memosKeyVisible)} aria-label={memosKeyVisible ? "Hide my-memos API key" : "Show my-memos API key"}>{#if memosKeyVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
+						<Input id="memos-api-key" class="settings-input settings-secret-input" type={memosKeyVisible ? "text" : "password"} bind:value={memosApiKey} autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Bearer API key" />
+						<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (memosKeyVisible = !memosKeyVisible)} aria-label={memosKeyVisible ? "Hide my-memos API key" : "Show my-memos API key"}>{#if memosKeyVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
 					</div>
-					<Button size="sm" disabled={saving !== null || memosApiKey.trim() === ""} onclick={() => saveApi("memos")}>{saving === "memos" ? "Saving…" : "Save"}</Button>
+					<Button type="button" size="sm" disabled={saving !== null || memosApiKey.trim() === ""} onclick={() => saveApi("memos")}>{saving === "memos" ? "Saving…" : "Save"}</Button>
 					{#if configuration !== null && configuration.api.memos.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
 				</div>
 			</div>
@@ -161,10 +220,10 @@
 				<div><Label for="moment-api-key">my-moment API key</Label><p>Bearer key generated by the my-moment API settings.</p></div>
 				<div class="api-input">
 					<div class="secret-field">
-						<Input id="moment-api-key" class="settings-input settings-secret-input" type={momentKeyVisible ? "text" : "password"} bind:value={momentApiKey} autocomplete="off" placeholder="Bearer API key" />
-						<Button class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (momentKeyVisible = !momentKeyVisible)} aria-label={momentKeyVisible ? "Hide my-moment API key" : "Show my-moment API key"}>{#if momentKeyVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
+						<Input id="moment-api-key" class="settings-input settings-secret-input" type={momentKeyVisible ? "text" : "password"} bind:value={momentApiKey} autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Bearer API key" />
+						<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (momentKeyVisible = !momentKeyVisible)} aria-label={momentKeyVisible ? "Hide my-moment API key" : "Show my-moment API key"}>{#if momentKeyVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
 					</div>
-					<Button size="sm" disabled={saving !== null || momentApiKey.trim() === ""} onclick={() => saveApi("moment")}>{saving === "moment" ? "Saving…" : "Save"}</Button>
+					<Button type="button" size="sm" disabled={saving !== null || momentApiKey.trim() === ""} onclick={() => saveApi("moment")}>{saving === "moment" ? "Saving…" : "Save"}</Button>
 					{#if configuration !== null && configuration.api.moment.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
 				</div>
 			</div>
@@ -172,10 +231,10 @@
 				<div><Label for="knowledge-api-key">my-knowledge API key</Label><p>Bearer key generated by the my-knowledge API settings.</p></div>
 				<div class="api-input">
 					<div class="secret-field">
-						<Input id="knowledge-api-key" class="settings-input settings-secret-input" type={knowledgeKeyVisible ? "text" : "password"} bind:value={knowledgeApiKey} autocomplete="off" placeholder="Bearer API key" />
-						<Button class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (knowledgeKeyVisible = !knowledgeKeyVisible)} aria-label={knowledgeKeyVisible ? "Hide my-knowledge API key" : "Show my-knowledge API key"}>{#if knowledgeKeyVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
+						<Input id="knowledge-api-key" class="settings-input settings-secret-input" type={knowledgeKeyVisible ? "text" : "password"} bind:value={knowledgeApiKey} autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Bearer API key" />
+						<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (knowledgeKeyVisible = !knowledgeKeyVisible)} aria-label={knowledgeKeyVisible ? "Hide my-knowledge API key" : "Show my-knowledge API key"}>{#if knowledgeKeyVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
 					</div>
-					<Button size="sm" disabled={saving !== null || knowledgeApiKey.trim() === ""} onclick={() => saveApi("knowledge")}>{saving === "knowledge" ? "Saving…" : "Save"}</Button>
+					<Button type="button" size="sm" disabled={saving !== null || knowledgeApiKey.trim() === ""} onclick={() => saveApi("knowledge")}>{saving === "knowledge" ? "Saving…" : "Save"}</Button>
 					{#if configuration !== null && configuration.api.knowledge.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
 				</div>
 			</div>
@@ -197,8 +256,8 @@
 			<div class="setting-row">
 				<div><Label for="r2-secret-key">Secret Access Key</Label><p>Kept in Keychain and never written to project files.</p></div>
 				<div class="secret-field">
-					<Input id="r2-secret-key" class="settings-input settings-secret-input" type={secretVisible ? "text" : "password"} bind:value={secretAccessKey} autocomplete="off" required />
-					<Button class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (secretVisible = !secretVisible)} aria-label={secretVisible ? "Hide secret key" : "Show secret key"}>{#if secretVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
+					<Input id="r2-secret-key" class="settings-input settings-secret-input" type={secretVisible ? "text" : "password"} bind:value={secretAccessKey} autocomplete="off" autocapitalize="none" spellcheck="false" required />
+					<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (secretVisible = !secretVisible)} aria-label={secretVisible ? "Hide secret key" : "Show secret key"}>{#if secretVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
 				</div>
 			</div>
 			</CardContent>
@@ -238,6 +297,7 @@
 	.setting-row :global(label) { font-size: 0.72rem; }
 	.api-settings { border-top: 1px solid var(--color-border); }
 	.api-input { display: grid; grid-template-columns: minmax(12rem, 1fr) auto auto; align-items: center; gap: 0.5rem; }
+	.lock-actions { display: flex; align-items: center; gap: 0.4rem; }
 		@media (max-width: 640px) {
 		.setting-row { grid-template-columns: 1fr; gap: 0.5rem; }
 		.api-input { grid-template-columns: 1fr auto; }

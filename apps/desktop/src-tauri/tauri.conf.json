@@ -19,6 +19,7 @@
         "minHeight": 520,
         "center": true,
         "resizable": true,
+        "titleBarStyle": "Visible",
         "visible": true
       }
     ],

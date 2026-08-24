@@ -52,6 +52,71 @@ Memo composer and inline-editor focus belongs to the containing surface: an acce
 semantic accent halo replace a second textarea ring. Search retains its own accent focus border. Only
 one memo can be edited at a time. Choosing another memo first saves the changed draft; an unchanged
 draft closes without a request, and a failed save keeps the original editor and draft intact.
+The complete tag index sits above search as a horizontally scrollable strip with counts. In the
+unfiltered feed, pinned entries live in a collapsed section ahead of the timeline; filtering exposes
+matching pinned entries directly. After pinning changes the feed position, the affected entry is
+centered in the viewport. Bare web addresses in memo bodies render as links. External links open in
+the system browser; a `memos.you-find.me/memo/{id}` link remains in the application, loads successive
+feed pages until the target is present, expands the pinned section when needed, then smoothly centers
+and briefly highlights the card.
+The lower-right Archive and Favorites actions switch the feed between active, archived, and favorite
+memos. Selecting the current filter again returns to the active feed. Each view loads its matching
+server-side projection, archived entries can be restored from the archive view, and the archive view
+omits the memo composer.
+
+## Knowledge interaction
+
+Knowledge article navigation and editing actions live in a quiet side rail on wide layouts and move
+as one floating group to the lower-right edge on narrow layouts; they do not compete with the article
+heading.
+
+## Moment interaction
+
+Moment keeps the masonry gallery as its default surface. A filter panel owns text search, the complete
+tag index, and ascending or descending date order. Selecting a photo opens an application-modal
+viewer with keyboard navigation, metadata editing, public-link copying, and confirmed deletion. The
+viewer owns scroll focus while open. The inline upload panel pairs the selected image with title,
+description, parsed tags, date, and coordinates; validation and upload errors stay in that panel
+without replacing settled gallery data.
+
+## Window and theme
+
+The macOS window retains its complete native title bar, including its title, traffic-light controls,
+and system-owned drag behavior. Theme changes update the WebView and native appearance directly,
+without a page-level transition. Controls do not add independent color transitions that would drift
+from the theme change.
+
+The application shell owns one persistent lower-right back-to-top action. Its single progress ring
+follows the main canvas scroll position across scrollable views; page-specific actions remain
+separate.
+
+The sidebar omits a separate brand header and keeps its navigation visually primary, including
+Settings as a full navigation tab. An editable local profile badge anchors the left side of the footer
+beside its three controls; selecting it exposes a compact name and avatar editor above the footer. The
+square-cropped avatar and display name persist locally and do not imply an application session. On
+desktop, the sidebar's right edge supports pointer dragging and keyboard resizing within bounded
+widths, and remembers the chosen width. The footer separates destinations from immediate actions
+without a visual divider: Inbox remains a destination, while App Lock and theme are immediate actions.
+When no password exists, the lock control routes to Settings; otherwise it immediately makes the
+complete application shell inert and shows one opaque unlock surface. The unlock form receives focus,
+reports an incorrect password in place, and reveals no underlying content. Settings owns password
+creation, replacement, and removal, and describes App Lock as a privacy screen rather than encryption.
+
+## Newspaper and Inbox
+
+Newspaper remains in primary navigation and presents the latest Programmer Daily and Personal Daily
+articles without an archive. Page-edge arrows switch streams like an album, turning the complete
+reading surface instead of exposing a separate tab control; reduced-motion preferences remove the
+animation. Its reading surface is distinct from Knowledge: a warm paper field, compact edition line,
+editorial masthead, serif hierarchy, restrained ink accent, and dense long-form rhythm inspired by
+Kami while still using Vesper's semantic tokens.
+
+The Inbox control in the sidebar footer opens a dedicated empty state independent of content views.
+Knowledge articles and Newspaper editions never appear as notifications. Newspaper editions are
+reserved for Newspaper and do not appear in the regular Knowledge index.
+
+The operating-system notification adapter is registered but remains dormant. Inbox does not
+request notification permission, schedule delivery, or send notifications.
 
 ## Accessibility
 

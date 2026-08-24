@@ -1,5 +1,5 @@
 use super::ApiError;
-use crate::markdown::{TocEntry, compile_knowledge};
+use crate::markdown::{TocEntry, compile_knowledge, knowledge_body};
 use futures_util::stream::{self, StreamExt, TryStreamExt};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -197,30 +197,7 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
                 }
                 let result: ArticleResponse<Article> = response.json().await?;
                 let article = result.article;
-                let edition = match article.editions.get("zh") {
-                    Some(edition) => edition,
-                    None => {
-                        return Err(ApiError::Protocol(format!(
-                            "article {} has no Chinese edition",
-                            article.id
-                        )));
-                    }
-                };
-                let compiled = compile_knowledge(&edition.markdown);
-                Ok::<Document, ApiError>(Document {
-                    id: article.id,
-                    slug: article.slug,
-                    title: edition.title.clone(),
-                    summary: edition.summary.clone(),
-                    tags: article.tags,
-                    visibility: article.visibility,
-                    content_hash: article.content_hash,
-                    created_at: article.created_at,
-                    updated_at: article.updated_at,
-                    source: edition.markdown.clone(),
-                    html: compiled.html,
-                    toc: compiled.toc,
-                })
+                project_article(article)
             }
         })
         .buffered(READ_CONCURRENCY)
@@ -229,6 +206,28 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
     Ok(Page {
         documents,
         cursor: page.cursor,
+    })
+}
+
+pub fn project_article(article: Article) -> Result<Document, ApiError> {
+    let edition = article.editions.get("zh").ok_or_else(|| {
+        ApiError::Protocol(format!("article {} has no Chinese edition", article.id))
+    })?;
+    let source = knowledge_body(&edition.markdown).to_owned();
+    let compiled = compile_knowledge(&source);
+    Ok(Document {
+        id: article.id,
+        slug: article.slug,
+        title: edition.title.clone(),
+        summary: edition.summary.clone(),
+        tags: article.tags,
+        visibility: article.visibility,
+        content_hash: article.content_hash,
+        created_at: article.created_at,
+        updated_at: article.updated_at,
+        source,
+        html: compiled.html,
+        toc: compiled.toc,
     })
 }
 
@@ -400,5 +399,32 @@ mod tests {
         .expect("valid my-knowledge article response");
 
         assert_eq!(response.article.editions["zh"].markdown, "# 类型边界");
+    }
+
+    #[test]
+    fn projects_article_body_without_front_matter() {
+        let article: Article = serde_json::from_value(serde_json::json!({
+            "id": "019c1234-1234-7000-8000-123456789abc",
+            "slug": "daily-brief",
+            "editions": {
+                "zh": {
+                    "title": "Daily",
+                    "summary": "Brief",
+                    "markdown": "---\ntitle: Daily\ntags:\n  - newspaper\n  - daily\n---\n## Today\n\nNews"
+                }
+            },
+            "tags": ["newspaper", "daily"],
+            "visibility": "public",
+            "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "createdAt": "2026-08-24T10:00:00.000Z",
+            "updatedAt": "2026-08-24T11:00:00.000Z"
+        }))
+        .expect("valid my-knowledge article");
+
+        let document = project_article(article).expect("projected Chinese article");
+
+        assert_eq!(document.source, "## Today\n\nNews");
+        assert!(document.html.starts_with("<h2 id=\"today\">Today</h2>"));
+        assert_eq!(document.tags, ["newspaper", "daily"]);
     }
 }

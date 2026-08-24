@@ -1,4 +1,5 @@
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd, html};
+use linkify::{LinkFinder, LinkKind};
+use pulldown_cmark::{Event, HeadingLevel, LinkType, Options, Parser, Tag, TagEnd, html};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -24,13 +25,60 @@ pub fn render(source: &str) -> String {
 }
 
 pub fn render_memo(source: &str) -> String {
-    let parser = Parser::new_ext(source, options()).map(|event| normalize(event, true));
+    let mut protected_depth = 0;
+    let mut events = Vec::new();
+    for event in Parser::new_ext(source, options()).map(|event| normalize(event, true)) {
+        if matches!(
+            &event,
+            Event::Start(Tag::CodeBlock(_) | Tag::Link { .. } | Tag::Image { .. })
+        ) {
+            protected_depth += 1;
+        }
+        let protected_end = matches!(
+            &event,
+            Event::End(TagEnd::CodeBlock | TagEnd::Link | TagEnd::Image)
+        );
+        match event {
+            Event::Text(text) if protected_depth == 0 => events.extend(autolink_text(&text)),
+            event => events.push(event),
+        }
+        if protected_end {
+            protected_depth -= 1;
+        }
+    }
     let mut output = String::new();
-    html::push_html(&mut output, parser);
+    html::push_html(&mut output, events.into_iter());
     output
 }
 
+fn autolink_text(text: &str) -> Vec<Event<'static>> {
+    let mut finder = LinkFinder::new();
+    finder.kinds(&[LinkKind::Url]);
+    let mut events = Vec::new();
+    let mut cursor = 0;
+    for link in finder.links(text) {
+        if cursor < link.start() {
+            events.push(Event::Text(text[cursor..link.start()].to_owned().into()));
+        }
+        let url = link.as_str().to_owned();
+        events.push(Event::Start(Tag::Link {
+            link_type: LinkType::Autolink,
+            dest_url: url.clone().into(),
+            title: "".into(),
+            id: "".into(),
+        }));
+        events.push(Event::Text(url.into()));
+        events.push(Event::End(TagEnd::Link));
+        cursor = link.end();
+    }
+    if cursor < text.len() {
+        events.push(Event::Text(text[cursor..].to_owned().into()));
+    }
+    events
+}
+
 pub fn compile_knowledge(source: &str) -> CompiledKnowledge {
+    let source = knowledge_body(source);
     let mut heading_text: Option<String> = None;
     let mut headings: Vec<(HeadingLevel, String)> = Vec::new();
     let mut excerpt = String::new();
@@ -119,6 +167,25 @@ pub fn compile_knowledge(source: &str) -> CompiledKnowledge {
         .take(240)
         .collect();
     CompiledKnowledge { html, toc, excerpt }
+}
+
+pub fn knowledge_body(source: &str) -> &str {
+    let mut lines = source.split_inclusive('\n');
+    let Some(first) = lines.next() else {
+        return source;
+    };
+    if first.trim_end_matches(['\r', '\n']) != "---" {
+        return source;
+    }
+
+    let mut offset = first.len();
+    for line in lines {
+        offset += line.len();
+        if line.trim_end_matches(['\r', '\n']) == "---" {
+            return &source[offset..];
+        }
+    }
+    source
 }
 
 fn normalize<'a>(event: Event<'a>, hard_breaks: bool) -> Event<'a> {

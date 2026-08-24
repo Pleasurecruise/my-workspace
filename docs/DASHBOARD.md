@@ -1,7 +1,9 @@
 # Dashboard Integrations
 
-Dashboard is a local, read-only aggregation surface. Protocol code lives in Rust and each external
-source has an independent query state, error, refresh lifecycle, and polling interval.
+Dashboard is a local aggregation surface that does not mutate provider account data. Protocol code
+lives in Rust and each external source has an independent query state, error, refresh lifecycle, and
+polling interval. CherryIN token refresh is the narrow exception to local read-only credential
+access: a successful refresh may update the existing Cherry Studio OAuth session.
 
 ## Data flow
 
@@ -21,8 +23,10 @@ DashboardView.svelte
 
 An unavailable credential or failed source does not block the other cards. Initial requests run
 independently. Polling retains settled data while refreshing; the explicit spinner is reserved for a
-user-requested dashboard refresh. UGOS telemetry polls every two seconds, subscription data every
-sixty seconds, and weather every fifteen minutes while Dashboard is selected.
+user-requested dashboard refresh. That refresh starts a new request for every external source and the
+selected Todo date, even when a source already has a polling request in flight. Only the newest
+response for each source may update its card. UGOS telemetry polls every two seconds, subscription
+data every sixty seconds, and weather every fifteen minutes while Dashboard is selected.
 
 The calendar Todo list occupies the narrower lower-left area. One consolidated panel occupies the wider lower-right area.
 Its first row contains Codex and OpenCode Go quota cells; its second row contains DeepSeek and Cherry
@@ -106,8 +110,8 @@ response types; the Tauri layer only exposes the result to the frontend.
 | `cherryin.rs` | CherryIN OAuth balance endpoint           | Cherry Studio `cherryin` OAuth session                        | Account balance shown under Cherry                   |
 
 Vesper does not create or register an OpenCode provider named `cherry-opencode-go`. OpenCode Go and
-CherryIN are separate integrations. Vesper reads OpenCode Go from pi and reads CherryIN's existing
-OAuth session from Cherry Studio without modifying either credential store.
+CherryIN are separate integrations. Vesper reads OpenCode Go from pi. It reuses CherryIN's existing
+OAuth session from Cherry Studio and only updates that session when an access-token refresh succeeds.
 
 ### API-key resolution
 
@@ -147,11 +151,14 @@ only the total available account balance without a composition breakdown or char
 ### CherryIN
 
 Dashboard follows Cherry Studio's CherryIN integration: it reads the existing `cherryin` OAuth access
-token from Cherry Studio's `Data/cherrystudio.sqlite`, calls `/api/v1/oauth/balance`, and converts the
-returned account `quota` with CherryIN's `500000` quota unit. The database is opened read-only. If
-the access token has expired, Vesper asks the user to renew the session in Cherry Studio. It never
-uses pi's model token, `/api/usage/token/`, or the billing subscription endpoints, so an unlimited
-model token cannot be mistaken for account balance.
+and refresh tokens from Cherry Studio's `Data/cherrystudio.sqlite`, calls `/api/v1/oauth/balance`, and
+converts the returned account `quota` with CherryIN's `500000` quota unit. An access token that is
+expired or within sixty seconds of expiry is refreshed through `/oauth2/token`; a balance request
+that returns `401` forces one refresh and retry. Refreshed tokens are conditionally written back only
+when the stored refresh token still identifies the same session, so a concurrent Cherry Studio
+logout or login is not overwritten. If the refresh token is absent or rejected, Vesper asks the user
+to sign in again in Cherry Studio. It never uses pi's model token, `/api/usage/token/`, or the billing
+subscription endpoints, so an unlimited model token cannot be mistaken for account balance.
 The resulting balance is displayed as US dollars with an explicit `USD` label.
 
 ## Adding a provider

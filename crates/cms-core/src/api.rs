@@ -6,7 +6,7 @@ use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
-pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 pub enum ApiError {
@@ -19,10 +19,6 @@ pub enum ApiError {
         status: reqwest::StatusCode,
     },
     Protocol(String),
-    InvalidMemoBody {
-        key: String,
-        source: std::string::FromUtf8Error,
-    },
 }
 
 impl Display for ApiError {
@@ -40,9 +36,6 @@ impl Display for ApiError {
             Self::Protocol(message) => {
                 write!(formatter, "consumer API returned invalid data: {message}")
             }
-            Self::InvalidMemoBody { key, source } => {
-                write!(formatter, "R2 memo {key} is not UTF-8: {source}")
-            }
         }
     }
 }
@@ -53,7 +46,6 @@ impl Error for ApiError {
             Self::Credentials(source) => Some(source),
             Self::Store(source) => Some(source),
             Self::Request(source) => Some(source),
-            Self::InvalidMemoBody { source, .. } => Some(source),
             Self::MissingCredentials(..) | Self::Status { .. } | Self::Protocol(..) => None,
         }
     }

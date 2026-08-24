@@ -18,7 +18,12 @@ export interface MemoView extends Memo {
   metadataComplete: boolean;
 }
 
-export type MemoUpdateInput =
+export interface MemoTagCount {
+  name: string;
+  count: number;
+}
+
+export type MemoUpdate =
   | { content: string; visibility: "public" | "private" }
   | { tags: string[] }
   | { pinned: boolean }
@@ -44,12 +49,36 @@ export interface PhotoItem {
   geo: { lat: number; lng: number } | null;
 }
 
+export interface PhotoUpload {
+  title: string;
+  description: string | null;
+  tags: string[];
+  date: string | null;
+  geo: { lat: number; lng: number } | null;
+  thumbHash: string;
+  width: number;
+  height: number;
+}
+
+export interface PhotoUpdate {
+  title: string;
+  description: string;
+  tags: string[];
+}
+
 export type ChannelView =
-  | { channel: "memos"; connected: boolean; memos: MemoView[]; nextCursor: string | null }
+  | {
+      channel: "memos";
+      connected: boolean;
+      memos: MemoView[];
+      tags: MemoTagCount[];
+      nextCursor: string | null;
+    }
   | {
       channel: "moment";
       connected: boolean;
       photos: PhotoItem[];
+      tags: string[];
       total: number;
       nextCursor: string | null;
     }
@@ -81,10 +110,15 @@ export interface KnowledgeDocument {
   toc: TocEntry[];
 }
 
-export interface CompiledKnowledge {
-  html: string;
-  toc: TocEntry[];
-  excerpt: string;
+export interface KnowledgeDraft {
+  title: string;
+  summary: string;
+  body: string;
+  tags: string[];
+}
+
+export interface KnowledgeUpdate extends KnowledgeDraft {
+  expectedHash: string;
 }
 
 export type CommandResponse<T> =
@@ -259,17 +293,17 @@ export interface TodoList {
   }>;
 }
 
-export interface UgosConfigurationInput {
+export interface UgosConfiguration {
   username: string;
   password: string;
 }
 
-export interface R2ConfigurationInput {
+export interface R2Configuration {
   accessKeyId: string;
   secretAccessKey: string;
 }
 
-export interface ApiConfigurationInput {
+export interface ApiConfiguration {
   service: "memos" | "moment" | "knowledge";
   apiKey: string;
 }
@@ -277,11 +311,13 @@ export interface ApiConfigurationInput {
 export type StoredConfiguration<T> = { status: "missing" } | { status: "ready"; data: T };
 
 export interface ConfigurationStatus {
-  ugos: StoredConfiguration<UgosConfigurationInput>;
-  r2: StoredConfiguration<R2ConfigurationInput>;
+  ugos: StoredConfiguration<UgosConfiguration>;
+  r2: StoredConfiguration<R2Configuration>;
   api: {
     memos: StoredConfiguration<string>;
     moment: StoredConfiguration<string>;
     knowledge: StoredConfiguration<string>;
   };
+  appLock: StoredConfiguration<string>;
+  appLockDev: boolean;
 }

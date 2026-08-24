@@ -19,6 +19,7 @@
     "@lucide/svelte": "1.33.0",
     "@my-workspace/ui": "workspace:*",
     "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-notification": "2.3.3",
     "@tauri-apps/plugin-opener": "2.5.4",
     "thumbhash": "0.1.1"
   },

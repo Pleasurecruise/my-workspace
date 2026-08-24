@@ -37,27 +37,10 @@
 		return thumbHashToDataURL(decoded);
 	}
 
-	function mimeType(key: string): string | null {
-		const separator = key.lastIndexOf(".");
-		if (separator === -1) return null;
-		const extension = key.slice(separator + 1).toLowerCase();
-		if (extension === "png") return "image/png";
-		if (extension === "webp") return "image/webp";
-		if (extension === "avif") return "image/avif";
-		if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
-		return null;
-	}
-
-	function blobUrl(key: string, bytes: number[]): string | null {
-		const contentType = mimeType(key);
-		if (contentType === null) return null;
-		return URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: contentType }));
-	}
-
 	async function loadOriginal() {
 		if (originalRequested || !visible) return;
 		originalRequested = true;
-		const response = await invoke<CommandResponse<number[]>>("read_consumer_asset", {
+		const response = await invoke<CommandResponse<number[]>>("read_asset", {
 			key: objectKey,
 		});
 		if (!active) return;
@@ -65,8 +48,33 @@
 			originalFailed = true;
 			return;
 		}
-		originalSource = blobUrl(objectKey, response.data);
-		originalFailed = originalSource === null;
+		const separator = objectKey.lastIndexOf(".");
+		if (separator === -1) {
+			originalFailed = true;
+			return;
+		}
+		let contentType: string;
+		switch (objectKey.slice(separator + 1).toLowerCase()) {
+			case "png":
+				contentType = "image/png";
+				break;
+			case "webp":
+				contentType = "image/webp";
+				break;
+			case "avif":
+				contentType = "image/avif";
+				break;
+			case "jpg":
+			case "jpeg":
+				contentType = "image/jpeg";
+				break;
+			default:
+				originalFailed = true;
+				return;
+		}
+		originalSource = URL.createObjectURL(
+			new Blob([new Uint8Array(response.data)], { type: contentType }),
+		);
 	}
 
 	onMount(() => {

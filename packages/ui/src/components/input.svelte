@@ -9,7 +9,7 @@
 	const base = cn(
 		"flex h-9 w-full rounded-md border bg-background px-3 py-1",
 		"font-sans text-sm text-foreground placeholder:text-muted-foreground",
-		"outline-none transition-colors duration-100",
+		"outline-none",
 		"focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
 		"disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
 	);

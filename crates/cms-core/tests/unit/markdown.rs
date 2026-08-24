@@ -1,4 +1,4 @@
-use super::{compile_knowledge, render, render_memo};
+use super::{compile_knowledge, knowledge_body, render, render_memo};
 
 #[test]
 fn renders_common_extensions() {
@@ -11,6 +11,19 @@ fn renders_common_extensions() {
 #[test]
 fn renders_memo_soft_breaks_as_line_breaks() {
     assert_eq!(render_memo("first\nsecond"), "<p>first<br />\nsecond</p>\n");
+}
+
+#[test]
+fn autolinks_bare_memo_urls_without_touching_code_or_existing_links() {
+    let html = render_memo(
+        "Open https://memos.you-find.me/memo/20260817T054032Z-73496a1d.\n\n`https://example.com/code`\n\n[site](https://example.com)",
+    );
+
+    assert!(html.contains(
+        "<a href=\"https://memos.you-find.me/memo/20260817T054032Z-73496a1d\">https://memos.you-find.me/memo/20260817T054032Z-73496a1d</a>."
+    ));
+    assert!(html.contains("<code>https://example.com/code</code>"));
+    assert!(html.contains("<a href=\"https://example.com\">site</a>"));
 }
 
 #[test]
@@ -64,4 +77,21 @@ fn de_duplicates_knowledge_heading_ids() {
     assert_eq!(output.toc[1].id, "repeat-2");
     assert_eq!(output.toc[2].id, "repeat-3");
     assert!(output.html.contains("<h2 id=\"repeat-2\">Repeat</h2>"));
+}
+
+#[test]
+fn removes_front_matter_from_knowledge_content() {
+    let source = "---\ntitle: Daily\ntags:\n  - newspaper\n  - daily\n---\n## Today\n\nBriefing";
+    let output = compile_knowledge(source);
+
+    assert_eq!(knowledge_body(source), "## Today\n\nBriefing");
+    assert!(!output.html.contains("title: Daily"));
+    assert!(output.html.contains("<h2 id=\"today\">Today</h2>"));
+    assert_eq!(output.excerpt, "Today Briefing");
+}
+
+#[test]
+fn keeps_knowledge_without_complete_front_matter_unchanged() {
+    assert_eq!(knowledge_body("---\nunfinished"), "---\nunfinished");
+    assert_eq!(knowledge_body("# Article"), "# Article");
 }

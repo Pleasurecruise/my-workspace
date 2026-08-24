@@ -1,4 +1,7 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
+
 const STORAGE_KEY = "app-theme";
+const appWindow = getCurrentWindow();
 
 export type AppTheme = "light" | "dark" | "auto";
 
@@ -21,8 +24,9 @@ export function initTheme(): boolean {
 
 export function applyTheme(dark: boolean): void {
   const root = document.documentElement;
-  root.classList.remove("light", "dark");
-  root.classList.add(dark ? "dark" : "light");
+  root.classList.toggle("dark", dark);
+  root.classList.toggle("light", !dark);
   root.style.colorScheme = dark ? "dark" : "light";
   localStorage.setItem(STORAGE_KEY, dark ? "dark" : "light");
+  void appWindow.setTheme(dark ? "dark" : "light");
 }
