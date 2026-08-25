@@ -2,9 +2,8 @@ use crate::UgosError;
 use crate::types::ApiResponse;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use rsa::pkcs1::DecodeRsaPublicKey;
-use rsa::pkcs8::DecodePublicKey;
-use rsa::{Pkcs1v15Encrypt, RsaPublicKey};
+use openssl::pkey::Public;
+use openssl::rsa::{Padding, Rsa};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
@@ -52,29 +51,7 @@ pub(crate) async fn login(
         .map_err(|error| UgosError::Encryption(format!("invalid RSA token encoding: {error}")))?;
     let pem = String::from_utf8(pem)
         .map_err(|error| UgosError::Encryption(format!("RSA public key is not UTF-8: {error}")))?;
-    let public_key = match RsaPublicKey::from_pkcs1_pem(&pem) {
-        Ok(public_key) => public_key,
-        Err(pkcs1_error) => match RsaPublicKey::from_public_key_pem(&pem) {
-            Ok(public_key) => public_key,
-            Err(spki_error) => {
-                let relabeled = pem
-                    .replace("BEGIN RSA PUBLIC KEY", "BEGIN PUBLIC KEY")
-                    .replace("END RSA PUBLIC KEY", "END PUBLIC KEY");
-                RsaPublicKey::from_public_key_pem(&relabeled).map_err(|relabeled_error| {
-                    UgosError::Encryption(format!(
-                        "could not parse RSA public key: {pkcs1_error}; {spki_error}; {relabeled_error}"
-                    ))
-                })?
-            }
-        },
-    };
-    let encrypted = public_key
-        .encrypt(
-            &mut rsa::rand_core::OsRng,
-            Pkcs1v15Encrypt,
-            password.as_bytes(),
-        )
-        .map_err(|error| UgosError::Encryption(format!("could not encrypt password: {error}")))?;
+    let encrypted = encrypt_password(&pem, password)?;
     let response = http
         .post(format!("{base_url}/v1/verify/login"))
         .json(&LoginRequest {
@@ -98,6 +75,37 @@ pub(crate) async fn login(
         .await?;
 
     Ok(ApiResponse::<LoginData>::decode(&response, "verify/login")?.token)
+}
+
+fn parse_public_key(pem: &str) -> Result<Rsa<Public>, UgosError> {
+    let pkcs1_error = match Rsa::public_key_from_pem_pkcs1(pem.as_bytes()) {
+        Ok(public_key) => return Ok(public_key),
+        Err(error) => error,
+    };
+    let spki_error = match Rsa::public_key_from_pem(pem.as_bytes()) {
+        Ok(public_key) => return Ok(public_key),
+        Err(error) => error,
+    };
+    let relabeled = pem
+        .replace("BEGIN RSA PUBLIC KEY", "BEGIN PUBLIC KEY")
+        .replace("END RSA PUBLIC KEY", "END PUBLIC KEY");
+    Rsa::public_key_from_pem(relabeled.as_bytes()).map_err(|relabeled_error| {
+        UgosError::Encryption(format!(
+            "could not parse RSA public key: {pkcs1_error}; {spki_error}; {relabeled_error}"
+        ))
+    })
+}
+
+fn encrypt_password(pem: &str, password: &str) -> Result<Vec<u8>, UgosError> {
+    let public_key = parse_public_key(pem)?;
+    let encrypted_size = usize::try_from(public_key.size())
+        .map_err(|error| UgosError::Encryption(format!("invalid RSA key size: {error}")))?;
+    let mut encrypted = vec![0; encrypted_size];
+    let encrypted_len = public_key
+        .public_encrypt(password.as_bytes(), &mut encrypted, Padding::PKCS1)
+        .map_err(|error| UgosError::Encryption(format!("could not encrypt password: {error}")))?;
+    encrypted.truncate(encrypted_len);
+    Ok(encrypted)
 }
 
 #[cfg(test)]

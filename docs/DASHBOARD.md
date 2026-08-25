@@ -28,6 +28,20 @@ selected Todo date, even when a source already has a polling request in flight. 
 response for each source may update its card. UGOS telemetry polls every two seconds, subscription
 data every sixty seconds, and weather every fifteen minutes while Dashboard is selected.
 
+## ntfy notifications
+
+Notification delivery is independent from Dashboard polling:
+
+```text
+Upstream producers ──> ntfy.you-find.me/mail-summary ── authenticated SSE ──> Vesper Inbox
+```
+
+- Vesper does not connect to or configure upstream producers.
+- The transport is the self-hosted `https://ntfy.you-find.me` service. The current fixed topic is
+  `mail-summary`; its ACL must grant the configured token read permission.
+- Vesper subscribes in Rust, reconnects with ntfy's `since=<last-id>` behavior, and keeps the newest
+  200 messages locally for Inbox rendering.
+
 The calendar Todo list occupies the narrower lower-left area. One consolidated panel occupies the wider lower-right area.
 Its first row contains Codex and OpenCode Go quota cells; its second row contains DeepSeek and Cherry
 balance cells. Codex keeps its default windows and GPT-5.3 Codex Spark in one cell with three progress

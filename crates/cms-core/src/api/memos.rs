@@ -95,6 +95,41 @@ struct TagResponse {
     tags: Vec<TagCount>,
 }
 
+#[derive(Deserialize)]
+struct XPostResponse {
+    tweet: XPost,
+}
+
+#[derive(Deserialize)]
+struct XPost {
+    text: String,
+    url: String,
+    author: XAuthor,
+    #[serde(default)]
+    media: XMedia,
+}
+
+#[derive(Deserialize)]
+struct XAuthor {
+    name: String,
+    screen_name: String,
+}
+
+#[derive(Default, Deserialize)]
+struct XMedia {
+    #[serde(default)]
+    photos: Vec<XPhoto>,
+}
+
+#[derive(Deserialize)]
+struct XPhoto {
+    #[serde(rename = "type")]
+    kind: String,
+    url: String,
+    #[serde(rename = "altText", default)]
+    alt_text: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TagCount {
     pub name: String,
@@ -243,6 +278,14 @@ pub async fn tags() -> Result<Vec<TagCount>, ApiError> {
 }
 
 pub async fn create(content: &str, visibility: Visibility) -> Result<MemoView, ApiError> {
+    create_with_favorite(content, visibility, false).await
+}
+
+async fn create_with_favorite(
+    content: &str,
+    visibility: Visibility,
+    favorite: bool,
+) -> Result<MemoView, ApiError> {
     let client = Client::load()?;
     let response = client
         .http
@@ -252,7 +295,7 @@ pub async fn create(content: &str, visibility: Visibility) -> Result<MemoView, A
             "content": content,
             "tags": [],
             "visibility": visibility,
-            "favorite": false
+            "favorite": favorite
         }))
         .send()
         .await?;
@@ -265,6 +308,29 @@ pub async fn create(content: &str, visibility: Visibility) -> Result<MemoView, A
     }
     let result: MemoResponse = response.json().await?;
     Ok(result.memo.into_view())
+}
+
+pub async fn import_x(source_url: &str, visibility: Visibility) -> Result<MemoView, ApiError> {
+    let post_id = parse_x_post_id(source_url)
+        .ok_or_else(|| ApiError::Protocol("a valid X post URL is required".to_owned()))?;
+    let http = reqwest::Client::builder()
+        .timeout(super::REQUEST_TIMEOUT)
+        .user_agent("vesper/1.0")
+        .build()?;
+    let response = http
+        .get(format!("https://api.fxtwitter.com/status/{post_id}"))
+        .send()
+        .await?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ApiError::Status {
+            operation: "import X post",
+            status,
+        });
+    }
+    let post: XPostResponse = response.json().await?;
+    let content = format_x_post(post.tweet)?;
+    create_with_favorite(&content, visibility, true).await
 }
 
 pub async fn update(id: &str, input: &Update) -> Result<MemoView, ApiError> {
@@ -348,6 +414,117 @@ fn is_tag_character(character: char) -> bool {
     character.is_alphanumeric() || matches!(character, '_' | '-' | '/')
 }
 
+fn parse_x_post_id(source: &str) -> Option<String> {
+    let url = reqwest::Url::parse(source).ok()?;
+    if url.scheme() != "https" {
+        return None;
+    }
+    let host = url
+        .host_str()?
+        .strip_prefix("www.")
+        .unwrap_or(url.host_str()?);
+    if !matches!(host, "x.com" | "twitter.com") {
+        return None;
+    }
+    let segments: Vec<_> = url.path_segments()?.collect();
+    if segments.len() != 3 || segments[1] != "status" {
+        return None;
+    }
+    let id = segments[2];
+    (id.len() >= 2 && id.len() <= 20 && id.chars().all(|character| character.is_ascii_digit()))
+        .then(|| id.to_owned())
+}
+
+fn format_x_post(post: XPost) -> Result<String, ApiError> {
+    let post_url = reqwest::Url::parse(&post.url)
+        .map_err(|_| ApiError::Protocol("X returned an unsupported post response".to_owned()))?;
+    if post.text.trim().is_empty()
+        || post.author.name.trim().is_empty()
+        || post.author.screen_name.trim().is_empty()
+        || !post
+            .author
+            .screen_name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
+        || parse_x_post_id(&post.url).is_none()
+    {
+        return Err(ApiError::Protocol(
+            "X returned an unsupported post response".to_owned(),
+        ));
+    }
+    let mut content = escape_markdown_text(post.text.trim());
+    let photos: Result<Vec<_>, _> = post
+        .media
+        .photos
+        .into_iter()
+        .filter(|photo| photo.kind == "photo")
+        .map(|photo| {
+            let url = reqwest::Url::parse(&photo.url).map_err(|_| {
+                ApiError::Protocol("X returned an unsupported photo URL".to_owned())
+            })?;
+            if url.scheme() != "https" || url.host_str() != Some("pbs.twimg.com") {
+                return Err(ApiError::Protocol(
+                    "X returned an unsupported photo URL".to_owned(),
+                ));
+            }
+            let alt = escape_markdown_text(
+                &photo
+                    .alt_text
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
+            Ok(format!("![{alt}](<{}>)", url))
+        })
+        .collect();
+    let photos = photos?;
+    if !photos.is_empty() {
+        content.push_str("\n\n");
+        content.push_str(&photos.join("\n\n"));
+    }
+    content.push_str(&format!(
+        "\n\n— {} (@{})\n{}",
+        escape_markdown_text(post.author.name.trim()),
+        post.author.screen_name.trim(),
+        post_url
+    ));
+    Ok(content)
+}
+
+fn escape_markdown_text(value: &str) -> String {
+    value
+        .chars()
+        .flat_map(|character| {
+            if matches!(
+                character,
+                '\\' | '`'
+                    | '*'
+                    | '_'
+                    | '{'
+                    | '}'
+                    | '['
+                    | ']'
+                    | '<'
+                    | '>'
+                    | '('
+                    | ')'
+                    | '#'
+                    | '+'
+                    | '-'
+                    | '.'
+                    | '!'
+                    | '|'
+            ) {
+                Some('\\')
+            } else {
+                None
+            }
+            .into_iter()
+            .chain(std::iter::once(character))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,5 +553,50 @@ mod tests {
 
         assert_eq!(view.memo.content, "Complete API body");
         assert!(view.html.contains("Complete API body"));
+    }
+
+    #[test]
+    fn accepts_x_and_twitter_status_urls() {
+        assert_eq!(
+            parse_x_post_id("https://x.com/Cloudflare/status/2084626665670398004"),
+            Some("2084626665670398004".to_owned())
+        );
+        assert_eq!(
+            parse_x_post_id("https://www.twitter.com/user/status/12345?ref=home"),
+            Some("12345".to_owned())
+        );
+        assert_eq!(
+            parse_x_post_id("https://example.com/user/status/12345"),
+            None
+        );
+        assert_eq!(parse_x_post_id("https://x.com/Cloudflare"), None);
+    }
+
+    #[test]
+    fn formats_x_posts_with_safe_photo_markdown() {
+        let content = format_x_post(XPost {
+            text: "A useful post <script>alert(1)</script> [click](javascript:alert(1))".to_owned(),
+            url: "https://x.com/Cloudflare/status/2084626665670398004".to_owned(),
+            author: XAuthor {
+                name: "Cloudflare *team*".to_owned(),
+                screen_name: "Cloudflare".to_owned(),
+            },
+            media: XMedia {
+                photos: vec![XPhoto {
+                    kind: "photo".to_owned(),
+                    url: "https://pbs.twimg.com/media/example.jpg".to_owned(),
+                    alt_text: "An [architecture] diagram".to_owned(),
+                }],
+            },
+        })
+        .unwrap();
+
+        assert!(content.contains("![An \\[architecture\\] diagram]"));
+        assert!(content.contains("\\<script\\>alert\\(1\\)\\</script\\>"));
+        assert!(content.contains("\\[click\\]\\(javascript:alert\\(1\\)\\)"));
+        assert!(content.contains("— Cloudflare \\*team\\* (@Cloudflare)"));
+        let html = crate::markdown::render_memo(&content);
+        assert!(!html.contains("<script>"));
+        assert!(!html.contains("href=\"javascript:"));
     }
 }

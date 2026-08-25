@@ -6,6 +6,8 @@ use tauri::{Emitter, Manager};
 mod configuration;
 mod dashboard;
 mod github;
+mod notifications;
+mod updater;
 mod weather;
 
 #[derive(Clone, serde::Serialize)]
@@ -392,6 +394,27 @@ async fn create_memo(
 }
 
 #[tauri::command]
+async fn import_x_memo(
+    url: String,
+    visibility: cms_core::api::memos::Visibility,
+    app: tauri::AppHandle,
+) -> CommandResponse<cms_core::api::memos::MemoView> {
+    match cms_core::api::memos::import_x(&url, visibility).await {
+        Ok(data) => {
+            app.state::<CmsState>()
+                .views
+                .lock()
+                .await
+                .clear(cms_core::consumer::Channel::Memos);
+            CommandResponse::Ready { data }
+        }
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
 async fn update_memo(
     id: String,
     input: cms_core::api::memos::Update,
@@ -751,11 +774,24 @@ pub fn run() {
 
     let result = tauri::Builder::default()
         .manage(CmsState::default())
+        .manage(updater::UpdateState::default())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let todo_path = app.path().app_data_dir()?.join("todos.json");
             app.manage(cms_core::todo::Store::new(todo_path));
+            let notifications_path = app.path().app_data_dir()?.join("notifications.json");
+            app.manage(
+                notifications::NotificationState::new(notifications_path)
+                    .map_err(std::io::Error::other)?,
+            );
+            let notifications_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = notifications::restart(notifications_app).await {
+                    tracing::warn!(%error, "could not start ntfy notification subscription");
+                }
+            });
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -796,6 +832,7 @@ pub fn run() {
             read_moment_tags,
             read_asset,
             create_memo,
+            import_x_memo,
             update_memo,
             delete_memo,
             create_photo,
@@ -803,6 +840,8 @@ pub fn run() {
             delete_photo,
             create_knowledge,
             update_knowledge,
+            updater::check_for_update,
+            updater::install_update,
             dashboard::read_task_manager,
             dashboard::read_codex_usage,
             dashboard::read_opencode_usage,
@@ -818,6 +857,8 @@ pub fn run() {
             configuration::save_ugos_configuration,
             configuration::save_r2_configuration,
             configuration::save_api_configuration,
+            configuration::save_ntfy_configuration,
+            notifications::read_notifications,
             configuration::save_app_lock,
             configuration::remove_app_lock,
             configuration::unlock_app

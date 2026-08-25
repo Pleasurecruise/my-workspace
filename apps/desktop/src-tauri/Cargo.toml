@@ -1,6 +1,6 @@
 [package]
 name = "vesper"
-version = "0.1.0"
+version = "0.1.1"
 description = "Personal Assistant named Vesper lived in this desktop application"
 authors = ["you"]
 edition.workspace = true
@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 cms-core.workspace = true
+futures-util.workspace = true
 my-workspace-logger.workspace = true
 reqwest.workspace = true
 useage.workspace = true
@@ -27,6 +28,7 @@ serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"
 tokio.workspace = true
 tracing.workspace = true
 ugos.workspace = true

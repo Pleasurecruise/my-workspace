@@ -7,6 +7,8 @@ pub(crate) struct ConfigurationStatus {
     ugos: StoredConfiguration<UgosConfiguration>,
     r2: StoredConfiguration<R2Configuration>,
     api: ApiConfiguration,
+    ntfy: StoredConfiguration<vesper_credentials::NtfyConfig>,
+    ntfy_dev: bool,
     app_lock: StoredConfiguration<String>,
     app_lock_dev: bool,
 }
@@ -81,6 +83,18 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
         Ok(configuration) => configuration,
         Err(message) => return CommandResponse::Failed { message },
     };
+    let (ntfy, ntfy_dev) = match vesper_credentials::ntfy() {
+        Ok(vesper_credentials::Stored::Ready(configuration)) => {
+            let development = configuration.development;
+            (StoredConfiguration::Ready(configuration), development)
+        }
+        Ok(vesper_credentials::Stored::Missing) => (StoredConfiguration::Missing, false),
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
     let (app_lock, app_lock_dev) = match vesper_credentials::app_lock() {
         Ok(vesper_credentials::Stored::Ready(app_lock)) => (
             StoredConfiguration::Ready(app_lock.password),
@@ -102,8 +116,28 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
                 moment,
                 knowledge,
             },
+            ntfy,
+            ntfy_dev,
             app_lock,
             app_lock_dev,
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn save_ntfy_configuration(
+    configuration: vesper_credentials::NtfyConfig,
+    app: tauri::AppHandle,
+) -> CommandResponse<String> {
+    match vesper_credentials::save_ntfy(configuration) {
+        Ok(()) => match crate::notifications::restart(app).await {
+            Ok(()) => CommandResponse::Ready {
+                data: "ntfy-notifications".to_owned(),
+            },
+            Err(message) => CommandResponse::Failed { message },
+        },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
         },
     }
 }

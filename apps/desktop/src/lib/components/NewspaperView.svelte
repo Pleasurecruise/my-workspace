@@ -1,54 +1,18 @@
 <script lang="ts">
 	import type { KnowledgeDocument } from "../consumer";
+	import { latestNewspaperEditions } from "../newspaper";
 
 	let { documents, loading }: { documents: KnowledgeDocument[]; loading: boolean } = $props();
 
-	type EditionKind = "programmer" | "personal";
+	type EditionKind = "developer" | "personal";
 	const editionLabels: Record<EditionKind, string> = {
-		programmer: "程序员日报",
-		personal: "个人日报",
+		developer: "程序员日报",
+		personal: "每日日报",
 	};
-	const programmerTags = new Set([
-		"programmer",
-		"developer",
-		"programmer-daily",
-		"developer-daily",
-		"newspaper/programmer",
-		"newspaper/developer",
-		"newspaper/programmer-daily",
-		"程序员日报",
-	]);
-	const personalTags = new Set([
-		"personal",
-		"personal-daily",
-		"newspaper/personal",
-		"newspaper/personal-daily",
-		"个人日报",
-	]);
-	const explicitEditionTags = new Set([...programmerTags, ...personalTags].filter((tag) => tag !== "programmer" && tag !== "developer" && tag !== "personal"));
 
-	let selectedEdition = $state<EditionKind>("programmer");
+	let selectedEdition = $state<EditionKind>("developer");
 	let turnDirection = $state<"left" | "right">("right");
-	const issues = $derived.by(() => {
-		const editions: Record<EditionKind, KnowledgeDocument | null> = {
-			programmer: null,
-			personal: null,
-		};
-		const ordered = [...documents].sort(
-			(left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt),
-		);
-		for (const document of ordered) {
-			const tags = new Set(document.tags.map((tag) => tag.trim().toLowerCase()));
-			const isEdition =
-				tags.has("newspaper/daily") ||
-				(tags.has("newspaper") && tags.has("daily")) ||
-				[...tags].some((tag) => explicitEditionTags.has(tag));
-			if (!isEdition) continue;
-			const kind: EditionKind = [...tags].some((tag) => personalTags.has(tag)) ? "personal" : "programmer";
-			if (editions[kind] === null) editions[kind] = document;
-		}
-		return editions;
-	});
+	const issues = $derived(latestNewspaperEditions(documents));
 	const issue = $derived(issues[selectedEdition]);
 </script>
 
@@ -56,61 +20,64 @@
 	<button
 		class="page-arrow previous"
 		type="button"
-		disabled={selectedEdition === "programmer"}
+		disabled={selectedEdition === "developer"}
 		aria-label="翻到程序员日报"
 		title="程序员日报"
 		onclick={() => {
 			turnDirection = "left";
-			selectedEdition = "programmer";
+			selectedEdition = "developer";
 		}}
 	><span aria-hidden="true"></span></button>
 	<button
 		class="page-arrow next"
 		type="button"
 		disabled={selectedEdition === "personal"}
-		aria-label="翻到个人日报"
-		title="个人日报"
+		aria-label="翻到每日日报"
+		title="每日日报"
 		onclick={() => {
 			turnDirection = "right";
 			selectedEdition = "personal";
 		}}
 	><span aria-hidden="true"></span></button>
 
-	{#key selectedEdition}
-		{#if issue === null}
-			<section class="empty edition-page" class:turn-right={turnDirection === "right"} class:turn-left={turnDirection === "left"} aria-label={editionLabels[selectedEdition]}>
-				<p>{editionLabels[selectedEdition]}</p>
-				<h1>{editionLabels[selectedEdition]}尚未发布</h1>
-				<span>{loading ? "正在检查 my-knowledge…" : "发布后，最新一期会出现在这里。"}</span>
-			</section>
-		{:else}
-			<section class="paper edition-page" class:turn-right={turnDirection === "right"} class:turn-left={turnDirection === "left"} lang="zh-CN" aria-label={editionLabels[selectedEdition]}>
-				<div class="edition-line">
-					<strong>{selectedEdition === "programmer" ? "Vesper Developer Daily" : "Vesper Personal Daily"}</strong>
-					<span>{editionLabels[selectedEdition]}</span>
-					<time datetime={issue.createdAt}>{new Intl.DateTimeFormat("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date(issue.createdAt))}</time>
-				</div>
-				<div class="rule"><span></span><i></i><span></span></div>
-				<header class="cover">
-					<p>Daily intelligence · No. {new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(issue.createdAt)).replaceAll("/", "")}</p>
-					<h1>{issue.title}</h1>
-					<p class="deck">{issue.summary}</p>
-				</header>
-				<article class="copy">{@html issue.html}</article>
-				<footer>
-					<span>Updated {new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit" }).format(new Date(issue.updatedAt))}</span>
-					<span>Vesper · my-knowledge</span>
-				</footer>
-			</section>
-		{/if}
-	{/key}
+	<div class="page-stage">
+		{#key selectedEdition}
+			{#if issue === null}
+				<section class="empty edition-page" class:turn-right={turnDirection === "right"} class:turn-left={turnDirection === "left"} aria-label={editionLabels[selectedEdition]}>
+					<p>{editionLabels[selectedEdition]}</p>
+					<h1>{editionLabels[selectedEdition]}尚未发布</h1>
+					<span>{loading ? "正在检查 my-knowledge…" : "发布后，最新一期会出现在这里。"}</span>
+				</section>
+			{:else}
+				<section class="paper edition-page" class:turn-right={turnDirection === "right"} class:turn-left={turnDirection === "left"} lang="zh-CN" aria-label={editionLabels[selectedEdition]}>
+					<div class="edition-line">
+						<strong>{selectedEdition === "developer" ? "Vesper Developer Daily" : "Vesper Personal Daily"}</strong>
+						<span>{editionLabels[selectedEdition]}</span>
+						<time datetime={issue.createdAt}>{new Intl.DateTimeFormat("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date(issue.createdAt))}</time>
+					</div>
+					<div class="rule"><span></span><i></i><span></span></div>
+					<header class="cover">
+						<p>Daily intelligence · No. {new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(issue.createdAt)).replaceAll("/", "")}</p>
+						<h1>{issue.title}</h1>
+						<p class="deck">{issue.summary}</p>
+					</header>
+					<article class="copy">{@html issue.html}</article>
+					<footer>
+						<span>Updated {new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit" }).format(new Date(issue.updatedAt))}</span>
+						<span>Vesper · my-knowledge</span>
+					</footer>
+				</section>
+			{/if}
+		{/key}
+	</div>
 </div>
 
 <style>
-	.newspaper-view { position: relative; min-height: calc(100vh - 7rem); perspective: 1400px; }
-	.page-arrow { position: absolute; top: calc(50vh - 4rem); z-index: 5; display: grid; width: 2.25rem; height: 2.25rem; place-items: center; padding: 0; border: 0; border-radius: var(--radius-full); background: transparent; color: var(--color-muted-foreground); cursor: pointer; opacity: 0.55; }
-	.page-arrow.previous { left: 0.65rem; }
-	.page-arrow.next { right: 0.65rem; }
+	.newspaper-view { min-height: calc(100vh - 7rem); }
+	.page-stage { perspective: 1400px; }
+	.page-arrow { position: fixed; top: 50%; z-index: 5; display: grid; width: 2.25rem; height: 2.25rem; place-items: center; padding: 0; translate: 0 -50%; border: 0; border-radius: var(--radius-full); background: transparent; color: var(--color-muted-foreground); cursor: pointer; opacity: 0.55; }
+	.page-arrow.previous { left: calc(var(--sidebar-width, 15rem) + max(1rem, (100vw - var(--sidebar-width, 15rem) - 66rem) / 2) + 1.65rem); }
+	.page-arrow.next { right: calc(max(1rem, (100vw - var(--sidebar-width, 15rem) - 66rem) / 2) + 1.65rem); }
 	.page-arrow span { width: 0.5rem; height: 0.5rem; border-top: 1.5px solid currentColor; border-right: 1.5px solid currentColor; }
 	.page-arrow.previous span { rotate: -135deg; }
 	.page-arrow.next span { rotate: 45deg; }
@@ -165,8 +132,10 @@
 		.edition-line span { display: none; }
 		.cover h1 { font-size: 2.25rem; }
 		.paper footer { align-items: flex-start; flex-direction: column; }
-		.page-arrow { top: calc(50vh - 3.25rem); width: 2rem; height: 2rem; background: color-mix(in srgb, var(--color-background) 82%, transparent); opacity: 0.72; backdrop-filter: blur(8px); }
-		.page-arrow.previous { left: 0.1rem; }
-		.page-arrow.next { right: 0.1rem; }
+		.page-arrow { width: 2rem; height: 2rem; background: color-mix(in srgb, var(--color-background) 82%, transparent); opacity: 0.72; backdrop-filter: blur(8px); }
+	}
+	@media (max-width: 767px) {
+		.page-arrow.previous { left: 2.1rem; }
+		.page-arrow.next { right: 2.1rem; }
 	}
 </style>

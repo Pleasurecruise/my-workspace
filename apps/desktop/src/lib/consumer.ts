@@ -125,6 +125,16 @@ export type CommandResponse<T> =
   | { status: "ready"; data: T }
   | { status: "failed"; message: string };
 
+export interface UpdateInfo {
+  currentVersion: string;
+  version: string;
+  notes: string | null;
+}
+
+export type UpdateProgress =
+  | { status: "downloading"; downloaded: number; total: number | null }
+  | { status: "downloaded" };
+
 export interface InitialViews {
   memos: CommandResponse<ChannelView>;
   moment: CommandResponse<ChannelView>;
@@ -308,6 +318,21 @@ export interface ApiConfiguration {
   apiKey: string;
 }
 
+export interface NtfyConfig {
+  token: string;
+  development: boolean;
+}
+
+export interface NtfyNotification {
+  id: string;
+  topic: string;
+  source: string;
+  title: string | null;
+  message: string;
+  timestamp: number;
+  tags: string[];
+}
+
 export type StoredConfiguration<T> = { status: "missing" } | { status: "ready"; data: T };
 
 export interface ConfigurationStatus {
@@ -318,6 +343,8 @@ export interface ConfigurationStatus {
     moment: StoredConfiguration<string>;
     knowledge: StoredConfiguration<string>;
   };
+  ntfy: StoredConfiguration<NtfyConfig>;
+  ntfyDev: boolean;
   appLock: StoredConfiguration<string>;
   appLockDev: boolean;
 }

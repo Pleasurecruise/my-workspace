@@ -36,13 +36,25 @@ same individual checks for local diagnosis.
 
 The `Release` GitHub Actions workflow is manual-only. It has only a `workflow_dispatch` trigger and
 does not run for pushes, tags, pull requests, schedules, or GitHub Release events. Before starting it
-from the Actions page, update the application version in `apps/desktop/src-tauri/tauri.conf.json` and
-the desktop crate version in `apps/desktop/src-tauri/Cargo.toml`.
+from the Actions page, update and commit the same application version in
+`apps/desktop/src-tauri/tauri.conf.json` and `apps/desktop/src-tauri/Cargo.toml`. The release action
+reads the committed Tauri application version and replaces `__VERSION__` in the release tag and
+name; the manual workflow has no duplicate version input.
 
 A successful run creates a draft `v<version>` GitHub Release and uploads Tauri bundles for macOS
 Apple Silicon, macOS Intel, Linux, and Windows. After every matrix job succeeds, verify that all
 expected assets are present and publish the draft manually. Releasing the same version again targets
 the same tag, so advance the version before every new release.
+
+The workflow also signs updater bundles and uploads their `.sig` files plus `latest.json`. Configure
+the repository Actions secrets `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the matching public key is committed in
+`apps/desktop/src-tauri/tauri.conf.json`. The workflow merges
+`apps/desktop/src-tauri/tauri.release.conf.json` to enable signed updater artifacts; ordinary local
+desktop builds leave them disabled and do not require the private key. Never rotate or discard this
+key pair while installations signed by it remain in use. The application reads the latest published
+manifest from `https://github.com/Pleasurecruise/my-workspace/releases/latest/download/latest.json`;
+draft and prerelease releases are not offered as updates.
 
 ## R2 configuration
 
@@ -64,12 +76,21 @@ to provider commands. The typed Settings read command does return them to the lo
 so the form can display and edit the current configuration; avoid retaining or forwarding them
 outside that view.
 
+## ntfy notification configuration
+
+Vesper is only an ntfy consumer. It subscribes to the fixed
+`https://ntfy.you-find.me/mail-summary/sse` endpoint and does not connect to or configure upstream
+producers. Settings only configures the ntfy token; the server and topic are application policy and
+are not displayed as editable fields. The token must have read permission for `mail-summary`.
+Notification contents stay within the self-hosted ntfy deployment and are subject to its caching and
+availability policy.
+
 ## macOS development credentials
 
 An unsigned or ad-hoc-signed `tauri dev` executable changes its macOS code identity whenever it is
 rebuilt. Keychain may therefore request access again after an ordinary source edit. To avoid those
-prompts, debug builds resolve UGOS, R2, and consumer API credentials only from process environment
-variables:
+prompts, debug builds resolve UGOS, R2, consumer API, and ntfy notification credentials only from
+process environment variables:
 
 ```sh
 export UGOS_USERNAME="..."
@@ -79,11 +100,12 @@ export R2_SECRET_ACCESS_KEY="..."
 export MEMOS_API_KEY="..."
 export MOMENT_API_KEY="..."
 export KNOWLEDGE_API_KEY="..."
+export NTFY_TOKEN="..."
 pnpm dev
 ```
 
 Only define the values needed by the features under development. Missing values report the feature
-as unconfigured; empty values and incomplete UGOS or R2 pairs fail explicitly. This environment path
+as unconfigured; empty values and incomplete credential pairs fail explicitly. This environment path
 is compiled only for debug builds. Release builds ignore it and use the operating-system credential
 store. Settings writes still target Keychain and do not rewrite the shell environment.
 The same names are shown as commented examples in the root `.env.example`; `.env` remains ignored by
@@ -101,7 +123,9 @@ object requires a separate, explicit operation outside the current publisher.
 
 ## Credential boundaries
 
-- R2, UGOS, and all three consumer API credentials belong to `crates/credentials` and the operating-system store.
+- R2, UGOS, all three consumer API credentials, and the ntfy read token belong to
+  `crates/credentials` and the operating-system store. Upstream producer secrets remain outside
+  Vesper.
 - Debug builds may read App Lock from `APP_LOCK_PASSWORD` in the repository-root `.env` when the
   operating-system credential store has no App Lock value. Saving a password in Settings makes the
   credential-store value take precedence. Release builds use only the operating-system credential

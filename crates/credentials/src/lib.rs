@@ -9,6 +9,7 @@ const R2_ACCOUNT: &str = "cloudflare-r2";
 const MEMOS_API_ACCOUNT: &str = "my-memos-api";
 const MOMENT_API_ACCOUNT: &str = "my-moment-api";
 const KNOWLEDGE_API_ACCOUNT: &str = "my-knowledge-api";
+const NTFY_NOTIFICATIONS_ACCOUNT: &str = "ntfy-notifications";
 const APP_LOCK_ACCOUNT: &str = "app-lock";
 
 #[derive(Clone, Copy, Deserialize)]
@@ -57,6 +58,13 @@ pub struct R2Credentials {
 
 pub struct AppLock {
     pub password: String,
+    pub development: bool,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct NtfyConfig {
+    #[serde(default)]
+    pub token: String,
     pub development: bool,
 }
 
@@ -296,6 +304,60 @@ pub fn save_consumer_api(api: ConsumerApi, api_key: &str) -> Result<(), Credenti
         return Err(CredentialError::Empty(api.field()));
     }
     keyring::Entry::new(SERVICE, api.account())?.set_password(api_key.trim())?;
+    Ok(())
+}
+
+pub fn ntfy() -> Result<Stored<NtfyConfig>, CredentialError> {
+    #[cfg(debug_assertions)]
+    {
+        match std::env::var_os("NTFY_TOKEN") {
+            None => Ok(Stored::Missing),
+            Some(token) => {
+                let configuration = NtfyConfig {
+                    token: token
+                        .into_string()
+                        .map_err(|_| CredentialError::InvalidDevelopment("ntfy token"))?,
+                    development: true,
+                };
+                validate_ntfy(&configuration)?;
+                Ok(Stored::Ready(configuration))
+            }
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let entry = keyring::Entry::new(SERVICE, NTFY_NOTIFICATIONS_ACCOUNT)?;
+        let encoded = match entry.get_password() {
+            Ok(encoded) => encoded,
+            Err(keyring::Error::NoEntry) => return Ok(Stored::Missing),
+            Err(error) => return Err(CredentialError::Store(error)),
+        };
+        let mut configuration: NtfyConfig = match serde_json::from_str(&encoded) {
+            Ok(configuration) => configuration,
+            Err(_) => return Ok(Stored::Missing),
+        };
+        if configuration.token.trim().is_empty() {
+            return Ok(Stored::Missing);
+        }
+        configuration.development = false;
+        validate_ntfy(&configuration)?;
+        Ok(Stored::Ready(configuration))
+    }
+}
+
+pub fn save_ntfy(mut configuration: NtfyConfig) -> Result<(), CredentialError> {
+    validate_ntfy(&configuration)?;
+    configuration.token = configuration.token.trim().to_owned();
+    configuration.development = false;
+    keyring::Entry::new(SERVICE, NTFY_NOTIFICATIONS_ACCOUNT)?
+        .set_password(&serde_json::to_string(&configuration)?)?;
+    Ok(())
+}
+
+fn validate_ntfy(configuration: &NtfyConfig) -> Result<(), CredentialError> {
+    if configuration.token.trim().is_empty() {
+        return Err(CredentialError::Empty("ntfy token"));
+    }
     Ok(())
 }
 

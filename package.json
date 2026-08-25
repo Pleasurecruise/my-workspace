@@ -35,7 +35,7 @@
     "@typescript/native": "npm:typescript@7.0.2",
     "simple-git-hooks": "2.13.1",
     "typescript": "6.0.3",
-    "vite-plus": "0.2.9"
+    "vite-plus": "0.3.0"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm run precommit"

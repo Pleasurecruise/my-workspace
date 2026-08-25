@@ -89,8 +89,27 @@ a 128 MiB process-memory limit. R2 credential changes clear that cache.
 
 Newspaper is a frontend projection of Knowledge. It selects the latest Programmer Daily and Personal
 Daily editions from established tags and excludes those editions from the regular Knowledge index.
-The desktop refreshes Knowledge daily at 08:05 local time. Inbox remains an independent, currently
-empty destination; the registered operating-system notification adapter is dormant.
+Entering Newspaper refreshes the first Knowledge page immediately while retaining its settled
+content, and the active view refreshes near the top every 60 seconds. The desktop also refreshes
+Knowledge daily at 09:00 local time.
+
+Inbox is the consumer boundary for messages published through ntfy. Rust owns one authenticated SSE
+subscription to the fixed `mail-summary` topic on `https://ntfy.you-find.me`, deduplicates ntfy
+message IDs, retains the newest 200 notifications in `notifications.json` below the application data
+directory, and reconnects with the last message ID so ntfy can replay cached messages. Svelte only
+renders the typed local projection. A notification body may be a plain message or a normalized JSON
+envelope with `source`, optional `title`, and `body`; the envelope separates the producer identity
+from the transport topic. Newly received live messages also use the registered operating-system
+notification adapter; replayed historical messages only populate Inbox.
+
+Settings stores only the ntfy read token; the server address and topic are fixed application policy.
+Producer routes, credentials, signing secrets, and processing remain outside Vesper.
+
+The desktop checks the latest published GitHub Release through Tauri's signed updater manifest.
+When a newer version exists, Svelte presents its version and notes; Rust rechecks the selected
+version, downloads it with progress events, verifies its signature, installs it, and restarts the
+application. Update signing uses a public key embedded in the application and a private key available
+only to the release workflow.
 
 Dashboard architecture and external protocol details are documented separately in
 [DASHBOARD.md](DASHBOARD.md).
@@ -144,6 +163,9 @@ Memos use `https://memos.you-find.me/api/v1`. List and search requests return co
 including the mirrored Markdown body, R2 object key, and cursor. Rust compiles the returned body for
 desktop presentation without repeating an R2 read. Creation, body updates, and deletion pass through
 the REST Worker so its R2, D1, and KV changes remain one coordinated operation.
+X/Twitter imports are prepared by the trusted Rust boundary: it validates a public status URL,
+reads the post from the fixed FxTwitter endpoint, renders text and photo links as Markdown, and then
+creates a favorite through the same authenticated my-memos API.
 
 ### Moment
 
@@ -164,6 +186,9 @@ then compiles the Chinese Markdown into HTML, heading identifiers, a table of co
 excerpt. YAML front matter returned with an edition is excluded from both the editable body and the
 compiled reader output. The desktop editor creates and updates drafts through the same API with
 content-hash conflict detection; visibility and delete transports remain available to the CLI.
+The editor uses a Tiptap rich-text surface with Markdown parsing and serialization, while an explicit
+source mode preserves constructs that the configured rich-text schema cannot round-trip exactly.
+The stored body, API payload, and content-hash conflict contract remain Markdown-based.
 
 ## Local Todo persistence
 

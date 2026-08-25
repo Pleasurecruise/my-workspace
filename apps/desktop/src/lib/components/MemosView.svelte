@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Archive, Check, ChevronRight, Clock3, Globe, Heart, Lock, Pencil, Share2, Star, Trash2, X } from "@lucide/svelte";
+	import { Archive, Check, CheckCircle2, ChevronRight, Clock3, Globe, Heart, Lock, Pencil, RotateCcw, Share2, Star, Trash2, X, XCircle } from "@lucide/svelte";
 	import { Alert, AlertDescription, Badge, Button, Input } from "@my-workspace/ui";
 	import { openUrl } from "@tauri-apps/plugin-opener";
 	import { onMount, tick } from "svelte";
@@ -13,6 +13,7 @@
 		onfilter,
 		onopenmemo,
 		oncreate,
+		onimportx,
 		onupdate,
 		ondelete,
 	}: {
@@ -27,14 +28,19 @@
 		) => Promise<string | null>;
 		onopenmemo: (id: string) => Promise<boolean>;
 		oncreate: (content: string, visibility: "public" | "private") => Promise<CommandResponse<MemoView>>;
+		onimportx: (url: string, visibility: "public" | "private") => Promise<CommandResponse<MemoView>>;
 		onupdate: (id: string, input: MemoUpdate) => Promise<CommandResponse<MemoView>>;
 		ondelete: (id: string) => Promise<CommandResponse<string>>;
 	} = $props();
 
 	const relativeFormatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 	const dateFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+	const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
 	let draft = $state("");
 	let visibility = $state<"public" | "private">("private");
+	let importUrl = $state("");
+	let importVisibility = $state<"public" | "private">("private");
+	let importing = $state(false);
 	let search = $state("");
 	let selectedTags = $state<string[]>([]);
 	let pinnedOpen = $state(false);
@@ -57,12 +63,14 @@
 	let memoList = $state<HTMLDivElement | null>(null);
 	let focusVersion = 0;
 	let filtersReady = false;
+	let toastSequence = 0;
+	let toasts = $state<Array<{ id: number; kind: "success" | "error"; message: string }>>([]);
 
 	$effect(() => {
-		const query = search.trim();
-		const activeTags = selectedTags;
-		const updatedOrder = sortByUpdated;
 		const activeDisplay = display;
+		const query = activeDisplay === "active" ? search.trim() : "";
+		const activeTags = activeDisplay === "active" ? selectedTags : [];
+		const updatedOrder = activeDisplay === "active" && sortByUpdated;
 		if (!filtersReady) {
 			filtersReady = true;
 			return;
@@ -81,7 +89,7 @@
 		return () => window.clearTimeout(timer);
 	});
 
-	let hasFilters = $derived(search.trim() !== "" || selectedTags.length > 0 || display !== "active");
+	let hasFilters = $derived(display === "active" && (search.trim() !== "" || selectedTags.length > 0));
 	let visible = $derived(
 		display === "archived"
 			? memos.filter((memo) => memo.archived)
@@ -91,6 +99,30 @@
 	);
 	let pinned = $derived(visible.filter((memo) => memo.pinned));
 	let unpinned = $derived(visible.filter((memo) => !memo.pinned));
+	let monthGroups = $derived.by(() => {
+		const groups = new Map<string, MemoView[]>();
+		for (const memo of visible) {
+			const key = memo.createdAt.slice(0, 7);
+			const group = groups.get(key);
+			if (group) group.push(memo);
+			else groups.set(key, [memo]);
+		}
+		return [...groups.entries()].sort(([left], [right]) => right.localeCompare(left));
+	});
+	let deleteTarget = $derived.by(() => {
+		for (const memo of visible) {
+			if (memo.id === confirmingDelete) return memo;
+		}
+		return null;
+	});
+
+	function notify(kind: "success" | "error", message: string) {
+		const id = ++toastSequence;
+		toasts = [...toasts, { id, kind, message }];
+		window.setTimeout(() => {
+			toasts = toasts.filter((toast) => toast.id !== id);
+		}, 4_000);
+	}
 
 	function relativeTime(value: string) {
 		const seconds = Math.round((Date.parse(value) - Date.now()) / 1_000);
@@ -135,6 +167,22 @@
 			return;
 		}
 		draft = "";
+		notify("success", "Memo saved");
+	}
+
+	async function importXPost() {
+		if (importing || importUrl.trim() === "") return;
+		importing = true;
+		error = "";
+		const response = await onimportx(importUrl.trim(), importVisibility);
+		importing = false;
+		if (response.status === "failed") {
+			error = response.message;
+			notify("error", "X post import failed");
+			return;
+		}
+		importUrl = "";
+		notify("success", "X post imported to favorites");
 	}
 
 	async function startEdit(memo: MemoView) {
@@ -170,6 +218,7 @@
 			return false;
 		}
 		cancelEdit();
+		notify("success", "Memo updated");
 		return true;
 	}
 
@@ -184,6 +233,7 @@
 			return;
 		}
 		if (response.data.pinned) pinnedOpen = true;
+		notify("success", response.data.pinned ? "Memo pinned" : "Memo unpinned");
 		await tick();
 		document.getElementById(`memo-${memo.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
 	}
@@ -195,6 +245,7 @@
 		const response = await onupdate(memo.id, { favorite: !memo.favorite });
 		mutatingId = null;
 		if (response.status === "failed") error = response.message;
+		else notify("success", response.data.favorite ? "Memo added to favorites" : "Memo unfavorited");
 	}
 
 	async function toggleArchive(memo: MemoView) {
@@ -204,12 +255,14 @@
 		const response = await onupdate(memo.id, { archived: !memo.archived });
 		mutatingId = null;
 		if (response.status === "failed") error = response.message;
+		else notify("success", response.data.archived ? "Memo archived" : "Memo restored");
 	}
 
 	function share(memo: MemoView) {
 		void navigator.clipboard.writeText(`https://memos.you-find.me/memo/${memo.id}`).then(
 			() => {
 				sharedId = memo.id;
+				notify("success", "Memo link copied");
 			},
 			() => {
 				error = "Could not copy the memo link.";
@@ -228,6 +281,7 @@
 			return;
 		}
 		confirmingDelete = null;
+		notify("success", "Memo deleted");
 	}
 
 	async function openMemoLink(event: MouseEvent | KeyboardEvent) {
@@ -284,7 +338,7 @@
 </script>
 
 <section class="home" aria-label="Memo feed">
-	{#if display !== "archived"}
+	{#if display === "active"}
 		<div class="composer">
 			<MemoEditor
 				bind:value={draft}
@@ -303,6 +357,22 @@
 		</div>
 	{/if}
 
+	{#if display !== "active"}
+		<header class="collection-heading">
+			<div><h2>{display === "archived" ? "archive" : "favorites"}</h2><span></span></div>
+			<p>{display === "archived" ? "Archived memos — restore or permanently delete." : "Memos saved for quick access."}</p>
+		</header>
+		{#if display === "favorites"}
+			<form class="x-import" onsubmit={(event) => { event.preventDefault(); void importXPost(); }}>
+				<Input bind:value={importUrl} type="url" inputmode="url" autocomplete="off" placeholder="Paste an X post URL..." aria-label="X post URL" />
+				<Button type="button" variant="ghost" size="sm" class="gap-1.5 font-normal text-muted-foreground" onclick={() => (importVisibility = importVisibility === "private" ? "public" : "private")} aria-label={`Import visibility: ${importVisibility}`}>
+					{#if importVisibility === "private"}<Lock size={12} /> Private{:else}<Globe size={12} /> Public{/if}
+				</Button>
+				<Button type="submit" variant="outline" size="sm" disabled={importing || importUrl.trim() === ""}>{importing ? "Importing..." : "Import"}</Button>
+			</form>
+		{/if}
+	{/if}
+
 	{#if error}
 		<Alert class="mb-5 flex items-center gap-3" variant="error">
 			<AlertDescription class="flex-1 text-xs">{error}</AlertDescription>
@@ -310,7 +380,7 @@
 		</Alert>
 	{/if}
 
-	{#if tags.length > 0}
+	{#if display === "active" && tags.length > 0}
 		<div class="tag-index" aria-label="Memo tags">
 			<span>tags</span>
 			{#each tags as tag (tag.name)}
@@ -329,22 +399,24 @@
 		</div>
 	{/if}
 
-	<div class="search">
-		<span aria-hidden="true">⌕</span>
-		<Input class="h-10 px-10 pr-18 text-sm focus-visible:border-accent focus-visible:ring-0 focus-visible:ring-offset-0" bind:value={search} placeholder="Search memos..." aria-label="Search memos" />
-		{#if search}<button class="clear-search" type="button" onclick={() => (search = "")} aria-label="Clear search" title="Clear search">×</button>{/if}
-		<button
-			class="sort-updated"
-			class:active={sortByUpdated}
-			type="button"
-			onclick={() => (sortByUpdated = !sortByUpdated)}
-			aria-pressed={sortByUpdated}
-			aria-label={sortByUpdated ? "Sort by creation time" : "Sort by last updated time"}
-			title={sortByUpdated ? "Currently sorted by last update; switch to creation time" : "Sort by last updated time"}
-		>
-			<Clock3 size={13} />
-		</button>
-	</div>
+	{#if display === "active"}
+		<div class="search">
+			<span aria-hidden="true">⌕</span>
+			<Input class="h-10 px-10 pr-18 text-sm focus-visible:border-accent focus-visible:ring-0 focus-visible:ring-offset-0" bind:value={search} placeholder="Search memos..." aria-label="Search memos" />
+			{#if search}<button class="clear-search" type="button" onclick={() => (search = "")} aria-label="Clear search" title="Clear search">×</button>{/if}
+			<button
+				class="sort-updated"
+				class:active={sortByUpdated}
+				type="button"
+				onclick={() => (sortByUpdated = !sortByUpdated)}
+				aria-pressed={sortByUpdated}
+				aria-label={sortByUpdated ? "Sort by creation time" : "Sort by last updated time"}
+				title={sortByUpdated ? "Currently sorted by last update; switch to creation time" : "Sort by last updated time"}
+			>
+				<Clock3 size={13} />
+			</button>
+		</div>
+	{/if}
 
 	<div bind:this={memoList} class="memo-list" role="feed" aria-label="Memos">
 		{#snippet memoCard(memo: MemoView)}
@@ -414,7 +486,30 @@
 			</article>
 		{/snippet}
 
-		{#if hasFilters}
+		{#if display !== "active"}
+			{#each monthGroups as [month, items] (month)}
+				<section class="collection-group">
+					<header><h3>{monthFormatter.format(new Date(`${month}-01T00:00:00`))}</h3><span></span><small>{items.length} {items.length === 1 ? "entry" : "entries"}</small></header>
+					<div>
+						{#each items as memo (memo.id)}
+							<article id="memo-{memo.id}" class="collection-entry" class:highlighted={highlightedId === memo.id}>
+								<header><time datetime={memo.createdAt}>{new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" }).format(new Date(memo.createdAt))}</time>{#if memo.visibility === "private"}<Lock size={10} />{/if}</header>
+								<div class="memo-content">{@html memo.html}</div>
+								{#if memo.tags.length > 0}<div class="tags">{#each memo.tags as tag (tag)}<Badge variant="outline" class="border-accent/25 text-accent">#{tag}</Badge>{/each}</div>{/if}
+								<footer>
+									{#if display === "favorites"}
+										<Button variant="outline" size="sm" class="gap-1.5 font-normal text-muted-foreground" disabled={mutatingId === memo.id} onclick={() => toggleFavorite(memo)}><Heart size={12} fill="currentColor" />{mutatingId === memo.id ? "Removing..." : "Unfavorite"}</Button>
+									{:else}
+										<Button variant="outline" size="sm" class="gap-1.5 font-normal text-muted-foreground" disabled={mutatingId === memo.id} onclick={() => toggleArchive(memo)}><RotateCcw size={12} />{mutatingId === memo.id ? "Restoring..." : "Restore"}</Button>
+										<Button variant="destructive" size="sm" class="ml-auto gap-1.5 font-normal" onclick={() => (confirmingDelete = memo.id)}><Trash2 size={12} /> Delete</Button>
+									{/if}
+								</footer>
+							</article>
+						{/each}
+					</div>
+				</section>
+			{/each}
+		{:else if hasFilters}
 			{#each visible as memo (memo.id)}
 				{@render memoCard(memo)}
 			{/each}
@@ -453,11 +548,63 @@
 	</div>
 </section>
 
+{#if display === "archived" && deleteTarget !== null}
+	<div class="delete-dialog-backdrop" role="presentation" onclick={(event) => { if (event.currentTarget === event.target && !deleting) confirmingDelete = null; }}>
+		<div class="delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-memo-title" aria-describedby="delete-memo-description">
+			<h3 id="delete-memo-title">Delete memo permanently?</h3>
+			<p id="delete-memo-description">This removes the archived memo permanently and cannot be undone.</p>
+			<div>
+				<Button variant="ghost" size="sm" disabled={deleting} onclick={() => (confirmingDelete = null)}>Cancel</Button>
+				<Button variant="destructive" size="sm" disabled={deleting} onclick={() => remove(deleteTarget)}>{deleting ? "Deleting..." : "Delete"}</Button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<div class="toast-viewport" aria-live="polite" aria-label="Memo notifications">
+	{#each toasts as toast (toast.id)}
+		<div class:error={toast.kind === "error"} class="toast" role={toast.kind === "error" ? "alert" : "status"}>
+			{#if toast.kind === "success"}<CheckCircle2 size={16} />{:else}<XCircle size={16} />{/if}
+			<span>{toast.message}</span>
+			<button type="button" aria-label="Dismiss notification" onclick={() => (toasts = toasts.filter((item) => item.id !== toast.id))}>×</button>
+		</div>
+	{/each}
+</div>
+
 <style>
 	.home {
 		width: min(100%, 42rem);
 		margin: 0 auto;
 	}
+
+	.collection-heading { margin-bottom: 1.5rem; }
+	.collection-heading div { position: relative; display: inline-block; }
+	.collection-heading h2 { margin: 0; font-family: var(--font-serif); font-size: 1.75rem; line-height: 1; }
+	.collection-heading div span { position: absolute; bottom: -0.4rem; left: 0; width: 2rem; height: 2px; border-radius: var(--radius-full); background: var(--color-accent); }
+	.collection-heading p { margin: 1rem 0 0; color: var(--color-muted-foreground); font-size: 0.875rem; }
+	.x-import { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.5rem; margin-bottom: 1.5rem; }
+	.x-import :global(input) { height: 2.25rem; }
+	.collection-group { display: grid; gap: 0.5rem; margin-bottom: 1.75rem; }
+	.collection-group > header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1rem; }
+	.collection-group > header h3 { margin: 0; font-family: var(--font-serif); font-size: 1.05rem; }
+	.collection-group > header span { height: 1px; background: var(--color-border); }
+	.collection-group > header small { color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 0.68rem; }
+	.collection-group > div { display: grid; gap: 0.25rem; }
+	.collection-entry { padding: 0.75rem 0.875rem; border-color: transparent; box-shadow: none; }
+	.collection-entry:hover { border-color: var(--color-border); background: var(--color-muted); box-shadow: none; }
+	.collection-entry .memo-content { max-height: 12rem; }
+	.collection-entry footer { opacity: 0; }
+	.collection-entry:hover footer, .collection-entry:focus-within footer { opacity: 1; }
+	.delete-dialog-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 1rem; background: color-mix(in srgb, var(--color-background) 60%, transparent); backdrop-filter: blur(4px); }
+	.delete-dialog { width: min(100%, 25rem); padding: 1.25rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-lg); }
+	.delete-dialog h3 { margin: 0; font-size: 1rem; }
+	.delete-dialog p { margin: 0.6rem 0 1.25rem; color: var(--color-muted-foreground); font-size: 0.8rem; line-height: 1.5; }
+	.delete-dialog > div { display: flex; justify-content: flex-end; gap: 0.5rem; }
+	.toast-viewport { position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 80; display: grid; gap: 0.5rem; width: min(20rem, calc(100vw - 2rem)); pointer-events: none; }
+	.toast { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.625rem; padding: 0.75rem 0.875rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-background) 94%, transparent); color: var(--color-success); box-shadow: var(--shadow-lg); backdrop-filter: blur(12px); pointer-events: auto; }
+	.toast.error { color: var(--color-error); }
+	.toast span { color: var(--color-foreground); font-size: 0.8rem; }
+	.toast button { border: 0; background: transparent; color: var(--color-muted-foreground); cursor: pointer; font-size: 1rem; }
 
 	.composer,
 	article {
@@ -808,6 +955,8 @@
 	}
 
 	@media (max-width: 700px) {
+		.x-import { grid-template-columns: 1fr auto; }
+		.x-import :global(input) { grid-column: 1 / -1; }
 		.shortcut {
 			display: none;
 		}

@@ -61,23 +61,34 @@ feed pages until the target is present, expands the pinned section when needed, 
 and briefly highlights the card.
 The lower-right Archive and Favorites actions switch the feed between active, archived, and favorite
 memos. Selecting the current filter again returns to the active feed. Each view loads its matching
-server-side projection, archived entries can be restored from the archive view, and the archive view
-omits the memo composer.
+server-side projection. Archive and Favorites follow the consumer's compact month-grouped reading
+layout and do not inherit the active feed's tag index, search, or sort controls. Archived entries can
+be restored or permanently deleted from their row; Favorites owns the X/Twitter import field. Memo
+creation, editing, favorite, archive, sharing, and deletion actions report completion through
+non-blocking application toasts while request errors remain visible in the active surface.
 
 ## Knowledge interaction
 
 Knowledge article navigation and editing actions live in a quiet side rail on wide layouts and move
 as one floating group to the lower-right edge on narrow layouts; they do not compete with the article
 heading.
+Article creation and editing use a rich-text toolbar for headings, emphasis, lists, quotes, code, and
+links. A Markdown source mode remains available, and the editor selects it instead of silently
+rewriting content that the rich-text schema cannot represent exactly. The reader and remote storage
+keep Markdown as their one source format.
 
 ## Moment interaction
 
-Moment keeps the masonry gallery as its default surface. A filter panel owns text search, the complete
-tag index, and ascending or descending date order. Selecting a photo opens an application-modal
+Moment keeps the masonry gallery as its default surface. Matching the Moment consumer, Upload is a
+quiet icon beside the Gallery title and opens a focused upload view, while Filter is a separate icon
+control at the right of the header. The filter panel owns the complete tag index, Any/All tag
+matching, and ascending or descending date order; active tags appear as removable chips above it.
+Selecting a photo opens an application-modal
 viewer with keyboard navigation, metadata editing, public-link copying, and confirmed deletion. The
-viewer owns scroll focus while open. The inline upload panel pairs the selected image with title,
-description, parsed tags, date, and coordinates; validation and upload errors stay in that panel
+viewer owns scroll focus while open. The focused upload view pairs the selected image with title,
+description, parsed tags, date, and coordinates; validation and upload errors stay in that view
 without replacing settled gallery data.
+The viewer groups share, edit, delete, and close icon actions into one top toolbar.
 
 ## Window and theme
 
@@ -90,9 +101,15 @@ The application shell owns one persistent lower-right back-to-top action. Its si
 follows the main canvas scroll position across scrollable views; page-specific actions remain
 separate.
 
+When a signed application update is available, a modal presents the new version, release notes, and
+the installed version before downloading. Installation requires an explicit user action, reports
+download progress without hiding errors, and restarts only after signature verification and install
+complete successfully.
+
 The sidebar omits a separate brand header and keeps its navigation visually primary, including
 Settings as a full navigation tab. An editable local profile badge anchors the left side of the footer
-beside its three controls; selecting it exposes a compact name and avatar editor above the footer. The
+beside its three controls; selecting it exposes a compact floating name and avatar editor above the
+footer. The editor receives focus when opened and collapses when focus leaves the badge and popover. The
 square-cropped avatar and display name persist locally and do not imply an application session. On
 desktop, the sidebar's right edge supports pointer dragging and keyboard resizing within bounded
 widths, and remembers the chosen width. The footer separates destinations from immediate actions
@@ -115,8 +132,9 @@ The Inbox control in the sidebar footer opens a dedicated empty state independen
 Knowledge articles and Newspaper editions never appear as notifications. Newspaper editions are
 reserved for Newspaper and do not appear in the regular Knowledge index.
 
-The operating-system notification adapter is registered but remains dormant. Inbox does not
-request notification permission, schedule delivery, or send notifications.
+New live ntfy messages can use the operating-system notification adapter while replayed messages
+only populate Inbox. Settings presents one concealed ntfy token field. The endpoint and topic are
+fixed application policy, and producer routes and secrets remain outside Vesper.
 
 ## Accessibility
 

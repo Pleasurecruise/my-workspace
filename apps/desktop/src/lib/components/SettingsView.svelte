@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CircleCheck, Cloud, Eye, EyeOff, KeyRound, Lock } from "@lucide/svelte";
+	import { BellRing, CircleCheck, Cloud, Eye, EyeOff, KeyRound, Lock } from "@lucide/svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -17,6 +17,7 @@
 		ApiConfiguration,
 		CommandResponse,
 		ConfigurationStatus,
+		NtfyConfig,
 		R2Configuration,
 		UgosConfiguration,
 	} from "../consumer";
@@ -27,6 +28,7 @@
 		onsaveugos,
 		onsaver2,
 		onsaveapi,
+		onsaventfy,
 		onsaveapplock,
 		onremoveapplock,
 	}: {
@@ -35,6 +37,7 @@
 		onsaveugos: (input: UgosConfiguration) => Promise<CommandResponse<string>>;
 		onsaver2: (input: R2Configuration) => Promise<CommandResponse<string>>;
 		onsaveapi: (input: ApiConfiguration) => Promise<CommandResponse<string>>;
+		onsaventfy: (configuration: NtfyConfig) => Promise<CommandResponse<string>>;
 		onsaveapplock: (password: string) => Promise<CommandResponse<string>>;
 		onremoveapplock: () => Promise<CommandResponse<string>>;
 	} = $props();
@@ -46,14 +49,16 @@
 	let memosApiKey = $state("");
 	let momentApiKey = $state("");
 	let knowledgeApiKey = $state("");
+	let ntfyToken = $state("");
 	let appLockPassword = $state("");
-	let saving = $state<"app-lock" | "ugos" | "r2" | "memos" | "moment" | "knowledge" | null>(null);
+	let saving = $state<"app-lock" | "ugos" | "r2" | "memos" | "moment" | "knowledge" | "ntfy" | null>(null);
 	let formError = $state<string | null>(null);
 	let passwordVisible = $state(false);
 	let secretVisible = $state(false);
 	let memosKeyVisible = $state(false);
 	let momentKeyVisible = $state(false);
 	let knowledgeKeyVisible = $state(false);
+	let ntfyTokenVisible = $state(false);
 	let appLockPasswordVisible = $state(false);
 
 	$effect(() => {
@@ -68,6 +73,9 @@
 		if (configuration !== null && configuration.api.memos.status === "ready") memosApiKey = configuration.api.memos.data;
 		if (configuration !== null && configuration.api.moment.status === "ready") momentApiKey = configuration.api.moment.data;
 		if (configuration !== null && configuration.api.knowledge.status === "ready") knowledgeApiKey = configuration.api.knowledge.data;
+		if (configuration !== null && configuration.ntfy.status === "ready") {
+			ntfyToken = configuration.ntfy.data.token;
+		}
 		if (configuration !== null && configuration.appLock.status === "ready") appLockPassword = configuration.appLock.data;
 	});
 
@@ -123,6 +131,21 @@
 		appLockPasswordVisible = false;
 	}
 
+	async function saveNtfy(event: SubmitEvent) {
+		event.preventDefault();
+		saving = "ntfy";
+		formError = null;
+		const response = await onsaventfy({
+			token: ntfyToken,
+			development: false,
+		});
+		saving = null;
+		if (response.status === "failed") {
+			formError = response.message;
+			return;
+		}
+	}
+
 	async function removeAppLock() {
 		saving = "app-lock";
 		formError = null;
@@ -149,6 +172,26 @@
 	{/if}
 
 	<div class="sections">
+	<Card>
+		<CardHeader class="settings-card-header settings-card-header-status">
+			<span class="icon"><BellRing size={16} /></span>
+			<div><CardTitle class="settings-card-title">Notifications</CardTitle><CardDescription class="settings-card-description">Subscribe to notifications through ntfy.</CardDescription></div>
+			{#if configuration?.ntfyDev}<span class="configured"><CircleCheck size={14} /> Environment</span>{:else if configuration?.ntfy.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
+		</CardHeader>
+		<form onsubmit={saveNtfy}>
+			<CardContent class="settings-card-content">
+				<div class="setting-row">
+					<div><Label for="ntfy-token">Token</Label><p>Use the access token for the Vesper ntfy subscription.</p></div>
+					<div class="secret-field">
+						<Input id="ntfy-token" class="settings-input settings-secret-input" type={ntfyTokenVisible ? "text" : "password"} bind:value={ntfyToken} autocomplete="off" autocapitalize="none" spellcheck="false" required />
+						<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (ntfyTokenVisible = !ntfyTokenVisible)} aria-label={ntfyTokenVisible ? "Hide ntfy token" : "Show ntfy token"}>{#if ntfyTokenVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
+					</div>
+				</div>
+			</CardContent>
+			<CardFooter class="settings-card-footer"><span class="settings-footer-copy">Vesper uses one fixed authenticated ntfy SSE subscription.</span><Button class="settings-save-button" size="sm" type="submit" disabled={saving !== null || ntfyToken.trim() === ""}>{saving === "ntfy" ? "Saving…" : "Save"}</Button></CardFooter>
+		</form>
+	</Card>
+
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="icon"><Lock size={16} /></span>

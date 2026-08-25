@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { Library, Pencil, Plus } from "@lucide/svelte";
 	import type { CommandResponse, KnowledgeDocument, KnowledgeDraft, KnowledgeUpdate } from "../consumer";
+	import { newspaperEdition } from "../newspaper";
 	import KnowledgeHeader from "./KnowledgeHeader.svelte";
 	import KnowledgeToc from "./KnowledgeToc.svelte";
+	import RichMarkdownEditor from "./RichMarkdownEditor.svelte";
 
 	let {
 		documents,
@@ -34,28 +36,10 @@
 		count: number;
 		months: KnowledgeMonth[];
 	};
-	const newspaperEditionTags = new Set([
-		"programmer-daily",
-		"developer-daily",
-		"personal-daily",
-		"newspaper/programmer",
-		"newspaper/developer",
-		"newspaper/programmer-daily",
-		"newspaper/personal",
-		"newspaper/personal-daily",
-		"程序员日报",
-		"个人日报",
-	]);
-
 	let groups = $derived.by(() => {
 		const years: KnowledgeYear[] = [];
 		for (const document of documents) {
-			const tags = new Set(document.tags.map((tag) => tag.trim().toLowerCase()));
-			if (
-				tags.has("newspaper/daily") ||
-				(tags.has("newspaper") && tags.has("daily")) ||
-				[...tags].some((tag) => newspaperEditionTags.has(tag))
-			) continue;
+			if (newspaperEdition(document) !== null) continue;
 			const date = new Date(document.createdAt);
 			const year = date.getFullYear();
 			const month = date.getMonth();
@@ -133,6 +117,10 @@
 			error = "Title, summary, and Markdown are required.";
 			return;
 		}
+		if (draftSource.length > 500_000) {
+			error = "Article Markdown must be 500,000 characters or fewer.";
+			return;
+		}
 		if (tags.length > 5) {
 			error = "Use at most 5 tags.";
 			return;
@@ -171,7 +159,7 @@
 			<label>Summary<input bind:value={draftSummary} maxlength="500" placeholder="A short summary" /></label>
 		</div>
 		<label class="tags">Tags<input bind:value={draftTags} placeholder="rust, api" /></label>
-		<label class="markdown">Markdown<textarea bind:value={draftSource} maxlength="500000" placeholder="Start writing..." spellcheck="true"></textarea></label>
+		<label class="markdown">Article body<RichMarkdownEditor bind:value={draftSource} /></label>
 	</section>
 {:else if selected}
 	<section class="reader" id="knowledge-article">
@@ -221,10 +209,9 @@
 	.fields { display: grid; grid-template-columns: 3fr 2fr; gap: 1rem; margin-bottom: 1rem; }
 	.tags { margin-bottom: 1rem; }
 	.editor label { display: grid; gap: 0.5rem; color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; }
-	.editor input, .editor textarea { box-sizing: border-box; width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-family: var(--font-sans); font-size: 0.875rem; letter-spacing: normal; text-transform: none; }
+	.editor input { box-sizing: border-box; width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-family: var(--font-sans); font-size: 0.875rem; letter-spacing: normal; text-transform: none; }
 	.editor input { height: 2.5rem; padding: 0 0.75rem; }
-	.editor textarea { min-height: calc(100vh - 18rem); padding: 1rem; resize: vertical; font-family: var(--font-mono); line-height: 1.65; }
-	.editor input:focus, .editor textarea:focus { border-color: var(--color-border-strong); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 16%, transparent); }
+	.editor input:focus { border-color: var(--color-border-strong); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 16%, transparent); }
 	.editor-error { padding: 0.75rem; border: 1px solid var(--color-error); border-radius: var(--radius-md); color: var(--color-error); font-size: 0.75rem; }
 	.index-header { display: flex; align-items: flex-start; justify-content: space-between; }
 	.index-header div { position: relative; }

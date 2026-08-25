@@ -1,6 +1,6 @@
 use super::{
-    ConsumerApi, CredentialError, R2Credentials, UgosCredentials, save_app_lock, save_consumer_api,
-    save_r2, save_ugos,
+    ConsumerApi, CredentialError, NtfyConfig, R2Credentials, UgosCredentials, save_app_lock,
+    save_consumer_api, save_ntfy, save_r2, save_ugos,
 };
 
 #[test]
@@ -40,5 +40,16 @@ fn rejects_a_short_app_lock_password_before_opening_the_keychain() {
     assert!(matches!(
         save_app_lock("123"),
         Err(CredentialError::TooShort("app lock password", 4))
+    ));
+}
+
+#[test]
+fn rejects_an_empty_ntfy_token_before_opening_the_keychain() {
+    assert!(matches!(
+        save_ntfy(NtfyConfig {
+            token: "  ".to_owned(),
+            development: false,
+        }),
+        Err(CredentialError::Empty("ntfy token"))
     ));
 }

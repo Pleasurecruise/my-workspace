@@ -20,6 +20,8 @@
 		DashboardQueryResults,
 		DashboardState,
 		InitialViews,
+		NtfyConfig,
+		NtfyNotification,
 		KnowledgeDocument,
 		KnowledgeDraft,
 		KnowledgeUpdate,
@@ -32,6 +34,8 @@
 		R2Configuration,
 		TodoList,
 		UgosConfiguration,
+		UpdateInfo,
+		UpdateProgress,
 	} from "./lib/consumer";
 	import { applyTheme, initTheme } from "./lib/theme";
 
@@ -99,6 +103,23 @@
 	let todoRequest = 0;
 	let configuration = $state<ConfigurationStatus | null>(null);
 	let configurationError = $state<string | null>(null);
+	let notifications = $state<NtfyNotification[]>([]);
+	let updateAvailable = $state<UpdateInfo | null>(null);
+	let updateProgress = $state<UpdateProgress | null>(null);
+	let updateError = $state<string | null>(null);
+	let updateCheckError = $state<string | null>(null);
+	let updateChecking = $state(false);
+	let installingUpdate = $state(false);
+	let updateDialog = $state<HTMLDivElement | null>(null);
+	let updatePercent = $derived(
+		updateProgress?.status === "downloading" && updateProgress.total !== null && updateProgress.total > 0
+			? Math.min(100, Math.round((updateProgress.downloaded / updateProgress.total) * 100))
+			: null,
+	);
+	$effect(() => {
+		if (updateAvailable === null || locked) return;
+		void tick().then(() => updateDialog?.focus());
+	});
 	let locked = $state(false);
 	let unlockPassword = $state("");
 	let unlockError = $state<string | null>(null);
@@ -111,6 +132,8 @@
 	let profileAvatarDraft = $state(defaultProfileAvatar);
 	let profileError = $state<string | null>(null);
 	let profileAvatarInput = $state<HTMLInputElement | null>(null);
+	let profileNameInput = $state<HTMLInputElement | null>(null);
+	let profilePopover = $state<HTMLDivElement | null>(null);
 	let sidebarWidth = $state(240);
 
 	function currentDate() {
@@ -125,6 +148,50 @@
 			return;
 		}
 		configuration = response.data;
+	}
+
+	async function checkForUpdate() {
+		if (updateChecking) return;
+		updateChecking = true;
+		updateCheckError = null;
+		const response = await invoke<CommandResponse<UpdateInfo | null>>("check_for_update");
+		updateChecking = false;
+		if (response.status === "failed") {
+			updateCheckError = response.message;
+			return;
+		}
+		updateAvailable = response.data;
+	}
+
+	async function installUpdate() {
+		if (updateAvailable === null) return;
+		installingUpdate = true;
+		updateError = null;
+		const response = await invoke<CommandResponse<string>>("install_update", {
+			version: updateAvailable.version,
+		});
+		if (response.status === "failed") {
+			installingUpdate = false;
+			updateError = response.message;
+		}
+	}
+
+	function keepUpdateDialogFocus(event: KeyboardEvent) {
+		if (event.key !== "Tab" || updateDialog === null) return;
+		const controls = updateDialog.querySelectorAll<HTMLElement>("button:not(:disabled)");
+		if (controls.length === 0) return;
+		const first = controls.item(0);
+		const last = controls.item(controls.length - 1);
+		if (document.activeElement === updateDialog) {
+			event.preventDefault();
+			(event.shiftKey ? last : first).focus();
+		} else if (event.shiftKey && document.activeElement === first) {
+			event.preventDefault();
+			last.focus();
+		} else if (!event.shiftKey && document.activeElement === last) {
+			event.preventDefault();
+			first.focus();
+		}
 	}
 
 	async function loadQuery<K extends keyof DashboardQueryResults>(
@@ -244,6 +311,10 @@
 		loading = false;
 		loadingMore = false;
 		if (content !== null && error === null) {
+			if (view === "newspaper") {
+				await load(channel, null, true, request);
+				return;
+			}
 			await tick();
 			if (
 				mainElement !== null &&
@@ -516,11 +587,29 @@
 		localStorage.setItem(sidebarWidthKey, String(sidebarWidth));
 	}
 
-	function toggleProfileEditor() {
+	async function toggleProfileEditor() {
 		profileEditing = !profileEditing;
 		profileNameDraft = profileName;
 		profileAvatarDraft = profileAvatar;
 		profileError = null;
+		if (profileEditing) {
+			await tick();
+			const input = profileNameInput;
+			if (input !== null) {
+				input.focus();
+				input.setSelectionRange(input.value.length, input.value.length);
+			}
+		}
+	}
+
+	function closeProfileEditorOnBlur(event: FocusEvent) {
+		const next = event.relatedTarget;
+		if (next instanceof Node && profilePopover?.contains(next)) return;
+		window.setTimeout(() => {
+			if (profilePopover?.contains(document.activeElement)) return;
+			profileEditing = false;
+			profileError = null;
+		}, 0);
 	}
 
 	async function changeProfileAvatar(input: HTMLInputElement) {
@@ -600,6 +689,15 @@
 			content: markdown,
 			visibility,
 		});
+		if (response.status === "ready" && content !== null && content.channel === "memos") {
+			content = { ...content, memos: [response.data, ...content.memos] };
+			cache.memos = content;
+		}
+		return response;
+	}
+
+	async function importXMemo(url: string, visibility: "public" | "private"): Promise<CommandResponse<MemoView>> {
+		const response = await invoke<CommandResponse<MemoView>>("import_x_memo", { url, visibility });
 		if (response.status === "ready" && content !== null && content.channel === "memos") {
 			content = { ...content, memos: [response.data, ...content.memos] };
 			cache.memos = content;
@@ -735,6 +833,14 @@
 		return response;
 	}
 
+	async function saveNtfy(configuration: NtfyConfig): Promise<CommandResponse<string>> {
+		const response = await invoke<CommandResponse<string>>("save_ntfy_configuration", {
+			configuration,
+		});
+		if (response.status === "ready") await loadConfiguration();
+		return response;
+	}
+
 	async function saveAppLock(password: string): Promise<CommandResponse<string>> {
 		const response = await invoke<CommandResponse<string>>("save_app_lock", { password });
 		if (response.status === "ready") await loadConfiguration();
@@ -801,6 +907,9 @@
 		void loadQuery("read_weather", dashboard.weather);
 		void loadQuery("read_github", dashboard.github);
 		void loadTodos();
+		void invoke<CommandResponse<NtfyNotification[]>>("read_notifications").then((response) => {
+			if (response.status === "ready") notifications = response.data;
+		});
 		const unlistenTodo = listen<TodoList>("todo-list-changed", (event) => {
 			const followsToday = todoDate === todayDate;
 			todayDate = event.payload.date;
@@ -812,6 +921,13 @@
 				todos.loading = false;
 			}
 		});
+		const unlistenUpdater = listen<UpdateProgress>("updater-progress", (event) => {
+			updateProgress = event.payload;
+		});
+		const unlistenNotifications = listen<NtfyNotification[]>("notifications-updated", (event) => {
+			notifications = event.payload;
+		});
+		void checkForUpdate();
 		void initializeConsumers().then(loadConsumerTags);
 		const taskManagerTimer = window.setInterval(() => {
 			if (selected === "dashboard") void loadQuery("read_task_manager", dashboard.taskManager);
@@ -831,16 +947,17 @@
 		}, 900_000);
 		const contentTimer = window.setInterval(() => {
 			if (
-				(selected === "memos" || selected === "moment" || selected === "knowledge") &&
+				(selected === "memos" || selected === "moment" || selected === "knowledge" || selected === "newspaper") &&
 				!loading &&
 				mainElement !== null &&
 				mainElement.scrollTop < 200
 			) {
-				void load(selected, null, true, request);
+				const channel: Channel = selected === "newspaper" ? "knowledge" : selected;
+				void load(channel, null, true, request);
 			}
 		}, 60_000);
 		const nextNewspaperRefresh = new Date();
-		nextNewspaperRefresh.setHours(8, 5, 0, 0);
+		nextNewspaperRefresh.setHours(9, 0, 0, 0);
 		if (nextNewspaperRefresh.getTime() <= Date.now()) nextNewspaperRefresh.setDate(nextNewspaperRefresh.getDate() + 1);
 		let newspaperTimer: number | null = null;
 		const newspaperStartTimer = window.setTimeout(() => {
@@ -852,6 +969,8 @@
 			window.clearInterval(subscriptionUsageTimer);
 			window.clearInterval(todoTimer);
 			void unlistenTodo.then((unlisten) => unlisten());
+			void unlistenUpdater.then((unlisten) => unlisten());
+			void unlistenNotifications.then((unlisten) => unlisten());
 			window.clearInterval(weatherTimer);
 			window.clearInterval(contentTimer);
 			window.clearTimeout(newspaperStartTimer);
@@ -865,7 +984,7 @@
 	<meta name="description" content="Local previews for Memos and Moment." />
 </svelte:head>
 
-<div class="shell" class:locked inert={locked} style:--sidebar-width={`${sidebarWidth}px`}>
+<div class="shell" class:locked inert={locked || updateAvailable !== null} style:--sidebar-width={`${sidebarWidth}px`}>
 	<button
 		type="button"
 		class:open={sidebarOpen}
@@ -906,29 +1025,32 @@
 			{#if configuration === null}<small>Checking credential store</small>{:else}<small>Managed in Settings</small>{/if}
 		</div>
 
-		{#if profileEditing}
-			<form class="profile-editor" onsubmit={saveProfile}>
-				<div class="profile-editor-heading">
-					<img src={profileAvatarDraft} alt="Profile preview" />
-					<div><strong>Local profile</strong><span>Display only</span></div>
-				</div>
-				<label for="profile-name">Username</label>
-				<input id="profile-name" maxlength="24" autocomplete="off" bind:value={profileNameDraft} />
-				<input class="avatar-input" bind:this={profileAvatarInput} type="file" accept="image/*" onchange={(event) => void changeProfileAvatar(event.currentTarget)} />
-				<div class="profile-editor-actions">
-					<button type="button" onclick={() => profileAvatarInput?.click()}>Change photo</button>
-					<button type="button" onclick={resetProfileDraft}>Reset</button>
-					<button type="submit">Save</button>
-				</div>
-				{#if profileError !== null}<p role="alert">{profileError}</p>{/if}
-			</form>
-		{/if}
-
 		<div class="sidebar-footer">
-			<button class="user-profile" type="button" onclick={toggleProfileEditor} aria-expanded={profileEditing} aria-label={`Edit local profile for ${profileName}`} title="Edit local profile">
-				<img src={profileAvatar} alt="" />
-				<span>{profileName}</span>
-			</button>
+			<div class="profile-popover-anchor" bind:this={profilePopover} onfocusout={closeProfileEditorOnBlur}>
+				{#if profileEditing}
+					<div class="profile-editor" role="dialog" aria-label="Edit local profile">
+					<form onsubmit={saveProfile}>
+						<div class="profile-editor-heading">
+							<img src={profileAvatarDraft} alt="Profile preview" />
+							<div><strong>Local profile</strong><span>Display only</span></div>
+						</div>
+						<label for="profile-name">Username</label>
+						<input id="profile-name" bind:this={profileNameInput} maxlength="24" autocomplete="off" bind:value={profileNameDraft} />
+						<input class="avatar-input" bind:this={profileAvatarInput} type="file" accept="image/*" onchange={(event) => void changeProfileAvatar(event.currentTarget)} />
+						<div class="profile-editor-actions">
+							<button type="button" onclick={() => profileAvatarInput?.click()}>Change photo</button>
+							<button type="button" onclick={resetProfileDraft}>Reset</button>
+							<button type="submit">Save</button>
+						</div>
+						{#if profileError !== null}<p role="alert">{profileError}</p>{/if}
+					</form>
+					</div>
+				{/if}
+				<button class="user-profile" type="button" onclick={toggleProfileEditor} aria-haspopup="dialog" aria-expanded={profileEditing} aria-label={`Edit local profile for ${profileName}`} title="Edit local profile">
+					<img src={profileAvatar} alt="" />
+					<span>{profileName}</span>
+				</button>
+			</div>
 			<div class="footer-controls">
 				<div class="footer-navigation">
 					<button class:active={selected === "inbox"} type="button" onclick={() => void select("inbox")} aria-label={selected === "inbox" ? "Return to previous view" : "Open inbox"} title={selected === "inbox" ? "Back" : "Inbox"}>
@@ -999,9 +1121,9 @@
 					onrefresh={refreshDashboard}
 				/>
 			{:else if selected === "settings"}
-				<SettingsView {configuration} error={configurationError} onsaveugos={saveUgosConfiguration} onsaver2={saveR2Configuration} onsaveapi={saveApiConfiguration} onsaveapplock={saveAppLock} onremoveapplock={removeAppLock} />
+				<SettingsView {configuration} error={configurationError} onsaveugos={saveUgosConfiguration} onsaver2={saveR2Configuration} onsaveapi={saveApiConfiguration} onsaventfy={saveNtfy} onsaveapplock={saveAppLock} onremoveapplock={removeAppLock} />
 			{:else if selected === "inbox"}
-				<InboxView />
+				<InboxView {notifications} />
 			{:else if error}
 				<section class="consumer-error">
 					<header>
@@ -1016,7 +1138,7 @@
 				</section>
 			{:else if content !== null}
 				{#if content.channel === "memos"}
-					<MemosView memos={content.memos} tags={content.tags} display={memoDisplay} onfilter={filterMemos} onopenmemo={revealMemo} oncreate={createMemo} onupdate={updateMemo} ondelete={deleteMemo} />
+					<MemosView memos={content.memos} tags={content.tags} display={memoDisplay} onfilter={filterMemos} onopenmemo={revealMemo} oncreate={createMemo} onimportx={importXMemo} onupdate={updateMemo} ondelete={deleteMemo} />
 				{:else if content.channel === "moment"}
 					<MomentView photos={content.photos} tags={content.tags} total={content.total} onuploaded={addUploadedPhoto} onupdate={updatePhoto} ondelete={deletePhoto} />
 				{:else if selected === "newspaper"}
@@ -1086,6 +1208,36 @@
 	</div>
 {/if}
 
+{#if updateAvailable !== null && !locked}
+	<div class="update-overlay" role="presentation">
+		<div bind:this={updateDialog} class="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title" tabindex="-1" onkeydown={keepUpdateDialogFocus}>
+			<p>Application update</p>
+			<h1 id="update-title">Vesper {updateAvailable.version} is available</h1>
+			<span>Installed version: {updateAvailable.currentVersion}</span>
+			{#if updateAvailable.notes}<div class="update-notes">{updateAvailable.notes}</div>{/if}
+			{#if installingUpdate}
+				<div class="update-progress" class:indeterminate={updatePercent === null} role="progressbar" aria-label="Application update download" aria-valuemin="0" aria-valuemax="100" aria-valuenow={updatePercent}>
+					<span style:width={updatePercent === null ? "100%" : `${updatePercent}%`}></span>
+				</div>
+				<small>{updateProgress?.status === "downloaded" ? "Installing and restarting…" : updatePercent === null ? "Downloading update…" : `Downloading update… ${updatePercent}%`}</small>
+			{/if}
+			{#if updateError}<div class="update-error" role="alert">{updateError}</div>{/if}
+			<div class="update-actions">
+				<button type="button" disabled={installingUpdate} onclick={() => (updateAvailable = null)}>Later</button>
+				<button class="primary" type="button" disabled={installingUpdate} onclick={() => void installUpdate()}>{installingUpdate ? "Updating…" : "Download and restart"}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if updateCheckError !== null && updateAvailable === null && !locked}
+	<div class="update-check-error" role="alert">
+		<span>{updateCheckError}</span>
+		<button type="button" disabled={updateChecking} onclick={() => void checkForUpdate()}>{updateChecking ? "Checking…" : "Retry"}</button>
+		<button type="button" aria-label="Dismiss update error" onclick={() => (updateCheckError = null)}>×</button>
+	</div>
+{/if}
+
 <style>
 	:global(html),
 	:global(body),
@@ -1115,6 +1267,50 @@
 	}
 
 	.shell.locked { filter: blur(1rem); }
+
+	.update-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 120;
+		display: grid;
+		place-items: center;
+		padding: 1rem;
+		background: var(--color-overlay);
+	}
+
+	.update-dialog {
+		display: grid;
+		width: min(28rem, 100%);
+		box-sizing: border-box;
+		gap: 0.75rem;
+		padding: 1.25rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		background: var(--color-background);
+		box-shadow: var(--shadow-lg);
+	}
+
+	.update-dialog p,
+	.update-dialog h1,
+	.update-dialog span,
+	.update-dialog small { margin: 0; }
+	.update-dialog p { color: var(--color-accent); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+	.update-dialog h1 { font-family: var(--font-serif); font-size: 1.35rem; font-weight: 500; }
+	.update-dialog > span,
+	.update-dialog small { color: var(--color-muted-foreground); font-size: 0.72rem; }
+	.update-notes { max-height: 10rem; overflow: auto; white-space: pre-wrap; font-size: 0.78rem; line-height: 1.6; }
+	.update-progress { height: 0.35rem; overflow: hidden; border-radius: var(--radius-full); background: var(--color-muted); }
+	.update-progress span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); }
+	.update-progress.indeterminate span { animation: update-pulse 1.2s ease-in-out infinite alternate; }
+	.update-error { color: var(--color-destructive); font-size: 0.75rem; }
+	.update-actions { display: flex; justify-content: flex-end; gap: 0.5rem; padding-top: 0.25rem; }
+	.update-actions button { height: 2rem; padding: 0 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-foreground); cursor: pointer; font-size: 0.72rem; }
+	.update-actions button.primary { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-foreground); }
+	.update-actions button:disabled { cursor: not-allowed; opacity: 0.6; }
+	.update-check-error { position: fixed; right: 1rem; bottom: 1rem; z-index: 110; display: flex; max-width: min(32rem, calc(100vw - 2rem)); align-items: center; gap: 0.625rem; padding: 0.75rem; border: 1px solid var(--color-error); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-lg); }
+	.update-check-error span { color: var(--color-error); font-size: 0.75rem; line-height: 1.4; }
+	.update-check-error button { padding: 0.25rem 0.5rem; border: 0; border-radius: var(--radius-sm); background: var(--color-muted); color: var(--color-foreground); cursor: pointer; font-size: 0.7rem; }
+	@keyframes update-pulse { from { opacity: 0.35; } to { opacity: 1; } }
 
 	.sidebar-overlay {
 		display: none;
@@ -1261,6 +1457,13 @@
 		text-align: left;
 	}
 
+	.profile-popover-anchor {
+		position: relative;
+		display: flex;
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+
 	.user-profile:hover { background: var(--color-muted); }
 
 	.user-profile img {
@@ -1292,11 +1495,12 @@
 
 	.profile-editor {
 		position: absolute;
-		right: 0.5rem;
-		bottom: 3.65rem;
-		left: 0.5rem;
-		z-index: 2;
+		bottom: calc(100% + 0.75rem);
+		left: 0;
+		z-index: 30;
 		display: grid;
+		width: min(17rem, calc(100vw - 2rem));
+		box-sizing: border-box;
 		gap: 0.5rem;
 		padding: 0.75rem;
 		border: 1px solid var(--color-border);
@@ -1304,6 +1508,7 @@
 		background: var(--color-background);
 		box-shadow: var(--shadow-lg);
 	}
+	.profile-editor form { display: contents; }
 
 	.profile-editor-heading { display: flex; align-items: center; gap: 0.625rem; }
 	.profile-editor-heading img { width: 2.5rem; height: 2.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-full); object-fit: cover; }
