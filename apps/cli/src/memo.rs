@@ -113,6 +113,29 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             .map_err(|error| error.to_string())?;
             print_json(&memo)
         }
+        ("import-x", arguments) => {
+            let (url, visibility) = match arguments {
+                [url] => (url, Visibility::Private),
+                [url, visibility] => {
+                    let visibility = match visibility.as_str() {
+                        "public" => Visibility::Public,
+                        "private" => Visibility::Private,
+                        value => return Err(format!("invalid memo visibility: {value}")),
+                    };
+                    (url, visibility)
+                }
+                _ => {
+                    return Err(format!(
+                        "invalid memo arguments: import-x {}; run `vesper help`",
+                        arguments.join(" ")
+                    ));
+                }
+            };
+            let memo = cms_core::api::memos::import_x(url, visibility)
+                .await
+                .map_err(|error| error.to_string())?;
+            print_json(&memo)
+        }
         ("update", [id, content @ ..]) if !content.is_empty() => {
             update(
                 id,
@@ -236,5 +259,20 @@ mod tests {
             error,
             "memo page cannot request archivedOnly and favoritesOnly together"
         );
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_import_visibility_before_calling_the_api() {
+        let error = run(
+            "import-x",
+            &[
+                "https://x.com/example/status/123".to_owned(),
+                "friends".to_owned(),
+            ],
+        )
+        .await
+        .expect_err("an unsupported visibility should fail");
+
+        assert_eq!(error, "invalid memo visibility: friends");
     }
 }

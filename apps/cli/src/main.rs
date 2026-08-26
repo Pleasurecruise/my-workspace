@@ -3,6 +3,7 @@ use std::process::ExitCode;
 mod knowledge;
 mod memo;
 mod moment;
+mod status;
 mod todo;
 
 #[tokio::main]
@@ -48,13 +49,17 @@ async fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             Ok(())
         }
         [command] if command == "publish" => publish(&repository, false).await,
+        [command] if command == "status" => status::run().await,
         [command, flag] if command == "publish" && flag == "--live" => {
             publish(&repository, true).await
         }
         [domain, action, rest @ ..] if domain == "memo" => memo::run(action, rest).await,
         [domain, action, rest @ ..] if domain == "knowledge" => knowledge::run(action, rest).await,
         [domain, action, rest @ ..] if domain == "moment" => moment::run(action, rest).await,
-        [domain, action, rest @ ..] if domain == "todo" => todo::run(action, rest).await,
+        [domain, flag, date, action, rest @ ..] if domain == "todo" && flag == "--date" => {
+            todo::run(action, rest, Some(date)).await
+        }
+        [domain, action, rest @ ..] if domain == "todo" => todo::run(action, rest, None).await,
         invalid_arguments => Err(format!(
             "invalid arguments: {}; run `vesper help`",
             invalid_arguments.join(" ")
@@ -97,11 +102,13 @@ fn print_help() {
          build             validate content using temporary output\n  \
          publish           compile, then preview the SDK upload\n  \
          publish --live    compile, upload with the SDK, then remove temporary output\n  \
+         status            read UGOS and AI provider status as JSON\n  \
          memo tags                   list memo tags with counts\n  \
          memo list [limit]            list newest memos as JSON\n  \
          memo page <json>             list a filtered or paginated memo page\n  \
          memo search <query>          search memo bodies as JSON\n  \
          memo create <markdown>       create a private memo\n  \
+         memo import-x <url> [public|private]  import an X post as a favorite\n  \
          memo update <id> <markdown>  replace a memo body\n  \
          memo patch <id> <json>       update typed memo fields\n  \
          memo visibility <id> <public|private>  change memo visibility\n  \
@@ -123,12 +130,13 @@ fn print_help() {
          moment list [cursor]          list photos\n  \
          moment search <query>         search photo metadata\n  \
          moment create <json>          register uploaded R2 image keys and metadata\n  \
-         moment upload-photo <json> <original.png> <thumbnail.jpg>\n  \
+         moment upload-photo <json> <source>  prepare and upload PNG, JPEG, WebP, AVIF, or HEIC\n  \
          moment update <id> <json>     update photo metadata\n  \
          moment delete <id>            delete photo metadata\n  \
          moment upload <key> <path>     upload an original or thumbnail through the R2 SDK\n  \
          moment download <key> <path>   download an image through the R2 SDK\n  \
          moment remove-object <key>     remove an orphaned image object from R2\n  \
+         todo --date <YYYY-MM-DD> <action> [...]  operate on another calendar day\n  \
          todo list                      list today's Todos as JSON\n  \
          todo get <id>                  read one Todo as JSON\n  \
          todo create <text>             create a Todo\n  \

@@ -77,10 +77,12 @@
 		const minimumRange = scale === "zero" ? 1 : 0.05;
 		const maximum = Math.max(minimum + minimumRange, sampleMaximum + padding);
 		if (samples.length === 1) {
-			const first = samples[0];
-			if (first === undefined) return "";
-			const y = 40 - Math.min(1, Math.max(0, (first - minimum) / (maximum - minimum))) * 34;
-			return `0,${y.toFixed(1)} 160,${y.toFixed(1)}`;
+			return samples
+				.map((value) => {
+					const y = 40 - Math.min(1, Math.max(0, (value - minimum) / (maximum - minimum))) * 34;
+					return `0,${y.toFixed(1)} 160,${y.toFixed(1)}`;
+				})
+				.join("");
 		}
 		const points = samples.map((value, index) => {
 			const x = (index / (samples.length - 1)) * 160;
@@ -192,7 +194,7 @@
 	}
 
 	button:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--color-accent); }
-	button:disabled { cursor: default; opacity: 0.5; }
+	button:disabled { cursor: wait; opacity: 0.5; }
 	button span { display: inline-flex; }
 	.spinning { animation: spin var(--duration-spinner) linear infinite; }
 

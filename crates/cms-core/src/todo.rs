@@ -35,6 +35,8 @@ pub enum Error {
     DataDirectoryUnavailable,
     #[error("could not determine the local date: {0}")]
     LocalDate(#[from] time::error::IndeterminateOffset),
+    #[error("invalid Todo date {0}; expected YYYY-MM-DD")]
+    InvalidDate(String),
     #[error("todo text cannot be empty")]
     EmptyText,
     #[error("todo text cannot exceed {MAX_TEXT_LENGTH} characters")]
@@ -80,6 +82,7 @@ impl Store {
     }
 
     pub async fn list(&self, date: &str) -> Result<List, Error> {
+        validate_date(date)?;
         let _operation = self.operation.lock().await;
         let _file_lock = self.lock_file().await?;
         let calendar = self.load().await?;
@@ -150,6 +153,7 @@ impl Store {
         date: &str,
         mutation: impl FnOnce(&mut Vec<Item>) -> Result<(), Error>,
     ) -> Result<List, Error> {
+        validate_date(date)?;
         let _operation = self.operation.lock().await;
         let _file_lock = self.lock_file().await?;
         let mut calendar = self.load().await?;
@@ -242,6 +246,17 @@ pub fn shared_path() -> Result<PathBuf, Error> {
 
 pub fn current_date() -> Result<String, Error> {
     Ok(time::OffsetDateTime::now_local()?.date().to_string())
+}
+
+pub fn validate_date(date: &str) -> Result<(), Error> {
+    let parsed = time::Date::parse(
+        date,
+        &time::macros::format_description!("[year]-[month]-[day]"),
+    );
+    if parsed.is_err() {
+        return Err(Error::InvalidDate(date.to_owned()));
+    }
+    Ok(())
 }
 
 pub fn next_rollover_delay() -> Result<std::time::Duration, Error> {

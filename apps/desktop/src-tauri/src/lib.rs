@@ -183,6 +183,7 @@ mod cache_tests {
     }
 
     #[tokio::test]
+    #[cfg(debug_assertions)]
     #[ignore = "requires live consumer and R2 credentials"]
     async fn live_consumer_pages_advance_without_using_the_first_page_cache() {
         vesper_credentials::load_development_environment()
@@ -455,8 +456,7 @@ async fn delete_memo(id: String, app: tauri::AppHandle) -> CommandResponse<Strin
 #[tauri::command]
 async fn create_photo(
     input: cms_core::api::moment::Upload,
-    original: Vec<u8>,
-    thumbnail: Vec<u8>,
+    source: Vec<u8>,
     app: tauri::AppHandle,
 ) -> CommandResponse<cms_core::api::moment::Photo> {
     let state = app.state::<CmsState>();
@@ -464,7 +464,7 @@ async fn create_photo(
         Ok(repository) => repository,
         Err(message) => return CommandResponse::Failed { message },
     };
-    match cms_core::api::moment::upload(repository.store(), input, original, thumbnail).await {
+    match cms_core::api::moment::upload(repository.store(), input, source).await {
         Ok(data) => {
             state
                 .views
@@ -774,6 +774,7 @@ pub fn run() {
 
     let result = tauri::Builder::default()
         .manage(CmsState::default())
+        .manage(dashboard::DashboardRuntime::default())
         .manage(updater::UpdateState::default())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
@@ -842,13 +843,8 @@ pub fn run() {
             update_knowledge,
             updater::check_for_update,
             updater::install_update,
-            dashboard::read_task_manager,
-            dashboard::read_codex_usage,
-            dashboard::read_opencode_usage,
-            dashboard::read_deepseek_balance,
-            dashboard::read_cherryin_balance,
-            dashboard::read_weather,
-            dashboard::read_github,
+            dashboard::refresh_dashboard,
+            dashboard::set_dashboard_active,
             read_todos,
             add_todo,
             set_todo_completed,
@@ -859,6 +855,7 @@ pub fn run() {
             configuration::save_api_configuration,
             configuration::save_ntfy_configuration,
             notifications::read_notifications,
+            notifications::mark_notification_read,
             configuration::save_app_lock,
             configuration::remove_app_lock,
             configuration::unlock_app

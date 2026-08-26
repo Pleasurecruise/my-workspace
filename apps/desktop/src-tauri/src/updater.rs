@@ -4,6 +4,7 @@ use tauri_plugin_updater::UpdaterExt;
 
 #[derive(Default)]
 pub(crate) struct UpdateState {
+    checked: std::sync::atomic::AtomicBool,
     installing: tokio::sync::Mutex<bool>,
 }
 
@@ -27,6 +28,13 @@ enum UpdateProgress {
 
 #[tauri::command]
 pub(crate) async fn check_for_update(app: tauri::AppHandle) -> CommandResponse<Option<UpdateInfo>> {
+    if app
+        .state::<UpdateState>()
+        .checked
+        .swap(true, std::sync::atomic::Ordering::AcqRel)
+    {
+        return CommandResponse::Ready { data: None };
+    }
     let updater = match app.updater() {
         Ok(updater) => updater,
         Err(error) => {

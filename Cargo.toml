@@ -32,6 +32,9 @@ dirs = "6"
 futures-util = "0.3"
 cms-core = { path = "crates/cms-core" }
 hex = "0.4"
+heic = { version = "0.1.6", features = ["av1"] }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+kamadak-exif = "0.6.1"
 keyring = "4.1.6"
 linkify = "0.10"
 my-workspace-logger = { path = "crates/logger" }
@@ -50,6 +53,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
+thumbhash = "0.1"
 tokio = { version = "1", features = [
   "fs",
   "io-util",
@@ -62,5 +66,5 @@ tokio = { version = "1", features = [
 tracing = "0.1.44"
 ugos = { path = "crates/ugos" }
 vesper-credentials = { path = "crates/credentials" }
-time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
+time = { version = "0.3", features = ["formatting", "local-offset", "macros", "parsing"] }
 uuid = { version = "1", features = ["v4"] }

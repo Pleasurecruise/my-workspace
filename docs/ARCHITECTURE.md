@@ -6,17 +6,18 @@ publication artifacts; this repository does not run a cloud application backend.
 
 ## Repository layout
 
-| Path                 | Responsibility                                                                            |
-| -------------------- | ----------------------------------------------------------------------------------------- |
-| `apps/desktop`       | Tauri v2 deliverable. Svelte renders views; Rust owns commands and application behavior.  |
-| `apps/cli`           | `vesper` executable for builds, publication, Todo, Memo, Knowledge, and Moment workflows. |
-| `crates/cms-core`    | Todo storage, Worker APIs, Markdown, consumer projections, build planning, and R2 access. |
-| `crates/credentials` | Typed records in macOS Keychain, Windows Credential Manager, or Linux Secret Service.     |
-| `crates/logger`      | Shared `tracing` initialization.                                                          |
-| `crates/ugos`        | Read-only UGOS Pro authentication, certificate pinning, and Task Manager telemetry.       |
-| `crates/useage`      | AI subscription and account-credit integrations. The spelling is intentional.             |
-| `packages/ui`        | Reusable Svelte primitives and design tokens.                                             |
-| `packages/tsconfig`  | Shared frontend TypeScript configuration.                                                 |
+| Path                 | Responsibility                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| `apps/desktop`       | Tauri v2 deliverable. Svelte renders views; Rust owns commands and application behavior.    |
+| `apps/cli`           | `vesper` executable for provider status, builds, publication, Todo, and consumer workflows. |
+| `crates/cms-core`    | Todo storage, Worker APIs, Markdown, consumer projections, build planning, and R2 access.   |
+| `crates/credentials` | Typed records in macOS Keychain, Windows Credential Manager, or Linux Secret Service.       |
+| `crates/logger`      | Shared `tracing` initialization.                                                            |
+| `crates/network`     | Operating-system proxy discovery and shared outbound HTTP client policy.                    |
+| `crates/ugos`        | Read-only UGOS Pro authentication, certificate pinning, and Task Manager telemetry.         |
+| `crates/useage`      | AI subscription and account-credit integrations. The spelling is intentional.               |
+| `packages/ui`        | Reusable Svelte primitives and design tokens.                                               |
+| `packages/tsconfig`  | Shared frontend TypeScript configuration.                                                   |
 
 Create a crate or package only when it owns a stable independent boundary or is genuinely shared.
 Except for the Svelte view layer and its build configuration, new application behavior belongs in
@@ -54,6 +55,10 @@ Svelte owns interaction state, presentation, accessibility, and invoking named T
 does not compile Markdown, access R2, open credential stores, authenticate to UGOS, spawn Codex, or
 call provider APIs directly. The typed Settings read command is the one credential exception: it
 returns stored values to prefill that trusted local form.
+
+The Rust Dashboard runtime owns external-source concurrency, per-source request revisions, and
+page-active polling. It sends a closed tagged event to Svelte as each source settles; the view layer
+only updates the corresponding card.
 
 The Tauri layer maps transport input and output. Domain and protocol behavior stays in its owning
 crate. Commands return a tagged `ready` or `failed` response so expected provider and storage errors
@@ -100,12 +105,14 @@ directory, and reconnects with the last message ID so ntfy can replay cached mes
 renders the typed local projection. A notification body may be a plain message or a normalized JSON
 envelope with `source`, optional `title`, and `body`; the envelope separates the producer identity
 from the transport topic. Newly received live messages also use the registered operating-system
-notification adapter; replayed historical messages only populate Inbox.
+notification adapter; replayed historical messages only populate Inbox. Marking a message as read
+removes it from the Rust-owned notification list. No separate read-message archive is retained.
 
 Settings stores only the ntfy read token; the server address and topic are fixed application policy.
 Producer routes, credentials, signing secrets, and processing remain outside Vesper.
 
-The desktop checks the latest published GitHub Release through Tauri's signed updater manifest.
+The desktop checks the latest published GitHub Release once per application launch through Tauri's
+signed updater manifest.
 When a newer version exists, Svelte presents its version and notes; Rust rechecks the selected
 version, downloads it with progress events, verifies its signature, installs it, and restarts the
 application. Update signing uses a public key embedded in the application and a private key available
@@ -127,7 +134,7 @@ Content changes converge on the Rust boundaries that own storage and remote prot
   transformation or content-addressed renaming.
 - The `Session to Blog` skill uses the CLI path. It is not a desktop command or editor action.
 - Desktop Memo and Knowledge editors call their authenticated APIs. Moment upload prepares image
-  variants in the WebView, then Rust coordinates R2 upload and API metadata registration.
+  variants and camera metadata in Rust before coordinating R2 upload and API registration.
 
 Consumer editing is separate from the temporary publication build. The desktop does not bypass
 consumer APIs for Memo or Knowledge bodies and does not create a retained local mirror.
@@ -170,12 +177,12 @@ creates a favorite through the same authenticated my-memos API.
 ### Moment
 
 Moment uses `https://moment.you-find.me/api/v1` for complete D1 photo metadata, including original
-and thumbnail R2 keys. Upload preparation runs in the trusted WebView and produces a PNG original,
-JPEG thumbnail, and ThumbHash. Rust assigns both `img/` keys, uploads the objects, and registers the
-metadata. If thumbnail upload or metadata registration fails, Rust removes objects already written
-by that operation. Listing, tags, metadata edits, and deletion remain authenticated Worker
-operations. The current remote list endpoint has no cursor and returns at most 100 records, so the
-desktop cursor pages only that returned set.
+and thumbnail R2 keys. The shared Rust upload path accepts PNG, JPEG, WebP, AVIF, and HEIC sources,
+normalizes orientation, reads available EXIF time and coordinates, and produces a PNG original, JPEG
+thumbnail, and ThumbHash. It then assigns both `img/` keys, uploads the objects, and registers the
+metadata, removing objects already written if a later step fails. Listing, tags, metadata edits, and
+deletion remain authenticated Worker operations. The current remote list endpoint has no cursor and
+returns at most 100 records, so the desktop cursor pages only that returned set.
 
 ### Knowledge
 
@@ -203,11 +210,13 @@ preserving history. A deliberately selected historical or future date remains se
 
 ## CLI consumer surface
 
-The CLI groups commands by feature in `todo.rs`, `memo.rs`, `knowledge.rs`, and `moment.rs`. The three
-consumer features reuse the same typed REST modules as the desktop. Memo and Knowledge content stays
-behind their Worker APIs; Moment exposes explicit R2 binary transfer before REST metadata
-registration. Todo commands reuse `cms_core::todo`. Detailed sequencing and rollback rules live in
-[WORKFLOW.md](WORKFLOW.md).
+The CLI groups commands by feature in `status.rs`, `todo.rs`, `memo.rs`, `knowledge.rs`, and
+`moment.rs`. The three consumer features reuse the same typed REST modules as the desktop, including
+Memo's X import.
+Memo and Knowledge content stays behind their Worker APIs; Moment exposes explicit R2 binary transfer
+before REST metadata registration. Todo commands reuse `cms_core::todo` and accept an explicit date
+for the same calendar-day operations available in the desktop. Detailed sequencing and rollback
+rules live in [WORKFLOW.md](WORKFLOW.md).
 
 ## Current limitations
 

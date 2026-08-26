@@ -17,4 +17,45 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
   }
+
+  button:not(:disabled),
+  select:not(:disabled),
+  label[for],
+  a[href],
+  input:not(:disabled):where(
+      [type="button"],
+      [type="submit"],
+      [type="reset"],
+      [type="checkbox"],
+      [type="radio"],
+      [type="file"],
+      [type="range"],
+      [type="color"]
+    ) {
+    cursor: pointer;
+  }
+
+  input:not(:disabled):not(
+      :where(
+        [type="button"],
+        [type="submit"],
+        [type="reset"],
+        [type="checkbox"],
+        [type="radio"],
+        [type="file"],
+        [type="range"],
+        [type="color"]
+      )
+    ),
+  textarea:not(:disabled),
+  [contenteditable="true"] {
+    cursor: text;
+  }
+
+  button:disabled,
+  input:disabled,
+  textarea:disabled,
+  select:disabled {
+    cursor: not-allowed;
+  }
 }

@@ -126,18 +126,36 @@ impl NotificationState {
             },
         );
         next.notifications.truncate(NOTIFICATION_LIMIT);
-        let encoded = serde_json::to_vec(&next).map_err(|error| error.to_string())?;
-        if let Some(parent) = self.path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|error| error.to_string())?;
-        }
-        tokio::fs::write(&self.path, encoded)
-            .await
-            .map_err(|error| error.to_string())?;
+        persist(&self.path, &next).await?;
         *store = next;
         Ok(Some(store.notifications.clone()))
     }
+
+    async fn mark_read(&self, id: &str) -> Result<Vec<Notification>, String> {
+        let mut store = self.store.write().await;
+        let mut next = store.clone();
+        let original_length = next.notifications.len();
+        next.notifications
+            .retain(|notification| notification.id != id);
+        if next.notifications.len() == original_length {
+            return Ok(store.notifications.clone());
+        }
+        persist(&self.path, &next).await?;
+        *store = next;
+        Ok(store.notifications.clone())
+    }
+}
+
+async fn persist(path: &std::path::Path, store: &NotificationStore) -> Result<(), String> {
+    let encoded = serde_json::to_vec(store).map_err(|error| error.to_string())?;
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    tokio::fs::write(path, encoded)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -147,6 +165,20 @@ pub(crate) async fn read_notifications(
     Ok(CommandResponse::Ready {
         data: state.store.read().await.notifications.clone(),
     })
+}
+
+#[tauri::command]
+pub(crate) async fn mark_notification_read(
+    id: String,
+    app: tauri::AppHandle,
+) -> CommandResponse<Vec<Notification>> {
+    match app.state::<NotificationState>().mark_read(&id).await {
+        Ok(data) => {
+            emit_notifications(&app, data.clone());
+            CommandResponse::Ready { data }
+        }
+        Err(message) => CommandResponse::Failed { message },
+    }
 }
 
 pub(crate) async fn restart(app: tauri::AppHandle) -> Result<(), String> {
@@ -278,6 +310,10 @@ fn publish_notifications(app: &tauri::AppHandle, notifications: Vec<Notification
             }
         }
     }
+    emit_notifications(app, notifications);
+}
+
+fn emit_notifications(app: &tauri::AppHandle, notifications: Vec<Notification>) {
     if let Err(error) = app.emit("notifications-updated", notifications) {
         tracing::warn!(%error, "could not emit notification update");
     }
@@ -314,6 +350,30 @@ mod tests {
         };
         assert!(state.accept(duplicate).await.unwrap().is_none());
         assert_eq!(state.store.read().await.notifications.len(), 1);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn marking_a_message_read_removes_it_from_the_store() {
+        let path = std::env::temp_dir().join(format!(
+            "vesper-read-notifications-{}.json",
+            std::process::id()
+        ));
+        let message = || NtfyMessage {
+            id: "message-1".to_owned(),
+            time: 1,
+            event: "message".to_owned(),
+            topic: NTFY_TOPIC.to_owned(),
+            title: None,
+            message: Some("Message".to_owned()),
+            tags: vec![],
+        };
+        let state = NotificationState::new(path.clone()).unwrap();
+        state.accept(message()).await.unwrap();
+        assert!(state.mark_read("message-1").await.unwrap().is_empty());
+
+        let restored = NotificationState::new(path.clone()).unwrap();
+        assert!(restored.store.read().await.notifications.is_empty());
         let _ = std::fs::remove_file(path);
     }
 }

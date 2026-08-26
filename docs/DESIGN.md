@@ -101,10 +101,11 @@ The application shell owns one persistent lower-right back-to-top action. Its si
 follows the main canvas scroll position across scrollable views; page-specific actions remain
 separate.
 
-When a signed application update is available, a modal presents the new version, release notes, and
-the installed version before downloading. Installation requires an explicit user action, reports
-download progress without hiding errors, and restarts only after signature verification and install
-complete successfully.
+The startup update check stays out of navigation flows. When a signed update is available, a modal
+presents the new version, release notes, and installed version before downloading. Installation
+requires an explicit user action, reports progress without hiding errors, and restarts only after
+signature verification and installation complete successfully. Check failures use transient,
+dismissible feedback rather than a persistent application state.
 
 The sidebar omits a separate brand header and keeps its navigation visually primary, including
 Settings as a full navigation tab. An editable local profile badge anchors the left side of the footer
@@ -113,7 +114,8 @@ footer. The editor receives focus when opened and collapses when focus leaves th
 square-cropped avatar and display name persist locally and do not imply an application session. On
 desktop, the sidebar's right edge supports pointer dragging and keyboard resizing within bounded
 widths, and remembers the chosen width. The footer separates destinations from immediate actions
-without a visual divider: Inbox remains a destination, while App Lock and theme are immediate actions.
+without a visual divider: Inbox remains a destination and shows a small status dot while unread
+notifications exist, while App Lock and theme are immediate actions.
 When no password exists, the lock control routes to Settings; otherwise it immediately makes the
 complete application shell inert and shows one opaque unlock surface. The unlock form receives focus,
 reports an incorrect password in place, and reveals no underlying content. Settings owns password

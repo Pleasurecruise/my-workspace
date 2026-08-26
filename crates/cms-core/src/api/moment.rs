@@ -4,6 +4,11 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use vesper_credentials::{ConsumerApi, Stored};
 
+mod exif;
+mod media;
+
+pub(super) use media::Error as MediaError;
+
 const ENDPOINT: &str = "https://moment.you-find.me/api/v1";
 const PAGE_SIZE: usize = 24;
 
@@ -79,9 +84,6 @@ pub struct Upload {
     pub tags: Vec<String>,
     pub date: Option<String>,
     pub geo: Option<Geo>,
-    pub thumb_hash: String,
-    pub width: u32,
-    pub height: u32,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -233,17 +235,7 @@ pub async fn create(input: &Create) -> Result<Photo, ApiError> {
     Ok(result.photo)
 }
 
-pub async fn upload(
-    store: &Store,
-    input: Upload,
-    original: Vec<u8>,
-    thumbnail: Vec<u8>,
-) -> Result<Photo, ApiError> {
-    if original.is_empty() || thumbnail.is_empty() {
-        return Err(ApiError::Protocol(
-            "photo upload contains an empty image object".to_owned(),
-        ));
-    }
+pub async fn upload(store: &Store, input: Upload, source: Vec<u8>) -> Result<Photo, ApiError> {
     if input.title.trim().is_empty()
         || input.title.chars().count() > 120
         || input
@@ -255,14 +247,6 @@ pub async fn upload(
             .tags
             .iter()
             .any(|tag| tag.trim().is_empty() || tag.chars().count() > 50)
-        || input.width == 0
-        || input.height == 0
-        || input.thumb_hash.is_empty()
-        || !input.thumb_hash.len().is_multiple_of(2)
-        || !input
-            .thumb_hash
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit())
         || input.geo.as_ref().is_some_and(|geo| {
             !(-90.0..=90.0).contains(&geo.lat) || !(-180.0..=180.0).contains(&geo.lng)
         })
@@ -271,11 +255,18 @@ pub async fn upload(
             "photo upload metadata is invalid".to_owned(),
         ));
     }
+    let prepared = tokio::task::spawn_blocking(move || media::prepare(&source))
+        .await
+        .map_err(|_| ApiError::Protocol("photo processor stopped unexpectedly".to_owned()))?
+        .map_err(ApiError::Media)?;
     let id = uuid::Uuid::new_v4();
     let r2_key = format!("img/{id}.png");
     let thumbnail_r2_key = format!("img/thumbnails/{id}.jpg");
-    store.put(&r2_key, original, "image/png").await?;
-    if let Err(error) = store.put(&thumbnail_r2_key, thumbnail, "image/jpeg").await {
+    store.put(&r2_key, prepared.original, "image/png").await?;
+    if let Err(error) = store
+        .put(&thumbnail_r2_key, prepared.thumbnail, "image/jpeg")
+        .await
+    {
         return match store.delete(&r2_key).await {
             Ok(()) => Err(error.into()),
             Err(cleanup) => Err(ApiError::Protocol(format!(
@@ -293,12 +284,12 @@ pub async fn upload(
             .into_iter()
             .map(|tag| tag.trim().to_lowercase())
             .collect(),
-        date: input.date,
-        geo: input.geo,
-        thumb_hash: Some(input.thumb_hash),
-        width: input.width,
-        height: input.height,
-        aspect_ratio: Some(f64::from(input.width) / f64::from(input.height)),
+        date: input.date.or(prepared.captured_at),
+        geo: input.geo.or(prepared.geo),
+        thumb_hash: Some(prepared.thumb_hash),
+        width: prepared.width,
+        height: prepared.height,
+        aspect_ratio: Some(f64::from(prepared.width) / f64::from(prepared.height)),
         format: Some("PNG".to_owned()),
     };
     match create(&metadata).await {
@@ -408,21 +399,18 @@ mod tests {
     }
 
     #[test]
-    fn decodes_the_desktop_upload_contract_without_object_keys() {
+    fn decodes_the_upload_contract_without_derived_image_fields() {
         let upload: Upload = serde_json::from_value(serde_json::json!({
             "title": "Shanghai",
             "description": "Evening",
             "tags": ["city"],
             "date": "2026-08-24T12:00:00.000Z",
-            "geo": { "lat": 31.2304, "lng": 121.4737 },
-            "thumbHash": "aabbccdd",
-            "width": 1600,
-            "height": 900
+            "geo": { "lat": 31.2304, "lng": 121.4737 }
         }))
         .expect("desktop upload should match the command contract");
 
         assert_eq!(upload.title, "Shanghai");
         assert_eq!(upload.tags, ["city"]);
-        assert_eq!(upload.width, 1600);
+        assert_eq!(upload.geo.expect("coordinates").lat, 31.2304);
     }
 }

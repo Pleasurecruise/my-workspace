@@ -55,9 +55,6 @@ export interface PhotoUpload {
   tags: string[];
   date: string | null;
   geo: { lat: number; lng: number } | null;
-  thumbHash: string;
-  width: number;
-  height: number;
 }
 
 export interface PhotoUpdate {
@@ -284,15 +281,14 @@ export interface DashboardState {
   github: QueryState<GithubSnapshot>;
 }
 
-export interface DashboardQueryResults {
-  read_task_manager: TaskManagerSnapshot;
-  read_codex_usage: CodexUsage;
-  read_opencode_usage: OpenCodeUsage;
-  read_deepseek_balance: DeepSeekBalance;
-  read_cherryin_balance: CherryInBalance;
-  read_weather: WeatherReport;
-  read_github: GithubSnapshot;
-}
+export type DashboardEvent =
+  | { source: "taskManager"; result: CommandResponse<TaskManagerSnapshot> }
+  | { source: "codex"; result: CommandResponse<CodexUsage> }
+  | { source: "openCode"; result: CommandResponse<OpenCodeUsage> }
+  | { source: "deepSeek"; result: CommandResponse<DeepSeekBalance> }
+  | { source: "cherryIn"; result: CommandResponse<CherryInBalance> }
+  | { source: "weather"; result: CommandResponse<WeatherReport> }
+  | { source: "github"; result: CommandResponse<GithubSnapshot> };
 
 export interface TodoList {
   date: string;

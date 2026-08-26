@@ -3,13 +3,13 @@
 	import { ArrowLeft, Upload, X } from "@lucide/svelte";
 	import { Button, Input, Label, Textarea } from "@my-workspace/ui";
 	import { onDestroy } from "svelte";
-	import { rgbaToThumbHash } from "thumbhash";
 	import type { CommandResponse, PhotoItem, PhotoUpload } from "../consumer";
 
 	let { onuploaded, onclose }: { onuploaded: (photo: PhotoItem) => void; onclose: () => void } = $props();
 
 	let file = $state<File | null>(null);
 	let preview = $state<string | null>(null);
+	let previewFailed = $state(false);
 	let title = $state("");
 	let description = $state("");
 	let tagText = $state("");
@@ -26,17 +26,10 @@
 		if (files === null) return;
 		const selected = files.item(0);
 		if (selected === null) return;
-		if (!["image/png", "image/jpeg", "image/webp", "image/avif"].includes(selected.type.toLowerCase())) {
-			error = `Unsupported image MIME type: ${selected.type}.`;
-			return;
-		}
-		if (selected.size > 20 * 1024 * 1024) {
-			error = "The image exceeds the 20 MB upload limit.";
-			return;
-		}
 		if (preview !== null) URL.revokeObjectURL(preview);
 		file = selected;
 		preview = URL.createObjectURL(selected);
+		previewFailed = false;
 		title = selected.name.replace(/\.[^.]+$/, "");
 		error = "";
 	}
@@ -45,6 +38,7 @@
 		if (preview !== null) URL.revokeObjectURL(preview);
 		file = null;
 		preview = null;
+		previewFailed = false;
 		title = "";
 		description = "";
 		tagText = "";
@@ -75,74 +69,29 @@
 		const selected = file;
 		uploading = true;
 		error = "";
-		let bitmap: ImageBitmap | null = null;
+		let source: number[];
 		try {
-			bitmap = await createImageBitmap(selected);
-				const originalCanvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-				const originalContext = originalCanvas.getContext("2d");
-				if (originalContext === null) {
-					error = "The image processor is unavailable.";
-					return;
-				}
-				originalContext.drawImage(bitmap, 0, 0);
-
-				const thumbnailScale = Math.min(1, 600 / Math.max(bitmap.width, bitmap.height));
-				const thumbnailWidth = Math.max(1, Math.round(bitmap.width * thumbnailScale));
-				const thumbnailHeight = Math.max(1, Math.round(bitmap.height * thumbnailScale));
-				const thumbnailCanvas = new OffscreenCanvas(thumbnailWidth, thumbnailHeight);
-				const thumbnailContext = thumbnailCanvas.getContext("2d");
-				if (thumbnailContext === null) {
-					error = "The thumbnail processor is unavailable.";
-					return;
-				}
-				thumbnailContext.drawImage(bitmap, 0, 0, thumbnailWidth, thumbnailHeight);
-
-				const hashScale = Math.min(1, 100 / Math.max(bitmap.width, bitmap.height));
-				const hashWidth = Math.max(1, Math.round(bitmap.width * hashScale));
-				const hashHeight = Math.max(1, Math.round(bitmap.height * hashScale));
-				const hashCanvas = new OffscreenCanvas(hashWidth, hashHeight);
-				const hashContext = hashCanvas.getContext("2d");
-				if (hashContext === null) {
-					error = "The placeholder processor is unavailable.";
-					return;
-				}
-				hashContext.drawImage(bitmap, 0, 0, hashWidth, hashHeight);
-				const pixels = hashContext.getImageData(0, 0, hashWidth, hashHeight);
-				const thumbHash = Array.from(rgbaToThumbHash(hashWidth, hashHeight, pixels.data), (byte) =>
-					byte.toString(16).padStart(2, "0"),
-				).join("");
-				const width = bitmap.width;
-				const height = bitmap.height;
-
-				const original = await originalCanvas.convertToBlob({ type: "image/png" });
-				const thumbnail = await thumbnailCanvas.convertToBlob({ type: "image/jpeg", quality: 0.9 });
-				const input: PhotoUpload = {
-					title: title.trim(),
-					description: description.trim() === "" ? null : description.trim(),
-					tags,
-					date: date === "" ? null : new Date(date).toISOString(),
-					geo: hasLatitude ? { lat, lng } : null,
-					thumbHash,
-					width,
-					height,
-				};
-				const response = await invoke<CommandResponse<PhotoItem>>("create_photo", {
-					input,
-					original: Array.from(new Uint8Array(await original.arrayBuffer())),
-					thumbnail: Array.from(new Uint8Array(await thumbnail.arrayBuffer())),
-				});
-				if (response.status === "failed") {
-					error = response.message;
-					return;
-				}
-				onuploaded(response.data);
-				clearFile();
+			source = Array.from(new Uint8Array(await selected.arrayBuffer()));
 		} catch {
-			error = "The photo could not be processed or uploaded.";
-		} finally {
-			bitmap?.close();
+			error = "The photo could not be read.";
 			uploading = false;
+			return;
 		}
+		const input: PhotoUpload = {
+			title: title.trim(),
+			description: description.trim() === "" ? null : description.trim(),
+			tags,
+			date: date === "" ? null : new Date(date).toISOString(),
+			geo: hasLatitude ? { lat, lng } : null,
+		};
+		const response = await invoke<CommandResponse<PhotoItem>>("create_photo", { input, source });
+		uploading = false;
+		if (response.status === "failed") {
+			error = response.message;
+			return;
+		}
+		onuploaded(response.data);
+		clearFile();
 	}
 
 	onDestroy(() => {
@@ -163,17 +112,17 @@
 		<label class="drop-zone">
 			<Upload size={22} />
 			<span>Choose an image</span>
-			<small>PNG, JPEG, WebP or AVIF · maximum 20 MB</small>
+			<small>PNG, JPEG, WebP, AVIF or HEIC · maximum 20 MB</small>
 			<input
 				type="file"
-				accept="image/png,image/jpeg,image/webp,image/avif"
+				accept="image/png,image/jpeg,image/webp,image/avif,image/heic,image/heif,.heic,.heif"
 				onchange={(event) => selectFile(event.currentTarget)}
 			/>
 		</label>
 	{:else}
 		<div class="upload-grid">
 			<div class="preview">
-				{#if preview !== null}<img src={preview} alt="Selected upload preview" />{/if}
+				{#if preview !== null && !previewFailed}<img src={preview} alt="Selected upload preview" onerror={() => (previewFailed = true)} />{:else}<span>{file.name}</span>{/if}
 				<button type="button" disabled={uploading} onclick={clearFile} aria-label="Remove selected image"><X size={14} /></button>
 			</div>
 			<div class="fields">

@@ -135,7 +135,7 @@
 	form input { min-width: 0; height: 2rem; flex: 1; padding: 0 0.65rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-foreground); font-size: 0.72rem; outline: none; }
 	form input:focus { border-color: var(--color-accent); }
 	button { display: inline-flex; width: 2rem; height: 2rem; flex: 0 0 auto; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-muted-foreground); cursor: pointer; }
-	button:disabled { cursor: default; opacity: 0.45; }
+	button:disabled { cursor: not-allowed; opacity: 0.45; }
 	ul { display: grid; gap: 0.3rem; max-height: 12rem; padding: 0; margin: 0.75rem 0 0; overflow-y: auto; list-style: none; }
 	li { min-width: 0; gap: 0.5rem; min-height: 1.8rem; }
 	li > input { accent-color: var(--color-accent); }

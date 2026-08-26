@@ -155,7 +155,7 @@
 	.toolbar button { display: grid; width: 1.9rem; height: 1.9rem; place-items: center; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; }
 	.toolbar button:hover:not(:disabled) { background: var(--color-muted); color: var(--color-foreground); }
 	.toolbar button.active { background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); }
-	.toolbar button:disabled { cursor: default; opacity: 0.35; }
+	.toolbar button:disabled { cursor: not-allowed; opacity: 0.35; }
 	.toolbar > span { width: 1px; height: 1.25rem; margin: 0 0.2rem; background: var(--color-border); }
 	.toolbar small { margin-left: auto; color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 0.6rem; }
 	.toolbar small.limit { color: var(--color-error); }

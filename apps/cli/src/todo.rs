@@ -1,9 +1,19 @@
 use crate::print_json;
 use serde_json::json;
 
-pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
+pub async fn run(
+    action: &str,
+    arguments: &[String],
+    selected_date: Option<&str>,
+) -> Result<(), String> {
     let store = cms_core::todo::Store::shared().map_err(|error| error.to_string())?;
-    let date = cms_core::todo::current_date().map_err(|error| error.to_string())?;
+    let date = match selected_date {
+        Some(date) => {
+            cms_core::todo::validate_date(date).map_err(|error| error.to_string())?;
+            date.to_owned()
+        }
+        None => cms_core::todo::current_date().map_err(|error| error.to_string())?,
+    };
     run_with_store(&store, &date, action, arguments).await
 }
 

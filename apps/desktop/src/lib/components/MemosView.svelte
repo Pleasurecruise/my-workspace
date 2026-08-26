@@ -65,7 +65,6 @@
 	let filtersReady = false;
 	let toastSequence = 0;
 	let toasts = $state<Array<{ id: number; kind: "success" | "error"; message: string }>>([]);
-
 	$effect(() => {
 		const activeDisplay = display;
 		const query = activeDisplay === "active" ? search.trim() : "";
@@ -339,20 +338,23 @@
 
 <section class="home" aria-label="Memo feed">
 	{#if display === "active"}
-		<div class="composer">
-			<MemoEditor
-				bind:value={draft}
-				placeholder="What's on your mind? Markdown is supported."
-				onsubmit={saveDraft}
-			/>
-			<div class="composer-toolbar">
-				<Button variant="outline" size="sm" class="gap-1.5 font-normal text-muted-foreground" onclick={() => (visibility = visibility === "public" ? "private" : "public")}>
-					{#if visibility === "public"}<Globe size={11} /> Public{:else}<Lock size={11} /> Private{/if}
-				</Button>
-				<span class="shortcut">⌘ Enter</span>
-				<Button size="sm" disabled={saving || draft.trim() === ""} onclick={saveDraft}>
-					{saving ? "Saving..." : "Save"}
-				</Button>
+		<div class="composer-shell">
+			<div class="composer">
+				<MemoEditor
+					bind:value={draft}
+					tags={tags.map((tag) => tag.name)}
+					placeholder="What's on your mind? Markdown is supported."
+					onsubmit={saveDraft}
+				/>
+				<div class="composer-toolbar">
+					<Button variant="outline" size="sm" class="gap-1.5 font-normal text-muted-foreground" onclick={() => (visibility = visibility === "public" ? "private" : "public")}>
+						{#if visibility === "public"}<Globe size={11} /> Public{:else}<Lock size={11} /> Private{/if}
+					</Button>
+					<span class="shortcut">⌘ Enter</span>
+					<Button size="sm" disabled={saving || draft.trim() === ""} onclick={saveDraft}>
+						{saving ? "Saving..." : "Save"}
+					</Button>
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -619,6 +621,7 @@
 		margin-bottom: 1.25rem;
 	}
 
+	.composer-shell { position: relative; }
 	.composer:focus-within,
 	article.editing:focus-within {
 		border-color: var(--color-accent);

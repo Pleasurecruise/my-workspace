@@ -17,7 +17,7 @@
 		ChannelView,
 		CommandResponse,
 		ConfigurationStatus,
-		DashboardQueryResults,
+		DashboardEvent,
 		DashboardState,
 		InitialViews,
 		NtfyConfig,
@@ -95,7 +95,6 @@
 		github: { data: null, error: null, loading: false },
 	});
 	let dashboardRefreshing = $state(false);
-	const dashboardRequestVersions = new Map<keyof DashboardQueryResults, number>();
 	let todos = $state<QueryState<TodoList>>({ data: null, error: null, loading: false });
 	const initialTodoDate = currentDate();
 	let todayDate = $state(initialTodoDate);
@@ -158,9 +157,19 @@
 		updateChecking = false;
 		if (response.status === "failed") {
 			updateCheckError = response.message;
+			const message = response.message;
+			window.setTimeout(() => {
+				if (updateCheckError === message) updateCheckError = null;
+			}, 5_000);
 			return;
 		}
 		updateAvailable = response.data;
+	}
+
+	async function markNotificationRead(id: string) {
+		const response = await invoke<CommandResponse<NtfyNotification[]>>("mark_notification_read", { id });
+		if (response.status === "ready") notifications = response.data;
+		return response;
 	}
 
 	async function installUpdate() {
@@ -194,36 +203,23 @@
 		}
 	}
 
-	async function loadQuery<K extends keyof DashboardQueryResults>(
-		command: K,
-		state: QueryState<NoInfer<DashboardQueryResults[K]>>,
-		force = false,
-	) {
-		if (state.loading && !force) return;
-		const version = (dashboardRequestVersions.get(command) ?? 0) + 1;
-		dashboardRequestVersions.set(command, version);
-		state.loading = true;
-		state.error = null;
-		const response = await invoke<CommandResponse<DashboardQueryResults[K]>>(command);
-		if (dashboardRequestVersions.get(command) !== version) return;
-		state.loading = false;
-		if (response.status === "ready") state.data = response.data;
-		else state.error = response.message;
-	}
-
 	async function refreshDashboard() {
 		if (dashboardRefreshing) return;
 		dashboardRefreshing = true;
-		await Promise.all([
-			loadQuery("read_task_manager", dashboard.taskManager, true),
-			loadQuery("read_codex_usage", dashboard.codex, true),
-			loadQuery("read_opencode_usage", dashboard.openCode, true),
-			loadQuery("read_deepseek_balance", dashboard.deepSeek, true),
-			loadQuery("read_cherryin_balance", dashboard.cherryIn, true),
-			loadQuery("read_weather", dashboard.weather, true),
-			loadQuery("read_github", dashboard.github, true),
+		for (const state of Object.values(dashboard)) {
+			state.loading = true;
+			state.error = null;
+		}
+		const [response] = await Promise.all([
+			invoke<CommandResponse<null>>("refresh_dashboard"),
 			loadTodos(todoDate),
 		]);
+		if (response.status === "failed") {
+			for (const state of Object.values(dashboard)) {
+				state.loading = false;
+				state.error = response.message;
+			}
+		}
 		dashboardRefreshing = false;
 	}
 
@@ -296,13 +292,14 @@
 		}
 		request += 1;
 		selected = view;
+		void invoke<CommandResponse<null>>("set_dashboard_active", { active: view === "dashboard" });
 		sidebarOpen = false;
 		if (view === "dashboard" || view === "inbox" || view === "settings") {
 			content = null;
 			error = null;
 			loading = false;
 			loadingMore = false;
-			if (view === "dashboard") void loadQuery("read_github", dashboard.github);
+			if (view === "dashboard") void refreshDashboard();
 			return;
 		}
 		const channel: Channel = view === "newspaper" ? "knowledge" : view;
@@ -804,7 +801,7 @@
 		});
 		if (response.status === "ready") {
 			await loadConfiguration();
-			await loadQuery("read_task_manager", dashboard.taskManager);
+			await refreshDashboard();
 		}
 		return response;
 	}
@@ -899,14 +896,70 @@
 	onMount(() => {
 		loadProfile();
 		void loadConfiguration();
-		void loadQuery("read_task_manager", dashboard.taskManager);
-		void loadQuery("read_codex_usage", dashboard.codex);
-		void loadQuery("read_opencode_usage", dashboard.openCode);
-		void loadQuery("read_deepseek_balance", dashboard.deepSeek);
-		void loadQuery("read_cherryin_balance", dashboard.cherryIn);
-		void loadQuery("read_weather", dashboard.weather);
-		void loadQuery("read_github", dashboard.github);
-		void loadTodos();
+		const unlistenDashboard = listen<DashboardEvent>("dashboard-source-updated", (event) => {
+			const update = event.payload;
+			switch (update.source) {
+				case "taskManager":
+					dashboard.taskManager.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.taskManager.data = update.result.data;
+						dashboard.taskManager.error = null;
+					}
+					else dashboard.taskManager.error = update.result.message;
+					break;
+				case "codex":
+					dashboard.codex.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.codex.data = update.result.data;
+						dashboard.codex.error = null;
+					}
+					else dashboard.codex.error = update.result.message;
+					break;
+				case "openCode":
+					dashboard.openCode.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.openCode.data = update.result.data;
+						dashboard.openCode.error = null;
+					}
+					else dashboard.openCode.error = update.result.message;
+					break;
+				case "deepSeek":
+					dashboard.deepSeek.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.deepSeek.data = update.result.data;
+						dashboard.deepSeek.error = null;
+					}
+					else dashboard.deepSeek.error = update.result.message;
+					break;
+				case "cherryIn":
+					dashboard.cherryIn.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.cherryIn.data = update.result.data;
+						dashboard.cherryIn.error = null;
+					}
+					else dashboard.cherryIn.error = update.result.message;
+					break;
+				case "weather":
+					dashboard.weather.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.weather.data = update.result.data;
+						dashboard.weather.error = null;
+					}
+					else dashboard.weather.error = update.result.message;
+					break;
+				case "github":
+					dashboard.github.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.github.data = update.result.data;
+						dashboard.github.error = null;
+					}
+					else dashboard.github.error = update.result.message;
+			}
+		}).then((unlisten) => {
+			void invoke<CommandResponse<null>>("set_dashboard_active", { active: true });
+			void refreshDashboard();
+			return unlisten;
+		});
 		void invoke<CommandResponse<NtfyNotification[]>>("read_notifications").then((response) => {
 			if (response.status === "ready") notifications = response.data;
 		});
@@ -929,22 +982,9 @@
 		});
 		void checkForUpdate();
 		void initializeConsumers().then(loadConsumerTags);
-		const taskManagerTimer = window.setInterval(() => {
-			if (selected === "dashboard") void loadQuery("read_task_manager", dashboard.taskManager);
-		}, 2_000);
-		const subscriptionUsageTimer = window.setInterval(() => {
-			if (selected !== "dashboard") return;
-			void loadQuery("read_codex_usage", dashboard.codex);
-			void loadQuery("read_opencode_usage", dashboard.openCode);
-			void loadQuery("read_deepseek_balance", dashboard.deepSeek);
-			void loadQuery("read_cherryin_balance", dashboard.cherryIn);
-		}, 60_000);
 		const todoTimer = window.setInterval(() => {
 			if (!todos.loading) void loadTodos();
 		}, 60_000);
-		const weatherTimer = window.setInterval(() => {
-			if (selected === "dashboard") void loadQuery("read_weather", dashboard.weather);
-		}, 900_000);
 		const contentTimer = window.setInterval(() => {
 			if (
 				(selected === "memos" || selected === "moment" || selected === "knowledge" || selected === "newspaper") &&
@@ -965,13 +1005,12 @@
 			newspaperTimer = window.setInterval(() => void refreshKnowledge(), 24 * 60 * 60 * 1_000);
 		}, nextNewspaperRefresh.getTime() - Date.now());
 		return () => {
-			window.clearInterval(taskManagerTimer);
-			window.clearInterval(subscriptionUsageTimer);
+			void invoke<CommandResponse<null>>("set_dashboard_active", { active: false });
+			void unlistenDashboard.then((unlisten) => unlisten());
 			window.clearInterval(todoTimer);
 			void unlistenTodo.then((unlisten) => unlisten());
 			void unlistenUpdater.then((unlisten) => unlisten());
 			void unlistenNotifications.then((unlisten) => unlisten());
-			window.clearInterval(weatherTimer);
 			window.clearInterval(contentTimer);
 			window.clearTimeout(newspaperStartTimer);
 			if (newspaperTimer !== null) window.clearInterval(newspaperTimer);
@@ -1053,8 +1092,19 @@
 			</div>
 			<div class="footer-controls">
 				<div class="footer-navigation">
-					<button class:active={selected === "inbox"} type="button" onclick={() => void select("inbox")} aria-label={selected === "inbox" ? "Return to previous view" : "Open inbox"} title={selected === "inbox" ? "Back" : "Inbox"}>
+					<button
+						class:active={selected === "inbox"}
+						type="button"
+						onclick={() => void select("inbox")}
+						aria-label={selected === "inbox"
+							? "Return to previous view"
+							: notifications.length > 0
+								? `Open inbox, ${notifications.length} unread notifications`
+								: "Open inbox"}
+						title={selected === "inbox" ? "Back" : "Inbox"}
+					>
 						<Bell size={15} />
+						{#if notifications.length > 0}<span class="notification-dot" aria-hidden="true"></span>{/if}
 					</button>
 				</div>
 				<div class="footer-actions">
@@ -1123,7 +1173,7 @@
 			{:else if selected === "settings"}
 				<SettingsView {configuration} error={configurationError} onsaveugos={saveUgosConfiguration} onsaver2={saveR2Configuration} onsaveapi={saveApiConfiguration} onsaventfy={saveNtfy} onsaveapplock={saveAppLock} onremoveapplock={removeAppLock} />
 			{:else if selected === "inbox"}
-				<InboxView {notifications} />
+				<InboxView {notifications} onread={markNotificationRead} />
 			{:else if error}
 				<section class="consumer-error">
 					<header>
@@ -1233,7 +1283,6 @@
 {#if updateCheckError !== null && updateAvailable === null && !locked}
 	<div class="update-check-error" role="alert">
 		<span>{updateCheckError}</span>
-		<button type="button" disabled={updateChecking} onclick={() => void checkForUpdate()}>{updateChecking ? "Checking…" : "Retry"}</button>
 		<button type="button" aria-label="Dismiss update error" onclick={() => (updateCheckError = null)}>×</button>
 	</div>
 {/if}
@@ -1567,11 +1616,12 @@
 	.lock-card input { min-width: 0; height: 2rem; box-sizing: border-box; padding: 0 0.625rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-size: 0.75rem; }
 	.lock-card input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 14%, transparent); }
 	.lock-card button { height: 1.75rem; margin-top: 0.15rem; padding: 0 0.625rem; border: 1px solid var(--color-accent); border-radius: var(--radius-md); background: var(--color-accent); color: var(--color-accent-foreground); cursor: pointer; font-size: 0.68rem; font-weight: 400; }
-	.lock-card button:disabled { cursor: default; opacity: 0.55; }
+	.lock-card button:disabled { cursor: wait; opacity: 0.55; }
 	.unlock-error { margin: 0.2rem 0 0; color: var(--color-error); font-size: 0.68rem; }
 
 	.footer-controls button,
 	.topbar button {
+		position: relative;
 		display: grid;
 		width: 1.65rem;
 		height: 1.65rem;
@@ -1581,6 +1631,17 @@
 		background: transparent;
 		color: var(--color-muted-foreground);
 		cursor: pointer;
+	}
+
+	.notification-dot {
+		position: absolute;
+		top: 0.25rem;
+		right: 0.25rem;
+		width: 0.375rem;
+		height: 0.375rem;
+		border: 1px solid var(--color-background);
+		border-radius: var(--radius-full);
+		background: var(--color-error);
 	}
 
 	.footer-controls button:hover,

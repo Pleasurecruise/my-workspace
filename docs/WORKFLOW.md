@@ -57,6 +57,7 @@ vesper memo list [limit]
 vesper memo page <json>
 vesper memo search <query>
 vesper memo create <markdown>
+vesper memo import-x <url> [public|private]
 vesper memo update <id> <markdown>
 vesper memo patch <id> <json>
 vesper memo visibility <id> <public|private>
@@ -73,6 +74,8 @@ vesper memo delete <id>
 `favoritesOnly`, matching desktop feed reads. The two final filters are mutually exclusive. `memo
 patch` accepts the same optional `content`, `visibility`, `tags`, `pinned`, `favorite`, and
 `archived` fields as the desktop command contract and rejects an empty object.
+`memo import-x` uses the same Rust FxTwitter import and favorite-creation flow as the desktop. It
+creates a private favorite by default; pass `public` explicitly to publish it.
 
 ## Knowledge
 
@@ -98,21 +101,23 @@ vesper knowledge delete <id> <expected-hash>
 
 ## Moment
 
-Moment separates binary transfer from metadata coordination. Upload the original and thumbnail to R2
-first, then register their exact object keys with the REST API. The consumer resolves the metadata
-from D1 and reads the image objects from R2.
+Moment separates local image preparation, binary transfer, and metadata coordination. The shared
+Rust path prepares one source image, uploads its normalized original and thumbnail to R2, then
+registers their exact object keys with the REST API. The consumer resolves metadata from D1 and reads
+the image objects from R2.
 
 ```text
-vesper moment upload-photo <json> <original.png> <thumbnail.jpg>
+vesper moment upload-photo <json> <source-image>
 vesper moment upload <r2-key> <local-path>
 vesper moment create '<json-with-r2Key-and-thumbnailR2Key>'
 ```
 
 `moment upload-photo` is the coordinated path shared with the desktop. Its JSON uses the `Upload`
-contract, while the two files must already be a PNG original and JPEG thumbnail. Rust generates the
-object keys, uploads both files, registers metadata, and removes objects written by the operation if
-a later step fails. The lower-level `upload` and `create` commands remain available for explicit
-recovery workflows.
+contract and the source may be PNG, JPEG, WebP, AVIF, or HEIC up to 20 MB. Rust applies camera
+orientation, uses available EXIF time and coordinates when the JSON omits them, derives the normalized
+PNG, JPEG thumbnail, and ThumbHash, then uploads both objects and registers metadata. Objects written
+by the operation are removed if a later step fails. The lower-level `upload` and `create` commands
+remain available for explicit recovery workflows.
 
 If metadata registration fails, the uploaded objects are orphans. Inspect the error, retry the same
 metadata request, or explicitly remove the orphan with `vesper moment remove-object <r2-key>`. Do not
@@ -130,18 +135,18 @@ vesper moment download <r2-key> <local-path>
 vesper moment delete <id>
 ```
 
-The desktop prepares its PNG original, JPEG thumbnail, and hexadecimal ThumbHash from one image up
-to 20 MB before entering that same Rust workflow. The desktop viewer sends title, description, and
-tag edits to the authenticated Moment update endpoint and sends confirmed deletion through the
-Moment delete endpoint, which remains responsible for coordinating metadata and stored-image
-removal.
+The desktop sends the original image and user-entered metadata into the same Rust workflow. Its
+viewer sends title, description, and tag edits to the authenticated Moment update endpoint and sends
+confirmed deletion through the Moment delete endpoint, which remains responsible for coordinating
+metadata and stored-image removal.
 
 ## Todo
 
 Todo operations are local and require no credential. Desktop and CLI share the date-keyed
 `todos.json` file in Vesper's operating-system application data directory. The previous
 `today-todos.json` file is ignored without fallback or migration. CLI commands infer the current
-local date, while the desktop month calendar can select any date. At local midnight Rust
+local date unless prefixed with `todo --date YYYY-MM-DD`; the desktop month calendar can select any
+date. At local midnight Rust
 advances today's view to the new empty list without deleting previous lists.
 
 ```text
@@ -154,7 +159,14 @@ vesper todo reopen <id>
 vesper todo delete <id>
 ```
 
+For any action above, use `vesper todo --date <YYYY-MM-DD> <action> [...]` to operate on the same
+historical or future day selectable in the desktop.
+
 ## Credentials and failure boundaries
+
+`vesper status` reads UGOS and the four shared AI-provider integrations concurrently. Its JSON keeps
+each source's success or failure independent and does not expose credentials. Weather and GitHub
+remain desktop-local integrations.
 
 Release builds read consumer API keys and R2 credentials from the operating-system credential store.
 Debug builds can use the variables listed in `.env.example` to avoid repeated macOS Keychain prompts

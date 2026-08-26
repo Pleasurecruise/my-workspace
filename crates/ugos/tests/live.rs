@@ -1,4 +1,5 @@
 #[tokio::test]
+#[cfg(debug_assertions)]
 #[ignore = "requires the configured local UGOS device and operating-system credential store"]
 async fn reads_task_manager_from_the_configured_device() {
     vesper_credentials::load_development_environment()

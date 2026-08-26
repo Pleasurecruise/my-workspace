@@ -2,13 +2,16 @@ use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 
 const BALANCE_URL: &str = "https://open.cherryin.ai/api/v1/oauth/balance";
 const TOKEN_URL: &str = "https://open.cherryin.ai/oauth2/token";
 const CLIENT_ID: &str = "2a348c87-bae1-4756-a62f-b2e97200fd6d";
 const QUOTA_PER_UNIT: f64 = 500_000.0;
 const TOKEN_EXPIRY_BUFFER_MILLIS: u64 = 60_000;
+static SESSION_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Serialize)]
 pub struct CherryInBalance {
@@ -53,6 +56,7 @@ struct BalanceData {
 }
 
 pub async fn read() -> Result<CherryInBalance, String> {
+    let _session = SESSION_LOCK.lock().await;
     let mut configuration = tokio::task::spawn_blocking(read_cherry_studio_oauth_configuration)
         .await
         .map_err(|error| format!("Could not join Cherry Studio credential read: {error}"))??;

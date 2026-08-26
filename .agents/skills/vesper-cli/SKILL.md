@@ -1,6 +1,6 @@
 ---
 name: vesper-cli
-description: Operate Vesper's typed CLI for local builds, Todo, R2 publication, and authenticated Memo, Knowledge, and Moment workflows.
+description: Operate Vesper's typed CLI for provider status, local builds, Todo, R2 publication, and authenticated Memo, Knowledge, and Moment workflows.
 ---
 
 # Vesper CLI
@@ -14,15 +14,17 @@ consumer data, or perform a Memo, Knowledge, or Moment mutation through `vesper`
 - Use `vesper help` as the source of truth for the installed command surface.
 - Never pass credentials as command arguments or print them. Debug builds read the selected variables
   documented in `.env.example`; release builds use the operating-system credential store.
-- Treat `publish --live`, every `create`, `update`, `visibility`, and `delete` command, Moment uploads,
-  and `moment remove-object` as mutations. Obtain clear user intent before running them.
+- Treat `publish --live`, every `create`, `import-x`, `update`, `visibility`, and `delete` command,
+  Moment uploads, and `moment remove-object` as mutations. Obtain clear user intent before running
+  them.
 - Prefer read commands and `vesper publish` preview while investigating.
 - Read `docs/WORKFLOW.md` before changing delivery order or recovery behavior.
 
 ## Todo
 
 Todo commands operate on the same local calendar-day JSON file as the desktop and need no
-credential. `list` and `get` are reads; the remaining commands mutate today's list. The desktop
+credential. `list` and `get` are reads; the remaining commands mutate today's list. Prefix any
+action with `todo --date YYYY-MM-DD` to use another desktop-visible calendar day. The desktop
 advances to a new empty daily list at local midnight while retaining earlier dates.
 
 ```sh
@@ -33,6 +35,19 @@ vesper todo update <id> <text>
 vesper todo complete <id>
 vesper todo reopen <id>
 vesper todo delete <id>
+vesper todo --date 2026-08-26 list
+vesper todo --date 2026-08-26 create <text>
+```
+
+## Provider status
+
+`vesper status` concurrently reads the same shared Rust UGOS, Codex, OpenCode Go, DeepSeek, and
+CherryIN boundaries used by Desktop. It is read-only apart from CherryIN's existing token-renewal
+policy. Each source reports `ready` or `failed` independently as JSON, so one unavailable provider
+does not hide the others. The command never prints credentials.
+
+```sh
+vesper status
 ```
 
 ## Local artifacts and publication
@@ -58,6 +73,7 @@ vesper memo list [limit]
 vesper memo page '<json>'
 vesper memo search <query>
 vesper memo create <markdown>
+vesper memo import-x <url> [public|private]
 vesper memo update <id> <markdown>
 vesper memo patch <id> '<json>'
 vesper memo visibility <id> <public|private>
@@ -74,6 +90,8 @@ The list limit must be between 1 and 25. `page` accepts `cursor`, `limit`, `sear
 `sortByUpdated`, `archivedOnly`, and `favoritesOnly`; the last two are mutually exclusive. `patch`
 accepts the optional fields in `cms_core::api::memos::Update` and rejects an empty object. Quote
 Markdown and JSON that contain shell metacharacters.
+`import-x` creates a favorite through the same Rust workflow as the desktop and defaults to private
+visibility.
 
 ## Knowledge
 
@@ -104,7 +122,7 @@ for explicit recovery workflows.
 vesper moment tags
 vesper moment list [cursor]
 vesper moment search <query>
-vesper moment upload-photo '<json>' <original.png> <thumbnail.jpg>
+vesper moment upload-photo '<json>' <source-image>
 vesper moment upload <r2-key> <local-path>
 vesper moment create '<json-with-r2Key-and-thumbnailR2Key>'
 vesper moment update <id> '<json>'
@@ -114,8 +132,9 @@ vesper moment remove-object <r2-key>
 ```
 
 `upload-photo` uses the desktop's coordinated Rust workflow. Its JSON follows
-`cms_core::api::moment::Upload`; the files must already be a PNG original and JPEG thumbnail. Rust
-generates keys and rolls back objects written by the operation when a later step fails.
+`cms_core::api::moment::Upload`. Rust accepts PNG, JPEG, WebP, AVIF, or HEIC up to 20 MB, applies
+camera orientation and available EXIF defaults, derives the normalized PNG, JPEG thumbnail, and
+ThumbHash, then rolls back objects written by the operation when a later step fails.
 
 If metadata creation fails after an upload, retry metadata creation before removing anything.
 `remove-object` is only for a verified orphan and can break an existing photo if its key is still

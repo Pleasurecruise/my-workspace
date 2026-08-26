@@ -1,8 +1,8 @@
 # Dashboard Integrations
 
-Dashboard is a local aggregation surface that does not mutate provider account data. Protocol code
-lives in Rust and each external source has an independent query state, error, refresh lifecycle, and
-polling interval. CherryIN token refresh is the narrow exception to local read-only credential
+Dashboard is a local aggregation surface that does not mutate provider account data. Protocol code,
+request ordering, and polling live in Rust. Each external source has an independent request revision
+and result event. CherryIN token refresh is the narrow exception to local read-only credential
 access: a successful refresh may update the existing Cherry Studio OAuth session.
 
 ## Data flow
@@ -10,7 +10,8 @@ access: a successful refresh may update the existing Cherry Studio OAuth session
 ```text
 DashboardView.svelte
   <- typed state in App.svelte
-  <- Tauri commands in apps/desktop/src-tauri
+  <- typed source events and refresh commands
+  <- dashboard runtime in apps/desktop/src-tauri
   ├─ crates/ugos
   ├─ apps/desktop/src-tauri/weather.rs
   ├─ apps/desktop/src-tauri/github.rs
@@ -21,12 +22,13 @@ DashboardView.svelte
        └─ cherryin.rs
 ```
 
-An unavailable credential or failed source does not block the other cards. Initial requests run
-independently. Polling retains settled data while refreshing; the explicit spinner is reserved for a
-user-requested dashboard refresh. That refresh starts a new request for every external source and the
-selected Todo date, even when a source already has a polling request in flight. Only the newest
-response for each source may update its card. UGOS telemetry polls every two seconds, subscription
-data every sixty seconds, and weather every fifteen minutes while Dashboard is selected.
+An unavailable credential or failed source does not block the other cards. Rust starts unified
+Dashboard reads concurrently and emits each result as it settles. A per-source lock prevents
+overlapping reads; scheduled refreshes skip a source that is still running, while an explicit refresh
+waits for that source and then obtains fresh data. Polling exists only while Dashboard is active and
+retains settled data while refreshing: UGOS telemetry runs every two seconds and subscription data
+every sixty seconds. Entering Dashboard or using its refresh action reads every source and the
+selected Todo date. Weather and GitHub have no timer.
 
 ## ntfy notifications
 
@@ -67,8 +69,8 @@ One GraphQL request loads the viewer's contribution calendar and recent commit, 
 pull-request-review contributions. The calendar renders the last year as semantic success-color
 tiles. Rust maps an approved review to `approve`, other review states to `review`, merges those with
 pull requests and repository commit groups, sorts by occurrence time, and exposes only the latest
-three activities. GitHub refreshes on the first Dashboard load, every later entry into Dashboard,
-and an explicit Dashboard refresh; it does not poll in the background.
+three activities. GitHub participates in the unified refresh on the first Dashboard load, every
+later entry into Dashboard, and the explicit refresh action; it does not poll in the background.
 
 ## Calendar Todo list
 
@@ -81,9 +83,9 @@ older request as the current list.
 The shared Rust `cms_core::todo` module stores date-keyed lists in `todos.json` below the application
 data directory for `me.you-find.vesper`. If the new file is absent, the previous single-day
 `today-todos.json` file is ignored without fallback or migration. No SQL database or ORM is involved.
-Desktop and `vesper todo` share the file through a sidecar lock, while the CLI operates on the current
-local date. At local midnight Rust advances a view of today to the new empty list without deleting
-history.
+Desktop and `vesper todo` share the file through a sidecar lock. The CLI operates on the current
+local date by default and accepts `vesper todo --date YYYY-MM-DD <action>` for another calendar day.
+At local midnight Rust advances a view of today to the new empty list without deleting history.
 
 ## UGOS Pro
 
@@ -126,6 +128,8 @@ response types; the Tauri layer only exposes the result to the frontend.
 Vesper does not create or register an OpenCode provider named `cherry-opencode-go`. OpenCode Go and
 CherryIN are separate integrations. Vesper reads OpenCode Go from pi. It reuses CherryIN's existing
 OAuth session from Cherry Studio and only updates that session when an access-token refresh succeeds.
+Each provider owns its request construction and timeout so one integration cannot change another
+provider's connection policy.
 
 ### API-key resolution
 
@@ -170,9 +174,11 @@ converts the returned account `quota` with CherryIN's `500000` quota unit. An ac
 expired or within sixty seconds of expiry is refreshed through `/oauth2/token`; a balance request
 that returns `401` forces one refresh and retry. Refreshed tokens are conditionally written back only
 when the stored refresh token still identifies the same session, so a concurrent Cherry Studio
-logout or login is not overwritten. If the refresh token is absent or rejected, Vesper asks the user
-to sign in again in Cherry Studio. It never uses pi's model token, `/api/usage/token/`, or the billing
-subscription endpoints, so an unlimited model token cannot be mistaken for account balance.
+logout or login is not overwritten. Vesper serializes CherryIN reads so two Dashboard refreshes do
+not rotate the same refresh token concurrently. If the refresh token is absent or rejected, Vesper
+asks the user to sign in again in Cherry Studio. It never uses pi's model token, `/api/usage/token/`,
+or the billing subscription endpoints, so an unlimited model token cannot be mistaken for account
+balance.
 The resulting balance is displayed as US dollars with an explicit `USD` label.
 
 ## Adding a provider
@@ -180,8 +186,8 @@ The resulting balance is displayed as US dollars with an explicit `USD` label.
 1. Add one provider module below `crates/useage/src` and export it from `lib.rs`.
 2. Keep endpoint constants, wire response types, parsing, request lifecycle, and errors in that file.
 3. Reuse `auth::api_key` only when the provider uses a pi API-key record or custom model provider.
-4. Add one narrow Tauri command returning the provider's public Rust response type.
-5. Add the matching TypeScript transport interface and an independent `QueryState` entry.
+4. Add the provider to the Rust Dashboard source enum and unified refresh runtime.
+5. Add the matching TypeScript event variant and an independent `QueryState` entry.
 6. Add quota data to the upper row or balance data to the lower row without changing other
    providers' loading state or the lower-left Todo area.
 7. Cover response parsing with a unit test. Keep authenticated network tests ignored and opt-in.

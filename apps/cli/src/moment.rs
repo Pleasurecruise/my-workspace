@@ -38,19 +38,16 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&photo)
         }
-        ("upload-photo", [input, original_path, thumbnail_path]) => {
+        ("upload-photo", [input, source_path]) => {
             let input: Upload = serde_json::from_str(input)
                 .map_err(|error| format!("invalid Moment upload JSON: {error}"))?;
-            let original = tokio::fs::read(original_path).await.map_err(|error| {
-                format!("could not read Moment PNG original {original_path}: {error}")
-            })?;
-            let thumbnail = tokio::fs::read(thumbnail_path).await.map_err(|error| {
-                format!("could not read Moment JPEG thumbnail {thumbnail_path}: {error}")
+            let source = tokio::fs::read(source_path).await.map_err(|error| {
+                format!("could not read Moment source image {source_path}: {error}")
             })?;
             let store = cms_core::r2::Store::from_credentials()
                 .await
                 .map_err(|error| error.to_string())?;
-            let photo = cms_core::api::moment::upload(&store, input, original, thumbnail)
+            let photo = cms_core::api::moment::upload(&store, input, source)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&photo)
@@ -112,11 +109,7 @@ mod tests {
     async fn rejects_invalid_coordinated_upload_json_before_reading_files() {
         let error = run(
             "upload-photo",
-            &[
-                "not-json".to_owned(),
-                "original.png".to_owned(),
-                "thumbnail.jpg".to_owned(),
-            ],
+            &["not-json".to_owned(), "source.heic".to_owned()],
         )
         .await
         .expect_err("invalid upload JSON should fail");

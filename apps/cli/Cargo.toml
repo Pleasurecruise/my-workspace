@@ -14,6 +14,8 @@ my-workspace-logger.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+ugos.workspace = true
+useage.workspace = true
 vesper-credentials.workspace = true
 
 [dev-dependencies]

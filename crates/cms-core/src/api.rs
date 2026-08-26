@@ -12,6 +12,7 @@ pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 pub enum ApiError {
     Credentials(vesper_credentials::CredentialError),
     MissingCredentials(&'static str),
+    Media(moment::MediaError),
     Store(crate::r2::StoreError),
     Request(reqwest::Error),
     Status {
@@ -28,6 +29,7 @@ impl Display for ApiError {
             Self::MissingCredentials(service) => {
                 write!(formatter, "{service} API key is not configured")
             }
+            Self::Media(source) => Display::fmt(source, formatter),
             Self::Store(source) => Display::fmt(source, formatter),
             Self::Request(source) => write!(formatter, "consumer API request failed: {source}"),
             Self::Status { operation, status } => {
@@ -46,6 +48,7 @@ impl Error for ApiError {
             Self::Credentials(source) => Some(source),
             Self::Store(source) => Some(source),
             Self::Request(source) => Some(source),
+            Self::Media(source) => Some(source),
             Self::MissingCredentials(..) | Self::Status { .. } | Self::Protocol(..) => None,
         }
     }

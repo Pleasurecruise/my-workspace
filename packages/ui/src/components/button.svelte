@@ -18,7 +18,7 @@
 		"cursor-pointer select-none whitespace-nowrap",
 		"transition-colors duration-100",
 		"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-		"disabled:pointer-events-none disabled:opacity-50",
+		"disabled:cursor-not-allowed disabled:opacity-50",
 	);
 
 	const variants: Record<ButtonVariant, string> = {

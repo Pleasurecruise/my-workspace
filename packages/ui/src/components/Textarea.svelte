@@ -11,7 +11,7 @@
 		"font-sans text-sm text-foreground placeholder:text-muted-foreground",
 		"outline-none transition-colors duration-100",
 		"focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-		"disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
+		"disabled:cursor-not-allowed disabled:opacity-50",
 	);
 
 	let { error, class: className = "", value = $bindable(), ...rest }: TextareaProps = $props();

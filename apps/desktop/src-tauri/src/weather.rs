@@ -177,4 +177,14 @@ mod tests {
         assert_eq!(forecast.current.weather_code, 2);
         assert_eq!(forecast.hourly.temperature_2m.len(), 2);
     }
+
+    #[tokio::test]
+    #[ignore = "requires network access"]
+    async fn reads_live_forecast() {
+        let report = read().await.expect("weather forecast should be readable");
+
+        assert_eq!(report.shanghai.location, "Shanghai");
+        assert_eq!(report.ningbo.location, "Ningbo");
+        assert_eq!(report.nottingham.location, "Nottingham");
+    }
 }

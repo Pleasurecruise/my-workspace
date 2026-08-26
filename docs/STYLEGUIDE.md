@@ -82,7 +82,7 @@ simple transformations and explicit request flow next to the code that uses them
 
 ## Naming
 
-- Functions use verbs: `read`, `loadQuery`, `saveR2Configuration`.
+- Functions use verbs: `read`, `refreshDashboard`, `saveR2Configuration`.
 - Values use concrete nouns: `usage`, `subscription`, `snapshot`, `credentials`.
 - Booleans describe predicates or state: `isAvailable`, `unlimitedQuota`, `refreshing`.
 - Avoid vague module or value names such as `misc`, `manager`, `thing`, `payload`, or `temp` unless the
