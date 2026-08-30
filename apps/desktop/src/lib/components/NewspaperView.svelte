@@ -1,8 +1,7 @@
 <script lang="ts">
-	import type { KnowledgeDocument } from "../consumer";
-	import { latestNewspaperEditions } from "../newspaper";
+	import type { KnowledgeDocument, NewspaperIssues } from "../consumer";
 
-	let { documents, loading }: { documents: KnowledgeDocument[]; loading: boolean } = $props();
+	let { documents, issues, loading }: { documents: KnowledgeDocument[]; issues: NewspaperIssues; loading: boolean } = $props();
 
 	type EditionKind = "developer" | "personal";
 	const editionLabels: Record<EditionKind, string> = {
@@ -12,8 +11,7 @@
 
 	let selectedEdition = $state<EditionKind>("developer");
 	let turnDirection = $state<"left" | "right">("right");
-	const issues = $derived(latestNewspaperEditions(documents));
-	const issue = $derived(issues[selectedEdition]);
+	const issue = $derived(documents.find((document) => document.id === issues[selectedEdition]) ?? null);
 </script>
 
 <div class="newspaper-view">

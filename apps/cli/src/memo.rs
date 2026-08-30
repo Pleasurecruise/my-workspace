@@ -229,7 +229,7 @@ mod tests {
     use super::run;
 
     #[tokio::test]
-    async fn rejects_an_empty_patch_before_calling_the_api() {
+    async fn rejects_empty_patch() {
         let error = run("patch", &["memo-id".to_owned(), "{}".to_owned()])
             .await
             .expect_err("an empty patch should fail");
@@ -238,7 +238,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_an_invalid_visibility_before_calling_the_api() {
+    async fn rejects_bad_visibility() {
         let error = run("visibility", &["memo-id".to_owned(), "friends".to_owned()])
             .await
             .expect_err("an unsupported visibility should fail");
@@ -247,7 +247,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_conflicting_page_filters_before_calling_the_api() {
+    async fn rejects_filter_conflict() {
         let error = run(
             "page",
             &[r#"{"archivedOnly":true,"favoritesOnly":true}"#.to_owned()],
@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_invalid_import_visibility_before_calling_the_api() {
+    async fn rejects_import_mode() {
         let error = run(
             "import-x",
             &[

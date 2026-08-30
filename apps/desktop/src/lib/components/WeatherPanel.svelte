@@ -2,10 +2,12 @@
 	import { Cloud, CloudFog, CloudLightning, CloudRain, CloudSun, Snowflake, Sun } from "@lucide/svelte";
 	import { onMount } from "svelte";
 	import type { Component } from "svelte";
-	import type { Weather, WeatherReport } from "../consumer";
+	import type { Weather, WeatherLocation, WeatherReport } from "../consumer";
 
-	let { weather, error }: { weather: WeatherReport | null; error: string | null } = $props();
+	let { weather, location, error }: { weather: WeatherReport | null; location: WeatherLocation; error: string | null } = $props();
 	let now = $state(new Date());
+	let item = $derived(weather?.locations.find((candidate) => candidate.query === location) ?? null);
+	let failure = $derived(weather?.failures.find((candidate) => candidate.query === location) ?? null);
 
 	function condition(code: number): string {
 		if (code === 0) return "晴";
@@ -86,19 +88,17 @@
 {/snippet}
 
 <section class="context-panel" aria-label="Weather and world clocks">
-	{#if weather !== null}
-		{@render city(weather.shanghai)}
-		{@render city(weather.ningbo)}
-		{@render city(weather.nottingham)}
-	{:else if error !== null}
-		<div class="weather-message">{error}</div>
+	{#if item !== null}
+		{@render city(item)}
+	{:else if failure !== null || error !== null}
+		<div class="weather-message">{failure?.message ?? error}</div>
 	{:else}
 		<div class="weather-message">Reading future conditions…</div>
 	{/if}
 </section>
 
 <style>
-	.context-panel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin-top: 0.75rem; }
+	.context-panel { display: grid; min-width: 0; margin-top: 0.75rem; }
 	article,
 	.weather-message { min-width: 0; padding: 0.9rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-xs); }
 	article { transition: transform var(--duration-slow) cubic-bezier(0.16, 1, 0.3, 1), border-color var(--duration-slow) cubic-bezier(0.16, 1, 0.3, 1), box-shadow var(--duration-slow) cubic-bezier(0.16, 1, 0.3, 1); }
@@ -116,8 +116,7 @@
 	.forecast > div { display: grid; min-width: 0; justify-items: center; gap: 0.3rem; color: var(--color-muted-foreground); }
 	.forecast time { font-family: var(--font-mono); font-size: 0.48rem; }
 	.forecast strong { color: var(--color-foreground); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 500; }
-	.weather-message { grid-column: 1 / -1; color: var(--color-muted-foreground); font-size: 0.68rem; }
+	.weather-message { color: var(--color-muted-foreground); font-size: 0.68rem; }
 	small { margin: 0; color: var(--color-muted-foreground); font-size: 0.56rem; }
-	@media (max-width: 760px) { .context-panel { grid-template-columns: 1fr; } }
 	@media (prefers-reduced-motion: reduce) { article { transition: none; } article:hover { transform: none; } }
 </style>

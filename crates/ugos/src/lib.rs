@@ -174,7 +174,7 @@ pub async fn task_manager() -> Result<TaskManagerSnapshot, UgosError> {
         used_percent: (used_capacity / total_capacity * 100.0).clamp(0.0, 100.0),
         sampled_at,
     });
-    let cpu_samples: Vec<_> = all
+    let cpu_samples: Vec<CpuSample> = all
         .cpu
         .series
         .iter()
@@ -184,7 +184,7 @@ pub async fn task_manager() -> Result<TaskManagerSnapshot, UgosError> {
             sampled_at: sample.time,
         })
         .collect();
-    let memory_samples: Vec<_> = all
+    let memory_samples: Vec<MemorySample> = all
         .mem
         .series
         .iter()
@@ -193,7 +193,7 @@ pub async fn task_manager() -> Result<TaskManagerSnapshot, UgosError> {
             sampled_at: sample.time,
         })
         .collect();
-    let network_samples: Vec<_> = all
+    let network_samples: Vec<NetworkSample> = all
         .net
         .series
         .iter()
@@ -247,7 +247,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn history_replaces_equal_timestamps_and_rejects_older_samples() {
+    fn history_orders_samples() {
         let mut history = VecDeque::new();
         push_sample(
             &mut history,

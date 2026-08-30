@@ -236,29 +236,35 @@ pub async fn create(input: &Create) -> Result<Photo, ApiError> {
 }
 
 pub async fn upload(store: &Store, input: Upload, source: Vec<u8>) -> Result<Photo, ApiError> {
-    if input.title.trim().is_empty()
-        || input.title.chars().count() > 120
-        || input
-            .description
-            .as_ref()
-            .is_some_and(|description| description.chars().count() > 500)
-        || input.tags.len() > 10
-        || input
-            .tags
-            .iter()
-            .any(|tag| tag.trim().is_empty() || tag.chars().count() > 50)
-        || input.geo.as_ref().is_some_and(|geo| {
-            !(-90.0..=90.0).contains(&geo.lat) || !(-180.0..=180.0).contains(&geo.lng)
-        })
-    {
-        return Err(ApiError::Protocol(
-            "photo upload metadata is invalid".to_owned(),
-        ));
+    const INVALID_METADATA: &str = "photo upload metadata is invalid";
+    if input.title.trim().is_empty() || input.title.chars().count() > 120 {
+        return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
     }
-    let prepared = tokio::task::spawn_blocking(move || media::prepare(&source))
+    if input
+        .description
+        .as_ref()
+        .is_some_and(|description| description.chars().count() > 500)
+    {
+        return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
+    }
+    if input.tags.len() > 10 {
+        return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
+    }
+    for tag in &input.tags {
+        if tag.trim().is_empty() || tag.chars().count() > 50 {
+            return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
+        }
+    }
+    match &input.geo {
+        Some(geo) if !(-90.0..=90.0).contains(&geo.lat) || !(-180.0..=180.0).contains(&geo.lng) => {
+            return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
+        }
+        Some(_) | None => {}
+    }
+    let prepare_task = tokio::task::spawn_blocking(move || media::prepare(&source))
         .await
-        .map_err(|_| ApiError::Protocol("photo processor stopped unexpectedly".to_owned()))?
-        .map_err(ApiError::Media)?;
+        .map_err(|_| ApiError::Protocol("photo processor stopped unexpectedly".to_owned()))?;
+    let prepared = prepare_task.map_err(ApiError::Media)?;
     let id = uuid::Uuid::new_v4();
     let r2_key = format!("img/{id}.png");
     let thumbnail_r2_key = format!("img/thumbnails/{id}.jpg");
@@ -358,7 +364,7 @@ mod tests {
     use super::{Photo, Update, Upload};
 
     #[test]
-    fn decodes_the_complete_photo_contract() {
+    fn decodes_photo() {
         let photo: Photo = serde_json::from_value(serde_json::json!({
             "id": "photo-id",
             "url": "/api/photos/img/photo.jpg",
@@ -385,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_explicit_nulls_in_photo_updates() {
+    fn preserves_null_updates() {
         let update = Update {
             date: Some(None),
             geo: Some(None),
@@ -399,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn decodes_the_upload_contract_without_derived_image_fields() {
+    fn decodes_upload() {
         let upload: Upload = serde_json::from_value(serde_json::json!({
             "title": "Shanghai",
             "description": "Evening",

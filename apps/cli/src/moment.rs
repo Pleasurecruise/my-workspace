@@ -106,7 +106,7 @@ mod tests {
     use super::run;
 
     #[tokio::test]
-    async fn rejects_invalid_coordinated_upload_json_before_reading_files() {
+    async fn rejects_bad_upload_json() {
         let error = run(
             "upload-photo",
             &["not-json".to_owned(), "source.heic".to_owned()],

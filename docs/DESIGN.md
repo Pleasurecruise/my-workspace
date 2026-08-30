@@ -32,16 +32,22 @@ is stable and it has more than one plausible application consumer.
 
 ## Dashboard layout
 
-Telemetry metrics and the lower Dashboard region use responsive CSS grids. The calendar Todo card
-occupies the narrower lower-left column and shows a complete Monday-first month above the selected
-date's list. One consolidated panel occupies the wider lower-right column: subscription quotas share
-its upper row and monetary/account balances share its lower row. Narrow screens stack the Todo list
-and usage panel; provider cells then collapse vertically when needed.
+Dashboard uses a user-configurable fixed desktop widget canvas. Edit mode uses a four-way move
+pointer to drag the card itself, with no dedicated handle or card-level component menu. Each card has
+one small upper-right delete action. Cross-row movement inserts at row boundaries, preserving each
+row instead of splitting it around a full-width card. The Add Widget action opens a searchable library with a preview;
+weather accepts a user-entered place and stock accepts a ticker symbol. The canvas retains twelve
+tracks and scrolls horizontally when space is limited, so a breakpoint never rewrites the saved
+order.
+
+The calendar Todo widget shows a complete Monday-first month above the selected date's list. The
+Usage widget keeps subscription quotas in its upper row and monetary/account balances in its lower
+row; provider cells collapse vertically when their widget becomes narrow.
 
 NAS CPU, memory, and network cards pair the latest numeric value with a compact in-session SVG trend
-line; storage uses a used/free capacity bar. Weather
-cards use a three-column comparison for Shanghai, Ningbo, and Nottingham, with 24-hour local clocks
-and six hourly forecast cells; narrow screens stack these cards.
+line; storage uses a used/free capacity bar. Each weather card shows one configured city with a
+24-hour local clock and six hourly forecast cells. Stock cards show a configured ticker's current
+price, daily change, and recent trend.
 
 Loading state must preserve already settled information. Initial placeholders belong inside the
 affected card; background polling must not replace the entire Dashboard with a loading surface.
@@ -105,7 +111,8 @@ The startup update check stays out of navigation flows. When a signed update is 
 presents the new version, release notes, and installed version before downloading. Installation
 requires an explicit user action, reports progress without hiding errors, and restarts only after
 signature verification and installation complete successfully. Check failures use transient,
-dismissible feedback rather than a persistent application state.
+dismissible feedback rather than a persistent application state. The native application menu offers
+an explicit Check for Updates action; a manual check reports when the installed version is current.
 
 The sidebar omits a separate brand header and keeps its navigation visually primary, including
 Settings as a full navigation tab. An editable local profile badge anchors the left side of the footer

@@ -87,7 +87,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires a locally authenticated OpenCode Go subscription"]
-    async fn reads_usage_from_local_opencode() {
+    async fn reads_live_usage() {
         let usage = read().await.expect("OpenCode Go usage should be readable");
         assert!(!usage.usage.rolling.resets_at.is_empty());
     }

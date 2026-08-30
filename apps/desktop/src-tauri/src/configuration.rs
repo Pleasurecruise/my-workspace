@@ -1,4 +1,5 @@
-use crate::{CmsState, CommandResponse};
+use crate::CommandResponse;
+use crate::cms::CmsState;
 use tauri::Manager;
 
 #[derive(Clone, serde::Serialize)]
@@ -273,7 +274,7 @@ mod tests {
     use super::passwords_match;
 
     #[test]
-    fn compares_app_lock_passwords_without_accepting_partial_values() {
+    fn compares_full_passwords() {
         assert!(passwords_match("correct horse", "correct horse"));
         assert!(!passwords_match("correct horse", "correct"));
         assert!(!passwords_match("correct horse", "correct house"));

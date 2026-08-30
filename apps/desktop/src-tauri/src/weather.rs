@@ -1,11 +1,15 @@
+use futures_util::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 const ENDPOINT: &str = "https://api.open-meteo.com/v1/forecast";
+const GEOCODING_ENDPOINT: &str = "https://geocoding-api.open-meteo.com/v1/search";
+const CONCURRENCY: usize = 4;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct Weather {
+    pub query: String,
     pub location: String,
     pub latitude: f64,
     pub longitude: f64,
@@ -19,9 +23,15 @@ pub struct Weather {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WeatherReport {
-    pub shanghai: Weather,
-    pub ningbo: Weather,
-    pub nottingham: Weather,
+    pub locations: Vec<Weather>,
+    pub failures: Vec<WeatherFailure>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeatherFailure {
+    pub query: String,
+    pub message: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -62,25 +72,79 @@ struct Hourly {
     weather_code: Vec<u16>,
 }
 
-async fn request(
-    client: &reqwest::Client,
-    location: &str,
-    latitude: &str,
-    longitude: &str,
-    timezone: &str,
-) -> Result<Weather, String> {
+#[derive(Deserialize)]
+struct GeocodingResponse {
+    #[serde(default)]
+    results: Vec<GeocodedLocation>,
+}
+
+#[derive(Deserialize)]
+struct GeocodedLocation {
+    name: String,
+    latitude: f64,
+    longitude: f64,
+    timezone: String,
+    country: Option<String>,
+    admin1: Option<String>,
+}
+
+async fn request(client: &reqwest::Client, query: &str) -> Result<Weather, String> {
+    let geocoding = client
+        .get(GEOCODING_ENDPOINT)
+        .query(&[
+            ("name", query),
+            ("count", "1"),
+            ("language", "zh"),
+            ("format", "json"),
+        ])
+        .send()
+        .await
+        .map_err(|error| format!("Could not resolve {query}: {error}"))?;
+    if !geocoding.status().is_success() {
+        return Err(format!(
+            "Could not resolve {query}: HTTP {}",
+            geocoding.status()
+        ));
+    }
+    let mut results = geocoding
+        .json::<GeocodingResponse>()
+        .await
+        .map_err(|error| {
+            format!("Location search for {query} returned an unsupported payload: {error}")
+        })?
+        .results;
+    if results.is_empty() {
+        return Err(format!("No weather location matched {query}"));
+    }
+    let resolved = results.remove(0);
+    let mut location_parts = vec![resolved.name.as_str()];
+    for part in [resolved.admin1.as_deref(), resolved.country.as_deref()]
+        .into_iter()
+        .flatten()
+    {
+        if !part.is_empty()
+            && !location_parts
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(part))
+        {
+            location_parts.push(part);
+        }
+    }
+    let location = location_parts.join(", ");
+    let latitude = resolved.latitude.to_string();
+    let longitude = resolved.longitude.to_string();
     let response = client
         .get(ENDPOINT)
         .query(&[
-            ("latitude", latitude),
-            ("longitude", longitude),
+            ("latitude", latitude.as_str()),
+            ("longitude", longitude.as_str()),
             (
                 "current",
                 "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day",
             ),
             ("hourly", "temperature_2m,weather_code"),
             ("forecast_days", "2"),
-            ("timezone", timezone),
+            ("timezone", resolved.timezone.as_str()),
         ])
         .send()
         .await
@@ -116,7 +180,8 @@ async fn request(
         })
         .collect();
     Ok(Weather {
-        location: location.to_owned(),
+        query: query.to_owned(),
+        location,
         latitude: forecast.latitude,
         longitude: forecast.longitude,
         timezone: forecast.timezone,
@@ -127,20 +192,30 @@ async fn request(
     })
 }
 
-pub async fn read() -> Result<WeatherReport, String> {
+pub async fn read(queries: Vec<String>) -> Result<WeatherReport, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
         .map_err(|error| format!("Could not create weather client: {error}"))?;
-    let (shanghai, ningbo, nottingham) = tokio::join!(
-        request(&client, "Shanghai", "31.2304", "121.4737", "Asia/Shanghai"),
-        request(&client, "Ningbo", "29.8683", "121.5440", "Asia/Shanghai"),
-        request(&client, "Nottingham", "52.9548", "-1.1581", "Europe/London"),
-    );
+    let results = stream::iter(queries.into_iter().map(|query| async {
+        request(&client, &query)
+            .await
+            .map_err(|message| WeatherFailure { query, message })
+    }))
+    .buffered(CONCURRENCY)
+    .collect::<Vec<_>>()
+    .await;
+    let mut locations = Vec::new();
+    let mut failures = Vec::new();
+    for result in results {
+        match result {
+            Ok(weather) => locations.push(weather),
+            Err(failure) => failures.push(failure),
+        }
+    }
     Ok(WeatherReport {
-        shanghai: shanghai?,
-        ningbo: ningbo?,
-        nottingham: nottingham?,
+        locations,
+        failures,
     })
 }
 
@@ -149,7 +224,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_forecast_contract() {
+    fn parses_forecast() {
         let forecast: Forecast = serde_json::from_value(serde_json::json!({
             "latitude": 31.25,
             "longitude": 121.5,
@@ -178,13 +253,32 @@ mod tests {
         assert_eq!(forecast.hourly.temperature_2m.len(), 2);
     }
 
+    #[test]
+    fn parses_geocoding() {
+        let response: GeocodingResponse = serde_json::from_value(serde_json::json!({
+            "results": [{
+                "name": "杭州",
+                "latitude": 30.29365,
+                "longitude": 120.16142,
+                "timezone": "Asia/Shanghai",
+                "country": "中国",
+                "admin1": "浙江"
+            }]
+        }))
+        .expect("valid geocoding response");
+
+        assert_eq!(response.results.len(), 1);
+        assert_eq!(response.results[0].timezone, "Asia/Shanghai");
+    }
+
     #[tokio::test]
     #[ignore = "requires network access"]
     async fn reads_live_forecast() {
-        let report = read().await.expect("weather forecast should be readable");
+        let report = read(vec!["Shanghai".to_owned()])
+            .await
+            .expect("weather forecast should be readable");
 
-        assert_eq!(report.shanghai.location, "Shanghai");
-        assert_eq!(report.ningbo.location, "Ningbo");
-        assert_eq!(report.nottingham.location, "Nottingham");
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+        assert_eq!(report.locations.len(), 1);
     }
 }

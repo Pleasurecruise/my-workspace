@@ -10,7 +10,7 @@ const BALANCE_URL: &str = "https://open.cherryin.ai/api/v1/oauth/balance";
 const TOKEN_URL: &str = "https://open.cherryin.ai/oauth2/token";
 const CLIENT_ID: &str = "2a348c87-bae1-4756-a62f-b2e97200fd6d";
 const QUOTA_PER_UNIT: f64 = 500_000.0;
-const TOKEN_EXPIRY_BUFFER_MILLIS: u64 = 60_000;
+const TOKEN_EXPIRY_BUFFER_MS: u64 = 60_000;
 static SESSION_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Serialize)]
@@ -20,7 +20,7 @@ pub struct CherryInBalance {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OAuthConfiguration {
+struct OAuthConfig {
     #[serde(rename = "type")]
     kind: String,
     access_token: Option<String>,
@@ -28,11 +28,11 @@ struct OAuthConfiguration {
     expires_at: Option<u64>,
 }
 
-struct StoredOAuthConfiguration {
-    database_path: PathBuf,
+struct StoredOAuth {
+    db_path: PathBuf,
     serialized: String,
     value: Value,
-    configuration: OAuthConfiguration,
+    config: OAuthConfig,
 }
 
 #[derive(Deserialize)]
@@ -51,20 +51,19 @@ struct BalanceResponse {
 #[derive(Deserialize)]
 struct BalanceData {
     quota: f64,
-    #[serde(rename = "used_quota")]
-    _used_quota: f64,
 }
 
 pub async fn read() -> Result<CherryInBalance, String> {
-    let _session = SESSION_LOCK.lock().await;
-    let mut configuration = tokio::task::spawn_blocking(read_cherry_studio_oauth_configuration)
+    let session_guard = SESSION_LOCK.lock().await;
+    let read_task = tokio::task::spawn_blocking(read_oauth)
         .await
-        .map_err(|error| format!("Could not join Cherry Studio credential read: {error}"))??;
+        .map_err(|error| format!("Could not join Cherry Studio credential read: {error}"))?;
+    let mut stored = read_task?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
         .map_err(|error| format!("Could not create CherryIN client: {error}"))?;
-    let access_token = valid_access_token(&client, &mut configuration, false).await?;
+    let access_token = valid_access_token(&client, &mut stored, false).await?;
     let mut response = client
         .get(BALANCE_URL)
         .bearer_auth(&access_token)
@@ -72,7 +71,7 @@ pub async fn read() -> Result<CherryInBalance, String> {
         .await
         .map_err(|error| format!("Could not query CherryIN OAuth balance: {error}"))?;
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-        let access_token = valid_access_token(&client, &mut configuration, true).await?;
+        let access_token = valid_access_token(&client, &mut stored, true).await?;
         response = client
             .get(BALANCE_URL)
             .bearer_auth(access_token)
@@ -93,21 +92,23 @@ pub async fn read() -> Result<CherryInBalance, String> {
     if !response.success {
         return Err("CherryIN OAuth balance request was not successful".to_owned());
     }
-    Ok(CherryInBalance {
+    let balance = CherryInBalance {
         balance: response.data.quota / QUOTA_PER_UNIT,
-    })
+    };
+    drop(session_guard);
+    Ok(balance)
 }
 
-fn read_cherry_studio_oauth_configuration() -> Result<StoredOAuthConfiguration, String> {
-    let database_path = cherry_studio_database_path()?;
+fn read_oauth() -> Result<StoredOAuth, String> {
+    let db_path = oauth_db_path()?;
     let connection = Connection::open_with_flags(
-        &database_path,
+        &db_path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(|error| {
         format!(
             "Could not open Cherry Studio database {}: {error}",
-            database_path.display()
+            db_path.display()
         )
     })?;
     let auth_config: String = connection
@@ -119,38 +120,36 @@ fn read_cherry_studio_oauth_configuration() -> Result<StoredOAuthConfiguration, 
         .map_err(|error| format!("Could not read Cherry Studio OAuth configuration: {error}"))?;
     let value: Value = serde_json::from_str(&auth_config)
         .map_err(|error| format!("Could not decode Cherry Studio OAuth configuration: {error}"))?;
-    let configuration: OAuthConfiguration = serde_json::from_value(value.clone())
+    let config: OAuthConfig = serde_json::from_value(value.clone())
         .map_err(|error| format!("Could not decode Cherry Studio OAuth configuration: {error}"))?;
-    if configuration.kind != "oauth" {
+    if config.kind != "oauth" {
         return Err("Cherry Studio is not signed in to CherryIN with OAuth".to_owned());
     }
-    Ok(StoredOAuthConfiguration {
-        database_path,
+    Ok(StoredOAuth {
+        db_path,
         serialized: auth_config,
         value,
-        configuration,
+        config,
     })
 }
 
 async fn valid_access_token(
     client: &reqwest::Client,
-    stored: &mut StoredOAuthConfiguration,
+    stored: &mut StoredOAuth,
     force_refresh: bool,
 ) -> Result<String, String> {
     let access_token = stored
-        .configuration
+        .config
         .access_token
         .as_deref()
         .filter(|token| !token.trim().is_empty());
-    if !force_refresh
-        && !access_token_needs_refresh(&stored.configuration)?
-        && let Some(access_token) = access_token
-    {
+    let refresh_needed = token_needs_refresh(&stored.config)?;
+    if let (false, Some(access_token)) = (force_refresh || refresh_needed, access_token) {
         return Ok(access_token.to_owned());
     }
 
     let refresh_token = stored
-        .configuration
+        .config
         .refresh_token
         .as_deref()
         .filter(|token| !token.trim().is_empty())
@@ -178,20 +177,17 @@ async fn valid_access_token(
         .json()
         .await
         .map_err(|error| format!("CherryIN returned an unsupported token response: {error}"))?;
-    persist_refreshed_tokens(stored, tokens).await
+    save_tokens(stored, tokens).await
 }
 
-fn access_token_needs_refresh(configuration: &OAuthConfiguration) -> Result<bool, String> {
+fn token_needs_refresh(config: &OAuthConfig) -> Result<bool, String> {
     let now = unix_time_millis()?;
-    Ok(configuration
+    Ok(config
         .expires_at
-        .is_some_and(|expires_at| expires_at <= now.saturating_add(TOKEN_EXPIRY_BUFFER_MILLIS)))
+        .is_some_and(|expires_at| expires_at <= now.saturating_add(TOKEN_EXPIRY_BUFFER_MS)))
 }
 
-async fn persist_refreshed_tokens(
-    stored: &mut StoredOAuthConfiguration,
-    tokens: TokenResponse,
-) -> Result<String, String> {
+async fn save_tokens(stored: &mut StoredOAuth, tokens: TokenResponse) -> Result<String, String> {
     let access_token = tokens.access_token.trim();
     if access_token.is_empty() {
         return Err("CherryIN token refresh returned an empty access token".to_owned());
@@ -221,18 +217,18 @@ async fn persist_refreshed_tokens(
     let serialized = serde_json::to_string(&stored.value).map_err(|error| {
         format!("Could not encode refreshed Cherry Studio OAuth session: {error}")
     })?;
-    let database_path = stored.database_path.clone();
+    let db_path = stored.db_path.clone();
     let previous = stored.serialized.clone();
     let next = serialized.clone();
-    let updated = tokio::task::spawn_blocking(move || {
+    let update_task = tokio::task::spawn_blocking(move || {
         let connection = Connection::open_with_flags(
-            &database_path,
+            &db_path,
             OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )
         .map_err(|error| {
             format!(
                 "Could not open Cherry Studio database {} for OAuth refresh: {error}",
-                database_path.display()
+                db_path.display()
             )
         })?;
         connection
@@ -246,7 +242,8 @@ async fn persist_refreshed_tokens(
             .map_err(|error| format!("Could not persist refreshed CherryIN OAuth session: {error}"))
     })
     .await
-    .map_err(|error| format!("Could not join Cherry Studio credential update: {error}"))??;
+    .map_err(|error| format!("Could not join Cherry Studio credential update: {error}"))?;
+    let updated = update_task?;
     if updated != 1 {
         return Err(
             "Cherry Studio's CherryIN OAuth session changed while it was refreshing; retry Dashboard refresh"
@@ -254,13 +251,13 @@ async fn persist_refreshed_tokens(
         );
     }
     stored.serialized = serialized;
-    stored.configuration = serde_json::from_value(stored.value.clone()).map_err(|error| {
+    stored.config = serde_json::from_value(stored.value.clone()).map_err(|error| {
         format!("Could not decode refreshed Cherry Studio OAuth session: {error}")
     })?;
     Ok(access_token.to_owned())
 }
 
-fn cherry_studio_database_path() -> Result<PathBuf, String> {
+fn oauth_db_path() -> Result<PathBuf, String> {
     #[cfg(target_os = "linux")]
     let application_data = dirs::config_dir();
     #[cfg(not(target_os = "linux"))]
@@ -286,8 +283,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decodes_cherry_studio_oauth_configuration() {
-        let configuration: OAuthConfiguration = serde_json::from_value(serde_json::json!({
+    fn decodes_oauth_config() {
+        let config: OAuthConfig = serde_json::from_value(serde_json::json!({
             "type": "oauth",
             "accessToken": "oauth-access-token",
             "refreshToken": "oauth-refresh-token",
@@ -295,33 +292,27 @@ mod tests {
         }))
         .expect("valid OAuth configuration");
 
-        assert_eq!(configuration.kind, "oauth");
-        assert_eq!(
-            configuration.access_token.as_deref(),
-            Some("oauth-access-token")
-        );
-        assert_eq!(
-            configuration.refresh_token.as_deref(),
-            Some("oauth-refresh-token")
-        );
+        assert_eq!(config.kind, "oauth");
+        assert_eq!(config.access_token.as_deref(), Some("oauth-access-token"));
+        assert_eq!(config.refresh_token.as_deref(), Some("oauth-refresh-token"));
     }
 
     #[test]
-    fn refreshes_tokens_before_the_expiry_buffer() {
-        let configuration = OAuthConfiguration {
+    fn refreshes_before_expiry() {
+        let config = OAuthConfig {
             kind: "oauth".to_owned(),
             access_token: Some("access-token".to_owned()),
             refresh_token: Some("refresh-token".to_owned()),
             expires_at: Some(
-                unix_time_millis().expect("current Unix time") + TOKEN_EXPIRY_BUFFER_MILLIS - 1,
+                unix_time_millis().expect("current Unix time") + TOKEN_EXPIRY_BUFFER_MS - 1,
             ),
         };
 
-        assert!(access_token_needs_refresh(&configuration).expect("current Unix time"));
+        assert!(token_needs_refresh(&config).expect("current Unix time"));
     }
 
     #[test]
-    fn converts_account_quota_with_cherryin_unit() {
+    fn converts_quota_units() {
         let response: BalanceResponse = serde_json::from_value(serde_json::json!({
             "success": true,
             "data": { "quota": 37_500_000, "used_quota": 12_500_000 }
@@ -333,7 +324,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires Cherry Studio OAuth and network access"]
-    async fn reads_balance_from_cherry_studio_oauth() {
+    async fn reads_live_balance() {
         let balance = read().await.expect("CherryIN balance should be readable");
         assert!(balance.balance >= 0.0);
     }

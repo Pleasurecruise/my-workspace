@@ -83,6 +83,7 @@ export type ChannelView =
       channel: "knowledge";
       connected: boolean;
       knowledge: KnowledgeDocument[];
+      newspaper: NewspaperIssues;
       nextCursor: string | null;
     };
 
@@ -102,9 +103,15 @@ export interface KnowledgeDocument {
   contentHash: string;
   createdAt: string;
   updatedAt: string;
+  newspaperEdition: "developer" | "personal" | null;
   source: string;
   html: string;
   toc: TocEntry[];
+}
+
+export interface NewspaperIssues {
+  developer: string | null;
+  personal: string | null;
 }
 
 export interface KnowledgeDraft {
@@ -219,6 +226,7 @@ export interface CherryInBalance {
 }
 
 export interface Weather {
+  query: string;
   location: string;
   latitude: number;
   longitude: number;
@@ -242,9 +250,26 @@ export interface Weather {
 }
 
 export interface WeatherReport {
-  shanghai: Weather;
-  ningbo: Weather;
-  nottingham: Weather;
+  locations: Weather[];
+  failures: Array<{ query: string; message: string }>;
+}
+
+export type WeatherLocation = string;
+
+export interface StockReport {
+  stocks: StockSeries[];
+  failures: Array<{ symbol: string; message: string }>;
+}
+
+export interface StockSeries {
+  symbol: string;
+  name: string;
+  currency: string;
+  exchange: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  points: Array<{ timestamp: number; close: number }>;
 }
 
 export interface GithubSnapshot {
@@ -278,7 +303,31 @@ export interface DashboardState {
   deepSeek: QueryState<DeepSeekBalance>;
   cherryIn: QueryState<CherryInBalance>;
   weather: QueryState<WeatherReport>;
+  stocks: QueryState<StockReport>;
   github: QueryState<GithubSnapshot>;
+}
+
+export type WidgetKind =
+  | "cpu"
+  | "memory"
+  | "storage"
+  | "network"
+  | "weather"
+  | "stock"
+  | "github"
+  | "todo"
+  | "usage";
+
+export interface WidgetPlacement {
+  id: string;
+  widget:
+    | { kind: Exclude<WidgetKind, "weather" | "stock"> }
+    | { kind: "weather"; location: WeatherLocation }
+    | { kind: "stock"; symbol: string };
+}
+
+export interface WidgetLayout {
+  widgets: WidgetPlacement[];
 }
 
 export type DashboardEvent =
@@ -288,6 +337,7 @@ export type DashboardEvent =
   | { source: "deepSeek"; result: CommandResponse<DeepSeekBalance> }
   | { source: "cherryIn"; result: CommandResponse<CherryInBalance> }
   | { source: "weather"; result: CommandResponse<WeatherReport> }
+  | { source: "stocks"; result: CommandResponse<StockReport> }
   | { source: "github"; result: CommandResponse<GithubSnapshot> };
 
 export interface TodoList {

@@ -170,6 +170,7 @@ pub(crate) fn http_client(fingerprint: CertFingerprint) -> Result<reqwest::Clien
         provider: Arc::new(ring::default_provider()),
     });
     reqwest::Client::builder()
+        .no_proxy()
         .cookie_store(true)
         .timeout(std::time::Duration::from_secs(30))
         .use_preconfigured_tls(client_config(verifier)?)
@@ -183,14 +184,13 @@ pub(crate) async fn probe_fingerprint(host: &str, port: u16) -> Result<CertFinge
         fingerprint: Arc::clone(&fingerprint),
         provider: Arc::new(ring::default_provider()),
     });
-    reqwest::Client::builder()
+    let client = reqwest::Client::builder()
+        .no_proxy()
         .timeout(std::time::Duration::from_secs(30))
         .use_preconfigured_tls(client_config(verifier)?)
         .build()
-        .map_err(|error| UgosError::Encryption(format!("could not build HTTP client: {error}")))?
-        .get(format!("https://{host}:{port}/"))
-        .send()
-        .await?;
+        .map_err(|error| UgosError::Encryption(format!("could not build HTTP client: {error}")))?;
+    client.get(format!("https://{host}:{port}/")).send().await?;
     let observed = fingerprint
         .lock()
         .map_err(|error| UgosError::Encryption(error.to_string()))?;
@@ -204,9 +204,9 @@ fn subject_public_key(certificate: &[u8]) -> Result<Vec<u8>, UgosError> {
             let subject_public_key = certificate.sequence(|signed_certificate| {
                 let version = Tag::ContextSpecific {
                     constructed: true,
-                    number: TagNumber::N0,
+                    number: TagNumber(0),
                 };
-                if signed_certificate.peek_tag()? == version {
+                if Tag::peek(signed_certificate)? == version {
                     signed_certificate.tlv_bytes()?;
                 }
                 signed_certificate.tlv_bytes()?;
@@ -218,7 +218,7 @@ fn subject_public_key(certificate: &[u8]) -> Result<Vec<u8>, UgosError> {
                 while !signed_certificate.is_finished() {
                     signed_certificate.tlv_bytes()?;
                 }
-                Ok(subject_public_key)
+                Ok::<Vec<u8>, der::Error>(subject_public_key)
             })?;
             while !certificate.is_finished() {
                 certificate.tlv_bytes()?;

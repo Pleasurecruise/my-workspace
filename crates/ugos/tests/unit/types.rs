@@ -2,7 +2,7 @@ use super::{ApiResponse, TaskManagerAll, VolumeList};
 use crate::UgosError;
 
 #[test]
-fn decodes_data_from_the_ugos_response_envelope() {
+fn decodes_api_envelope() {
     let stats = ApiResponse::<TaskManagerAll>::decode(
         r#"{"code":200,"msg":"success","data":{"cpu":{"series":[]},"mem":{"series":[]},"net":{"series":[]},"vol":[]}}"#,
         "taskmgr/stat/get_all",
@@ -14,7 +14,7 @@ fn decodes_data_from_the_ugos_response_envelope() {
 }
 
 #[test]
-fn reports_an_ugos_api_error_before_decoding_data() {
+fn reports_api_error() {
     let result = ApiResponse::<TaskManagerAll>::decode(
         r#"{"code":401,"msg":"expired","data":[]}"#,
         "taskmgr/stat/get_all",
@@ -30,13 +30,13 @@ fn reports_an_ugos_api_error_before_decoding_data() {
 }
 
 #[test]
-fn rejects_incomplete_task_manager_telemetry() {
+fn rejects_partial_data() {
     let stats = serde_json::from_str::<TaskManagerAll>(r#"{"vol":[]}"#);
     assert!(stats.is_err());
 }
 
 #[test]
-fn decodes_volume_capacity_from_task_manager_all() {
+fn decodes_volume_capacity() {
     let stats = ApiResponse::<TaskManagerAll>::decode(
 		r#"{"code":200,"msg":"success","data":{"cpu":{"series":[]},"mem":{"series":[]},"net":{"series":[]},"vol":[{"name":"VOLUME1","total":1000,"used":375}]}}"#,
         "taskmgr/stat/get_all",
@@ -49,7 +49,7 @@ fn decodes_volume_capacity_from_task_manager_all() {
 }
 
 #[test]
-fn decodes_current_task_manager_samples() {
+fn decodes_task_samples() {
     let stats = ApiResponse::<TaskManagerAll>::decode(
 		r#"{"code":200,"msg":"success","data":{"overview":{"cpu":[{"used_percent":2.76,"temp":58}],"mem":[{"used_percent":39}],"net":[{"send_rate":1,"recv_rate":2}]},"cpu":{"series":[{"used_percent":12.5,"temp":49,"time":100}]},"mem":{"series":[{"used_percent":32,"time":100}]},"net":{"series":[{"name":"overview","send_rate":1700,"recv_rate":2400,"time":100},{"name":"eth0","send_rate":1700,"recv_rate":2400,"time":100}]},"vol":[]}}"#,
 		"taskmgr/stat/get_all",
@@ -62,7 +62,7 @@ fn decodes_current_task_manager_samples() {
 }
 
 #[test]
-fn decodes_wrapped_volume_list() {
+fn decodes_volume_wrapper() {
     let volumes = ApiResponse::<VolumeList>::decode(
         r#"{"code":200,"msg":"success","data":{"result":[{"total":1000,"used":250}]}}"#,
         "storage/volume/list",

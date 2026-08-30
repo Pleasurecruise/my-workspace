@@ -7,9 +7,10 @@ use tokio::sync::Mutex as AsyncMutex;
 use tokio::task::JoinSet;
 use tokio::time::{Instant, interval_at};
 
-use crate::{CommandResponse, github, weather};
+use crate::{CommandResponse, github, stocks, weather, widgets};
 
 const EVENT: &str = "dashboard-source-updated";
+const SOURCE_COUNT: usize = 8;
 
 #[derive(Clone, Copy)]
 #[repr(usize)]
@@ -20,17 +21,19 @@ enum Source {
     DeepSeek,
     CherryIn,
     Weather,
+    Stocks,
     Github,
 }
 
 impl Source {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; SOURCE_COUNT] = [
         Self::TaskManager,
         Self::Codex,
         Self::OpenCode,
         Self::DeepSeek,
         Self::CherryIn,
         Self::Weather,
+        Self::Stocks,
         Self::Github,
     ];
 }
@@ -44,16 +47,17 @@ enum DashboardEvent {
     DeepSeek(CommandResponse<useage::deepseek::DeepSeekBalance>),
     CherryIn(CommandResponse<useage::cherryin::CherryInBalance>),
     Weather(Box<CommandResponse<weather::WeatherReport>>),
+    Stocks(Box<CommandResponse<stocks::StockReport>>),
     Github(CommandResponse<github::GithubSnapshot>),
 }
 
 impl DashboardEvent {
-    async fn read(source: Source) -> Self {
+    async fn read(source: Source, app: &AppHandle) -> Self {
         match source {
             Source::TaskManager => match ugos::task_manager().await {
                 Ok(data) => Self::TaskManager(CommandResponse::Ready { data }),
                 Err(error) => {
-                    tracing::error!(error = %error, "failed to load UGOS Task Manager");
+                    tracing::warn!(error = %error, "failed to load UGOS Task Manager");
                     Self::TaskManager(CommandResponse::Failed {
                         message: error.to_string(),
                     })
@@ -87,12 +91,25 @@ impl DashboardEvent {
                     Self::CherryIn(CommandResponse::Failed { message })
                 }
             },
-            Source::Weather => match weather::read().await {
-                Ok(data) => Self::Weather(Box::new(CommandResponse::Ready { data })),
-                Err(message) => {
-                    tracing::warn!(error = %message, "failed to load weather");
-                    Self::Weather(Box::new(CommandResponse::Failed { message }))
-                }
+            Source::Weather => match widgets::weather_locations(app) {
+                Ok(locations) => match weather::read(locations).await {
+                    Ok(data) => Self::Weather(Box::new(CommandResponse::Ready { data })),
+                    Err(message) => {
+                        tracing::warn!(error = %message, "failed to load weather");
+                        Self::Weather(Box::new(CommandResponse::Failed { message }))
+                    }
+                },
+                Err(message) => Self::Weather(Box::new(CommandResponse::Failed { message })),
+            },
+            Source::Stocks => match widgets::stock_symbols(app) {
+                Ok(symbols) => match stocks::read(symbols).await {
+                    Ok(data) => Self::Stocks(Box::new(CommandResponse::Ready { data })),
+                    Err(message) => {
+                        tracing::warn!(error = %message, "failed to load stocks");
+                        Self::Stocks(Box::new(CommandResponse::Failed { message }))
+                    }
+                },
+                Err(message) => Self::Stocks(Box::new(CommandResponse::Failed { message })),
             },
             Source::Github => match github::read().await {
                 Ok(data) => Self::Github(CommandResponse::Ready { data }),
@@ -119,7 +136,7 @@ impl DashboardEvent {
 }
 
 struct RuntimeState {
-    sources: [Arc<AsyncMutex<()>>; 7],
+    sources: [Arc<AsyncMutex<()>>; SOURCE_COUNT],
     polling: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -130,6 +147,7 @@ impl Default for DashboardRuntime {
     fn default() -> Self {
         Self(Arc::new(RuntimeState {
             sources: [
+                Arc::new(AsyncMutex::new(())),
                 Arc::new(AsyncMutex::new(())),
                 Arc::new(AsyncMutex::new(())),
                 Arc::new(AsyncMutex::new(())),
@@ -149,7 +167,7 @@ impl DashboardRuntime {
             return;
         };
         tauri::async_runtime::spawn(async move {
-            let event = DashboardEvent::read(source).await;
+            let event = DashboardEvent::read(source, &app).await;
             event.emit(&app);
             drop(source_guard);
         });
@@ -162,9 +180,10 @@ pub(crate) async fn refresh_dashboard(app: AppHandle) -> CommandResponse<()> {
     let mut requests = JoinSet::new();
     for source in Source::ALL {
         let source_lock = Arc::clone(&runtime.0.sources[source as usize]);
+        let request_app = app.clone();
         requests.spawn(async move {
             let source_guard = source_lock.lock_owned().await;
-            let event = DashboardEvent::read(source).await;
+            let event = DashboardEvent::read(source, &request_app).await;
             drop(source_guard);
             event
         });

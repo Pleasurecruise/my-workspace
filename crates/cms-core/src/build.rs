@@ -68,6 +68,10 @@ pub enum BuildError {
         path: PathBuf,
         source: std::io::Error,
     },
+    Markdown {
+        path: PathBuf,
+        source: crate::markdown::PublicationError,
+    },
     Serialize(serde_json::Error),
 }
 
@@ -102,6 +106,9 @@ impl Display for BuildError {
             Self::Io { path, source } => {
                 write!(formatter, "could not process {}: {source}", path.display())
             }
+            Self::Markdown { path, source } => {
+                write!(formatter, "could not compile {}: {source}", path.display())
+            }
             Self::Serialize(source) => {
                 write!(formatter, "could not serialize content index: {source}")
             }
@@ -113,6 +120,7 @@ impl Error for BuildError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Io { source, .. } => Some(source),
+            Self::Markdown { source, .. } => Some(source),
             Self::Serialize(source) => Some(source),
             Self::PathOutsideRoot { source, .. } => Some(source),
             Self::MissingSource(..) | Self::UnsupportedSymlink(..) | Self::OutputCollision(..) => {
@@ -219,7 +227,12 @@ fn compile_directory(
         }
         if markdown {
             let source = io(&path, fs::read_to_string(&path))?;
-            let html = crate::markdown::render(&source);
+            let html = crate::markdown::render_publication(&source).map_err(|source| {
+                BuildError::Markdown {
+                    path: path.clone(),
+                    source,
+                }
+            })?;
             io(&destination, fs::write(&destination, &html))?;
             let relative_output = destination.strip_prefix(staging).map_err(|source| {
                 BuildError::PathOutsideRoot {

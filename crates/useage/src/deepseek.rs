@@ -63,7 +63,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires a locally configured DeepSeek API key"]
-    async fn reads_balance_from_local_deepseek() {
+    async fn reads_live_balance() {
         let balance = read().await.expect("DeepSeek balance should be readable");
         assert!(!balance.balance_infos.is_empty());
     }

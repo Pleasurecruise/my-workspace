@@ -2,14 +2,14 @@ use super::{CheckRequest, LoginRequest, encrypt_password};
 use openssl::rsa::{Padding, Rsa};
 
 #[test]
-fn serializes_the_minimal_check_request() {
+fn encodes_check_request() {
     let request = serde_json::to_value(CheckRequest { username: "admin" }).unwrap();
 
     assert_eq!(request, serde_json::json!({ "username": "admin" }));
 }
 
 #[test]
-fn serializes_the_minimal_login_request() {
+fn encodes_login_request() {
     let request = serde_json::to_value(LoginRequest {
         username: "admin",
         password: "encrypted".to_owned(),
@@ -32,7 +32,7 @@ fn serializes_the_minimal_login_request() {
 }
 
 #[test]
-fn encrypts_passwords_from_pkcs1_and_spki_public_keys() {
+fn encrypts_supported_keys() {
     let private_key = Rsa::generate(2048).unwrap();
     let pkcs1 = String::from_utf8(private_key.public_key_to_pem_pkcs1().unwrap()).unwrap();
     let spki = String::from_utf8(private_key.public_key_to_pem().unwrap()).unwrap();
@@ -49,7 +49,7 @@ fn encrypts_passwords_from_pkcs1_and_spki_public_keys() {
 }
 
 #[test]
-fn accepts_spki_keys_with_rsa_public_key_labels() {
+fn accepts_spki_rsa_label() {
     let private_key = Rsa::generate(2048).unwrap();
     let mislabeled = String::from_utf8(private_key.public_key_to_pem().unwrap())
         .unwrap()

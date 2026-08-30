@@ -14,6 +14,7 @@ DashboardView.svelte
   <- dashboard runtime in apps/desktop/src-tauri
   ├─ crates/ugos
   ├─ apps/desktop/src-tauri/weather.rs
+  ├─ apps/desktop/src-tauri/stocks.rs
   ├─ apps/desktop/src-tauri/github.rs
   └─ crates/useage
        ├─ codex.rs
@@ -28,7 +29,7 @@ overlapping reads; scheduled refreshes skip a source that is still running, whil
 waits for that source and then obtains fresh data. Polling exists only while Dashboard is active and
 retains settled data while refreshing: UGOS telemetry runs every two seconds and subscription data
 every sixty seconds. Entering Dashboard or using its refresh action reads every source and the
-selected Todo date. Weather and GitHub have no timer.
+selected Todo date. Weather, stocks, and GitHub have no timer.
 
 ## ntfy notifications
 
@@ -44,18 +45,33 @@ Upstream producers ──> ntfy.you-find.me/mail-summary ── authenticated SS
 - Vesper subscribes in Rust, reconnects with ntfy's `since=<last-id>` behavior, and keeps the newest
   200 messages locally for Inbox rendering.
 
-The calendar Todo list occupies the narrower lower-left area. One consolidated panel occupies the wider lower-right area.
-Its first row contains Codex and OpenCode Go quota cells; its second row contains DeepSeek and Cherry
-balance cells. Codex keeps its default windows and GPT-5.3 Codex Spark in one cell with three progress
-bars. DeepSeek and Cherry display account balances as text without donut charts. The lower columns stay side
-by side until the viewport reaches the narrow-screen breakpoint.
+Dashboard cards occupy a user-configurable fixed desktop widget canvas. In edit mode, users drag a
+card itself with the four-way move pointer to reorder it, delete it from the small upper-right
+button, or restore the Rust-owned default; there is no separate drag handle or card-level component
+menu. Reordering within one row targets individual cards, while crossing rows inserts at the row
+boundary so a full-width card cannot split a populated row. The Add Widget action opens a
+system-style library with search, widget metadata, and a
+selected-widget preview. The canvas keeps the
+same twelve-track arrangement at every window width; a narrow window scrolls horizontally and never
+projects a different order or column count. The layout is validated and stored locally in
+`dashboard-layout.json`; a missing file creates the default, while invalid stored data is reported
+without a silent fallback. The stored document is exactly `{ widgets }`; placements contain only
+their unique ID and typed widget configuration. Unknown fields are errors, and there is no layout
+version or compatibility reader. Existing card-level narrow-screen breakpoints remain intact.
 
-Weather and local time appear together above the Todo and usage region for Shanghai
-(`31.2304, 121.4737`), Ningbo (`29.8683, 121.5440`), and Nottingham
-(`52.9548, -1.1581`). Each city uses the timezone returned by Open-Meteo for a 24-hour clock and
-shows the next six hourly temperature and weather-code forecasts. Forecasts come from
-[Open-Meteo][open-meteo] without an API key. The UI advances all clocks locally every second rather
-than polling the weather service for time.
+The Usage widget contains Codex and OpenCode Go quota cells above DeepSeek and Cherry balance cells.
+Weather widgets accept a city, region-qualified place, or postal code. Rust resolves each saved
+query through the [Open-Meteo Geocoding API][open-meteo-geocoding], then reads its forecast and
+timezone from [Open-Meteo][open-meteo]. Each card shows a local clock and the next six hourly
+forecasts; clocks advance locally without another weather request. One unresolved place remains a
+card-local failure and does not discard other weather cards.
+
+## Stocks
+
+Each stock widget stores a validated ticker symbol. Rust reads its recent daily closes from Yahoo
+Finance's chart endpoint with bounded concurrency and no credentials. One failed symbol remains a
+card-local error and does not discard successful quotes. Stocks refresh on Dashboard entry or an
+explicit refresh and have no timer.
 
 ## GitHub
 
@@ -92,6 +108,7 @@ At local midnight Rust advances a view of today to the new empty list without de
 ### Connection and authentication
 
 - Fixed address: `https://ugreen:9443` through Tailscale MagicDNS.
+- UGOS clients bypass the operating-system HTTP proxy and connect directly to the Tailscale address.
 - Required local configuration: UGOS username and password saved through Settings.
 - On first connection, Vesper probes the NAS certificate and stores its SHA-256 fingerprint in the
   operating-system credential store.
@@ -202,3 +219,4 @@ dependencies. All nonessential motion is disabled when the operating system requ
 
 [deepseek-balance]: https://api-docs.deepseek.com/api/get-user-balance
 [open-meteo]: https://open-meteo.com/en/docs
+[open-meteo-geocoding]: https://open-meteo.com/en/docs/geocoding-api

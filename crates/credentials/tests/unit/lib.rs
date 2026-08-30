@@ -4,7 +4,7 @@ use super::{
 };
 
 #[test]
-fn rejects_an_empty_ugos_username_before_opening_the_keychain() {
+fn rejects_empty_ugos_user() {
     let result = save_ugos(UgosCredentials {
         username: String::new(),
         password: "password".to_owned(),
@@ -16,7 +16,7 @@ fn rejects_an_empty_ugos_username_before_opening_the_keychain() {
 }
 
 #[test]
-fn rejects_empty_consumer_api_key_before_opening_the_store() {
+fn rejects_empty_api_key() {
     assert!(matches!(
         save_consumer_api(ConsumerApi::Memos, "  "),
         Err(CredentialError::Empty("my-memos API key"))
@@ -24,7 +24,7 @@ fn rejects_empty_consumer_api_key_before_opening_the_store() {
 }
 
 #[test]
-fn rejects_an_empty_r2_secret_before_opening_the_keychain() {
+fn rejects_empty_r2_secret() {
     let result = save_r2(R2Credentials {
         access_key_id: "access".to_owned(),
         secret_access_key: String::new(),
@@ -36,7 +36,7 @@ fn rejects_an_empty_r2_secret_before_opening_the_keychain() {
 }
 
 #[test]
-fn rejects_a_short_app_lock_password_before_opening_the_keychain() {
+fn rejects_short_lock() {
     assert!(matches!(
         save_app_lock("123"),
         Err(CredentialError::TooShort("app lock password", 4))
@@ -44,7 +44,7 @@ fn rejects_a_short_app_lock_password_before_opening_the_keychain() {
 }
 
 #[test]
-fn rejects_an_empty_ntfy_token_before_opening_the_keychain() {
+fn rejects_empty_ntfy() {
     assert!(matches!(
         save_ntfy(NtfyConfig {
             token: "  ".to_owned(),

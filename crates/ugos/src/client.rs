@@ -75,13 +75,12 @@ impl Client {
 }
 
 fn parse_client_version(desktop: &str) -> Result<String, UgosError> {
-    let version_source = desktop
-        .split_once("window.clientNumberVersion=")
-        .map(|(_, source)| source)
-        .ok_or_else(|| UgosError::Decode {
-            endpoint: "desktop".to_owned(),
-            message: "clientNumberVersion is missing".to_owned(),
-        })?;
+    const MARKER: &str = "window.clientNumberVersion=";
+    let marker_index = desktop.find(MARKER).ok_or_else(|| UgosError::Decode {
+        endpoint: "desktop".to_owned(),
+        message: "clientNumberVersion is missing".to_owned(),
+    })?;
+    let version_source = &desktop[marker_index + MARKER.len()..];
     let version: String = version_source
         .chars()
         .take_while(char::is_ascii_digit)

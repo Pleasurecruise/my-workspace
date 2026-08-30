@@ -9,7 +9,7 @@ mod ugos;
 pub use app_lock::{AppLock, app_lock, delete_app_lock, save_app_lock};
 pub use consumer::{ConsumerApi, consumer_api, save_consumer_api};
 #[cfg(debug_assertions)]
-pub use development::load_development_environment;
+pub use development::load_dev_environment;
 pub use ntfy::{NtfyConfig, ntfy, save_ntfy};
 pub use r2::{R2Credentials, r2, save_r2};
 pub use ugos::{UgosCredentials, save_ugos, save_ugos_certificate, ugos, ugos_certificate};

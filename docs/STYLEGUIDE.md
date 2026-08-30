@@ -7,6 +7,8 @@ handling, and focused tests for one feature together, while keeping transport an
 
 - Rust owns application behavior, external I/O, credentials, storage, parsing, concurrency, and
   reusable domain contracts.
+- Content classification, domain filtering, and selecting canonical or latest projections belong in
+  Rust; Svelte may group or format an already classified projection for display.
 - Svelte owns rendering, user interaction, and small display-only transformations.
 - TypeScript types mirror serialized Rust transport contracts; they do not become a second business
   model.
@@ -39,6 +41,14 @@ Add a helper when it:
 
 Avoid helpers that only rename a single expression, wrap one method call, or hide control flow. Keep
 simple transformations and explicit request flow next to the code that uses them.
+
+Prefer compact names that retain the domain meaning. Do not encode an entire implementation or test
+assertion in an identifier. Keep a longer externally mandated field name only at its wire boundary.
+
+Rust's `?`, closures, and wildcard patterns are normal when their meaning is local and obvious. Do
+not stack nested `Result` propagation as `??`, combine pattern binding into a long boolean chain, or
+compress multi-rule validation into one expression. Name the intermediate result or use explicit
+early returns. Do not create a one-call helper merely to avoid ordinary Rust syntax.
 
 ## Error handling
 

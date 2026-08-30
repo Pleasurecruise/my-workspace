@@ -1,13 +1,13 @@
 use super::run;
 
 #[tokio::test]
-async fn rejects_unknown_arguments() {
+async fn rejects_unknown_args() {
     let error = run(["unknown".to_owned()].into_iter()).await.unwrap_err();
     assert!(error.contains("invalid arguments"));
 }
 
 #[tokio::test]
-async fn rejects_invalid_selected_todo_dates() {
+async fn rejects_bad_todo_date() {
     let error = run([
         "todo".to_owned(),
         "--date".to_owned(),

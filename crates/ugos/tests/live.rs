@@ -1,9 +1,8 @@
 #[tokio::test]
 #[cfg(debug_assertions)]
 #[ignore = "requires the configured local UGOS device and operating-system credential store"]
-async fn reads_task_manager_from_the_configured_device() {
-    vesper_credentials::load_development_environment()
-        .expect("development environment should be readable");
+async fn reads_live_task_manager() {
+    vesper_credentials::load_dev_environment().expect("development environment should be readable");
     let snapshot = ugos::task_manager()
         .await
         .expect("configured UGOS Task Manager should be available");

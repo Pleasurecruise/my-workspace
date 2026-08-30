@@ -34,8 +34,11 @@ flowchart TD
 ## Static publication
 
 `vesper build` delegates to `build.rs`. The builder walks `content/`, renders Markdown through
-`markdown.rs`, copies regular assets, rejects symbolic links and output collisions, and writes a
-`content.json` index into an operating-system temporary directory.
+`markdown.rs`, highlights fenced code with Syntect, renders `mermaid` fences to SVG with the
+pure-Rust `mermaid-svg` renderer, copies regular assets, rejects symbolic links and output
+collisions, and writes a `content.json` index into an operating-system temporary directory. Code
+styles and Mermaid SVG styles are embedded in the HTML artifact, so consumers do not run either
+renderer. Invalid or unsupported Mermaid input fails the build before an upload plan exists.
 
 `vesper publish` builds the same directory and reports the planned object count. It does not mutate
 remote state. `vesper publish --live` passes the staged files to `publish.rs`, which uploads them

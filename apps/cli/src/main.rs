@@ -9,7 +9,7 @@ mod todo;
 #[tokio::main]
 async fn main() -> ExitCode {
     #[cfg(debug_assertions)]
-    if let Err(error) = vesper_credentials::load_development_environment() {
+    if let Err(error) = vesper_credentials::load_dev_environment() {
         eprintln!("error: {error}");
         return ExitCode::FAILURE;
     }

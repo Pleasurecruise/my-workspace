@@ -30,7 +30,7 @@ struct NotificationStore {
     notifications: Vec<Notification>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct NtfyMessage {
     id: String,
     time: i64,
@@ -78,7 +78,10 @@ impl NotificationState {
         if message.event != "message" {
             return Ok(None);
         }
-        if message.topic != NTFY_TOPIC || message.time < 0 || message.time > 8_640_000_000 {
+        if message.topic != NTFY_TOPIC {
+            return Err("ntfy returned invalid notification metadata".to_owned());
+        }
+        if !(0..=8_640_000_000).contains(&message.time) {
             return Err("ntfy returned invalid notification metadata".to_owned());
         }
         let Some(body) = message.message.filter(|body| !body.trim().is_empty()) else {
@@ -99,12 +102,13 @@ impl NotificationState {
             .map(|envelope| envelope.body)
             .filter(|body| !body.trim().is_empty())
             .unwrap_or(body);
-        if source.len() > 200
-            || title.as_ref().is_some_and(|title| title.len() > 500)
-            || body.len() > 500_000
-            || message.tags.len() > 50
-            || message.tags.iter().any(|tag| tag.len() > 100)
-        {
+        if source.len() > 200 || body.len() > 500_000 {
+            return Err("ntfy returned an oversized notification".to_owned());
+        }
+        if title.as_ref().is_some_and(|title| title.len() > 500) {
+            return Err("ntfy returned an oversized notification".to_owned());
+        }
+        if message.tags.len() > 50 || message.tags.iter().any(|tag| tag.len() > 100) {
             return Err("ntfy returned an oversized notification".to_owned());
         }
         let mut store = self.store.write().await;
@@ -324,10 +328,10 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn accepts_messages_and_deduplicates_ids() {
+    async fn deduplicates_messages() {
         let path =
             std::env::temp_dir().join(format!("vesper-notifications-{}.json", std::process::id()));
-        let _ = std::fs::remove_file(&path);
+        drop(std::fs::remove_file(&path));
         let state = NotificationState::new(path.clone()).unwrap();
         let message = NtfyMessage {
             id: "message-1".to_owned(),
@@ -350,16 +354,16 @@ mod tests {
         };
         assert!(state.accept(duplicate).await.unwrap().is_none());
         assert_eq!(state.store.read().await.notifications.len(), 1);
-        let _ = std::fs::remove_file(path);
+        drop(std::fs::remove_file(path));
     }
 
     #[tokio::test]
-    async fn marking_a_message_read_removes_it_from_the_store() {
+    async fn removes_read_message() {
         let path = std::env::temp_dir().join(format!(
             "vesper-read-notifications-{}.json",
             std::process::id()
         ));
-        let message = || NtfyMessage {
+        let message = NtfyMessage {
             id: "message-1".to_owned(),
             time: 1,
             event: "message".to_owned(),
@@ -369,11 +373,11 @@ mod tests {
             tags: vec![],
         };
         let state = NotificationState::new(path.clone()).unwrap();
-        state.accept(message()).await.unwrap();
+        state.accept(message).await.unwrap();
         assert!(state.mark_read("message-1").await.unwrap().is_empty());
 
         let restored = NotificationState::new(path.clone()).unwrap();
         assert!(restored.store.read().await.notifications.is_empty());
-        let _ = std::fs::remove_file(path);
+        drop(std::fs::remove_file(path));
     }
 }

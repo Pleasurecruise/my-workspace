@@ -75,7 +75,10 @@ pub async fn read() -> Result<CodexUsage, String> {
     let stderr_task = tokio::spawn(async move {
         let mut output = String::new();
         if let Some(mut stderr) = stderr {
-            let _ = stderr.read_to_string(&mut output).await;
+            match stderr.read_to_string(&mut output).await {
+                Ok(_) => {}
+                Err(_) => output.clear(),
+            }
         }
         output
     });
@@ -107,8 +110,12 @@ pub async fn read() -> Result<CodexUsage, String> {
     let result = read_result(&mut stdout, 2).await;
 
     drop(stdin);
-    let _ = child.kill().await;
-    let _ = child.wait().await;
+    if let Err(error) = child.kill().await {
+        tracing::debug!(%error, "Codex app-server already stopped");
+    }
+    if let Err(error) = child.wait().await {
+        tracing::debug!(%error, "could not reap Codex app-server");
+    }
     let stderr = stderr_task.await.unwrap_or_default();
     let value = result.map_err(|error| {
         let stderr = stderr.trim();
@@ -142,7 +149,7 @@ async fn read_result(
     stdout: &mut BufReader<ChildStdout>,
     expected_id: i64,
 ) -> Result<Value, String> {
-    tokio::time::timeout(RESPONSE_TIMEOUT, async {
+    let outcome = tokio::time::timeout(RESPONSE_TIMEOUT, async {
         loop {
             let mut line = String::new();
             let read = stdout
@@ -168,8 +175,11 @@ async fn read_result(
                 .ok_or_else(|| "Codex response did not include a result".to_owned());
         }
     })
-    .await
-    .map_err(|error| format!("Timed out while reading Codex usage: {error}"))?
+    .await;
+    match outcome {
+        Ok(result) => result,
+        Err(error) => Err(format!("Timed out while reading Codex usage: {error}")),
+    }
 }
 
 fn parse_usage(value: Value) -> Result<CodexUsage, String> {
@@ -177,16 +187,16 @@ fn parse_usage(value: Value) -> Result<CodexUsage, String> {
         .map_err(|error| format!("Codex returned an unsupported usage payload: {error}"))?;
     let mut spark = None;
     for (id, limit) in response.rate_limits_by_limit_id {
-        let id_is_spark = id.to_lowercase().contains("spark");
-        let limit_id_is_spark = match limit.limit_id.as_deref() {
-            Some(limit_id) => limit_id.to_lowercase().contains("spark"),
-            None => false,
-        };
-        let limit_name_is_spark = match limit.limit_name.as_deref() {
-            Some(limit_name) => limit_name.to_lowercase().contains("spark"),
-            None => false,
-        };
-        if id_is_spark || limit_id_is_spark || limit_name_is_spark {
+        let names = [
+            Some(id.as_str()),
+            limit.limit_id.as_deref(),
+            limit.limit_name.as_deref(),
+        ];
+        if names
+            .into_iter()
+            .flatten()
+            .any(|name| name.to_lowercase().contains("spark"))
+        {
             spark = Some(limit);
             break;
         }
@@ -200,10 +210,9 @@ fn parse_usage(value: Value) -> Result<CodexUsage, String> {
 }
 
 fn resolve_codex_binary() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("CODEX_BINARY").map(PathBuf::from)
-        && path.is_file()
-    {
-        return Ok(path);
+    match std::env::var_os("CODEX_BINARY").map(PathBuf::from) {
+        Some(path) if path.is_file() => return Ok(path),
+        Some(_) | None => {}
     }
 
     if let Some(path) = std::env::var_os("PATH").and_then(|paths| {
@@ -236,7 +245,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_rate_limit_windows() {
+    fn parses_limits() {
         let usage = parse_usage(json!({
             "rateLimits": {
                 "planType": "plus",
@@ -267,7 +276,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires a locally authenticated Codex CLI"]
-    async fn reads_usage_from_local_codex() {
+    async fn reads_live_usage() {
         let usage = read().await.expect("Codex usage should be readable");
         assert!(usage.primary.is_some() || usage.secondary.is_some());
     }

@@ -431,26 +431,35 @@ fn parse_x_post_id(source: &str) -> Option<String> {
         return None;
     }
     let id = segments[2];
-    (id.len() >= 2 && id.len() <= 20 && id.chars().all(|character| character.is_ascii_digit()))
-        .then(|| id.to_owned())
+    if !(2..=20).contains(&id.len()) {
+        return None;
+    }
+    if !id.chars().all(|character| character.is_ascii_digit()) {
+        return None;
+    }
+    Some(id.to_owned())
 }
 
 fn format_x_post(post: XPost) -> Result<String, ApiError> {
-    let post_url = reqwest::Url::parse(&post.url)
-        .map_err(|_| ApiError::Protocol("X returned an unsupported post response".to_owned()))?;
-    if post.text.trim().is_empty()
-        || post.author.name.trim().is_empty()
-        || post.author.screen_name.trim().is_empty()
-        || !post
-            .author
-            .screen_name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_')
-        || parse_x_post_id(&post.url).is_none()
+    const INVALID_POST: &str = "X returned an unsupported post response";
+    let post_url =
+        reqwest::Url::parse(&post.url).map_err(|_| ApiError::Protocol(INVALID_POST.to_owned()))?;
+    if post.text.trim().is_empty() || post.author.name.trim().is_empty() {
+        return Err(ApiError::Protocol(INVALID_POST.to_owned()));
+    }
+    if post.author.screen_name.trim().is_empty() {
+        return Err(ApiError::Protocol(INVALID_POST.to_owned()));
+    }
+    if !post
+        .author
+        .screen_name
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '_')
     {
-        return Err(ApiError::Protocol(
-            "X returned an unsupported post response".to_owned(),
-        ));
+        return Err(ApiError::Protocol(INVALID_POST.to_owned()));
+    }
+    if parse_x_post_id(&post.url).is_none() {
+        return Err(ApiError::Protocol(INVALID_POST.to_owned()));
     }
     let mut content = escape_markdown_text(post.text.trim());
     let photos: Result<Vec<_>, _> = post
@@ -530,13 +539,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn strips_my_memos_hashtags_from_the_rendered_body() {
+    fn strips_memo_tags() {
         let content = "Body #Rust #rust #长文\nnext line";
         assert_eq!(strip_tags(content), "Body \nnext line");
     }
 
     #[test]
-    fn projects_the_body_already_returned_by_the_list_api() {
+    fn projects_list_body() {
         let view = RemoteMemo {
             id: "memo".to_owned(),
             r2_key: "memos/memo.md".to_owned(),
@@ -556,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_x_and_twitter_status_urls() {
+    fn accepts_x_status_urls() {
         assert_eq!(
             parse_x_post_id("https://x.com/Cloudflare/status/2084626665670398004"),
             Some("2084626665670398004".to_owned())
@@ -573,7 +582,7 @@ mod tests {
     }
 
     #[test]
-    fn formats_x_posts_with_safe_photo_markdown() {
+    fn formats_x_photos() {
         let content = format_x_post(XPost {
             text: "A useful post <script>alert(1)</script> [click](javascript:alert(1))".to_owned(),
             url: "https://x.com/Cloudflare/status/2084626665670398004".to_owned(),

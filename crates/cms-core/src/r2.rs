@@ -114,12 +114,13 @@ impl Store {
                 .send()
                 .await
                 .map_err(|error| {
-                    if error.as_service_error().is_some_and(
+                    let missing_service = error.as_service_error().is_some_and(
                         aws_sdk_s3::operation::get_object::GetObjectError::is_no_such_key,
-                    ) || error
+                    );
+                    let missing_http = error
                         .raw_response()
-                        .is_some_and(|response| response.status().as_u16() == 404)
-                    {
+                        .is_some_and(|response| response.status().as_u16() == 404);
+                    if missing_service || missing_http {
                         StoreError::MissingObject(key.to_owned())
                     } else {
                         StoreError::Request(error.to_string())

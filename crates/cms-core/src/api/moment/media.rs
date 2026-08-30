@@ -40,26 +40,31 @@ pub(super) fn prepare(source: &[u8]) -> Result<Prepared, Error> {
         return Err(Error::SourceTooLarge);
     }
 
-    let heif = source.get(4..8) == Some(b"ftyp")
-        && source.get(8..).is_some_and(|brands| {
-            brands.as_chunks::<4>().0.iter().any(|brand| {
-                matches!(
-                    brand,
-                    b"heic"
-                        | b"heix"
-                        | b"hevc"
-                        | b"hevx"
-                        | b"heim"
-                        | b"heis"
-                        | b"hevm"
-                        | b"hevs"
-                        | b"avif"
-                        | b"avis"
-                        | b"mif1"
-                        | b"msf1"
-                )
-            })
-        });
+    let mut heif = false;
+    let brands = match (source.get(4..8), source.get(8..)) {
+        (Some(b"ftyp"), Some(brands)) => brands,
+        _ => &[],
+    };
+    for brand in brands.as_chunks::<4>().0 {
+        if matches!(
+            brand,
+            b"heic"
+                | b"heix"
+                | b"hevc"
+                | b"hevx"
+                | b"heim"
+                | b"heis"
+                | b"hevm"
+                | b"hevs"
+                | b"avif"
+                | b"avis"
+                | b"mif1"
+                | b"msf1"
+        ) {
+            heif = true;
+            break;
+        }
+    }
     let metadata = super::exif::read(source, heif);
     let mut image = if heif {
         let mut limits = heic::Limits::default();
@@ -105,7 +110,7 @@ pub(super) fn prepare(source: &[u8]) -> Result<Prepared, Error> {
     if u64::from(image.width()) * u64::from(image.height()) > PIXEL_LIMIT {
         return Err(Error::ImageTooLarge);
     }
-    if !heif && let Some(orientation) = metadata.orientation {
+    if let (false, Some(orientation)) = (heif, metadata.orientation) {
         image.apply_orientation(orientation);
     }
 
@@ -144,7 +149,7 @@ mod tests {
     use image::{GenericImageView, Rgba, RgbaImage};
 
     #[test]
-    fn prepares_normalized_moment_variants() {
+    fn normalizes_images() {
         let mut source = Cursor::new(Vec::new());
         DynamicImage::ImageRgba8(RgbaImage::from_pixel(1200, 800, Rgba([21, 34, 55, 255])))
             .write_to(&mut source, ImageFormat::Png)
@@ -169,13 +174,13 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unsupported_bytes() {
+    fn rejects_bad_image() {
         assert!(matches!(prepare(b"not an image"), Err(Error::Decode)));
     }
 
     #[test]
     #[ignore = "requires MOMENT_HEIF_FIXTURE"]
-    fn prepares_a_real_heif_source() {
+    fn loads_heif_fixture() {
         let path = std::env::var("MOMENT_HEIF_FIXTURE").expect("HEIF fixture path");
         let source = std::fs::read(path).expect("HEIF fixture should be readable");
 

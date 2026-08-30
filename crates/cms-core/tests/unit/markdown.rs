@@ -1,7 +1,7 @@
-use super::{compile_knowledge, knowledge_body, render, render_memo};
+use super::{compile_knowledge, knowledge_body, render, render_memo, render_publication};
 
 #[test]
-fn renders_common_extensions() {
+fn renders_extensions() {
     let html = render("# Title\n\n~~old~~\n\n| A | B |\n| - | - |\n| 1 | 2 |");
     assert!(html.contains("<h1>Title</h1>"));
     assert!(html.contains("<del>old</del>"));
@@ -9,12 +9,12 @@ fn renders_common_extensions() {
 }
 
 #[test]
-fn renders_memo_soft_breaks_as_line_breaks() {
+fn renders_memo_breaks() {
     assert_eq!(render_memo("first\nsecond"), "<p>first<br />\nsecond</p>\n");
 }
 
 #[test]
-fn autolinks_bare_memo_urls_without_touching_code_or_existing_links() {
+fn autolinks_memo_text() {
     let html = render_memo(
         "Open https://memos.you-find.me/memo/20260817T054032Z-73496a1d.\n\n`https://example.com/code`\n\n[site](https://example.com)",
     );
@@ -27,7 +27,7 @@ fn autolinks_bare_memo_urls_without_touching_code_or_existing_links() {
 }
 
 #[test]
-fn renders_raw_html_as_literal_text() {
+fn escapes_raw_html() {
     let source = "before <script>alert('x')</script> after\n\n<div>block</div>";
     let html = render(source);
 
@@ -38,7 +38,33 @@ fn renders_raw_html_as_literal_text() {
 }
 
 #[test]
-fn compiles_headings_for_the_knowledge_reader() {
+fn highlights_code() {
+    let html = render_publication("```rust\nfn main() {}\n```").unwrap();
+
+    assert!(html.contains("class=\"highlighted-code\""));
+    assert!(html.contains("<pre style=\"background-color:"));
+    assert!(html.contains("<span style=\"color:"));
+    assert!(html.contains("main"));
+    assert!(!html.contains("language-rust"));
+}
+
+#[test]
+fn renders_mermaid() {
+    let html = render_publication("```mermaid\nflowchart LR\n  A[Start] --> B[End]\n```").unwrap();
+
+    assert!(html.contains("<figure class=\"mermaid-diagram\"><svg"));
+    assert!(html.contains("Start"));
+    assert!(html.contains("End"));
+    assert!(!html.contains("language-mermaid"));
+}
+
+#[test]
+fn rejects_bad_mermaid() {
+    assert!(render_publication("```mermaid\nnot-a-diagram\n```").is_err());
+}
+
+#[test]
+fn compiles_headings() {
     let output = compile_knowledge("# Overview\n\nText\n\n## Details\n\nMore");
     assert!(output.html.contains("<h1 id=\"overview\">Overview</h1>"));
     assert!(output.html.contains("<h2 id=\"details\">Details</h2>"));
@@ -48,7 +74,7 @@ fn compiles_headings_for_the_knowledge_reader() {
 }
 
 #[test]
-fn keeps_knowledge_metadata_aligned_with_literal_html() {
+fn aligns_metadata() {
     let output = compile_knowledge("# API <em>surface</em>\n\nUse <kbd>Enter</kbd> safely.");
 
     assert_eq!(output.toc[0].id, "api-em-surface-em");
@@ -70,7 +96,7 @@ fn keeps_knowledge_metadata_aligned_with_literal_html() {
 }
 
 #[test]
-fn de_duplicates_knowledge_heading_ids() {
+fn deduplicates_headings() {
     let output = compile_knowledge("# Repeat\n\n## Repeat\n\n### Repeat");
 
     assert_eq!(output.toc[0].id, "repeat");
@@ -80,18 +106,54 @@ fn de_duplicates_knowledge_heading_ids() {
 }
 
 #[test]
-fn removes_front_matter_from_knowledge_content() {
-    let source = "---\ntitle: Daily\ntags:\n  - newspaper\n  - daily\n---\n## Today\n\nBriefing";
+fn strips_front_matter() {
+    let source = "\u{feff}---  \r\ntitle: Daily\r\nsummary: Brief\r\ntags:\r\n  - newspaper\r\n  - daily\r\n---\t\r\n\r\n## Today\r\n\r\nBriefing\r\n";
     let output = compile_knowledge(source);
 
-    assert_eq!(knowledge_body(source), "## Today\n\nBriefing");
+    assert_eq!(knowledge_body(source), "## Today\r\n\r\nBriefing");
     assert!(!output.html.contains("title: Daily"));
     assert!(output.html.contains("<h2 id=\"today\">Today</h2>"));
     assert_eq!(output.excerpt, "Today Briefing");
 }
 
 #[test]
-fn keeps_knowledge_without_complete_front_matter_unchanged() {
+fn preserves_indented_body_after_front_matter() {
+    let source = "---\ntitle: Example\n---\n\n    let value = 1;  \n";
+
+    assert_eq!(knowledge_body(source), "    let value = 1;  ");
+    assert!(
+        compile_knowledge(source)
+            .html
+            .contains("<pre><code>let value = 1;")
+    );
+}
+
+#[test]
+fn keeps_bad_front_matter() {
     assert_eq!(knowledge_body("---\nunfinished"), "---\nunfinished");
     assert_eq!(knowledge_body("# Article"), "# Article");
+}
+
+#[test]
+fn renders_knowledge() {
+    let output = compile_knowledge(
+        "> [!NOTE]\n> Keep the boundary explicit.\n\nRead [[target-article|the source]] and preserve $x^2$.",
+    );
+
+    assert!(
+        output
+            .html
+            .contains("<blockquote class=\"markdown-alert-note\">")
+    );
+    assert!(!output.html.contains("[!NOTE]"));
+    assert!(
+        output
+            .html
+            .contains("<a href=\"/articles/target-article\">the source</a>")
+    );
+    assert!(
+        output
+            .html
+            .contains("<span class=\"math math-inline\">x^2</span>")
+    );
 }

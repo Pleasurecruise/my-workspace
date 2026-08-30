@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { Library, Pencil, Plus } from "@lucide/svelte";
 	import type { CommandResponse, KnowledgeDocument, KnowledgeDraft, KnowledgeUpdate } from "../consumer";
-	import { newspaperEdition } from "../newspaper";
 	import KnowledgeHeader from "./KnowledgeHeader.svelte";
 	import KnowledgeToc from "./KnowledgeToc.svelte";
 	import RichMarkdownEditor from "./RichMarkdownEditor.svelte";
@@ -39,7 +38,7 @@
 	let groups = $derived.by(() => {
 		const years: KnowledgeYear[] = [];
 		for (const document of documents) {
-			if (newspaperEdition(document) !== null) continue;
+			if (document.newspaperEdition !== null) continue;
 			const date = new Date(document.createdAt);
 			const year = date.getFullYear();
 			const month = date.getMonth();

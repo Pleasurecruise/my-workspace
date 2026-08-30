@@ -6,7 +6,7 @@ fn test_store() -> (PathBuf, Store) {
 }
 
 #[tokio::test]
-async fn supports_crud_and_completion() {
+async fn handles_crud() {
     let (directory, store) = test_store();
     let date = "2026-08-23";
     let created = store.create(date, "  Ship CLI  ").await.unwrap();
@@ -28,7 +28,7 @@ async fn supports_crud_and_completion() {
 }
 
 #[tokio::test]
-async fn stores_lists_independently_by_date() {
+async fn isolates_dates() {
     let (directory, store) = test_store();
     store.create("2026-08-22", "Yesterday").await.unwrap();
     store.create("2026-08-23", "Today").await.unwrap();
@@ -44,7 +44,7 @@ async fn stores_lists_independently_by_date() {
 }
 
 #[tokio::test]
-async fn reloads_external_changes_before_each_operation() {
+async fn reloads_before_mutation() {
     let (directory, first) = test_store();
     let second = Store::new(directory.join(FILE_NAME));
     first.create("2026-08-23", "First").await.unwrap();
@@ -54,7 +54,7 @@ async fn reloads_external_changes_before_each_operation() {
 }
 
 #[tokio::test]
-async fn serializes_concurrent_writers() {
+async fn serializes_writers() {
     let (directory, first) = test_store();
     let second = Store::new(directory.join(FILE_NAME));
     let (first_result, second_result) = tokio::join!(
@@ -83,7 +83,7 @@ async fn ignores_legacy_storage() {
 }
 
 #[tokio::test]
-async fn rejects_text_longer_than_the_ui_limit() {
+async fn rejects_long_text() {
     let (directory, store) = test_store();
     let error = store
         .create("2026-08-23", &"x".repeat(MAX_TEXT_LENGTH + 1))
@@ -96,7 +96,7 @@ async fn rejects_text_longer_than_the_ui_limit() {
 }
 
 #[test]
-fn calculates_the_delay_to_the_next_local_midnight() {
+fn computes_midnight_delay() {
     let now = time::macros::datetime!(2026-08-24 23:59:30 +8);
 
     assert_eq!(

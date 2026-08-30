@@ -13,7 +13,6 @@ publication artifacts; this repository does not run a cloud application backend.
 | `crates/cms-core`    | Todo storage, Worker APIs, Markdown, consumer projections, build planning, and R2 access.   |
 | `crates/credentials` | Typed records in macOS Keychain, Windows Credential Manager, or Linux Secret Service.       |
 | `crates/logger`      | Shared `tracing` initialization.                                                            |
-| `crates/network`     | Operating-system proxy discovery and shared outbound HTTP client policy.                    |
 | `crates/ugos`        | Read-only UGOS Pro authentication, certificate pinning, and Task Manager telemetry.         |
 | `crates/useage`      | AI subscription and account-credit integrations. The spelling is intentional.               |
 | `packages/ui`        | Reusable Svelte primitives and design tokens.                                               |
@@ -59,6 +58,16 @@ returns stored values to prefill that trusted local form.
 The Rust Dashboard runtime owns external-source concurrency, per-source request revisions, and
 page-active polling. It sends a closed tagged event to Svelte as each source settles; the view layer
 only updates the corresponding card.
+Rust also owns the Dashboard widget layout stored as `dashboard-layout.json` below the
+application data directory. Svelte adds, removes, and pointer-orders widgets through typed commands;
+Rust rejects unsupported widget IDs, fields, stock symbols, and duplicate entries before saving. The
+desktop canvas retains one fixed twelve-track arrangement at every window width, so narrowing the
+window scrolls the canvas instead of deriving and displaying a different layout.
+
+Below `apps/desktop/src-tauri`, `lib.rs` owns application setup and command registration. `cms.rs`
+owns the consumer repository plus view and image caches, `consumer.rs` owns the Memo, Moment, and
+Knowledge commands, and `todo.rs` owns the Todo command adapters. Provider and protocol behavior
+continues to live in the owning crates rather than these Tauri modules.
 
 The Tauri layer maps transport input and output. Domain and protocol behavior stays in its owning
 crate. Commands return a tagged `ready` or `failed` response so expected provider and storage errors
@@ -92,8 +101,9 @@ Moment cards decode their ThumbHash immediately and fetch the R2 thumbnail only 
 viewport; the viewer requests the original. Rust retains up to 64 recently used image objects within
 a 128 MiB process-memory limit. R2 credential changes clear that cache.
 
-Newspaper is a frontend projection of Knowledge. It selects the latest Programmer Daily and Personal
-Daily editions from established tags and excludes those editions from the regular Knowledge index.
+Newspaper is a Rust-owned projection of Knowledge. `cms-core` classifies established edition tags,
+selects the latest Programmer Daily and Personal Daily documents, and marks editions for exclusion
+from the regular Knowledge index. Svelte renders that typed projection without interpreting tags.
 Entering Newspaper refreshes the first Knowledge page immediately while retaining its settled
 content, and the active view refreshes near the top every 60 seconds. The desktop also refreshes
 Knowledge daily at 09:00 local time.
@@ -112,11 +122,12 @@ Settings stores only the ntfy read token; the server address and topic are fixed
 Producer routes, credentials, signing secrets, and processing remain outside Vesper.
 
 The desktop checks the latest published GitHub Release once per application launch through Tauri's
-signed updater manifest.
+signed updater manifest. The native application menu can request another check without restarting;
+overlapping checks and installations are rejected while later retries remain available.
 When a newer version exists, Svelte presents its version and notes; Rust rechecks the selected
-version, downloads it with progress events, verifies its signature, installs it, and restarts the
-application. Update signing uses a public key embedded in the application and a private key available
-only to the release workflow.
+version with a bounded request, downloads and installs it within a bounded operation while emitting
+progress events, verifies its signature, and restarts the application. Update signing uses a public
+key embedded in the application and a private key available only to the release workflow.
 
 Dashboard architecture and external protocol details are documented separately in
 [DASHBOARD.md](DASHBOARD.md).
@@ -143,15 +154,18 @@ consumer APIs for Memo or Knowledge bodies and does not create a retained local 
 
 `vesper build` recursively compiles `content/` into an operating-system temporary directory:
 
-1. Each Markdown file becomes HTML at the same relative path.
+1. Each Markdown file becomes HTML at the same relative path. Fenced code blocks are highlighted
+   with Syntect into inline-styled HTML, while `mermaid` blocks are rendered to self-contained SVG
+   by the pure-Rust `mermaid-svg` renderer.
 2. Other regular files are copied unchanged.
 3. `.DS_Store` and `Thumbs.db` are ignored.
 4. Symbolic links are rejected to prevent reads outside the source tree.
 5. Colliding output paths fail the build.
 6. `content.json` records rendered documents as `{ path, html }`.
 
-A Rust guard owns the temporary directory and removes it after success or failure. Markdown is
-trusted author input, so CommonMark raw HTML is preserved rather than sanitized.
+A Rust guard owns the temporary directory and removes it after success or failure. Source raw HTML
+is rendered as literal text; only compiler-generated code and diagram markup enters the artifact as
+raw HTML. Unsupported or invalid Mermaid syntax fails the build before publication.
 
 ## Publication
 
@@ -191,8 +205,11 @@ returns D1 summaries and an optional cursor. Rust follows those summaries with b
 detail reads so the Worker can enforce its D1 authorization before resolving KV and R2 content. Rust
 then compiles the Chinese Markdown into HTML, heading identifiers, a table of contents, and an
 excerpt. YAML front matter returned with an edition is excluded from both the editable body and the
-compiled reader output. The desktop editor creates and updates drafts through the same API with
-content-hash conflict detection; visibility and delete transports remain available to the CLI.
+compiled reader output. The Knowledge compiler also preserves math, maps portable wiki links to the
+consumer's article route, and recognizes the consumer's GFM callouts. Structured fences without a
+desktop renderer remain visible as escaped code. The desktop editor creates and updates drafts
+through the same API with content-hash conflict detection; visibility and delete transports remain
+available to the CLI.
 The editor uses a Tiptap rich-text surface with Markdown parsing and serialization, while an explicit
 source mode preserves constructs that the configured rich-text schema cannot round-trip exactly.
 The stored body, API payload, and content-hash conflict contract remain Markdown-based.

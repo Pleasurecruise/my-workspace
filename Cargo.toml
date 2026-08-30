@@ -25,8 +25,8 @@ aws-sdk-s3 = { version = "1", default-features = false, features = [
   "rt-tokio",
 ] }
 aws-types = "1"
-base64 = "0.22"
-der = "0.7"
+base64 = "0.23"
+der = "0.8"
 dotenvy = "0.15"
 dirs = "6"
 futures-util = "0.3"
@@ -35,15 +35,18 @@ hex = "0.4"
 heic = { version = "0.1.6", features = ["av1"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 kamadak-exif = "0.6.1"
-keyring = "4.1.6"
-linkify = "0.10"
+keyring = "4.2.0"
+linkify = "0.11"
+mermaid-svg = "0.7.0"
 my-workspace-logger = { path = "crates/logger" }
 pulldown-cmark = "0.13.4"
 useage = { path = "crates/useage" }
-reqwest = { version = "0.12", default-features = false, features = [
+reqwest = { version = "0.13", default-features = false, features = [
   "cookies",
+  "form",
   "json",
-  "rustls-tls",
+  "query",
+  "rustls",
   "stream",
 ] }
 rusqlite = { version = "0.40", features = ["bundled"] }
@@ -51,7 +54,8 @@ openssl = { version = "0.10", features = ["vendored"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
+sha2 = "0.11"
+syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
 thiserror = "2"
 thumbhash = "0.1"
 tokio = { version = "1", features = [

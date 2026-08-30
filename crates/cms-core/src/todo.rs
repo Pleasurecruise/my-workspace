@@ -83,13 +83,16 @@ impl Store {
 
     pub async fn list(&self, date: &str) -> Result<List, Error> {
         validate_date(date)?;
-        let _operation = self.operation.lock().await;
-        let _file_lock = self.lock_file().await?;
+        let operation_guard = self.operation.lock().await;
+        let file_guard = self.lock_file().await?;
         let calendar = self.load().await?;
-        Ok(List {
+        let list = List {
             date: date.to_owned(),
             items: calendar.days.get(date).cloned().unwrap_or_default(),
-        })
+        };
+        drop(file_guard);
+        drop(operation_guard);
+        Ok(list)
     }
 
     pub async fn get(&self, date: &str, id: &str) -> Result<Item, Error> {
@@ -154,8 +157,8 @@ impl Store {
         mutation: impl FnOnce(&mut Vec<Item>) -> Result<(), Error>,
     ) -> Result<List, Error> {
         validate_date(date)?;
-        let _operation = self.operation.lock().await;
-        let _file_lock = self.lock_file().await?;
+        let operation_guard = self.operation.lock().await;
+        let file_guard = self.lock_file().await?;
         let mut calendar = self.load().await?;
         let items = calendar.days.entry(date.to_owned()).or_default();
         mutation(items)?;
@@ -167,6 +170,8 @@ impl Store {
             calendar.days.remove(date);
         }
         self.persist(&calendar).await?;
+        drop(file_guard);
+        drop(operation_guard);
         Ok(list)
     }
 
@@ -195,7 +200,7 @@ impl Store {
                 source,
             })?;
         let lock_path = self.path.with_extension("lock");
-        tokio::task::spawn_blocking(move || {
+        let outcome = tokio::task::spawn_blocking(move || {
             let file = OpenOptions::new()
                 .create(true)
                 .truncate(false)
@@ -214,8 +219,11 @@ impl Store {
             })?;
             Ok(file)
         })
-        .await
-        .map_err(|error| Error::Task(error.to_string()))?
+        .await;
+        match outcome {
+            Ok(result) => result,
+            Err(error) => Err(Error::Task(error.to_string())),
+        }
     }
 
     async fn persist(&self, calendar: &Calendar) -> Result<(), Error> {

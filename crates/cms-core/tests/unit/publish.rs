@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 static NEXT_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
 
 #[test]
-fn collects_nested_build_files_without_uploading() {
+fn collects_nested_files() {
     let sequence = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!(
         "vesper-publish-test-{}-{sequence}",

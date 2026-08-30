@@ -92,6 +92,7 @@
 		deepSeek: { data: null, error: null, loading: false },
 		cherryIn: { data: null, error: null, loading: false },
 		weather: { data: null, error: null, loading: false },
+		stocks: { data: null, error: null, loading: false },
 		github: { data: null, error: null, loading: false },
 	});
 	let dashboardRefreshing = $state(false);
@@ -107,6 +108,7 @@
 	let updateProgress = $state<UpdateProgress | null>(null);
 	let updateError = $state<string | null>(null);
 	let updateCheckError = $state<string | null>(null);
+	let updateCheckNotice = $state<string | null>(null);
 	let updateChecking = $state(false);
 	let installingUpdate = $state(false);
 	let updateDialog = $state<HTMLDivElement | null>(null);
@@ -149,10 +151,20 @@
 		configuration = response.data;
 	}
 
-	async function checkForUpdate() {
-		if (updateChecking) return;
+	async function checkForUpdate(manual = false) {
+		if (updateChecking) {
+			if (manual) {
+				const message = "An update check is already running.";
+				updateCheckNotice = message;
+				window.setTimeout(() => {
+					if (updateCheckNotice === message) updateCheckNotice = null;
+				}, 5_000);
+			}
+			return;
+		}
 		updateChecking = true;
 		updateCheckError = null;
+		updateCheckNotice = null;
 		const response = await invoke<CommandResponse<UpdateInfo | null>>("check_for_update");
 		updateChecking = false;
 		if (response.status === "failed") {
@@ -164,6 +176,13 @@
 			return;
 		}
 		updateAvailable = response.data;
+		if (manual && response.data === null) {
+			const message = "Vesper is up to date.";
+			updateCheckNotice = message;
+			window.setTimeout(() => {
+				if (updateCheckNotice === message) updateCheckNotice = null;
+			}, 5_000);
+		}
 	}
 
 	async function markNotificationRead(id: string) {
@@ -176,6 +195,7 @@
 		if (updateAvailable === null) return;
 		installingUpdate = true;
 		updateError = null;
+		updateProgress = null;
 		const response = await invoke<CommandResponse<string>>("install_update", {
 			version: updateAvailable.version,
 		});
@@ -365,7 +385,7 @@
 		} else if (content?.channel === "moment" && page.channel === "moment") {
 			content = { ...page, photos: [...content.photos, ...page.photos], tags: content.tags };
 		} else if (content?.channel === "knowledge" && page.channel === "knowledge") {
-			content = { ...page, knowledge: [...content.knowledge, ...page.knowledge] };
+			content = { ...page, knowledge: [...content.knowledge, ...page.knowledge], newspaper: content.newspaper };
 		}
 		cache[channel] = content;
 		errors[channel] = null;
@@ -576,7 +596,7 @@
 		handle.addEventListener("pointercancel", finish);
 	}
 
-	function resizeSidebarWithKeyboard(event: KeyboardEvent) {
+	function resizeSidebarByKey(event: KeyboardEvent) {
 		if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 		event.preventDefault();
 		const delta = event.key === "ArrowLeft" ? -8 : 8;
@@ -772,6 +792,7 @@
 		if (response.status === "ready" && content?.channel === "knowledge") {
 			content = { ...content, knowledge: [response.data, ...content.knowledge] };
 			cache.knowledge = content;
+			if (response.data.newspaperEdition !== null) void refreshKnowledge();
 		}
 		return response;
 	}
@@ -790,6 +811,7 @@
 				knowledge: content.knowledge.map((document) => (document.id === id ? response.data : document)),
 			};
 			cache.knowledge = content;
+			if (response.data.newspaperEdition !== null) void refreshKnowledge();
 		}
 		return response;
 	}
@@ -947,6 +969,14 @@
 					}
 					else dashboard.weather.error = update.result.message;
 					break;
+				case "stocks":
+					dashboard.stocks.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.stocks.data = update.result.data;
+						dashboard.stocks.error = null;
+					}
+					else dashboard.stocks.error = update.result.message;
+					break;
 				case "github":
 					dashboard.github.loading = false;
 					if (update.result.status === "ready") {
@@ -976,6 +1006,9 @@
 		});
 		const unlistenUpdater = listen<UpdateProgress>("updater-progress", (event) => {
 			updateProgress = event.payload;
+		});
+		const unlistenUpdateRequest = listen("check-for-updates-requested", () => {
+			void checkForUpdate(true);
 		});
 		const unlistenNotifications = listen<NtfyNotification[]>("notifications-updated", (event) => {
 			notifications = event.payload;
@@ -1010,6 +1043,7 @@
 			window.clearInterval(todoTimer);
 			void unlistenTodo.then((unlisten) => unlisten());
 			void unlistenUpdater.then((unlisten) => unlisten());
+			void unlistenUpdateRequest.then((unlisten) => unlisten());
 			void unlistenNotifications.then((unlisten) => unlisten());
 			window.clearInterval(contentTimer);
 			window.clearTimeout(newspaperStartTimer);
@@ -1122,7 +1156,7 @@
 			class="sidebar-resizer"
 			aria-label={`Resize sidebar, currently ${sidebarWidth} pixels wide`}
 			onpointerdown={beginSidebarResize}
-			onkeydown={resizeSidebarWithKeyboard}
+			onkeydown={resizeSidebarByKey}
 		></button>
 	</aside>
 
@@ -1157,6 +1191,8 @@
 					cherryInUsageError={dashboard.cherryIn.error}
 					weather={dashboard.weather.data}
 					weatherError={dashboard.weather.error}
+					stocks={dashboard.stocks.data}
+					stocksError={dashboard.stocks.error}
 					github={dashboard.github.data}
 					githubError={dashboard.github.error}
 					todos={todos.data}
@@ -1192,7 +1228,7 @@
 				{:else if content.channel === "moment"}
 					<MomentView photos={content.photos} tags={content.tags} total={content.total} onuploaded={addUploadedPhoto} onupdate={updatePhoto} ondelete={deletePhoto} />
 				{:else if selected === "newspaper"}
-					<NewspaperView documents={content.knowledge} {loading} />
+					<NewspaperView documents={content.knowledge} issues={content.newspaper} {loading} />
 				{:else}
 					<KnowledgeView documents={content.knowledge} {loading} oncreate={createKnowledge} onupdate={updateKnowledge} />
 				{/if}
@@ -1281,9 +1317,16 @@
 {/if}
 
 {#if updateCheckError !== null && updateAvailable === null && !locked}
-	<div class="update-check-error" role="alert">
+	<div class="update-check-feedback error" role="alert">
 		<span>{updateCheckError}</span>
 		<button type="button" aria-label="Dismiss update error" onclick={() => (updateCheckError = null)}>×</button>
+	</div>
+{/if}
+
+{#if updateCheckNotice !== null && updateAvailable === null && updateCheckError === null && !locked}
+	<div class="update-check-feedback" role="status">
+		<span>{updateCheckNotice}</span>
+		<button type="button" aria-label="Dismiss update status" onclick={() => (updateCheckNotice = null)}>×</button>
 	</div>
 {/if}
 
@@ -1356,9 +1399,11 @@
 	.update-actions button { height: 2rem; padding: 0 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-foreground); cursor: pointer; font-size: 0.72rem; }
 	.update-actions button.primary { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-foreground); }
 	.update-actions button:disabled { cursor: not-allowed; opacity: 0.6; }
-	.update-check-error { position: fixed; right: 1rem; bottom: 1rem; z-index: 110; display: flex; max-width: min(32rem, calc(100vw - 2rem)); align-items: center; gap: 0.625rem; padding: 0.75rem; border: 1px solid var(--color-error); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-lg); }
-	.update-check-error span { color: var(--color-error); font-size: 0.75rem; line-height: 1.4; }
-	.update-check-error button { padding: 0.25rem 0.5rem; border: 0; border-radius: var(--radius-sm); background: var(--color-muted); color: var(--color-foreground); cursor: pointer; font-size: 0.7rem; }
+	.update-check-feedback { position: fixed; right: 1rem; bottom: 1rem; z-index: 110; display: flex; max-width: min(32rem, calc(100vw - 2rem)); align-items: center; gap: 0.625rem; padding: 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-lg); }
+	.update-check-feedback span { color: var(--color-foreground); font-size: 0.75rem; line-height: 1.4; }
+	.update-check-feedback.error { border-color: var(--color-error); }
+	.update-check-feedback.error span { color: var(--color-error); }
+	.update-check-feedback button { padding: 0.25rem 0.5rem; border: 0; border-radius: var(--radius-sm); background: var(--color-muted); color: var(--color-foreground); cursor: pointer; font-size: 0.7rem; }
 	@keyframes update-pulse { from { opacity: 0.35; } to { opacity: 1; } }
 
 	.sidebar-overlay {

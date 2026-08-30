@@ -54,7 +54,12 @@ the repository Actions secrets `TAURI_SIGNING_PRIVATE_KEY` and
 desktop builds leave them disabled and do not require the private key. Never rotate or discard this
 key pair while installations signed by it remain in use. The application reads the latest published
 manifest from `https://github.com/Pleasurecruise/my-workspace/releases/latest/download/latest.json`;
-draft and prerelease releases are not offered as updates.
+draft and prerelease releases are not offered as updates. Vesper checks once at startup and exposes
+Check for Updates in the native application menu for explicit retries or later checks during the same
+run. The desktop HTTP client enables operating-system proxy discovery, so updater checks and downloads
+honor the HTTP/HTTPS proxy configured in macOS or Windows. A proxy application must expose itself
+through the operating system's proxy settings; an application-local proxy mode is not visible to
+Vesper.
 
 ## R2 configuration
 

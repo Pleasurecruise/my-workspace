@@ -31,10 +31,7 @@ pub(crate) async fn api_key(provider_id: &str) -> Result<String, String> {
         Ok(content) => {
             let entries: HashMap<String, AuthEntry> = serde_json::from_str(&content)
                 .map_err(|error| format!("Could not parse {}: {error}", auth_path.display()))?;
-            if let Some((_, entry)) = entries
-                .iter()
-                .find(|(id, _)| id.eq_ignore_ascii_case(provider_id))
-            {
+            if let Some(entry) = find_provider(&entries, provider_id) {
                 if entry.kind != "api_key" {
                     return Err(format!("{provider_id} is not an API key in pi auth.json"));
                 }
@@ -59,15 +56,17 @@ pub(crate) async fn api_key(provider_id: &str) -> Result<String, String> {
         .map_err(|error| format!("Could not read {}: {error}", models_path.display()))?;
     let models: ModelsFile = serde_json::from_str(&content)
         .map_err(|error| format!("Could not parse {}: {error}", models_path.display()))?;
-    let provider = models
-        .providers
-        .iter()
-        .find(|(id, _)| id.eq_ignore_ascii_case(provider_id))
-        .map(|(_, provider)| provider)
+    let provider = find_provider(&models.providers, provider_id)
         .ok_or_else(|| format!("{provider_id} is not configured in pi"))?;
     provider
         .api_key
         .clone()
         .filter(|key| !key.trim().is_empty())
         .ok_or_else(|| format!("{provider_id} does not contain an apiKey in pi models.json"))
+}
+
+fn find_provider<'a, T>(providers: &'a HashMap<String, T>, id: &str) -> Option<&'a T> {
+    providers
+        .iter()
+        .find_map(|(name, provider)| name.eq_ignore_ascii_case(id).then_some(provider))
 }

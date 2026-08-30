@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn rejects_invalid_todo_arguments_without_touching_shared_data() {
+async fn rejects_bad_todo_args() {
     let directory = std::env::temp_dir().join(format!("vesper-cli-todo-{}", uuid::Uuid::new_v4()));
     let store = cms_core::todo::Store::new(directory.join("todos.json"));
 

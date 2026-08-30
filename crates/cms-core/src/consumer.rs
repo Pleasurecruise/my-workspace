@@ -49,6 +49,7 @@ pub enum ChannelView {
     Knowledge {
         connected: bool,
         knowledge: Vec<crate::api::knowledge::Document>,
+        newspaper: crate::api::knowledge::NewspaperIssues,
         next_cursor: Option<String>,
     },
 }
@@ -101,9 +102,9 @@ impl Repository {
 
 pub async fn asset(key: &str, repository: &Repository) -> Result<Vec<u8>, ConsumerError> {
     let outside_image_prefix = !key.starts_with("img/");
-    let contains_reserved_character = key.contains(['\\', '%', '?', '#']);
+    let has_reserved_char = key.contains(['\\', '%', '?', '#']);
     let contains_parent_segment = key.split('/').any(|part| matches!(part, "." | ".."));
-    if outside_image_prefix || contains_reserved_character || contains_parent_segment {
+    if outside_image_prefix || has_reserved_char || contains_parent_segment {
         return Err(ConsumerError::Store(StoreError::Request(
             "only img/ object keys can be displayed".to_owned(),
         )));

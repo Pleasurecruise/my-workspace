@@ -112,12 +112,15 @@ struct Viewer {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct Contributions {
-    contribution_calendar: ContributionCalendar,
-    commit_contributions_by_repository: Vec<CommitRepositoryContributions>,
-    pull_request_contributions: Connection<PullRequestContribution>,
-    pull_request_review_contributions: Connection<PullRequestReviewContribution>,
+    #[serde(rename = "contributionCalendar")]
+    calendar: ContributionCalendar,
+    #[serde(rename = "commitContributionsByRepository")]
+    commits_by_repo: Vec<RepoCommits>,
+    #[serde(rename = "pullRequestContributions")]
+    pull_requests: Connection<PullContribution>,
+    #[serde(rename = "pullRequestReviewContributions")]
+    reviews: Connection<ReviewContribution>,
 }
 
 #[derive(Deserialize)]
@@ -175,7 +178,7 @@ struct Repository {
 }
 
 #[derive(Deserialize)]
-struct CommitRepositoryContributions {
+struct RepoCommits {
     repository: Repository,
     contributions: Connection<CommitContribution>,
 }
@@ -190,7 +193,7 @@ struct CommitContribution {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct PullRequestContribution {
+struct PullContribution {
     occurred_at: String,
     url: String,
     pull_request: PullRequest,
@@ -198,7 +201,7 @@ struct PullRequestContribution {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct PullRequestReviewContribution {
+struct ReviewContribution {
     occurred_at: String,
     url: String,
     pull_request_review: PullRequestReview,
@@ -252,13 +255,13 @@ fn parse_snapshot(bytes: &[u8]) -> Result<GithubSnapshot, String> {
         .ok_or_else(|| "GitHub GraphQL did not return account data".to_owned())?
         .viewer;
     let Contributions {
-        contribution_calendar,
-        commit_contributions_by_repository,
-        pull_request_contributions,
-        pull_request_review_contributions,
+        calendar,
+        commits_by_repo,
+        pull_requests,
+        reviews,
     } = viewer.contributions;
 
-    let weeks = contribution_calendar
+    let weeks = calendar
         .weeks
         .into_iter()
         .map(|week| ContributionWeek {
@@ -275,7 +278,7 @@ fn parse_snapshot(bytes: &[u8]) -> Result<GithubSnapshot, String> {
         .collect();
 
     let mut recent_activity = Vec::new();
-    for group in commit_contributions_by_repository {
+    for group in commits_by_repo {
         for contribution in group.contributions.nodes {
             let noun = if contribution.commit_count == 1 {
                 "commit"
@@ -291,7 +294,7 @@ fn parse_snapshot(bytes: &[u8]) -> Result<GithubSnapshot, String> {
             });
         }
     }
-    for contribution in pull_request_contributions.nodes {
+    for contribution in pull_requests.nodes {
         recent_activity.push(GithubActivity {
             kind: GithubActivityKind::PullRequest,
             title: contribution.pull_request.title,
@@ -300,7 +303,7 @@ fn parse_snapshot(bytes: &[u8]) -> Result<GithubSnapshot, String> {
             url: contribution.url,
         });
     }
-    for contribution in pull_request_review_contributions.nodes {
+    for contribution in reviews.nodes {
         let kind = if contribution.pull_request_review.state == "APPROVED" {
             GithubActivityKind::Approve
         } else {
@@ -320,17 +323,16 @@ fn parse_snapshot(bytes: &[u8]) -> Result<GithubSnapshot, String> {
     Ok(GithubSnapshot {
         login: viewer.login,
         profile_url: viewer.url,
-        total_contributions: contribution_calendar.total_contributions,
+        total_contributions: calendar.total_contributions,
         weeks,
         recent_activity,
     })
 }
 
 fn resolve_gh_binary() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("GITHUB_CLI_BINARY").map(PathBuf::from)
-        && path.is_file()
-    {
-        return Ok(path);
+    match std::env::var_os("GITHUB_CLI_BINARY").map(PathBuf::from) {
+        Some(path) if path.is_file() => return Ok(path),
+        Some(_) | None => {}
     }
 
     if let Some(path) = std::env::var_os("PATH").and_then(|paths| {
@@ -363,7 +365,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_calendar_and_sorts_recent_activity() {
+    fn parses_activity() {
         let snapshot = parse_snapshot(
             br#"{
               "data": { "viewer": {

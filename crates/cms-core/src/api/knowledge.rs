@@ -4,6 +4,8 @@ use futures_util::stream::{self, StreamExt, TryStreamExt};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use vesper_credentials::{ConsumerApi, Stored};
 
 const ENDPOINT: &str = "https://knowledge.you-find.me/api/articles";
@@ -21,10 +23,42 @@ pub struct Document {
     pub content_hash: String,
     pub created_at: String,
     pub updated_at: String,
+    pub newspaper_edition: Option<NewspaperEdition>,
     pub source: String,
     pub html: String,
     pub toc: Vec<TocEntry>,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NewspaperEdition {
+    Developer,
+    Personal,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewspaperIssues {
+    pub developer: Option<String>,
+    pub personal: Option<String>,
+}
+
+const DEV_NEWS_TAGS: &[&str] = &[
+    "developer-daily",
+    "programmer-daily",
+    "newspaper/developer",
+    "newspaper/developer-daily",
+    "newspaper/programmer",
+    "newspaper/programmer-daily",
+    "程序员日报",
+];
+const PERSONAL_NEWS_TAGS: &[&str] = &[
+    "personal-daily",
+    "newspaper/personal",
+    "newspaper/personal-daily",
+    "个人日报",
+    "每日日报",
+];
 
 #[derive(Clone)]
 struct Client {
@@ -215,6 +249,7 @@ pub fn project_article(article: Article) -> Result<Document, ApiError> {
     })?;
     let source = knowledge_body(&edition.markdown).to_owned();
     let compiled = compile_knowledge(&source);
+    let newspaper_edition = newspaper_edition(&article.tags);
     Ok(Document {
         id: article.id,
         slug: article.slug,
@@ -225,10 +260,55 @@ pub fn project_article(article: Article) -> Result<Document, ApiError> {
         content_hash: article.content_hash,
         created_at: article.created_at,
         updated_at: article.updated_at,
+        newspaper_edition,
         source,
         html: compiled.html,
         toc: compiled.toc,
     })
+}
+
+fn newspaper_edition(tags: &[String]) -> Option<NewspaperEdition> {
+    let mut developer = false;
+    let mut personal = false;
+    for tag in tags {
+        let tag = tag.trim().to_lowercase();
+        developer |= DEV_NEWS_TAGS.contains(&tag.as_str());
+        personal |= PERSONAL_NEWS_TAGS.contains(&tag.as_str());
+    }
+    match (developer, personal) {
+        (true, false) => Some(NewspaperEdition::Developer),
+        (false, true) => Some(NewspaperEdition::Personal),
+        _ => None,
+    }
+}
+
+pub fn latest_newspaper_issues(documents: &[Document]) -> NewspaperIssues {
+    let mut developer = None;
+    let mut personal = None;
+    for document in documents {
+        let issue = match document.newspaper_edition {
+            Some(NewspaperEdition::Developer) => &mut developer,
+            Some(NewspaperEdition::Personal) => &mut personal,
+            None => continue,
+        };
+        if issue.is_none_or(|current| is_newer(document, current)) {
+            *issue = Some(document);
+        }
+    }
+    NewspaperIssues {
+        developer: developer.map(|document| document.id.clone()),
+        personal: personal.map(|document| document.id.clone()),
+    }
+}
+
+fn is_newer(candidate: &Document, current: &Document) -> bool {
+    match (
+        OffsetDateTime::parse(&candidate.created_at, &Rfc3339),
+        OffsetDateTime::parse(&current.created_at, &Rfc3339),
+    ) {
+        (Ok(candidate), Ok(current)) => candidate > current,
+        _ => candidate.created_at > current.created_at,
+    }
 }
 
 pub async fn get(id: &str) -> Result<Article, ApiError> {
@@ -353,8 +433,29 @@ pub async fn delete(id: &str, expected_hash: &str) -> Result<(), ApiError> {
 mod tests {
     use super::*;
 
+    fn projected_document(id: &str, tags: &[&str], created_at: &str) -> Document {
+        project_article(Article {
+            id: id.to_owned(),
+            slug: id.to_owned(),
+            editions: HashMap::from([(
+                "zh".to_owned(),
+                Edition {
+                    title: id.to_owned(),
+                    summary: id.to_owned(),
+                    markdown: format!("# {id}"),
+                },
+            )]),
+            tags: tags.iter().map(|tag| (*tag).to_owned()).collect(),
+            visibility: Visibility::Private,
+            content_hash: id.to_owned(),
+            created_at: created_at.to_owned(),
+            updated_at: created_at.to_owned(),
+        })
+        .expect("article should project")
+    }
+
     #[test]
-    fn decodes_article_list_metadata() {
+    fn decodes_list_metadata() {
         let page: ArticlePage = serde_json::from_value(serde_json::json!({
             "articles": [{
                 "id": "019c1234-1234-7000-8000-123456789abc",
@@ -377,7 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn decodes_article_markdown() {
+    fn decodes_markdown() {
         let response: ArticleResponse<Article> = serde_json::from_value(serde_json::json!({
             "article": {
                 "id": "019c1234-1234-7000-8000-123456789abc",
@@ -402,16 +503,16 @@ mod tests {
     }
 
     #[test]
-    fn projects_article_body_without_front_matter() {
+    fn strips_article_header() {
         let article: Article = serde_json::from_value(serde_json::json!({
             "id": "019c1234-1234-7000-8000-123456789abc",
             "slug": "daily-brief",
             "editions": {
-                "zh": {
-                    "title": "Daily",
-                    "summary": "Brief",
-                    "markdown": "---\ntitle: Daily\ntags:\n  - newspaper\n  - daily\n---\n## Today\n\nNews"
-                }
+                    "zh": {
+                        "title": "Daily",
+                        "summary": "Brief",
+                        "markdown": "---\ntitle: Daily\nsummary: Brief\ntags:\n  - newspaper\n  - daily\n---\n## Today\n\nNews\n"
+                    }
             },
             "tags": ["newspaper", "daily"],
             "visibility": "public",
@@ -426,5 +527,53 @@ mod tests {
         assert_eq!(document.source, "## Today\n\nNews");
         assert!(document.html.starts_with("<h2 id=\"today\">Today</h2>"));
         assert_eq!(document.tags, ["newspaper", "daily"]);
+    }
+
+    #[test]
+    fn classifies_news_tags() {
+        assert_eq!(
+            newspaper_edition(&[" Daily ".to_owned(), "PROGRAMMER-DAILY".to_owned()]),
+            Some(NewspaperEdition::Developer)
+        );
+        assert_eq!(
+            newspaper_edition(&["personal-daily".to_owned()]),
+            Some(NewspaperEdition::Personal)
+        );
+        assert_eq!(
+            newspaper_edition(&["personal-daily-prompt".to_owned()]),
+            None
+        );
+        assert_eq!(
+            newspaper_edition(&["developer-daily".to_owned(), "personal-daily".to_owned()]),
+            None
+        );
+
+        let document =
+            projected_document("developer", &["developer-daily"], "2026-08-25T00:00:00Z");
+        assert_eq!(
+            serde_json::to_value(document).expect("document should serialize")["newspaperEdition"],
+            "developer"
+        );
+    }
+
+    #[test]
+    fn selects_latest_issues() {
+        let documents = vec![
+            projected_document(
+                "older-personal",
+                &["personal-daily"],
+                "2026-08-23T00:00:00Z",
+            ),
+            projected_document("developer", &["developer-daily"], "2026-08-25T00:00:00Z"),
+            projected_document("personal", &["personal-daily"], "2026-08-24T00:00:00Z"),
+        ];
+
+        assert_eq!(
+            latest_newspaper_issues(&documents),
+            NewspaperIssues {
+                developer: Some("developer".to_owned()),
+                personal: Some("personal".to_owned()),
+            }
+        );
     }
 }
