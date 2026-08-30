@@ -8,26 +8,24 @@ pub struct AppLock {
 }
 
 pub fn app_lock() -> Result<Stored<AppLock>, CredentialError> {
+    #[cfg(debug_assertions)]
+    if let Some(password) = std::env::var_os("APP_LOCK_PASSWORD") {
+        let password = password
+            .into_string()
+            .map_err(|_| CredentialError::InvalidDevelopment("app lock password"))?;
+        validate(&password)?;
+        return Ok(Stored::Ready(AppLock {
+            password,
+            development: true,
+        }));
+    }
     let entry = keyring::Entry::new(SERVICE, ACCOUNT)?;
     match entry.get_password() {
         Ok(password) => Ok(Stored::Ready(AppLock {
             password,
             development: false,
         })),
-        Err(keyring::Error::NoEntry) => {
-            #[cfg(debug_assertions)]
-            if let Some(password) = std::env::var_os("APP_LOCK_PASSWORD") {
-                let password = password
-                    .into_string()
-                    .map_err(|_| CredentialError::InvalidDevelopment("app lock password"))?;
-                validate(&password)?;
-                return Ok(Stored::Ready(AppLock {
-                    password,
-                    development: true,
-                }));
-            }
-            Ok(Stored::Missing)
-        }
+        Err(keyring::Error::NoEntry) => Ok(Stored::Missing),
         Err(error) => Err(CredentialError::Store(error)),
     }
 }

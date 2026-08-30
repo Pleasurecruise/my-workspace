@@ -1175,7 +1175,7 @@
 			</button>
 			<strong>vesper</strong>
 		</header>
-		<div class="canvas">
+		<div class="canvas" class:wide={selected === "dashboard"}>
 			{#if selected === "dashboard"}
 				<DashboardView
 					snapshot={dashboard.taskManager.data}
@@ -1726,6 +1726,8 @@
 		padding: 2rem 1rem 5rem;
 		box-sizing: border-box;
 	}
+
+	.canvas.wide { width: 100%; }
 
 	.global-scroll-action {
 		position: fixed;

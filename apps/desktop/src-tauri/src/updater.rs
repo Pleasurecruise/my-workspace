@@ -103,6 +103,17 @@ pub(crate) async fn check_for_update(app: tauri::AppHandle) -> CommandResponse<O
         }
     };
     match updater.check().await {
+        Ok(Some(update))
+            if update.current_version.trim_start_matches('v')
+                == update.version.trim_start_matches('v') =>
+        {
+            tracing::warn!(
+                current_version = %update.current_version,
+                available_version = %update.version,
+                "updater returned the installed version as an available update"
+            );
+            CommandResponse::Ready { data: None }
+        }
         Ok(Some(update)) => CommandResponse::Ready {
             data: Some(UpdateInfo {
                 current_version: update.current_version,
@@ -147,6 +158,11 @@ pub(crate) async fn install_update(
             .await
             .map_err(|error| format!("Could not check the application update: {error}"))?
             .ok_or_else(|| "The application update is no longer available.".to_owned())?;
+        if update.current_version.trim_start_matches('v')
+            == update.version.trim_start_matches('v')
+        {
+            return Err("The application is already up to date.".to_owned());
+        }
         if update.version != version {
             return Err(format!(
                 "The available application update changed from {version} to {}. Please review it before installing.",

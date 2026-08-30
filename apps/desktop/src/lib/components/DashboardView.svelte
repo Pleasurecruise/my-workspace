@@ -428,7 +428,7 @@
 	.dashboard {
 		display: flex;
 		width: 100%;
-		min-width: 64rem;
+		min-width: 0;
 		min-height: calc(100vh - 9rem);
 		box-sizing: border-box;
 		flex-direction: column;

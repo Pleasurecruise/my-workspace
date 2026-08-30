@@ -41,7 +41,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUyNzE3MDMwRDVFNTJFQTEKUldTaEx1WFZNSEJ4NGdjRUk0Z0tvdWpQeWs2UUJZZ0VLZGx5N3lVNmgxUWRpM1h6d2k3ZHdGNjgK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUzQUFEMjJFMzE2MThCMDUKUldRRmkyRXhMdEtxVXlTMTdlQzNrZjVoYTk2T2FlS0hwOVdwaDhuNk5aME1hN3kyUTBDTDJmYlYK",
       "endpoints": [
         "https://github.com/Pleasurecruise/my-workspace/releases/latest/download/latest.json"
       ]
