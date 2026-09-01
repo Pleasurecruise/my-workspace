@@ -50,12 +50,46 @@ query DashboardGithub {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct GithubSnapshot {
+pub struct GithubSnapshot {
     login: String,
     profile_url: String,
     total_contributions: u32,
     weeks: Vec<ContributionWeek>,
     recent_activity: Vec<GithubActivity>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySnapshot {
+    pub full_name: String,
+    pub description: String,
+    pub owner_avatar_url: String,
+    pub language: String,
+    pub stars: u64,
+    pub forks: u64,
+    pub open_issues: u64,
+    pub default_branch: String,
+    pub updated_at: String,
+    pub url: String,
+}
+
+#[derive(Deserialize)]
+struct RepositoryWire {
+    full_name: String,
+    description: Option<String>,
+    owner: RepositoryOwnerWire,
+    language: Option<String>,
+    stargazers_count: u64,
+    forks_count: u64,
+    open_issues_count: u64,
+    default_branch: String,
+    updated_at: String,
+    html_url: String,
+}
+
+#[derive(Deserialize)]
+struct RepositoryOwnerWire {
+    avatar_url: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -219,7 +253,7 @@ struct PullRequestReview {
     state: String,
 }
 
-pub(crate) async fn read() -> Result<GithubSnapshot, String> {
+pub async fn read() -> Result<GithubSnapshot, String> {
     let binary = resolve_gh_binary()?;
     let query = format!("query={GITHUB_QUERY}");
     let mut command = Command::new(binary);
@@ -242,6 +276,41 @@ pub(crate) async fn read() -> Result<GithubSnapshot, String> {
     }
 
     parse_snapshot(&output.stdout)
+}
+
+pub async fn read_repository(repository: &str) -> Result<RepositorySnapshot, String> {
+    let binary = resolve_gh_binary()?;
+    let endpoint = format!("repos/{repository}");
+    let mut command = Command::new(binary);
+    command
+        .args(["api", &endpoint])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(QUERY_TIMEOUT, command.output())
+        .await
+        .map_err(|_| format!("GitHub CLI timed out while loading {repository}"))?
+        .map_err(|error| format!("Could not start GitHub CLI: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "GitHub CLI could not load repository {repository}. Check the repository and `gh auth status`."
+        ));
+    }
+    let wire: RepositoryWire = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("GitHub CLI returned unsupported repository JSON: {error}"))?;
+    Ok(RepositorySnapshot {
+        full_name: wire.full_name,
+        description: wire.description.unwrap_or_default(),
+        owner_avatar_url: wire.owner.avatar_url,
+        language: wire.language.unwrap_or_default(),
+        stars: wire.stargazers_count,
+        forks: wire.forks_count,
+        open_issues: wire.open_issues_count,
+        default_branch: wire.default_branch,
+        updated_at: wire.updated_at,
+        url: wire.html_url,
+    })
 }
 
 fn parse_snapshot(bytes: &[u8]) -> Result<GithubSnapshot, String> {

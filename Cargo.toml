@@ -5,6 +5,8 @@ members = [
   "crates/cms-core",
   "crates/credentials",
   "crates/logger",
+  "crates/md-dialect",
+  "crates/quotes",
   "crates/ugos",
   "crates/useage",
 ]
@@ -31,6 +33,8 @@ dotenvy = "0.15"
 dirs = "6"
 futures-util = "0.3"
 cms-core = { path = "crates/cms-core" }
+md-dialect = { path = "crates/md-dialect" }
+quotes = { path = "crates/quotes" }
 hex = "0.4"
 heic = { version = "0.1.6", features = ["av1"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
@@ -56,6 +60,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
 syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
+sysinfo = "0.39.6"
+svg-hush = "0.9.7"
 thiserror = "2"
 thumbhash = "0.1"
 tokio = { version = "1", features = [

@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 const ENDPOINT: &str = "https://api.open-meteo.com/v1/forecast";
-const GEOCODING_ENDPOINT: &str = "https://geocoding-api.open-meteo.com/v1/search";
 const CONCURRENCY: usize = 4;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -72,65 +71,9 @@ struct Hourly {
     weather_code: Vec<u16>,
 }
 
-#[derive(Deserialize)]
-struct GeocodingResponse {
-    #[serde(default)]
-    results: Vec<GeocodedLocation>,
-}
-
-#[derive(Deserialize)]
-struct GeocodedLocation {
-    name: String,
-    latitude: f64,
-    longitude: f64,
-    timezone: String,
-    country: Option<String>,
-    admin1: Option<String>,
-}
-
 async fn request(client: &reqwest::Client, query: &str) -> Result<Weather, String> {
-    let geocoding = client
-        .get(GEOCODING_ENDPOINT)
-        .query(&[
-            ("name", query),
-            ("count", "1"),
-            ("language", "zh"),
-            ("format", "json"),
-        ])
-        .send()
-        .await
-        .map_err(|error| format!("Could not resolve {query}: {error}"))?;
-    if !geocoding.status().is_success() {
-        return Err(format!(
-            "Could not resolve {query}: HTTP {}",
-            geocoding.status()
-        ));
-    }
-    let mut results = geocoding
-        .json::<GeocodingResponse>()
-        .await
-        .map_err(|error| {
-            format!("Location search for {query} returned an unsupported payload: {error}")
-        })?
-        .results;
-    if results.is_empty() {
-        return Err(format!("No weather location matched {query}"));
-    }
-    let resolved = results.remove(0);
-    let mut location_parts = vec![resolved.name.as_str()];
-    for part in [resolved.admin1.as_deref(), resolved.country.as_deref()]
-        .into_iter()
-        .flatten()
-    {
-        if !part.is_empty()
-            && !location_parts
-                .iter()
-                .any(|existing| existing.eq_ignore_ascii_case(part))
-        {
-            location_parts.push(part);
-        }
-    }
-    let location = location_parts.join(", ");
+    let resolved = crate::location::resolve(client, query).await?;
+    let location = resolved.display_name;
     let latitude = resolved.latitude.to_string();
     let longitude = resolved.longitude.to_string();
     let response = client
@@ -251,24 +194,6 @@ mod tests {
         assert_eq!(forecast.timezone, "Asia/Shanghai");
         assert_eq!(forecast.current.weather_code, 2);
         assert_eq!(forecast.hourly.temperature_2m.len(), 2);
-    }
-
-    #[test]
-    fn parses_geocoding() {
-        let response: GeocodingResponse = serde_json::from_value(serde_json::json!({
-            "results": [{
-                "name": "杭州",
-                "latitude": 30.29365,
-                "longitude": 120.16142,
-                "timezone": "Asia/Shanghai",
-                "country": "中国",
-                "admin1": "浙江"
-            }]
-        }))
-        .expect("valid geocoding response");
-
-        assert_eq!(response.results.len(), 1);
-        assert_eq!(response.results[0].timezone, "Asia/Shanghai");
     }
 
     #[tokio::test]

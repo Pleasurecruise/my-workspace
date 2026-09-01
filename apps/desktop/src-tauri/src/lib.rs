@@ -5,12 +5,11 @@ mod cms;
 mod configuration;
 mod consumer;
 mod dashboard;
-mod github;
 mod notifications;
-mod stocks;
+mod status;
+mod telemetry;
 mod todo;
 mod updater;
-mod weather;
 mod widgets;
 
 #[derive(Clone, serde::Serialize)]
@@ -106,6 +105,7 @@ pub fn run() {
             updater::install_update,
             dashboard::refresh_dashboard,
             dashboard::set_dashboard_active,
+            status::read_service_status_catalog,
             widgets::read_layout,
             widgets::reset_layout,
             widgets::save_layout,

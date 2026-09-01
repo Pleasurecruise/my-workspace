@@ -87,13 +87,20 @@
 	let sidebarOpen = $state(false);
 	let dashboard = $state<DashboardState>({
 		taskManager: { data: null, error: null, loading: false },
+		deviceTelemetry: { data: null, error: null, loading: false },
 		codex: { data: null, error: null, loading: false },
 		openCode: { data: null, error: null, loading: false },
+		claude: { data: null, error: null, loading: false },
+		grok: { data: null, error: null, loading: false },
+		copilot: { data: null, error: null, loading: false },
 		deepSeek: { data: null, error: null, loading: false },
 		cherryIn: { data: null, error: null, loading: false },
 		weather: { data: null, error: null, loading: false },
 		stocks: { data: null, error: null, loading: false },
+		exchange: { data: null, error: null, loading: false },
+		serviceStatus: { data: null, error: null, loading: false },
 		github: { data: null, error: null, loading: false },
+		quotation: { data: null, error: null, loading: false },
 	});
 	let dashboardRefreshing = $state(false);
 	let todos = $state<QueryState<TodoList>>({ data: null, error: null, loading: false });
@@ -929,6 +936,14 @@
 					}
 					else dashboard.taskManager.error = update.result.message;
 					break;
+				case "deviceTelemetry":
+					dashboard.deviceTelemetry.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.deviceTelemetry.data = update.result.data;
+						dashboard.deviceTelemetry.error = null;
+					}
+					else dashboard.deviceTelemetry.error = update.result.message;
+					break;
 				case "codex":
 					dashboard.codex.loading = false;
 					if (update.result.status === "ready") {
@@ -944,6 +959,30 @@
 						dashboard.openCode.error = null;
 					}
 					else dashboard.openCode.error = update.result.message;
+					break;
+				case "claude":
+					dashboard.claude.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.claude.data = update.result.data;
+						dashboard.claude.error = null;
+					}
+					else dashboard.claude.error = update.result.message;
+					break;
+				case "grok":
+					dashboard.grok.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.grok.data = update.result.data;
+						dashboard.grok.error = null;
+					}
+					else dashboard.grok.error = update.result.message;
+					break;
+				case "copilot":
+					dashboard.copilot.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.copilot.data = update.result.data;
+						dashboard.copilot.error = null;
+					}
+					else dashboard.copilot.error = update.result.message;
 					break;
 				case "deepSeek":
 					dashboard.deepSeek.loading = false;
@@ -977,6 +1016,22 @@
 					}
 					else dashboard.stocks.error = update.result.message;
 					break;
+				case "exchange":
+					dashboard.exchange.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.exchange.data = update.result.data;
+						dashboard.exchange.error = null;
+					}
+					else dashboard.exchange.error = update.result.message;
+					break;
+				case "serviceStatus":
+					dashboard.serviceStatus.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.serviceStatus.data = update.result.data;
+						dashboard.serviceStatus.error = null;
+					}
+					else dashboard.serviceStatus.error = update.result.message;
+					break;
 				case "github":
 					dashboard.github.loading = false;
 					if (update.result.status === "ready") {
@@ -984,6 +1039,14 @@
 						dashboard.github.error = null;
 					}
 					else dashboard.github.error = update.result.message;
+					break;
+				case "quotation":
+					dashboard.quotation.loading = false;
+					if (update.result.status === "ready") {
+						dashboard.quotation.data = update.result.data;
+						dashboard.quotation.error = null;
+					}
+					else dashboard.quotation.error = update.result.message;
 			}
 		}).then((unlisten) => {
 			void invoke<CommandResponse<null>>("set_dashboard_active", { active: true });
@@ -1180,11 +1243,19 @@
 				<DashboardView
 					snapshot={dashboard.taskManager.data}
 					error={dashboard.taskManager.error}
+					deviceTelemetry={dashboard.deviceTelemetry.data}
+					deviceTelemetryError={dashboard.deviceTelemetry.error}
 					refreshing={dashboardRefreshing}
 					usage={dashboard.codex.data}
 					usageError={dashboard.codex.error}
 					openCodeUsage={dashboard.openCode.data}
 					openCodeUsageError={dashboard.openCode.error}
+					claudeUsage={dashboard.claude.data}
+					claudeUsageError={dashboard.claude.error}
+					grokUsage={dashboard.grok.data}
+					grokUsageError={dashboard.grok.error}
+					copilotUsage={dashboard.copilot.data}
+					copilotUsageError={dashboard.copilot.error}
 					deepSeekBalance={dashboard.deepSeek.data}
 					deepSeekBalanceError={dashboard.deepSeek.error}
 					cherryInUsage={dashboard.cherryIn.data}
@@ -1193,8 +1264,14 @@
 					weatherError={dashboard.weather.error}
 					stocks={dashboard.stocks.data}
 					stocksError={dashboard.stocks.error}
+					exchange={dashboard.exchange.data}
+					exchangeError={dashboard.exchange.error}
+					serviceStatus={dashboard.serviceStatus.data}
+					serviceStatusError={dashboard.serviceStatus.error}
 					github={dashboard.github.data}
 					githubError={dashboard.github.error}
+					quotation={dashboard.quotation.data}
+					quotationError={dashboard.quotation.error}
 					todos={todos.data}
 					todosError={todos.error}
 					todosLoading={todos.loading}

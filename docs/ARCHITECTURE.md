@@ -10,9 +10,11 @@ publication artifacts; this repository does not run a cloud application backend.
 | -------------------- | ------------------------------------------------------------------------------------------- |
 | `apps/desktop`       | Tauri v2 deliverable. Svelte renders views; Rust owns commands and application behavior.    |
 | `apps/cli`           | `vesper` executable for provider status, builds, publication, Todo, and consumer workflows. |
-| `crates/cms-core`    | Todo storage, Worker APIs, Markdown, consumer projections, build planning, and R2 access.   |
+| `crates/cms-core`    | Todo storage, Worker APIs, generic Markdown, consumer projections, builds, and R2 access.   |
 | `crates/credentials` | Typed records in macOS Keychain, Windows Credential Manager, or Linux Secret Service.       |
 | `crates/logger`      | Shared `tracing` initialization.                                                            |
+| `crates/md-dialect`  | Publication and Knowledge Markdown dialect compilation.                                     |
+| `crates/quotes`      | Shared astronomy, exchange, GitHub, quotation, stock, weather, and status read providers.   |
 | `crates/ugos`        | Read-only UGOS Pro authentication, certificate pinning, and Task Manager telemetry.         |
 | `crates/useage`      | AI subscription and account-credit integrations. The spelling is intentional.               |
 | `packages/ui`        | Reusable Svelte primitives and design tokens.                                               |
@@ -31,12 +33,15 @@ Trusted device
   ├─ vesper CLI
   └─ Rust boundaries
        ├─ cms-core ─────── Consumer APIs ───── my-memos / my-moment / my-knowledge
+       │          ├─────── md-dialect ──────── publication and Knowledge Markdown
        │          ├─────── Rust S3 SDK ─────── Cloudflare R2
        │          └─────── application data ── todos.json
        ├─ credentials ──── operating-system credential store
+       ├─ quotes ───────── external read-only data used by Dashboard and Markdown compilation
        ├─ ugos ─────────── Tailscale ───────── UGOS Pro NAS
        └─ useage
-            ├─ local Codex app-server
+            ├─ local Codex app-server and Grok runtime
+            ├─ existing Claude Code OAuth and GitHub CLI sessions
             └─ provider HTTPS APIs and existing local sessions
 
 Remote consumer projects
@@ -64,8 +69,17 @@ Rust rejects unsupported widget IDs, fields, stock symbols, and duplicate entrie
 desktop canvas retains one fixed twelve-track arrangement at every window width, so narrowing the
 window scrolls the canvas instead of deriving and displaying a different layout.
 
-Below `apps/desktop/src-tauri`, `lib.rs` owns application setup and command registration. `cms.rs`
-owns the consumer repository plus view and image caches, `consumer.rs` owns the Memo, Moment, and
+Current-device CPU, memory, storage, and network telemetry is read in the desktop Rust boundary with
+`sysinfo`. Its sampler runs on a blocking worker only while at least one Current Device widget is in
+the saved layout. These widgets are separate from the remote UGREEN NAS telemetry owned by `ugos`.
+
+Configured service-status widgets store only a Rust-validated catalog ID. The desktop Rust boundary
+reads each provider's public status summary, narrows Codex to Codex-specific OpenAI components, and
+projects component health without exposing an arbitrary frontend network or URL boundary.
+
+Below `apps/desktop/src-tauri`, `lib.rs` owns application setup and command registration.
+`telemetry.rs` owns desktop-device sampling and its short in-memory histories. `cms.rs` owns
+the consumer repository plus view and image caches, `consumer.rs` owns the Memo, Moment, and
 Knowledge commands, and `todo.rs` owns the Todo command adapters. Provider and protocol behavior
 continues to live in the owning crates rather than these Tauri modules.
 
@@ -135,7 +149,7 @@ Dashboard architecture and external protocol details are documented separately i
 The Dashboard's GitHub source is a desktop-local Rust process boundary. It invokes the authenticated
 `gh` CLI for one typed GraphQL snapshot when Dashboard is entered or explicitly refreshed; Svelte
 does not access GitHub or receive the CLI's credentials. GitHub query and projection details live in
-`apps/desktop/src-tauri/github.rs` and [DASHBOARD.md](DASHBOARD.md).
+`crates/quotes/src/github.rs` and [DASHBOARD.md](DASHBOARD.md).
 
 ## Content production
 
@@ -152,11 +166,17 @@ consumer APIs for Memo or Knowledge bodies and does not create a retained local 
 
 ## Build pipeline
 
-`vesper build` recursively compiles `content/` into an operating-system temporary directory:
+`vesper build` recursively compiles `content/` into an operating-system temporary directory.
+`md-dialect` owns this article-oriented compiler, while `cms-core::markdown` retains generic and
+Memo rendering:
 
 1. Each Markdown file becomes HTML at the same relative path. Fenced code blocks are highlighted
    with Syntect into inline-styled HTML, while `mermaid` blocks are rendered to self-contained SVG
-   by the pure-Rust `mermaid-svg` renderer.
+   by the pure-Rust `mermaid-svg` renderer. Namespaced `embed:github` and `embed:stock` fences resolve
+   their data locally through `quotes` and become semantic, self-styled content cards.
+   `embed:architecture` and `embed:storyboard` produce transparent sanitized SVG with separate
+   Claude-style architecture and Excalidraw-style profiles. Their retained structured syntax is
+   upgraded to the same SVG output.
 2. Other regular files are copied unchanged.
 3. `.DS_Store` and `Thumbs.db` are ignored.
 4. Symbolic links are rejected to prevent reads outside the source tree.
@@ -164,8 +184,10 @@ consumer APIs for Memo or Knowledge bodies and does not create a retained local 
 6. `content.json` records rendered documents as `{ path, html }`.
 
 A Rust guard owns the temporary directory and removes it after success or failure. Source raw HTML
-is rendered as literal text; only compiler-generated code and diagram markup enters the artifact as
-raw HTML. Unsupported or invalid Mermaid syntax fails the build before publication.
+is rendered as literal text; only compiler-generated code, diagram, embed, and embed-style markup
+enters the artifact as raw HTML. Authored SVG is filtered through `svg-hush`; missing accessible
+titles or descriptions, unsafe SVG, and invalid Mermaid or embed syntax fail the build before
+publication.
 
 ## Publication
 
@@ -203,13 +225,14 @@ returns at most 100 records, so the desktop cursor pages only that returned set.
 Knowledge uses `https://knowledge.you-find.me/api/articles` with a generated Bearer key. A list read
 returns D1 summaries and an optional cursor. Rust follows those summaries with bounded-concurrency
 detail reads so the Worker can enforce its D1 authorization before resolving KV and R2 content. Rust
-then compiles the Chinese Markdown into HTML, heading identifiers, a table of contents, and an
-excerpt. YAML front matter returned with an edition is excluded from both the editable body and the
-compiled reader output. The Knowledge compiler also preserves math, maps portable wiki links to the
-consumer's article route, and recognizes the consumer's GFM callouts. Structured fences without a
-desktop renderer remain visible as escaped code. The desktop editor creates and updates drafts
-through the same API with content-hash conflict detection; visibility and delete transports remain
-available to the CLI.
+then uses `md-dialect` to compile the Chinese Markdown into HTML, heading identifiers, a table of
+contents, and an excerpt. YAML front matter returned with an edition is excluded from both the
+editable body and compiled output. The dialect compiler preserves math, portable wiki links, GFM
+callouts, and supported content embeds. Structured fences without a renderer remain escaped code. If
+optional embed enrichment fails, Knowledge preserves the embeds as code so a provider failure cannot
+hide an article or turn a committed write into an apparent failure. The desktop editor creates and
+updates drafts through the same API with content-hash conflict detection; visibility and delete
+transports remain available to the CLI.
 The editor uses a Tiptap rich-text surface with Markdown parsing and serialization, while an explicit
 source mode preserves constructs that the configured rich-text schema cannot round-trip exactly.
 The stored body, API payload, and content-hash conflict contract remain Markdown-based.

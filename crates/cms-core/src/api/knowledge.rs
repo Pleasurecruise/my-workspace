@@ -1,6 +1,6 @@
 use super::ApiError;
-use crate::markdown::{TocEntry, compile_knowledge, knowledge_body};
 use futures_util::stream::{self, StreamExt, TryStreamExt};
+use md_dialect::{TocEntry, compile_knowledge_enriched, compile_knowledge_plain, knowledge_body};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -231,7 +231,7 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
                 }
                 let result: ArticleResponse<Article> = response.json().await?;
                 let article = result.article;
-                project_article(article)
+                project_article(article).await
             }
         })
         .buffered(READ_CONCURRENCY)
@@ -243,12 +243,22 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
     })
 }
 
-pub fn project_article(article: Article) -> Result<Document, ApiError> {
+pub async fn project_article(article: Article) -> Result<Document, ApiError> {
     let edition = article.editions.get("zh").ok_or_else(|| {
         ApiError::Protocol(format!("article {} has no Chinese edition", article.id))
     })?;
     let source = knowledge_body(&edition.markdown).to_owned();
-    let compiled = compile_knowledge(&source);
+    let compiled = match compile_knowledge_enriched(&source).await {
+        Ok(compiled) => compiled,
+        Err(error) => {
+            tracing::warn!(
+                article_id = %article.id,
+                %error,
+                "could not enrich Knowledge embeds; preserving them as code blocks"
+            );
+            compile_knowledge_plain(&source)
+        }
+    };
     let newspaper_edition = newspaper_edition(&article.tags);
     Ok(Document {
         id: article.id,
@@ -433,7 +443,7 @@ pub async fn delete(id: &str, expected_hash: &str) -> Result<(), ApiError> {
 mod tests {
     use super::*;
 
-    fn projected_document(id: &str, tags: &[&str], created_at: &str) -> Document {
+    async fn projected_document(id: &str, tags: &[&str], created_at: &str) -> Document {
         project_article(Article {
             id: id.to_owned(),
             slug: id.to_owned(),
@@ -451,6 +461,7 @@ mod tests {
             created_at: created_at.to_owned(),
             updated_at: created_at.to_owned(),
         })
+        .await
         .expect("article should project")
     }
 
@@ -502,8 +513,8 @@ mod tests {
         assert_eq!(response.article.editions["zh"].markdown, "# 类型边界");
     }
 
-    #[test]
-    fn strips_article_header() {
+    #[tokio::test]
+    async fn strips_article_header() {
         let article: Article = serde_json::from_value(serde_json::json!({
             "id": "019c1234-1234-7000-8000-123456789abc",
             "slug": "daily-brief",
@@ -522,15 +533,45 @@ mod tests {
         }))
         .expect("valid my-knowledge article");
 
-        let document = project_article(article).expect("projected Chinese article");
+        let document = project_article(article)
+            .await
+            .expect("projected Chinese article");
 
         assert_eq!(document.source, "## Today\n\nNews");
         assert!(document.html.starts_with("<h2 id=\"today\">Today</h2>"));
         assert_eq!(document.tags, ["newspaper", "daily"]);
     }
 
-    #[test]
-    fn classifies_news_tags() {
+    #[tokio::test]
+    async fn preserves_article_when_embed_enrichment_fails() {
+        let article: Article = serde_json::from_value(serde_json::json!({
+            "id": "019c1234-1234-7000-8000-123456789abc",
+            "slug": "unavailable-embed",
+            "editions": {
+                "zh": {
+                    "title": "Unavailable embed",
+                    "summary": "The article remains readable",
+                    "markdown": "# Article\n\n```embed:github\nrepo: missing-owner\n```"
+                }
+            },
+            "tags": [],
+            "visibility": "private",
+            "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "createdAt": "2026-08-24T10:00:00.000Z",
+            "updatedAt": "2026-08-24T11:00:00.000Z"
+        }))
+        .expect("valid my-knowledge article");
+
+        let document = project_article(article)
+            .await
+            .expect("embed failure should not discard the article");
+
+        assert!(document.html.contains("language-embed:github"));
+        assert!(document.html.contains("repo: missing-owner"));
+    }
+
+    #[tokio::test]
+    async fn classifies_news_tags() {
         assert_eq!(
             newspaper_edition(&[" Daily ".to_owned(), "PROGRAMMER-DAILY".to_owned()]),
             Some(NewspaperEdition::Developer)
@@ -549,23 +590,24 @@ mod tests {
         );
 
         let document =
-            projected_document("developer", &["developer-daily"], "2026-08-25T00:00:00Z");
+            projected_document("developer", &["developer-daily"], "2026-08-25T00:00:00Z").await;
         assert_eq!(
             serde_json::to_value(document).expect("document should serialize")["newspaperEdition"],
             "developer"
         );
     }
 
-    #[test]
-    fn selects_latest_issues() {
+    #[tokio::test]
+    async fn selects_latest_issues() {
         let documents = vec![
             projected_document(
                 "older-personal",
                 &["personal-daily"],
                 "2026-08-23T00:00:00Z",
-            ),
-            projected_document("developer", &["developer-daily"], "2026-08-25T00:00:00Z"),
-            projected_document("personal", &["personal-daily"], "2026-08-24T00:00:00Z"),
+            )
+            .await,
+            projected_document("developer", &["developer-daily"], "2026-08-25T00:00:00Z").await,
+            projected_document("personal", &["personal-daily"], "2026-08-24T00:00:00Z").await,
         ];
 
         assert_eq!(

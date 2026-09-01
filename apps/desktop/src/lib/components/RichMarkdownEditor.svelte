@@ -144,7 +144,7 @@
 </div>
 
 <style>
-	.rich-editor { overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); }
+	.rich-editor { overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); letter-spacing: normal; text-transform: none; }
 	.rich-editor:focus-within { border-color: var(--color-border-strong); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 16%, transparent); }
 	.mode-switch { display: flex; gap: 0.2rem; padding: 0.4rem; border-bottom: 1px solid var(--color-border); background: var(--color-muted); }
 	.mode-switch button { display: inline-flex; height: 1.8rem; align-items: center; gap: 0.35rem; padding: 0 0.55rem; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; font-size: 0.68rem; }

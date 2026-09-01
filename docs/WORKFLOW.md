@@ -34,11 +34,14 @@ flowchart TD
 ## Static publication
 
 `vesper build` delegates to `build.rs`. The builder walks `content/`, renders Markdown through
-`markdown.rs`, highlights fenced code with Syntect, renders `mermaid` fences to SVG with the
-pure-Rust `mermaid-svg` renderer, copies regular assets, rejects symbolic links and output
-collisions, and writes a `content.json` index into an operating-system temporary directory. Code
-styles and Mermaid SVG styles are embedded in the HTML artifact, so consumers do not run either
-renderer. Invalid or unsupported Mermaid input fails the build before an upload plan exists.
+`md-dialect`, highlights fenced code with Syntect, renders `mermaid` fences to SVG, compiles content
+embeds, copies regular assets, rejects symbolic links and output collisions, and writes
+`content.json` into an operating-system temporary directory. Generated styles are embedded in the
+HTML artifact. Invalid Markdown dialect input fails before an upload plan exists.
+
+Namespaced GitHub and stock fences resolve their data locally through `quotes`. Architecture and
+storyboard fences accept accessible authored SVG and sanitize it with `svg-hush`. The complete
+syntax, alignment options, and authoring examples live in `.agents/skills/vesper-cli/SKILL.md`.
 
 `vesper publish` builds the same directory and reports the planned object count. It does not mutate
 remote state. `vesper publish --live` passes the staged files to `publish.rs`, which uploads them

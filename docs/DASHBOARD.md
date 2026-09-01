@@ -12,12 +12,20 @@ DashboardView.svelte
   <- typed state in App.svelte
   <- typed source events and refresh commands
   <- dashboard runtime in apps/desktop/src-tauri
+  ├─ current-device telemetry
   ├─ crates/ugos
-  ├─ apps/desktop/src-tauri/weather.rs
-  ├─ apps/desktop/src-tauri/stocks.rs
-  ├─ apps/desktop/src-tauri/github.rs
+  ├─ crates/quotes
+  │    ├─ exchange.rs
+  │    ├─ quotations.rs
+  │    ├─ weather.rs
+  │    ├─ stocks.rs
+  │    ├─ status.rs
+  │    └─ github.rs
   └─ crates/useage
+       ├─ claude.rs
        ├─ codex.rs
+       ├─ copilot.rs
+       ├─ grok.rs
        ├─ opencode.rs
        ├─ deepseek.rs
        └─ cherryin.rs
@@ -27,9 +35,10 @@ An unavailable credential or failed source does not block the other cards. Rust 
 Dashboard reads concurrently and emits each result as it settles. A per-source lock prevents
 overlapping reads; scheduled refreshes skip a source that is still running, while an explicit refresh
 waits for that source and then obtains fresh data. Polling exists only while Dashboard is active and
-retains settled data while refreshing: UGOS telemetry runs every two seconds and subscription data
-every sixty seconds. Entering Dashboard or using its refresh action reads every source and the
-selected Todo date. Weather, stocks, and GitHub have no timer.
+retains settled data while refreshing: UGREEN NAS telemetry and configured current-device telemetry
+run every two seconds, while subscription data and configured service status run every sixty
+seconds. Entering Dashboard or using its refresh action reads every source and the selected Todo
+date. Weather, stocks, exchange rates, GitHub, and random quotations have no timer.
 
 ## ntfy notifications
 
@@ -50,21 +59,43 @@ card itself with the four-way move pointer to reorder it, delete it from the sma
 button, or restore the Rust-owned default; there is no separate drag handle or card-level component
 menu. Reordering within one row targets individual cards, while crossing rows inserts at the row
 boundary so a full-width card cannot split a populated row. The Add Widget action opens a
-system-style library with search, widget metadata, and a
-selected-widget preview. The canvas keeps the
-same twelve-track arrangement at every window width; a narrow window scrolls horizontally and never
+category-based library with widget metadata and a selected-widget preview. The canvas keeps the same
+twelve-track arrangement at every window width; a narrow window scrolls horizontally and never
 projects a different order or column count. The layout is validated and stored locally in
 `dashboard-layout.json`; a missing file creates the default, while invalid stored data is reported
 without a silent fallback. The stored document is exactly `{ widgets }`; placements contain only
 their unique ID and typed widget configuration. Unknown fields are errors, and there is no layout
-version or compatibility reader. Existing card-level narrow-screen breakpoints remain intact.
+version. The compatibility projection replaces former combined `usage`, `quota`, and `balance`
+placements with independent Codex, OpenCode Go, DeepSeek, and Cherry provider placements. Existing
+card-level narrow-screen breakpoints remain intact.
 
-The Usage widget contains Codex and OpenCode Go quota cells above DeepSeek and Cherry balance cells.
+The widget library uses a category rail without a search input. System Status contains both the
+explicitly named UGREEN CPU, UGREEN Memory, UGREEN Storage, and UGREEN Network widgets and the
+Device CPU, Device Memory, Device Storage, and Device Network widgets backed by local telemetry.
+Quota contains separate Codex, OpenCode Go, Claude, Grok, and Copilot widgets. Balance contains
+separate DeepSeek and Cherry widgets. Existing singleton widgets remain visible and are marked as
+added instead of disappearing from the library.
 Weather widgets accept a city, region-qualified place, or postal code. Rust resolves each saved
 query through the [Open-Meteo Geocoding API][open-meteo-geocoding], then reads its forecast and
 timezone from [Open-Meteo][open-meteo]. Each card shows a local clock and the next six hourly
 forecasts; clocks advance locally without another weather request. One unresolved place remains a
 card-local failure and does not discard other weather cards.
+
+## Service status
+
+Each service-status widget stores one Rust-validated catalog ID selected by name in the Add Widget
+dialog. The initial catalog contains GitHub, Codex, and DeepSeek; arbitrary status URLs are not
+accepted. Rust reads the public Statuspage summaries for [GitHub][github-status],
+[OpenAI][openai-status], and [DeepSeek][deepseek-status] with a fifteen-second timeout and bounded
+concurrency. GitHub and DeepSeek summarize their non-group components. Codex uses only OpenAI status
+components whose names identify Codex, so an unrelated ChatGPT incident does not mark Codex
+unavailable.
+
+The card's progress bar is the current percentage of matching components reported operational; it
+is not historical uptime. The most severe matching component determines the displayed state, and
+the card also shows the number of active incidents returned by the status page. One failed endpoint
+remains local to its configured card. Status reads run on Dashboard entry, explicit refresh, and the
+sixty-second Dashboard polling interval.
 
 ## Stocks
 
@@ -73,10 +104,27 @@ Finance's chart endpoint with bounded concurrency and no credentials. One failed
 card-local error and does not discard successful quotes. Stocks refresh on Dashboard entry or an
 explicit refresh and have no timer.
 
+## Exchange rates
+
+The shared `quotes::exchange` boundary reads the latest two working days of official ECB euro
+reference rates for EUR, USD, CNY, GBP, JPY, CHF, HKD, SGD, CAD, and AUD. It exposes each currency as
+units per euro, the daily change, and cross-rate conversion without requesting another provider.
+These are daily reference rates rather than live trading quotes. The Add Widget library registers
+one optional singleton exchange card. It shows USD/CNY, GBP/CNY, and EUR/CNY cross rates with their
+change between the latest two ECB working days. Exchange rates refresh on Dashboard entry or an
+explicit refresh and have no timer. Vesper does not request ECB data when the current layout has no
+exchange card.
+
+## Random quotation
+
+`quotes::quotations` reads one quotation from [FreeAPI][freeapi] and narrows the response to the
+fields rendered by the card. The optional singleton widget reads this source on Dashboard entry and
+explicit refresh only.
+
 ## GitHub
 
 Dashboard uses the locally installed, authenticated GitHub CLI rather than storing a GitHub token.
-The Rust `github.rs` boundary starts `gh api graphql`, applies a fifteen-second timeout, parses the
+The Rust `quotes::github` boundary starts `gh api graphql`, applies a fifteen-second timeout, parses the
 typed response, and returns no credentials or raw provider errors to Svelte. `GITHUB_CLI_BINARY` can
 override CLI discovery; otherwise Vesper searches `PATH` and the user's login shell. Users must run
 `gh auth login` outside Vesper before this card can load.
@@ -88,13 +136,14 @@ pull requests and repository commit groups, sorts by occurrence time, and expose
 three activities. GitHub participates in the unified refresh on the first Dashboard load, every
 later entry into Dashboard, and the explicit refresh action; it does not poll in the background.
 
-## Calendar Todo list
+## Calendar and Todo
 
-The Todo card shows one complete month with Monday-first weekday columns, previous and next month
-controls, a marker for the current day, and a distinct selected date. Selecting a date reads its own
-list; adding, completing, reopening, and deleting items all apply to that selected date. Settled data
-is replaced only when the selected date's response arrives, so rapid date changes cannot display an
-older request as the current list.
+Calendar and Todo are independent widgets. Calendar shows one complete month with Monday-first
+weekday columns, previous and next month controls, a marker for the current day, and a distinct
+selected date. Todo adds, completes, reopens, and deletes items for that shared selected date.
+Settled data is replaced only when the selected date's response arrives, so rapid date changes
+cannot display an older request as the current list. Stored legacy `todo` placements expand to one
+Calendar placement and one Todo placement during layout decoding.
 
 The shared Rust `cms_core::todo` module stores date-keyed lists in `todos.json` below the application
 data directory for `me.you-find.vesper`. If the new file is absent, the previous single-day
@@ -133,14 +182,25 @@ firmware information.
 ## AI usage providers
 
 The crate is named `useage` by project decision. Each module owns one provider's transport and
-response types; the Tauri layer only exposes the result to the frontend.
+response types; callers only expose its typed result.
 
-| Module        | Source                                    | Credential resolution                                         | Values shown                                         |
-| ------------- | ----------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------- |
-| `codex.rs`    | Local `codex app-server --stdio` JSON-RPC | Existing `codex login`; optional `CODEX_BINARY` path override | Plan, default limits, and GPT-5.3 Codex Spark limits |
-| `opencode.rs` | `https://opencode.ai/zen/go/v1/usage`     | pi auth entry `opencode-go`                                   | Rolling, weekly, and monthly Go-plan windows         |
-| `deepseek.rs` | `https://api.deepseek.com/user/balance`   | pi auth entry `deepseek`                                      | Availability and currency balances                   |
-| `cherryin.rs` | CherryIN OAuth balance endpoint           | Cherry Studio `cherryin` OAuth session                        | Account balance shown under Cherry                   |
+| Module        | Source                                           | Credential resolution                                                | Values shown                                         |
+| ------------- | ------------------------------------------------ | -------------------------------------------------------------------- | ---------------------------------------------------- |
+| `codex.rs`    | Local `codex app-server --stdio` JSON-RPC        | Existing `codex login`; optional `CODEX_BINARY` path override        | Plan, default limits, and GPT-5.3 Codex Spark limits |
+| `claude.rs`   | Anthropic OAuth usage endpoint                   | Existing Claude Code OAuth session                                   | Five-hour and seven-day subscription windows         |
+| `copilot.rs`  | GitHub `GET /copilot_internal/user` via `gh api` | Existing `gh auth login`; optional `GITHUB_CLI_BINARY` path override | Chat, completions, and premium-request quotas        |
+| `grok.rs`     | Authenticated Grok runtime billing JSON-RPC      | Existing Grok device login; optional `GROK_BINARY` path override     | Current subscription window                          |
+| `opencode.rs` | `https://opencode.ai/zen/go/v1/usage`            | pi auth entry `opencode-go`                                          | Rolling, weekly, and monthly Go-plan windows         |
+| `deepseek.rs` | `https://api.deepseek.com/user/balance`          | pi auth entry `deepseek`                                             | Availability and currency balances                   |
+| `cherryin.rs` | CherryIN OAuth balance endpoint                  | Cherry Studio `cherryin` OAuth session                               | Account balance shown under Cherry                   |
+
+Claude, Copilot, and Grok are independent Quota widgets and Dashboard sources in addition to their
+CLI status checks. Claude reuses Claude Code's OAuth session and reads the five-hour and seven-day
+subscription windows. Copilot reuses the authenticated GitHub CLI and reads the same typed user and
+quota snapshot consumed by the official Copilot CLI, including unlimited flags and the account-level
+reset date. The Dashboard omits unlimited Chat and Completions rows and presents the metered Premium
+Requests quota; a zero row-level reset timestamp falls back to the account reset date. Grok launches
+the authenticated official runtime and reads its private billing snapshot.
 
 Vesper does not create or register an OpenCode provider named `cherry-opencode-go`. OpenCode Go and
 CherryIN are separate integrations. Vesper reads OpenCode Go from pi. It reuses CherryIN's existing
@@ -205,8 +265,8 @@ The resulting balance is displayed as US dollars with an explicit `USD` label.
 3. Reuse `auth::api_key` only when the provider uses a pi API-key record or custom model provider.
 4. Add the provider to the Rust Dashboard source enum and unified refresh runtime.
 5. Add the matching TypeScript event variant and an independent `QueryState` entry.
-6. Add quota data to the upper row or balance data to the lower row without changing other
-   providers' loading state or the lower-left Todo area.
+6. Add the provider as its own widget under Quota or Balance without changing other
+   providers' loading state or the Todo area.
 7. Cover response parsing with a unit test. Keep authenticated network tests ignored and opt-in.
 8. Document the credential identifier, endpoint ownership, units, and failure behavior here.
 
@@ -218,5 +278,9 @@ micro-transition principles from the Amicro reference without adding its React o
 dependencies. All nonessential motion is disabled when the operating system requests reduced motion.
 
 [deepseek-balance]: https://api-docs.deepseek.com/api/get-user-balance
+[deepseek-status]: https://status.deepseek.com/api/v2/summary.json
+[freeapi]: https://freeapi.app/
+[github-status]: https://www.githubstatus.com/api/v2/summary.json
 [open-meteo]: https://open-meteo.com/en/docs
 [open-meteo-geocoding]: https://open-meteo.com/en/docs/geocoding-api
+[openai-status]: https://status.openai.com/api/v2/summary.json

@@ -177,6 +177,31 @@ export interface NetworkSample {
   sampledAt: number;
 }
 
+export interface DeviceTelemetrySnapshot {
+  cpu: PercentSample;
+  cpuHistory: PercentSample[];
+  memory: LocalMemorySample;
+  memoryHistory: PercentSample[];
+  storage: LocalStorageSample | null;
+  network: NetworkSample;
+  networkHistory: NetworkSample[];
+}
+
+export interface PercentSample {
+  usedPercent: number;
+  sampledAt: number;
+}
+
+export interface LocalMemorySample extends PercentSample {
+  usedBytes: number;
+  totalBytes: number;
+}
+
+export interface LocalStorageSample extends PercentSample {
+  usedBytes: number;
+  totalBytes: number;
+}
+
 export interface CodexUsage {
   planType: string | null;
   primary: RateLimitWindow | null;
@@ -209,6 +234,46 @@ export interface OpenCodeUsageWindow {
   status: "ok" | "rate-limited";
   percent: number;
   resetsAt: string;
+}
+
+export interface ClaudeUsage {
+  planType: string;
+  fiveHour: ClaudeUsageWindow | null;
+  sevenDay: ClaudeUsageWindow | null;
+}
+
+export interface ClaudeUsageWindow {
+  usedPercent: number;
+  windowDurationMins: number;
+  resetsAt: string | null;
+}
+
+export interface GrokUsage {
+  planType: string | null;
+  window: { usedPercent: number; windowDurationMins: number | null; resetsAt: string | null };
+}
+
+export interface CopilotQuota {
+  entitlement: number | null;
+  remaining: number | null;
+  percentRemaining: number | null;
+  unlimited: boolean | null;
+  overageCount: number | null;
+  overagePermitted: boolean | null;
+  quotaResetAt: number | null;
+  timestampUtc: string | null;
+}
+
+export interface CopilotUsage {
+  login: string | null;
+  copilotPlan: string | null;
+  accessTypeSku: string | null;
+  quotaResetDateUtc: string | null;
+  quotaSnapshots: {
+    chat: CopilotQuota | null;
+    completions: CopilotQuota | null;
+    premiumInteractions: CopilotQuota | null;
+  };
 }
 
 export interface DeepSeekBalance {
@@ -269,7 +334,55 @@ export interface StockSeries {
   price: number;
   change: number;
   changePercent: number;
-  points: Array<{ timestamp: number; close: number }>;
+  points: [
+    { timestamp: number; close: number },
+    { timestamp: number; close: number },
+    ...Array<{ timestamp: number; close: number }>,
+  ];
+}
+
+export interface ExchangeReport {
+  referenceCurrency: "EUR";
+  preparedAt: string;
+  rates: ExchangeRate[];
+}
+
+export interface ExchangeRate {
+  code: string;
+  name: string;
+  date: string;
+  unitsPerEuro: number;
+  previousUnitsPerEuro: number;
+  change: number;
+  changePercent: number;
+}
+
+export type ServiceStatusLevel =
+  | "operational"
+  | "underMaintenance"
+  | "degradedPerformance"
+  | "partialOutage"
+  | "majorOutage"
+  | "unknown";
+
+export interface ServiceStatusCatalogEntry {
+  id: string;
+  name: string;
+  keywords: string;
+}
+
+export interface ServiceStatusReport {
+  services: Array<{
+    serviceId: string;
+    name: string;
+    status: ServiceStatusLevel;
+    operationalPercent: number;
+    operationalComponents: number;
+    totalComponents: number;
+    activeIncidents: number;
+    updatedAt: string;
+  }>;
+  failures: Array<{ serviceId: string; message: string }>;
 }
 
 export interface GithubSnapshot {
@@ -280,6 +393,14 @@ export interface GithubSnapshot {
     days: Array<{ date: string; count: number; level: number }>;
   }>;
   recentActivity: GithubActivity[];
+}
+
+export interface Quotation {
+  id: number;
+  content: string;
+  author: string;
+  authorSlug: string;
+  tags: string[];
 }
 
 export interface GithubActivity {
@@ -298,13 +419,20 @@ export interface QueryState<T> {
 
 export interface DashboardState {
   taskManager: QueryState<TaskManagerSnapshot>;
+  deviceTelemetry: QueryState<DeviceTelemetrySnapshot>;
   codex: QueryState<CodexUsage>;
   openCode: QueryState<OpenCodeUsage>;
+  claude: QueryState<ClaudeUsage>;
+  grok: QueryState<GrokUsage>;
+  copilot: QueryState<CopilotUsage>;
   deepSeek: QueryState<DeepSeekBalance>;
   cherryIn: QueryState<CherryInBalance>;
   weather: QueryState<WeatherReport>;
   stocks: QueryState<StockReport>;
+  exchange: QueryState<ExchangeReport>;
+  serviceStatus: QueryState<ServiceStatusReport>;
   github: QueryState<GithubSnapshot>;
+  quotation: QueryState<Quotation>;
 }
 
 export type WidgetKind =
@@ -312,18 +440,33 @@ export type WidgetKind =
   | "memory"
   | "storage"
   | "network"
+  | "localCpu"
+  | "localMemory"
+  | "localStorage"
+  | "localNetwork"
   | "weather"
   | "stock"
+  | "exchange"
+  | "serviceStatus"
   | "github"
-  | "todo"
-  | "usage";
+  | "calendar"
+  | "todoList"
+  | "codex"
+  | "openCode"
+  | "claude"
+  | "grok"
+  | "copilot"
+  | "deepSeek"
+  | "cherryIn"
+  | "quotation";
 
 export interface WidgetPlacement {
   id: string;
   widget:
-    | { kind: Exclude<WidgetKind, "weather" | "stock"> }
+    | { kind: Exclude<WidgetKind, "weather" | "stock" | "serviceStatus"> }
     | { kind: "weather"; location: WeatherLocation }
-    | { kind: "stock"; symbol: string };
+    | { kind: "stock"; symbol: string }
+    | { kind: "serviceStatus"; serviceId: string };
 }
 
 export interface WidgetLayout {
@@ -332,13 +475,20 @@ export interface WidgetLayout {
 
 export type DashboardEvent =
   | { source: "taskManager"; result: CommandResponse<TaskManagerSnapshot> }
+  | { source: "deviceTelemetry"; result: CommandResponse<DeviceTelemetrySnapshot | null> }
   | { source: "codex"; result: CommandResponse<CodexUsage> }
   | { source: "openCode"; result: CommandResponse<OpenCodeUsage> }
+  | { source: "claude"; result: CommandResponse<ClaudeUsage | null> }
+  | { source: "grok"; result: CommandResponse<GrokUsage | null> }
+  | { source: "copilot"; result: CommandResponse<CopilotUsage | null> }
   | { source: "deepSeek"; result: CommandResponse<DeepSeekBalance> }
   | { source: "cherryIn"; result: CommandResponse<CherryInBalance> }
   | { source: "weather"; result: CommandResponse<WeatherReport> }
   | { source: "stocks"; result: CommandResponse<StockReport> }
-  | { source: "github"; result: CommandResponse<GithubSnapshot> };
+  | { source: "exchange"; result: CommandResponse<ExchangeReport | null> }
+  | { source: "serviceStatus"; result: CommandResponse<ServiceStatusReport> }
+  | { source: "github"; result: CommandResponse<GithubSnapshot> }
+  | { source: "quotation"; result: CommandResponse<Quotation | null> };
 
 export interface TodoList {
   date: string;

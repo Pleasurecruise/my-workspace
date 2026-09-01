@@ -40,7 +40,9 @@ async fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             Ok(())
         }
         [command] if command == "build" => {
-            let output = cms_core::build::build(&repository).map_err(|error| error.to_string())?;
+            let output = cms_core::build::build(&repository)
+                .await
+                .map_err(|error| error.to_string())?;
             let report = output.report();
             println!(
                 "validated {} Markdown file(s) and {} asset(s); temporary output removed",
@@ -68,7 +70,9 @@ async fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
 }
 
 async fn publish(repository: &std::path::Path, live: bool) -> Result<(), String> {
-    let output = cms_core::build::build(repository).map_err(|error| error.to_string())?;
+    let output = cms_core::build::build(repository)
+        .await
+        .map_err(|error| error.to_string())?;
     let report = cms_core::publish::publish(output.directory(), live)
         .await
         .map_err(|error| error.to_string())?;

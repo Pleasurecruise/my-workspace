@@ -7,34 +7,49 @@ use tokio::sync::Mutex as AsyncMutex;
 use tokio::task::JoinSet;
 use tokio::time::{Instant, interval_at};
 
-use crate::{CommandResponse, github, stocks, weather, widgets};
+use crate::{CommandResponse, telemetry, widgets};
+use quotes::{exchange, github, quotations, status, stocks, weather};
 
 const EVENT: &str = "dashboard-source-updated";
-const SOURCE_COUNT: usize = 8;
+const SOURCE_COUNT: usize = 15;
 
 #[derive(Clone, Copy)]
 #[repr(usize)]
 enum Source {
     TaskManager,
+    DeviceTelemetry,
     Codex,
     OpenCode,
+    Claude,
+    Grok,
+    Copilot,
     DeepSeek,
     CherryIn,
     Weather,
     Stocks,
+    Exchange,
+    ServiceStatus,
     Github,
+    Quotation,
 }
 
 impl Source {
     const ALL: [Self; SOURCE_COUNT] = [
         Self::TaskManager,
+        Self::DeviceTelemetry,
         Self::Codex,
         Self::OpenCode,
+        Self::Claude,
+        Self::Grok,
+        Self::Copilot,
         Self::DeepSeek,
         Self::CherryIn,
         Self::Weather,
         Self::Stocks,
+        Self::Exchange,
+        Self::ServiceStatus,
         Self::Github,
+        Self::Quotation,
     ];
 }
 
@@ -42,13 +57,20 @@ impl Source {
 #[serde(tag = "source", content = "result", rename_all = "camelCase")]
 enum DashboardEvent {
     TaskManager(CommandResponse<ugos::TaskManagerSnapshot>),
+    DeviceTelemetry(CommandResponse<Option<telemetry::Snapshot>>),
     Codex(CommandResponse<useage::codex::CodexUsage>),
     OpenCode(CommandResponse<useage::opencode::OpenCodeUsage>),
+    Claude(CommandResponse<Option<useage::claude::ClaudeUsage>>),
+    Grok(CommandResponse<Option<useage::grok::GrokUsage>>),
+    Copilot(CommandResponse<Option<useage::copilot::CopilotUsage>>),
     DeepSeek(CommandResponse<useage::deepseek::DeepSeekBalance>),
     CherryIn(CommandResponse<useage::cherryin::CherryInBalance>),
     Weather(Box<CommandResponse<weather::WeatherReport>>),
     Stocks(Box<CommandResponse<stocks::StockReport>>),
+    Exchange(Box<CommandResponse<Option<exchange::ExchangeReport>>>),
+    ServiceStatus(Box<CommandResponse<status::ServiceStatusReport>>),
     Github(CommandResponse<github::GithubSnapshot>),
+    Quotation(CommandResponse<Option<quotations::Quotation>>),
 }
 
 impl DashboardEvent {
@@ -63,6 +85,17 @@ impl DashboardEvent {
                     })
                 }
             },
+            Source::DeviceTelemetry => match widgets::has_device_telemetry(app) {
+                Ok(false) => Self::DeviceTelemetry(CommandResponse::Ready { data: None }),
+                Ok(true) => match telemetry::read().await {
+                    Ok(data) => Self::DeviceTelemetry(CommandResponse::Ready { data: Some(data) }),
+                    Err(message) => {
+                        tracing::warn!(error = %message, "failed to read current-device telemetry");
+                        Self::DeviceTelemetry(CommandResponse::Failed { message })
+                    }
+                },
+                Err(message) => Self::DeviceTelemetry(CommandResponse::Failed { message }),
+            },
             Source::Codex => match useage::codex::read().await {
                 Ok(data) => Self::Codex(CommandResponse::Ready { data }),
                 Err(message) => {
@@ -76,6 +109,39 @@ impl DashboardEvent {
                     tracing::warn!(error = %message, "failed to load OpenCode Go usage");
                     Self::OpenCode(CommandResponse::Failed { message })
                 }
+            },
+            Source::Claude => match widgets::has_provider(app, widgets::ProviderWidget::Claude) {
+                Ok(false) => Self::Claude(CommandResponse::Ready { data: None }),
+                Ok(true) => match useage::claude::read().await {
+                    Ok(data) => Self::Claude(CommandResponse::Ready { data: Some(data) }),
+                    Err(message) => {
+                        tracing::warn!(error = %message, "failed to load Claude usage");
+                        Self::Claude(CommandResponse::Failed { message })
+                    }
+                },
+                Err(message) => Self::Claude(CommandResponse::Failed { message }),
+            },
+            Source::Grok => match widgets::has_provider(app, widgets::ProviderWidget::Grok) {
+                Ok(false) => Self::Grok(CommandResponse::Ready { data: None }),
+                Ok(true) => match useage::grok::read().await {
+                    Ok(data) => Self::Grok(CommandResponse::Ready { data: Some(data) }),
+                    Err(message) => {
+                        tracing::warn!(error = %message, "failed to load Grok usage");
+                        Self::Grok(CommandResponse::Failed { message })
+                    }
+                },
+                Err(message) => Self::Grok(CommandResponse::Failed { message }),
+            },
+            Source::Copilot => match widgets::has_provider(app, widgets::ProviderWidget::Copilot) {
+                Ok(false) => Self::Copilot(CommandResponse::Ready { data: None }),
+                Ok(true) => match useage::copilot::read().await {
+                    Ok(data) => Self::Copilot(CommandResponse::Ready { data: Some(data) }),
+                    Err(message) => {
+                        tracing::warn!(error = %message, "failed to load Copilot usage");
+                        Self::Copilot(CommandResponse::Failed { message })
+                    }
+                },
+                Err(message) => Self::Copilot(CommandResponse::Failed { message }),
             },
             Source::DeepSeek => match useage::deepseek::read().await {
                 Ok(data) => Self::DeepSeek(CommandResponse::Ready { data }),
@@ -111,12 +177,46 @@ impl DashboardEvent {
                 },
                 Err(message) => Self::Stocks(Box::new(CommandResponse::Failed { message })),
             },
+            Source::Exchange => match widgets::has_exchange(app) {
+                Ok(false) => Self::Exchange(Box::new(CommandResponse::Ready { data: None })),
+                Ok(true) => match exchange::read().await {
+                    Ok(data) => {
+                        Self::Exchange(Box::new(CommandResponse::Ready { data: Some(data) }))
+                    }
+                    Err(message) => {
+                        tracing::warn!(error = %message, "failed to load exchange rates");
+                        Self::Exchange(Box::new(CommandResponse::Failed { message }))
+                    }
+                },
+                Err(message) => Self::Exchange(Box::new(CommandResponse::Failed { message })),
+            },
+            Source::ServiceStatus => match widgets::service_status_ids(app) {
+                Ok(service_ids) => match status::read(service_ids).await {
+                    Ok(data) => Self::ServiceStatus(Box::new(CommandResponse::Ready { data })),
+                    Err(message) => {
+                        tracing::warn!(error = %message, "failed to load service status");
+                        Self::ServiceStatus(Box::new(CommandResponse::Failed { message }))
+                    }
+                },
+                Err(message) => Self::ServiceStatus(Box::new(CommandResponse::Failed { message })),
+            },
             Source::Github => match github::read().await {
                 Ok(data) => Self::Github(CommandResponse::Ready { data }),
                 Err(message) => {
                     tracing::warn!(error = %message, "failed to load GitHub activity");
                     Self::Github(CommandResponse::Failed { message })
                 }
+            },
+            Source::Quotation => match widgets::has_quotation(app) {
+                Ok(false) => Self::Quotation(CommandResponse::Ready { data: None }),
+                Ok(true) => match quotations::read().await {
+                    Ok(data) => Self::Quotation(CommandResponse::Ready { data: Some(data) }),
+                    Err(message) => {
+                        tracing::warn!(error = %message, "failed to load random quotation");
+                        Self::Quotation(CommandResponse::Failed { message })
+                    }
+                },
+                Err(message) => Self::Quotation(CommandResponse::Failed { message }),
             },
         }
     }
@@ -146,16 +246,7 @@ pub(crate) struct DashboardRuntime(Arc<RuntimeState>);
 impl Default for DashboardRuntime {
     fn default() -> Self {
         Self(Arc::new(RuntimeState {
-            sources: [
-                Arc::new(AsyncMutex::new(())),
-                Arc::new(AsyncMutex::new(())),
-                Arc::new(AsyncMutex::new(())),
-                Arc::new(AsyncMutex::new(())),
-                Arc::new(AsyncMutex::new(())),
-                Arc::new(AsyncMutex::new(())),
-                Arc::new(AsyncMutex::new(())),
-                Arc::new(AsyncMutex::new(())),
-            ],
+            sources: std::array::from_fn(|_| Arc::new(AsyncMutex::new(()))),
             polling: Mutex::new(None),
         }))
     }
@@ -234,12 +325,19 @@ pub(crate) fn set_dashboard_active(
         let mut subscriptions = interval_at(now + Duration::from_secs(60), Duration::from_secs(60));
         loop {
             tokio::select! {
-                _ = task_manager.tick() => runtime.refresh_if_idle(app.clone(), Source::TaskManager),
+                _ = task_manager.tick() => {
+                    runtime.refresh_if_idle(app.clone(), Source::TaskManager);
+                    runtime.refresh_if_idle(app.clone(), Source::DeviceTelemetry);
+                },
                 _ = subscriptions.tick() => {
                     runtime.refresh_if_idle(app.clone(), Source::Codex);
                     runtime.refresh_if_idle(app.clone(), Source::OpenCode);
+                    runtime.refresh_if_idle(app.clone(), Source::Claude);
+                    runtime.refresh_if_idle(app.clone(), Source::Grok);
+                    runtime.refresh_if_idle(app.clone(), Source::Copilot);
                     runtime.refresh_if_idle(app.clone(), Source::DeepSeek);
                     runtime.refresh_if_idle(app.clone(), Source::CherryIn);
+                    runtime.refresh_if_idle(app.clone(), Source::ServiceStatus);
                 }
             }
         }

@@ -12,6 +12,10 @@ handling, and focused tests for one feature together, while keeping transport an
 - Svelte owns rendering, user interaction, and small display-only transformations.
 - TypeScript types mirror serialized Rust transport contracts; they do not become a second business
   model.
+- Prefer English for application UI copy, labels, accessibility text, and developer-facing names.
+- Model transport absence as explicit `null`. Do not introduce `any`, `unknown`, optional fields,
+  or `undefined` when a concrete serialized contract is available, and do not use `??` to hide an
+  imprecise contract.
 - Tauri commands translate between the frontend and Rust crates. They should not implement provider,
   UGOS, R2, or Markdown behavior.
 
@@ -23,8 +27,9 @@ handling, and focused tests for one feature together, while keeping transport an
 - Keep a consumer's create, read, update, and delete operations in that consumer's feature file. Do
   not split files or directories by CRUD verb.
 - Keep a consumer's transport types and projections in its feature module. Stable capabilities keep
-  their own boundaries: `r2.rs` owns object storage, `markdown.rs` owns Markdown transformation, and
-  `build.rs` owns local artifact assembly.
+  their own boundaries: `r2.rs` owns object storage, `cms-core::markdown` owns generic and Memo
+  rendering, `md-dialect` owns article-oriented Markdown compilation, and `build.rs` owns local
+  artifact assembly.
 - Shared authentication belongs in `auth.rs` only when multiple providers use the same credential
   format and resolution policy.
 - Avoid generic `utils`, `helpers`, or `common` modules. Name modules after the capability they own.

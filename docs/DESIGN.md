@@ -40,14 +40,20 @@ weather accepts a user-entered place and stock accepts a ticker symbol. The canv
 tracks and scrolls horizontally when space is limited, so a breakpoint never rewrites the saved
 order.
 
-The calendar Todo widget shows a complete Monday-first month above the selected date's list. The
-Usage widget keeps subscription quotas in its upper row and monetary/account balances in its lower
-row; provider cells collapse vertically when their widget becomes narrow.
+Calendar and Todo are separate widgets that share the selected date. The widget library uses a
+category rail without a search field. One System Status category contains UGREEN CPU, UGREEN Memory,
+UGREEN Storage, and UGREEN Network alongside Device CPU, Device Memory, Device Storage, and Device
+Network. Quota and Balance each list one independent widget per provider rather than a provider
+table. Provider-card content is vertically centered in its card.
 
 NAS CPU, memory, and network cards pair the latest numeric value with a compact in-session SVG trend
 line; storage uses a used/free capacity bar. Each weather card shows one configured city with a
 24-hour local clock and six hourly forecast cells. Stock cards show a configured ticker's current
-price, daily change, and recent trend.
+price, daily change, and recent trend. The optional exchange card uses the same four-track footprint
+to compare USD, GBP, and EUR against CNY, emphasizing USD/CNY while keeping the provider date visible.
+Service-status cards pair a current state with an operational-component progress bar and expose
+numeric progress bounds to assistive technology. Their service name is searched and explicitly
+selected in the widget library rather than entered as a URL.
 
 Loading state must preserve already settled information. Initial placeholders belong inside the
 affected card; background polling must not replace the entire Dashboard with a loading surface.
@@ -82,6 +88,13 @@ Article creation and editing use a rich-text toolbar for headings, emphasis, lis
 links. A Markdown source mode remains available, and the editor selects it instead of silently
 rewriting content that the rich-text schema cannot represent exactly. The reader and remote storage
 keep Markdown as their one source format.
+
+Compiled GitHub and stock embeds use an Innei-inspired editorial card treatment: warm paper, fine
+outlines, light shadows, compact line icons, and one muted accent. The compiler emits the styles.
+Architecture canvases use transparent authored SVG with Claude-style rounded nodes, curved
+connectors, compact type hierarchy, and semantic muted color groups. Storyboard canvases use
+irregular paths, offset double strokes, round-ended scribbles, and a handwritten CJK-capable font
+stack. They remain transparent and frame-free so the consumer theme stays visible.
 
 ## Moment interaction
 

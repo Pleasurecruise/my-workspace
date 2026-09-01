@@ -62,6 +62,75 @@ vesper publish --live
 Only `publish --live` uploads the staged artifacts through the R2 SDK. Publication is additive and
 does not remove destination-only objects.
 
+For locally compiled article cards, use only the registered namespaced fences:
+
+````markdown
+```embed:github
+repo: owner/repository
+align: left
+```
+
+```embed:stock
+code: AAPL
+align: wide
+```
+
+```embed:architecture
+align: wide
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 230" role="img">
+  <title>Request path</title>
+  <desc>The Svelte view calls a typed Rust command and receives a projection.</desc>
+  <g class="node c-teal">
+    <rect x="24" y="70" width="170" height="88" rx="12" />
+    <text class="th" x="44" y="104">Svelte view</text>
+    <text class="ts" x="44" y="128">interaction only</text>
+  </g>
+  <path class="arr" d="M194 114 C250 114 260 114 316 114" />
+  <g class="node c-purple">
+    <rect x="316" y="70" width="170" height="88" rx="12" />
+    <text class="th" x="336" y="104">Rust command</text>
+    <text class="ts" x="336" y="128">typed boundary</text>
+  </g>
+</svg>
+```
+
+```embed:storyboard
+align: wide
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 250" role="img">
+  <title>From rough idea to article</title>
+  <desc>Three hand-drawn notes connected by curved arrows.</desc>
+  <g class="fill-blue" transform="rotate(-1 120 120)">
+    <path class="note" d="M28 48 Q116 42 204 49 L207 181 Q117 188 25 180 Z" />
+    <path class="sketch-shadow" d="M30 46 Q116 45 202 51 L205 179 Q116 185 27 182 Z" />
+    <text class="hand title" x="52" y="92">Idea</text>
+    <path class="scribble muted" d="M52 112 C82 108 116 116 168 110 M52 132 C92 128 130 138 176 130" />
+  </g>
+  <path class="arrow-shadow" d="M218 118 C250 90 276 147 308 115 M296 104 L310 115 L296 125" />
+  <path class="arrow" d="M218 116 C250 88 276 145 308 113 M296 102 L310 113 L296 123" />
+</svg>
+```
+````
+
+Use a GitHub card when a named repository is part of the explanation, and a stock card when a ticker
+is discussed as an entity. Do not add them as decoration or repeat a nearby ordinary link. GitHub
+and stock data are resolved locally during compilation through the shared `quotes` providers. Every
+embed accepts `align: left`, `right`, or `wide`; omit it for `wide`. Do not invent embed kinds or
+fields.
+
+Architecture and storyboard canvases are authored SVG, not Mermaid. Every canvas must include a
+meaningful `<title>` and `<desc>` and use a `viewBox`; the compiler sanitizes the SVG before emitting
+HTML. Architecture canvases remain transparent and follow the Claude-style vocabulary used by
+`canmi21/press`: rounded
+`.node` groups, restrained curved `.arr` or dashed `.leader` paths, `.th`/`.t`/`.ts` text, and the
+semantic color groups `.c-purple`, `.c-teal`, `.c-coral`, `.c-blue`, `.c-green`, `.c-amber`,
+`.c-red`, or `.c-gray`.
+
+Storyboard canvases follow an Excalidraw-style visual language and remain transparent, without an
+outer frame or white/dark canvas fill. Use irregular quadratic or cubic paths, round-ended
+`.scribble`, `.arrow`, and `.arrow-shadow` strokes, an offset `.sketch-shadow`, `.hand` text, and
+the restrained `.fill-blue`, `.fill-violet`, `.fill-green`, or `.fill-orange` groups. Run
+`vesper build` before publication so invalid dialect input and unsafe SVG fail locally.
+
 ## Memo
 
 Memo reads and writes go through the my-memos REST API so the consumer can coordinate R2 bodies, D1

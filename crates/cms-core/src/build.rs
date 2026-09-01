@@ -70,7 +70,7 @@ pub enum BuildError {
     },
     Markdown {
         path: PathBuf,
-        source: crate::markdown::PublicationError,
+        source: md_dialect::PublicationError,
     },
     Serialize(serde_json::Error),
 }
@@ -130,7 +130,7 @@ impl Error for BuildError {
     }
 }
 
-pub fn build(repository: &Path) -> Result<BuildOutput, BuildError> {
+pub async fn build(repository: &Path) -> Result<BuildOutput, BuildError> {
     let source = repository.join(SOURCE_DIRECTORY);
     if !source.is_dir() {
         return Err(BuildError::MissingSource(source));
@@ -161,7 +161,8 @@ pub fn build(repository: &Path) -> Result<BuildOutput, BuildError> {
         &mut outputs,
         &mut documents,
         &mut output.report,
-    )?;
+    )
+    .await?;
 
     let content = CompiledContent {
         version: 1,
@@ -173,7 +174,7 @@ pub fn build(repository: &Path) -> Result<BuildOutput, BuildError> {
     Ok(output)
 }
 
-fn compile_directory(
+async fn compile_directory(
     root: &Path,
     directory: &Path,
     staging: &Path,
@@ -196,7 +197,10 @@ fn compile_directory(
             return Err(BuildError::UnsupportedSymlink(path));
         }
         if file_type.is_dir() {
-            compile_directory(root, &path, staging, outputs, documents, report)?;
+            Box::pin(compile_directory(
+                root, &path, staging, outputs, documents, report,
+            ))
+            .await?;
             continue;
         }
         if !file_type.is_file() || is_ignored(&path) {
@@ -227,12 +231,12 @@ fn compile_directory(
         }
         if markdown {
             let source = io(&path, fs::read_to_string(&path))?;
-            let html = crate::markdown::render_publication(&source).map_err(|source| {
-                BuildError::Markdown {
+            let html = md_dialect::render_publication_enriched(&source)
+                .await
+                .map_err(|source| BuildError::Markdown {
                     path: path.clone(),
                     source,
-                }
-            })?;
+                })?;
             io(&destination, fs::write(&destination, &html))?;
             let relative_output = destination.strip_prefix(staging).map_err(|source| {
                 BuildError::PathOutsideRoot {

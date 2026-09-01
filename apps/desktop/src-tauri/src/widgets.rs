@@ -16,11 +16,32 @@ pub(crate) enum Widget {
     Memory,
     Storage,
     Network,
-    Weather { location: String },
-    Stock { symbol: String },
+    LocalCpu,
+    LocalMemory,
+    LocalStorage,
+    LocalNetwork,
+    Weather {
+        location: String,
+    },
+    Stock {
+        symbol: String,
+    },
+    Exchange,
+    ServiceStatus {
+        #[serde(rename = "serviceId")]
+        service_id: String,
+    },
     Github,
-    Todo,
-    Usage,
+    Calendar,
+    TodoList,
+    Codex,
+    OpenCode,
+    Claude,
+    Grok,
+    Copilot,
+    DeepSeek,
+    CherryIn,
+    Quotation,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -34,6 +55,13 @@ pub(crate) struct Placement {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Layout {
     widgets: Vec<Placement>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum ProviderWidget {
+    Claude,
+    Grok,
+    Copilot,
 }
 
 impl Default for Layout {
@@ -62,8 +90,12 @@ impl Default for Layout {
                 },
             ),
             ("github", Widget::Github),
-            ("todo", Widget::Todo),
-            ("usage", Widget::Usage),
+            ("calendar", Widget::Calendar),
+            ("todo-list", Widget::TodoList),
+            ("codex", Widget::Codex),
+            ("open-code", Widget::OpenCode),
+            ("deep-seek", Widget::DeepSeek),
+            ("cherry-in", Widget::CherryIn),
         ]
         .into_iter()
         .map(|(id, widget)| Placement {
@@ -92,12 +124,20 @@ impl Layout {
                 }
                 Widget::Weather { location } => {
                     let trimmed = location.trim();
-                    if trimmed != location
-                        || !(2..=120).contains(&trimmed.chars().count())
-                        || location.chars().any(char::is_control)
-                    {
+                    if trimmed != location {
                         return Err("Dashboard weather location is invalid".to_owned());
                     }
+                    if !(2..=120).contains(&trimmed.chars().count()) {
+                        return Err("Dashboard weather location is invalid".to_owned());
+                    }
+                    if location.chars().any(char::is_control) {
+                        return Err("Dashboard weather location is invalid".to_owned());
+                    }
+                }
+                Widget::ServiceStatus { service_id }
+                    if !crate::status::valid_service_id(service_id) =>
+                {
+                    return Err("Dashboard service status selection is invalid".to_owned());
                 }
                 _ => {}
             }
@@ -106,13 +146,27 @@ impl Layout {
                 Widget::Memory => "memory".to_owned(),
                 Widget::Storage => "storage".to_owned(),
                 Widget::Network => "network".to_owned(),
+                Widget::LocalCpu => "local-cpu".to_owned(),
+                Widget::LocalMemory => "local-memory".to_owned(),
+                Widget::LocalStorage => "local-storage".to_owned(),
+                Widget::LocalNetwork => "local-network".to_owned(),
                 Widget::Weather { location } => {
                     format!("weather-{}", location.to_lowercase())
                 }
                 Widget::Stock { symbol } => format!("stock-{symbol}"),
+                Widget::Exchange => "exchange".to_owned(),
+                Widget::ServiceStatus { service_id } => format!("service-status-{service_id}"),
                 Widget::Github => "github".to_owned(),
-                Widget::Todo => "todo".to_owned(),
-                Widget::Usage => "usage".to_owned(),
+                Widget::Calendar => "calendar".to_owned(),
+                Widget::TodoList => "todo-list".to_owned(),
+                Widget::Codex => "codex".to_owned(),
+                Widget::OpenCode => "open-code".to_owned(),
+                Widget::Claude => "claude".to_owned(),
+                Widget::Grok => "grok".to_owned(),
+                Widget::Copilot => "copilot".to_owned(),
+                Widget::DeepSeek => "deep-seek".to_owned(),
+                Widget::CherryIn => "cherry-in".to_owned(),
+                Widget::Quotation => "quotation".to_owned(),
             };
             if !singletons.insert(key.clone()) {
                 return Err(format!("Dashboard layout contains duplicate {key} widgets"));
@@ -151,10 +205,109 @@ fn valid_stock_symbol(symbol: &str) -> bool {
 }
 
 fn decode(bytes: &[u8]) -> Result<Layout, String> {
-    let layout: Layout = serde_json::from_slice(bytes)
+    let mut value: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|error| format!("Dashboard layout is invalid: {error}"))?;
+    migrate_provider_widgets(&mut value);
+    migrate_todo_widget(&mut value);
+    let layout: Layout = serde_json::from_value(value)
         .map_err(|error| format!("Dashboard layout is invalid: {error}"))?;
     layout.validate()?;
     Ok(layout)
+}
+
+fn migrate_todo_widget(value: &mut serde_json::Value) {
+    let Some(widgets) = value
+        .get_mut("widgets")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return;
+    };
+    let mut migrated = Vec::with_capacity(widgets.len() + 1);
+    for mut placement in widgets.drain(..) {
+        let is_legacy_todo = placement
+            .get("widget")
+            .and_then(|widget| widget.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            == Some("todo");
+        if !is_legacy_todo {
+            migrated.push(placement);
+            continue;
+        }
+        let id = placement
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("todo")
+            .to_owned();
+        if let Some(widget) = placement
+            .get_mut("widget")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            widget.insert("kind".to_owned(), serde_json::Value::from("calendar"));
+        }
+        migrated.push(placement);
+        migrated.push(serde_json::json!({
+            "id": format!("{id}-list"),
+            "widget": { "kind": "todoList" }
+        }));
+    }
+    *widgets = migrated;
+}
+
+fn migrate_provider_widgets(value: &mut serde_json::Value) {
+    let Some(widgets) = value
+        .get_mut("widgets")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return;
+    };
+    let mut migrated = Vec::with_capacity(widgets.len() + 3);
+    for mut placement in widgets.drain(..) {
+        let legacy_kind = placement
+            .get("widget")
+            .and_then(|widget| widget.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        if !matches!(legacy_kind.as_deref(), Some("usage" | "quota" | "balance")) {
+            migrated.push(placement);
+            continue;
+        }
+        let id = placement
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("provider")
+            .to_owned();
+        let primary_kind = if legacy_kind.as_deref() == Some("balance") {
+            "deepSeek"
+        } else {
+            "codex"
+        };
+        if let Some(kind) = placement
+            .get_mut("widget")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            kind.insert("kind".to_owned(), serde_json::Value::from(primary_kind));
+        }
+        migrated.push(placement);
+        if legacy_kind.as_deref() != Some("balance") {
+            migrated.push(serde_json::json!({
+                "id": format!("{id}-open-code"),
+                "widget": { "kind": "openCode" }
+            }));
+        }
+        if legacy_kind.as_deref() == Some("usage") {
+            migrated.push(serde_json::json!({
+                "id": format!("{id}-deep-seek"),
+                "widget": { "kind": "deepSeek" }
+            }));
+        }
+        if legacy_kind.as_deref() != Some("quota") {
+            migrated.push(serde_json::json!({
+                "id": format!("{id}-cherry-in"),
+                "widget": { "kind": "cherryIn" }
+            }));
+        }
+    }
+    *widgets = migrated;
 }
 
 fn read(path: &Path) -> Result<Layout, String> {
@@ -205,6 +358,58 @@ pub(crate) fn weather_locations(app: &tauri::AppHandle) -> Result<Vec<String>, S
         }
     }
     Ok(locations)
+}
+
+pub(crate) fn service_status_ids(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
+    let layout = path(app).and_then(|path| read(&path))?;
+    let mut service_ids = Vec::new();
+    for placement in layout.widgets {
+        if let Widget::ServiceStatus { service_id } = placement.widget {
+            service_ids.push(service_id);
+        }
+    }
+    Ok(service_ids)
+}
+
+pub(crate) fn has_exchange(app: &tauri::AppHandle) -> Result<bool, String> {
+    let layout = path(app).and_then(|path| read(&path))?;
+    Ok(layout
+        .widgets
+        .iter()
+        .any(|placement| matches!(placement.widget, Widget::Exchange)))
+}
+
+pub(crate) fn has_quotation(app: &tauri::AppHandle) -> Result<bool, String> {
+    let layout = path(app).and_then(|path| read(&path))?;
+    Ok(layout
+        .widgets
+        .iter()
+        .any(|placement| matches!(placement.widget, Widget::Quotation)))
+}
+
+pub(crate) fn has_device_telemetry(app: &tauri::AppHandle) -> Result<bool, String> {
+    let layout = path(app).and_then(|path| read(&path))?;
+    Ok(layout.widgets.iter().any(|placement| {
+        matches!(
+            placement.widget,
+            Widget::LocalCpu | Widget::LocalMemory | Widget::LocalStorage | Widget::LocalNetwork
+        )
+    }))
+}
+
+pub(crate) fn has_provider(
+    app: &tauri::AppHandle,
+    provider: ProviderWidget,
+) -> Result<bool, String> {
+    let layout = path(app).and_then(|path| read(&path))?;
+    Ok(layout.widgets.iter().any(|placement| {
+        matches!(
+            (provider, &placement.widget),
+            (ProviderWidget::Claude, Widget::Claude)
+                | (ProviderWidget::Grok, Widget::Grok)
+                | (ProviderWidget::Copilot, Widget::Copilot)
+        )
+    }))
 }
 
 #[tauri::command]
@@ -270,9 +475,86 @@ mod tests {
     }
 
     #[test]
+    fn supports_known_service_status() {
+        let json = br#"{"widgets":[{"id":"service-status-codex","widget":{"kind":"serviceStatus","serviceId":"codex"}}]}"#;
+
+        assert!(decode(json).is_ok());
+    }
+
+    #[test]
+    fn supports_one_exchange_widget() {
+        let json = br#"{"widgets":[{"id":"exchange","widget":{"kind":"exchange"}}]}"#;
+
+        assert!(decode(json).is_ok());
+
+        let duplicates = br#"{"widgets":[{"id":"exchange-1","widget":{"kind":"exchange"}},{"id":"exchange-2","widget":{"kind":"exchange"}}]}"#;
+        assert!(decode(duplicates).is_err());
+    }
+
+    #[test]
+    fn supports_current_device_widgets_as_singletons() {
+        let json = br#"{"widgets":[{"id":"local-cpu","widget":{"kind":"localCpu"}},{"id":"local-memory","widget":{"kind":"localMemory"}},{"id":"local-storage","widget":{"kind":"localStorage"}},{"id":"local-network","widget":{"kind":"localNetwork"}}]}"#;
+        assert!(decode(json).is_ok());
+
+        let duplicate = br#"{"widgets":[{"id":"local-cpu-1","widget":{"kind":"localCpu"}},{"id":"local-cpu-2","widget":{"kind":"localCpu"}}]}"#;
+        assert!(decode(duplicate).is_err());
+    }
+
+    #[test]
+    fn default_layout_omits_exchange_widget() {
+        assert!(
+            !Layout::default()
+                .widgets
+                .iter()
+                .any(|placement| matches!(placement.widget, Widget::Exchange))
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_service_status() {
+        let json = br#"{"widgets":[{"id":"service-status-other","widget":{"kind":"serviceStatus","serviceId":"other"}}]}"#;
+
+        assert!(decode(json).is_err());
+    }
+
+    #[test]
     fn rejects_extra_field() {
         let json = br#"{"revision":1,"widgets":[]}"#;
 
         assert!(decode(json).is_err());
+    }
+
+    #[test]
+    fn migrates_combined_usage_widget_to_provider_widgets() {
+        let json = br#"{"widgets":[{"id":"usage","widget":{"kind":"usage"}}]}"#;
+        let layout = decode(json).expect("legacy usage layout");
+
+        assert_eq!(layout.widgets.len(), 4);
+        assert!(matches!(layout.widgets[0].widget, Widget::Codex));
+        assert!(matches!(layout.widgets[1].widget, Widget::OpenCode));
+        assert!(matches!(layout.widgets[2].widget, Widget::DeepSeek));
+        assert!(matches!(layout.widgets[3].widget, Widget::CherryIn));
+    }
+
+    #[test]
+    fn migrates_intermediate_quota_and_balance_widgets() {
+        let json = br#"{"widgets":[{"id":"quota","widget":{"kind":"quota"}},{"id":"balance","widget":{"kind":"balance"}}]}"#;
+        let layout = decode(json).expect("intermediate provider layout");
+
+        assert_eq!(layout.widgets.len(), 4);
+        assert!(matches!(layout.widgets[0].widget, Widget::Codex));
+        assert!(matches!(layout.widgets[1].widget, Widget::OpenCode));
+        assert!(matches!(layout.widgets[2].widget, Widget::DeepSeek));
+        assert!(matches!(layout.widgets[3].widget, Widget::CherryIn));
+    }
+
+    #[test]
+    fn migrates_combined_todo_widget_to_calendar_and_list() {
+        let json = br#"{"widgets":[{"id":"todo","widget":{"kind":"todo"}}]}"#;
+        let layout = decode(json).expect("legacy Todo layout");
+
+        assert_eq!(layout.widgets.len(), 2);
+        assert!(matches!(layout.widgets[0].widget, Widget::Calendar));
+        assert!(matches!(layout.widgets[1].widget, Widget::TodoList));
     }
 }

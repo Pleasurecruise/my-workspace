@@ -289,7 +289,7 @@ pub(crate) async fn create_knowledge(
 ) -> CommandResponse<cms_core::api::knowledge::Document> {
     let input = cms_core::api::knowledge::Create::Draft(input);
     match cms_core::api::knowledge::create(&input).await {
-        Ok(article) => match cms_core::api::knowledge::project_article(article) {
+        Ok(article) => match cms_core::api::knowledge::project_article(article).await {
             Ok(data) => {
                 app.state::<CmsState>()
                     .invalidate_view(cms_core::consumer::Channel::Knowledge)
@@ -313,7 +313,7 @@ pub(crate) async fn update_knowledge(
     app: tauri::AppHandle,
 ) -> CommandResponse<cms_core::api::knowledge::Document> {
     match cms_core::api::knowledge::update_draft(&id, &input).await {
-        Ok(article) => match cms_core::api::knowledge::project_article(article) {
+        Ok(article) => match cms_core::api::knowledge::project_article(article).await {
             Ok(data) => {
                 app.state::<CmsState>()
                     .invalidate_view(cms_core::consumer::Channel::Knowledge)
