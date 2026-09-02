@@ -23,7 +23,8 @@ photo stream, continue a longer draft, or publish content without switching betw
 - **Moment** — browse and manage a personal photo stream with progressive R2-backed images
 - **Knowledge** — create and read long-form Markdown with a focused article experience
 - **Newspaper** — a calm daily view projected from Knowledge
-- **CLI** — use the same Rust core for Todo, content builds, publication, and consumer workflows
+- **CLI** — reuse the same Rust capability crates for Todo, content builds, publication, and
+  consumer workflows
 
 ## Built around clear boundaries
 
@@ -36,12 +37,12 @@ photo stream, continue a longer draft, or publish content without switching betw
 
 ```mermaid
 flowchart LR
-    Desktop[Tauri + Svelte desktop] --> Core[Rust core]
-    CLI[vesper CLI] --> Core
-    Core --> APIs[Consumer APIs]
-    Core --> R2[(Cloudflare R2)]
-    APIs --> Services[Memos · Knowledge · Moment]
-    R2 --> Services
+    Desktop[Tauri + Svelte desktop] --> Rust[Rust capabilities]
+    CLI[vesper CLI] --> Rust
+    Rust --> APIs[Memos · Knowledge · Moment APIs]
+    Rust --> R2[(Cloudflare R2)]
+    Rust --> Local[Local storage and credentials]
+    Rust --> Providers[Dashboard · Music · Social providers]
 ```
 
 The workspace is built with Tauri v2, Svelte 5, Rust, and a small shared UI package. Companion APIs

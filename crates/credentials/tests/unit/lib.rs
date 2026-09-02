@@ -1,6 +1,7 @@
 use super::{
-    ConsumerApi, CredentialError, NtfyConfig, R2Credentials, UgosCredentials, save_app_lock,
-    save_consumer_api, save_ntfy, save_r2, save_ugos,
+    ConsumerApi, CredentialError, NtfyConfig, R2Credentials, TelegramCredentials, UgosCredentials,
+    XCredentials, save_app_lock, save_consumer_api, save_ntfy, save_r2, save_telegram, save_ugos,
+    save_x,
 };
 
 #[test]
@@ -51,5 +52,48 @@ fn rejects_empty_ntfy() {
             development: false,
         }),
         Err(CredentialError::Empty("ntfy token"))
+    ));
+}
+
+#[test]
+fn rejects_incomplete_telegram_credentials() {
+    let result = save_telegram(TelegramCredentials {
+        api_id: 12345,
+        api_hash: "0123456789abcdef0123456789abcdef".to_owned(),
+        channel_username: "  ".to_owned(),
+    });
+    assert!(matches!(
+        result,
+        Err(CredentialError::Empty("Telegram channel username"))
+    ));
+}
+
+#[test]
+fn rejects_invalid_telegram_channel() {
+    let result = save_telegram(TelegramCredentials {
+        api_id: 12345,
+        api_hash: "0123456789abcdef0123456789abcdef".to_owned(),
+        channel_username: "@my channel".to_owned(),
+    });
+    assert!(matches!(
+        result,
+        Err(CredentialError::InvalidValue(
+            "Telegram channel username",
+            _
+        ))
+    ));
+}
+
+#[test]
+fn rejects_empty_x_token() {
+    let result = save_x(XCredentials {
+        client_id: "client".to_owned(),
+        access_token: "  ".to_owned(),
+        refresh_token: "refresh".to_owned(),
+        expires_at: 1,
+    });
+    assert!(matches!(
+        result,
+        Err(CredentialError::Empty("X OAuth access token"))
     ));
 }

@@ -5,6 +5,10 @@ request ordering, and polling live in Rust. Each external source has an independ
 and result event. CherryIN token refresh is the narrow exception to local read-only credential
 access: a successful refresh may update the existing Cherry Studio OAuth session.
 
+Telegram and X are outbound Memo publication providers, not Dashboard sources. Their configuration,
+authorization, and token refresh paths remain outside the Dashboard runtime so its read-only provider
+contract does not expand.
+
 ## Data flow
 
 ```text
@@ -138,19 +142,25 @@ later entry into Dashboard, and the explicit refresh action; it does not poll in
 
 ## Calendar and Todo
 
-Calendar and Todo are independent widgets. Calendar shows one complete month with Monday-first
-weekday columns, previous and next month controls, a marker for the current day, and a distinct
-selected date. Todo adds, completes, reopens, and deletes items for that shared selected date.
-Settled data is replaced only when the selected date's response arrives, so rapid date changes
-cannot display an older request as the current list. Stored legacy `todo` placements expand to one
-Calendar placement and one Todo placement during layout decoding.
+Calendar and Todo are independent widgets with one selected date. Calendar renders a complete
+Monday-first month; Todo creates, completes, reopens, and deletes items for the selected day.
+Selecting a title replaces the list with a fixed-size detail view showing status and date plus the
+calendar, time, location, and description available on imported items. Long details scroll inside
+the card, and Back restores the list without changing the dashboard layout.
 
-The shared Rust `cms_core::todo` module stores date-keyed lists in `todos.json` below the application
-data directory for `me.you-find.vesper`. If the new file is absent, the previous single-day
-`today-todos.json` file is ignored without fallback or migration. No SQL database or ORM is involved.
-Desktop and `vesper todo` share the file through a sidecar lock. The CLI operates on the current
-local date by default and accepts `vesper todo --date YYYY-MM-DD <action>` for another calendar day.
-At local midnight Rust advances a view of today to the new empty list without deleting history.
+Each date read has its own request revision. The view keeps settled data while loading and accepts a
+response only if it still matches the selected date, preventing a slower earlier request from
+replacing a newer selection. Stored legacy `todo` placements expand to separate Calendar and Todo
+placements while decoding the dashboard layout.
+
+Rust stores the date-keyed calendar in `todos.json`, shares it with `vesper todo` through a sidecar
+lock, and ignores the former `today-todos.json` format. Reads also sync the optional sibling `ics`
+directory. Floating DTSTART values remain local, while UTC and IANA TZID-qualified times are
+converted to the device time zone before their date and `HH:MM` prefix are selected. The documented
+RRULE subset and EXDATE are materialized once per source file, UID, and source occurrence date.
+Invalid structure, unknown time zones, and unsupported recurrence fields fail the Todo read rather
+than silently changing meaning. At local midnight a view still showing today advances and syncs the
+new date without deleting history.
 
 ## UGOS Pro
 

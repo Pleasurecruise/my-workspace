@@ -1,0 +1,29 @@
+[package]
+name = "music"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+base64.workspace = true
+futures-util.workspace = true
+http.workspace = true
+hyper-util.workspace = true
+librespot-core = { version = "0.8", default-features = false, features = [
+  "rustls-tls-native-roots",
+] }
+librespot-playback = { version = "0.8", default-features = false, features = [
+  "rodio-backend",
+  "rustls-tls-native-roots",
+] }
+rand.workspace = true
+reqwest = { workspace = true, features = ["system-proxy"] }
+rodio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net"] }
+tracing.workspace = true
+uuid.workspace = true
+vesper-credentials.workspace = true

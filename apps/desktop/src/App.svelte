@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
-	import { Archive, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, Lock, Menu, Moon, Newspaper as NewspaperIcon, Settings, Sun, X } from "@lucide/svelte";
+	import { Archive, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, ListMusic, Lock, Menu, Moon, Music2, Newspaper as NewspaperIcon, Settings, Sun, X } from "@lucide/svelte";
 	import { onMount, tick } from "svelte";
 	import MemosView from "./lib/components/MemosView.svelte";
 	import MomentView from "./lib/components/MomentView.svelte";
+	import MusicView from "./lib/components/MusicView.svelte";
 	import KnowledgeView from "./lib/components/KnowledgeView.svelte";
 	import InboxView from "./lib/components/InboxView.svelte";
 	import NewspaperView from "./lib/components/NewspaperView.svelte";
@@ -28,10 +29,13 @@
 		MemoTagCount,
 		MemoView,
 		MemoUpdate,
+		PublishedPost,
 		PhotoUpdate,
 		PhotoItem,
 		QueryState,
 		R2Configuration,
+		QqLoginStatus,
+		QqQr,
 		TodoList,
 		UgosConfiguration,
 		UpdateInfo,
@@ -39,13 +43,14 @@
 	} from "./lib/consumer";
 	import { applyTheme, initTheme } from "./lib/theme";
 
-	type View = "dashboard" | "inbox" | "newspaper" | "settings" | Channel;
+	type View = "dashboard" | "inbox" | "music" | "newspaper" | "settings" | Channel;
 	type MemoDisplay = "active" | "favorites" | "archived";
 	const navigation: Array<{ id: View; label: string }> = [
 		{ id: "dashboard", label: "Dashboard" },
 		{ id: "newspaper", label: "Newspaper" },
 		{ id: "memos", label: "Memos" },
 		{ id: "moment", label: "Moment" },
+		{ id: "music", label: "Music" },
 		{ id: "knowledge", label: "Knowledge" },
 		{ id: "settings", label: "Settings" },
 	];
@@ -59,6 +64,8 @@
 	const maximumSidebarWidth = 360;
 
 	let selected = $state<View>("dashboard");
+	let musicPlayerVisible = $state(false);
+	let musicPlayerAvailable = $state(false);
 	let previousView = $state<Exclude<View, "inbox">>("dashboard");
 	let memoDisplay = $state<MemoDisplay>("active");
 	let content = $state<ChannelView | null>(null);
@@ -318,10 +325,11 @@
 			else previousView = selected;
 		}
 		request += 1;
+		if (view !== "music") musicPlayerVisible = false;
 		selected = view;
 		void invoke<CommandResponse<null>>("set_dashboard_active", { active: view === "dashboard" });
 		sidebarOpen = false;
-		if (view === "dashboard" || view === "inbox" || view === "settings") {
+		if (view === "dashboard" || view === "inbox" || view === "music" || view === "settings") {
 			content = null;
 			error = null;
 			loading = false;
@@ -349,10 +357,16 @@
 		await load(channel, null, true, request);
 	}
 
-	async function load(channel: Channel, cursor: string | null, replace: boolean, viewVersion: number) {
+	async function load(
+		channel: Channel,
+		cursor: string | null,
+		replace: boolean,
+		viewVersion: number,
+		showPaginationStatus = false,
+	) {
 		if (loading) return;
 		loading = true;
-		loadingMore = cursor !== null;
+		loadingMore = cursor !== null && showPaginationStatus;
 		const response = await invoke<CommandResponse<ChannelView>>("read_channel", {
 			query: {
 				channel,
@@ -400,7 +414,7 @@
 		if (
 			mainElement !== null &&
 			mainElement.scrollHeight - mainElement.scrollTop - mainElement.clientHeight < 600
-		) loadMore();
+		) loadMore(showPaginationStatus);
 	}
 
 	async function filterMemos(
@@ -462,9 +476,9 @@
 		return false;
 	}
 
-	function loadMore() {
-		if (selected === "dashboard" || selected === "inbox" || selected === "newspaper" || selected === "settings" || loading || content === null || content.nextCursor === null) return;
-		void load(selected, content.nextCursor, false, request);
+	function loadMore(showPaginationStatus = false) {
+		if (selected === "dashboard" || selected === "inbox" || selected === "music" || selected === "newspaper" || selected === "settings" || loading || content === null || content.nextCursor === null) return;
+		void load(selected, content.nextCursor, false, request, showPaginationStatus);
 	}
 
 	async function lockApp() {
@@ -753,12 +767,21 @@
 		return response;
 	}
 
+	async function publishMemoToTelegram(memo: MemoView): Promise<CommandResponse<PublishedPost>> {
+		return invoke<CommandResponse<PublishedPost>>("publish_telegram", { id: memo.id });
+	}
+
+	async function publishMemoToX(memo: MemoView): Promise<CommandResponse<PublishedPost>> {
+		return invoke<CommandResponse<PublishedPost>>("publish_x", { id: memo.id });
+	}
+
 	function addUploadedPhoto(photo: PhotoItem) {
 		if (content === null || content.channel !== "moment") return;
+		momentTagIndex = Array.from(new Set([...momentTagIndex, ...content.tags, ...photo.tags])).sort();
 		content = {
 			...content,
 			photos: [photo, ...content.photos],
-			tags: Array.from(new Set([...content.tags, ...photo.tags])).sort(),
+			tags: momentTagIndex,
 			total: content.total + 1,
 		};
 		cache.moment = content;
@@ -767,12 +790,11 @@
 	async function updatePhoto(id: string, input: PhotoUpdate): Promise<CommandResponse<PhotoItem>> {
 		const response = await invoke<CommandResponse<PhotoItem>>("update_photo", { id, input });
 		if (response.status === "ready" && content !== null && content.channel === "moment") {
+			momentTagIndex = Array.from(new Set([...momentTagIndex, ...content.tags, ...response.data.tags])).sort();
 			content = {
 				...content,
 				photos: content.photos.map((photo) => (photo.id === id ? response.data : photo)),
-				tags: Array.from(
-					new Set(content.photos.flatMap((photo) => (photo.id === id ? response.data.tags : photo.tags))),
-				).sort(),
+				tags: momentTagIndex,
 			};
 			cache.moment = content;
 		}
@@ -786,7 +808,6 @@
 			content = {
 				...content,
 				photos,
-				tags: Array.from(new Set(photos.flatMap((photo) => photo.tags))).sort(),
 				total: content.total - 1,
 			};
 			cache.moment = content;
@@ -859,6 +880,26 @@
 		return response;
 	}
 
+	async function connectSpotify(): Promise<CommandResponse<string>> {
+		const response = await invoke<CommandResponse<string>>("connect_spotify");
+		if (response.status === "ready") await loadConfiguration();
+		return response;
+	}
+
+	async function beginQqLogin(): Promise<CommandResponse<QqQr>> {
+		return invoke<CommandResponse<QqQr>>("begin_qq_music_login");
+	}
+
+	async function pollQqLogin(): Promise<CommandResponse<QqLoginStatus>> {
+		const response = await invoke<CommandResponse<QqLoginStatus>>("poll_qq_music_login");
+		if (response.status === "ready" && response.data.status === "complete") await loadConfiguration();
+		return response;
+	}
+
+	async function cancelQqLogin(): Promise<CommandResponse<null>> {
+		return invoke<CommandResponse<null>>("cancel_qq_music_login");
+	}
+
 	async function saveNtfy(configuration: NtfyConfig): Promise<CommandResponse<string>> {
 		const response = await invoke<CommandResponse<string>>("save_ntfy_configuration", {
 			configuration,
@@ -894,7 +935,7 @@
 				errors[id] = response.message;
 			}
 		}
-		if (selected === "dashboard" || selected === "inbox" || selected === "settings") {
+		if (selected === "dashboard" || selected === "inbox" || selected === "music" || selected === "settings") {
 			content = null;
 			error = null;
 		} else {
@@ -1144,7 +1185,7 @@
 					aria-current={selected === item.id ? "page" : "false"}
 					onclick={() => void select(item.id)}
 				>
-					{#if item.id === "dashboard"}<LayoutDashboard size={15} />{:else if item.id === "memos"}<Home size={15} />{:else if item.id === "moment"}<Image size={15} />{:else if item.id === "newspaper"}<NewspaperIcon size={15} />{:else if item.id === "knowledge"}<BookOpen size={15} />{:else}<Settings size={15} />{/if}
+					{#if item.id === "dashboard"}<LayoutDashboard size={15} />{:else if item.id === "memos"}<Home size={15} />{:else if item.id === "moment"}<Image size={15} />{:else if item.id === "music"}<Music2 size={15} />{:else if item.id === "newspaper"}<NewspaperIcon size={15} />{:else if item.id === "knowledge"}<BookOpen size={15} />{:else}<Settings size={15} />{/if}
 					{item.label}
 				</button>
 			{/each}
@@ -1157,6 +1198,8 @@
 			<div><span class:offline={configuration === null || configuration.api.memos.status === "missing"}></span>my-memos API</div>
 			<div><span class:offline={configuration === null || configuration.api.moment.status === "missing"}></span>my-moment API</div>
 			<div><span class:offline={configuration === null || configuration.api.knowledge.status === "missing"}></span>my-knowledge API</div>
+			<div><span class:offline={configuration === null || configuration.spotify.status === "missing"}></span>Spotify</div>
+			<div><span class:offline={configuration === null || configuration.qqMusic.status === "missing"}></span>QQ Music</div>
 			<div><span class:offline={configuration === null || configuration.r2.status === "missing"}></span>Cloudflare R2</div>
 			{#if configuration === null}<small>Checking credential store</small>{:else}<small>Managed in Settings</small>{/if}
 		</div>
@@ -1229,7 +1272,7 @@
 			if (
 				mainElement !== null &&
 				mainElement.scrollHeight - mainElement.scrollTop - mainElement.clientHeight < 600
-			) loadMore();
+			) loadMore(true);
 		}}
 	>
 		<header class="topbar">
@@ -1284,9 +1327,11 @@
 					onrefresh={refreshDashboard}
 				/>
 			{:else if selected === "settings"}
-				<SettingsView {configuration} error={configurationError} onsaveugos={saveUgosConfiguration} onsaver2={saveR2Configuration} onsaveapi={saveApiConfiguration} onsaventfy={saveNtfy} onsaveapplock={saveAppLock} onremoveapplock={removeAppLock} />
+				<SettingsView {configuration} error={configurationError} onsaveugos={saveUgosConfiguration} onsaver2={saveR2Configuration} onsaveapi={saveApiConfiguration} onsaventfy={saveNtfy} onsaveapplock={saveAppLock} onremoveapplock={removeAppLock} onconnectspotify={connectSpotify} onbeginqq={beginQqLogin} onpollqq={pollQqLogin} oncancelqq={cancelQqLogin} onconfigurationchanged={loadConfiguration} />
 			{:else if selected === "inbox"}
 				<InboxView {notifications} onread={markNotificationRead} />
+			{:else if selected === "music"}
+				<MusicView bind:playerVisible={musicPlayerVisible} bind:playerAvailable={musicPlayerAvailable} onopensettings={() => void select("settings")} />
 			{:else if error}
 				<section class="consumer-error">
 					<header>
@@ -1301,7 +1346,7 @@
 				</section>
 			{:else if content !== null}
 				{#if content.channel === "memos"}
-					<MemosView memos={content.memos} tags={content.tags} display={memoDisplay} onfilter={filterMemos} onopenmemo={revealMemo} oncreate={createMemo} onimportx={importXMemo} onupdate={updateMemo} ondelete={deleteMemo} />
+					<MemosView memos={content.memos} tags={content.tags} display={memoDisplay} onfilter={filterMemos} onopenmemo={revealMemo} oncreate={createMemo} onimportx={importXMemo} onupdate={updateMemo} ondelete={deleteMemo} onpublishtelegram={publishMemoToTelegram} onpublishx={publishMemoToX} />
 				{:else if content.channel === "moment"}
 					<MomentView photos={content.photos} tags={content.tags} total={content.total} onuploaded={addUploadedPhoto} onupdate={updatePhoto} ondelete={deletePhoto} />
 				{:else if selected === "newspaper"}
@@ -1352,7 +1397,27 @@
 					<Heart size={15} fill={memoDisplay === "favorites" ? "currentColor" : "none"} />
 				</button>
 			{/if}
-			<ScrollToTop />
+			{#if selected === "music" && musicPlayerVisible}
+				<button class="music-list-action" type="button" onclick={() => (musicPlayerVisible = false)} aria-label="Back to song list" title="Back to song list">
+					<ListMusic size={15} />
+				</button>
+			{:else}
+				{#if musicPlayerAvailable}
+					<button
+						class="music-list-action"
+						type="button"
+						onclick={() => {
+							musicPlayerVisible = true;
+							void select("music");
+						}}
+						aria-label="Return to music player"
+						title="Return to music player"
+					>
+						<Music2 size={15} />
+					</button>
+				{/if}
+				<ScrollToTop />
+			{/if}
 		</div>
 	</main>
 </div>
@@ -1816,7 +1881,8 @@
 		gap: 0.625rem;
 	}
 
-	.memo-filter-action {
+	.memo-filter-action,
+	.music-list-action {
 		display: grid;
 		width: 2.75rem;
 		height: 2.75rem;
@@ -1836,7 +1902,8 @@
 			translate var(--duration-fast);
 	}
 
-	.memo-filter-action:hover {
+	.memo-filter-action:hover,
+	.music-list-action:hover {
 		border-color: var(--color-border-strong);
 		background: color-mix(in srgb, var(--color-background) 94%, var(--color-muted));
 		color: var(--color-foreground);
@@ -1849,7 +1916,8 @@
 		color: var(--color-accent);
 	}
 
-	.memo-filter-action:focus-visible {
+	.memo-filter-action:focus-visible,
+	.music-list-action:focus-visible {
 		outline: 2px solid var(--color-accent);
 		outline-offset: 2px;
 	}

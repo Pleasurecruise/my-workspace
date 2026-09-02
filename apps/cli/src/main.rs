@@ -141,6 +141,9 @@ fn print_help() {
          moment download <key> <path>   download an image through the R2 SDK\n  \
          moment remove-object <key>     remove an orphaned image object from R2\n  \
          todo --date <YYYY-MM-DD> <action> [...]  operate on another calendar day\n  \
+         todo schedule-path             print the managed ICS schedule directory\n  \
+         todo import-ics <path>...      validate and install one or more ICS schedules\n  \
+         todo sync-ics                  add today's new ICS occurrences\n  \
          todo list                      list today's Todos as JSON\n  \
          todo get <id>                  read one Todo as JSON\n  \
          todo create <text>             create a Todo\n  \

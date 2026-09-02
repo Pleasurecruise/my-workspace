@@ -16,14 +16,14 @@
     "test": "vp test --run"
   },
   "dependencies": {
-    "@lucide/svelte": "1.37.0",
+    "@lucide/svelte": "1.38.0",
     "@my-workspace/ui": "workspace:*",
     "@tauri-apps/api": "2.11.1",
-    "@tauri-apps/plugin-notification": "2.3.3",
-    "@tauri-apps/plugin-opener": "2.5.4",
-    "@tiptap/core": "3.30.5",
-    "@tiptap/markdown": "3.30.5",
-    "@tiptap/starter-kit": "3.30.5",
+    "@tauri-apps/plugin-notification": "2.4.0",
+    "@tauri-apps/plugin-opener": "2.5.5",
+    "@tiptap/core": "3.30.6",
+    "@tiptap/markdown": "3.30.6",
+    "@tiptap/starter-kit": "3.30.6",
     "thumbhash": "0.1.1"
   },
   "devDependencies": {

@@ -2,6 +2,7 @@
 	import { Check, ChevronLeft, ChevronRight, Pencil, Share2, SlidersHorizontal, Trash2, Upload, X } from "@lucide/svelte";
 	import { Button, Input, Label, Textarea } from "@my-workspace/ui";
 	import { tick } from "svelte";
+	import { innerWidth } from "svelte/reactivity/window";
 	import type { CommandResponse, PhotoItem, PhotoUpdate } from "../consumer";
 	import MomentUpload from "./MomentUpload.svelte";
 	import R2Image from "./R2Image.svelte";
@@ -40,6 +41,23 @@
 				if (right.date === null) return -1;
 				return oldestFirst ? left.date.localeCompare(right.date) : right.date.localeCompare(left.date);
 			});
+	});
+	let masonryColumns = $derived.by(() => {
+		const columnCount = innerWidth.current !== undefined && innerWidth.current < 640
+			? 1
+			: innerWidth.current !== undefined && innerWidth.current < 1024
+				? 2
+				: 3;
+		const columns: { photos: PhotoItem[]; height: number }[] = Array.from({ length: columnCount }, () => ({
+			photos: [],
+			height: 0,
+		}));
+		for (const photo of filtered) {
+			const shortestColumn = columns.reduce((shortest, column) => column.height < shortest.height ? column : shortest);
+			shortestColumn.photos.push(photo);
+			shortestColumn.height += photo.width > 0 && photo.height > 0 ? photo.height / photo.width : 1;
+		}
+		return columns.map((column) => column.photos);
 	});
 	let selectedPhoto = $derived.by(() => {
 		for (const photo of filtered) {
@@ -209,13 +227,17 @@
 	{/if}
 
 	<div class="masonry">
-		{#each filtered as photo (photo.id)}
-			<figure>
-				<button type="button" onclick={() => (selectedPhotoId = photo.id)} aria-label={`Open ${photo.title}`}>
-					<R2Image objectKey={photo.thumbnailR2Key} thumbHash={photo.thumbHash} alt={photo.title} width={photo.width} height={photo.height} />
-				</button>
-				<figcaption><strong>{photo.title}</strong>{#if photo.date}<span>{dateFormatter.format(new Date(photo.date))}</span>{/if}<div>{#each photo.tags as tag}<span>#{tag}</span>{/each}</div></figcaption>
-			</figure>
+		{#each masonryColumns as column, index (index)}
+			<div class="masonry-column">
+				{#each column as photo (photo.id)}
+					<figure>
+						<button type="button" onclick={() => (selectedPhotoId = photo.id)} aria-label={`Open ${photo.title}`}>
+							<R2Image objectKey={photo.thumbnailR2Key} thumbHash={photo.thumbHash} alt={photo.title} width={photo.width} height={photo.height} />
+						</button>
+						<figcaption><strong>{photo.title}</strong>{#if photo.date}<span>{dateFormatter.format(new Date(photo.date))}</span>{/if}<div>{#each photo.tags as tag}<span>#{tag}</span>{/each}</div></figcaption>
+					</figure>
+				{/each}
+			</div>
 		{/each}
 	</div>
 	{#if filtered.length === 0}<p class="empty">No photos match the current filters.</p>{/if}
@@ -239,7 +261,7 @@
 				{/if}
 				<div class="viewer-image">
 					{#key selectedPhoto.r2Key}
-						<R2Image objectKey={selectedPhoto.r2Key} thumbHash={selectedPhoto.thumbHash} alt={selectedPhoto.title} width={selectedPhoto.width} height={selectedPhoto.height} />
+						<R2Image objectKey={selectedPhoto.r2Key} previewObjectKey={selectedPhoto.thumbnailR2Key} thumbHash={selectedPhoto.thumbHash} alt={selectedPhoto.title} width={selectedPhoto.width} height={selectedPhoto.height} eager fit="contain" retryable />
 					{/key}
 				</div>
 				{#if adjacentPhotos.next !== null}
@@ -318,8 +340,9 @@
 	.filter-summary { display: flex; align-items: center; justify-content: space-between; padding-top: 0.75rem; border-top: 1px solid var(--color-divider); color: var(--color-muted-foreground); font-size: 0.7rem; }
 	.filter-summary button { padding: 0.25rem 0.5rem; border-radius: var(--radius-sm); font-size: inherit; }
 	.filter-summary button:hover { background: var(--color-muted); color: var(--color-foreground); }
-	.masonry { columns: 3 14rem; column-gap: 0.65rem; }
-	figure { position: relative; margin: 0 0 0.65rem; break-inside: avoid; overflow: hidden; border-radius: var(--radius-md); }
+	.masonry { display: flex; align-items: flex-start; gap: 0.65rem; }
+	.masonry-column { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 0.65rem; }
+	figure { position: relative; margin: 0; overflow: hidden; border-radius: var(--radius-md); }
 	figure > button { display: block; width: 100%; padding: 0; overflow: hidden; border: 0; background: transparent; color: inherit; cursor: zoom-in; text-align: left; }
 	figure :global(.progressive-image) { transition: scale var(--duration-slow); }
 	figcaption { position: absolute; inset: auto 0 0; display: grid; gap: 0.3rem; padding: 3rem 1rem 0.9rem; background: linear-gradient(transparent, var(--color-image-scrim)); color: var(--color-on-dark); opacity: 0; transition: opacity var(--duration-base); pointer-events: none; }
@@ -358,6 +381,6 @@
 	.viewer-previous { left: 1rem; }
 	.viewer-next { right: 1rem; }
 	.viewer-previous:hover, .viewer-next:hover { background: var(--color-muted); color: var(--color-foreground); }
-	@media (max-width: 700px) { .filter-grid { grid-template-columns: 1fr; gap: 1rem; } .date-order { padding: 1rem 0 0; border-top: 1px solid var(--color-divider); border-left: 0; } .masonry { columns: 2 9rem; } .viewer { grid-template-columns: 1fr; overflow-y: auto; } .viewer-main { min-height: 60vh; } .viewer-image { min-height: 0; padding: 1rem 2rem 2rem; } .viewer aside { padding: 1rem 1.25rem 2rem; border-top: 1px solid var(--color-divider); border-left: 0; } }
+	@media (max-width: 700px) { .filter-grid { grid-template-columns: 1fr; gap: 1rem; } .date-order { padding: 1rem 0 0; border-top: 1px solid var(--color-divider); border-left: 0; } .viewer { grid-template-columns: 1fr; overflow-y: auto; } .viewer-main { min-height: 60vh; } .viewer-image { min-height: 0; padding: 1rem 2rem 2rem; } .viewer aside { padding: 1rem 1.25rem 2rem; border-top: 1px solid var(--color-divider); border-left: 0; } }
 	@media (prefers-reduced-motion: reduce) { figure :global(.progressive-image), figcaption { transition: none; } }
 </style>

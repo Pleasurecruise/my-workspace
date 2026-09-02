@@ -17,20 +17,18 @@ pub(crate) struct ChannelQuery {
 
 #[derive(Clone, serde::Serialize)]
 pub(crate) struct InitialViews {
-    memos: CommandResponse<cms_core::consumer::ChannelView>,
-    moment: CommandResponse<cms_core::consumer::ChannelView>,
-    knowledge: CommandResponse<cms_core::consumer::ChannelView>,
+    memos: CommandResponse<consumers::view::ChannelView>,
+    moment: CommandResponse<consumers::view::ChannelView>,
+    knowledge: CommandResponse<consumers::view::ChannelView>,
 }
 
 #[tauri::command]
 pub(crate) async fn initialize_views(app: tauri::AppHandle) -> InitialViews {
     let state = app.state::<CmsState>();
     let (memos, moment, knowledge) = tokio::join!(
-        state.channel(ChannelRequest::initial(cms_core::consumer::Channel::Memos,)),
-        state.channel(ChannelRequest::initial(cms_core::consumer::Channel::Moment,)),
-        state.channel(ChannelRequest::initial(
-            cms_core::consumer::Channel::Knowledge,
-        )),
+        state.channel(ChannelRequest::initial(consumers::view::Channel::Memos,)),
+        state.channel(ChannelRequest::initial(consumers::view::Channel::Moment,)),
+        state.channel(ChannelRequest::initial(consumers::view::Channel::Knowledge,)),
     );
     InitialViews {
         memos,
@@ -43,10 +41,10 @@ pub(crate) async fn initialize_views(app: tauri::AppHandle) -> InitialViews {
 pub(crate) async fn read_channel(
     query: ChannelQuery,
     app: tauri::AppHandle,
-) -> CommandResponse<cms_core::consumer::ChannelView> {
+) -> CommandResponse<consumers::view::ChannelView> {
     let paginated = query.cursor.is_some();
     let started = Instant::now();
-    let channel = match cms_core::consumer::Channel::try_from(query.channel.as_str()) {
+    let channel = match consumers::view::Channel::try_from(query.channel.as_str()) {
         Ok(channel) => channel,
         Err(error) => {
             return CommandResponse::Failed {
@@ -59,7 +57,7 @@ pub(crate) async fn read_channel(
         .channel(ChannelRequest {
             channel,
             cursor: query.cursor,
-            filters: cms_core::api::memos::ListFilters {
+            filters: consumers::api::memos::ListFilters {
                 limit: None,
                 search: query.search,
                 tags: query.tags,
@@ -73,15 +71,15 @@ pub(crate) async fn read_channel(
     match &response {
         CommandResponse::Ready { data } => {
             let (items, has_next) = match data {
-                cms_core::consumer::ChannelView::Memos {
+                consumers::view::ChannelView::Memos {
                     memos, next_cursor, ..
                 } => (memos.len(), next_cursor.is_some()),
-                cms_core::consumer::ChannelView::Moment {
+                consumers::view::ChannelView::Moment {
                     photos,
                     next_cursor,
                     ..
                 } => (photos.len(), next_cursor.is_some()),
-                cms_core::consumer::ChannelView::Knowledge {
+                consumers::view::ChannelView::Knowledge {
                     knowledge,
                     next_cursor,
                     ..
@@ -110,8 +108,8 @@ pub(crate) async fn read_channel(
 }
 
 #[tauri::command]
-pub(crate) async fn read_memo_tags() -> CommandResponse<Vec<cms_core::api::memos::TagCount>> {
-    match cms_core::api::memos::tags().await {
+pub(crate) async fn read_memo_tags() -> CommandResponse<Vec<consumers::api::memos::TagCount>> {
+    match consumers::api::memos::tags().await {
         Ok(data) => CommandResponse::Ready { data },
         Err(error) => CommandResponse::Failed {
             message: error.to_string(),
@@ -121,29 +119,8 @@ pub(crate) async fn read_memo_tags() -> CommandResponse<Vec<cms_core::api::memos
 
 #[tauri::command]
 pub(crate) async fn read_moment_tags() -> CommandResponse<Vec<String>> {
-    match cms_core::api::moment::tags().await {
+    match consumers::api::moment::tags().await {
         Ok(data) => CommandResponse::Ready { data },
-        Err(error) => CommandResponse::Failed {
-            message: error.to_string(),
-        },
-    }
-}
-
-#[tauri::command]
-pub(crate) async fn read_asset(key: String, app: tauri::AppHandle) -> CommandResponse<Vec<u8>> {
-    let state = app.state::<CmsState>();
-    if let Some(data) = state.cached_asset(&key).await {
-        return CommandResponse::Ready { data };
-    }
-    let repository = match state.repository().await {
-        Ok(repository) => repository,
-        Err(message) => return CommandResponse::Failed { message },
-    };
-    match cms_core::consumer::asset(&key, repository.as_ref()).await {
-        Ok(data) => {
-            state.cache_asset(key, data.clone()).await;
-            CommandResponse::Ready { data }
-        }
         Err(error) => CommandResponse::Failed {
             message: error.to_string(),
         },
@@ -153,13 +130,13 @@ pub(crate) async fn read_asset(key: String, app: tauri::AppHandle) -> CommandRes
 #[tauri::command]
 pub(crate) async fn create_memo(
     content: String,
-    visibility: cms_core::api::memos::Visibility,
+    visibility: consumers::api::memos::Visibility,
     app: tauri::AppHandle,
-) -> CommandResponse<cms_core::api::memos::MemoView> {
-    match cms_core::api::memos::create(&content, visibility).await {
+) -> CommandResponse<consumers::api::memos::MemoView> {
+    match consumers::api::memos::create(&content, visibility).await {
         Ok(data) => {
             app.state::<CmsState>()
-                .invalidate_view(cms_core::consumer::Channel::Memos)
+                .invalidate_view(consumers::view::Channel::Memos)
                 .await;
             CommandResponse::Ready { data }
         }
@@ -172,13 +149,13 @@ pub(crate) async fn create_memo(
 #[tauri::command]
 pub(crate) async fn import_x_memo(
     url: String,
-    visibility: cms_core::api::memos::Visibility,
+    visibility: consumers::api::memos::Visibility,
     app: tauri::AppHandle,
-) -> CommandResponse<cms_core::api::memos::MemoView> {
-    match cms_core::api::memos::import_x(&url, visibility).await {
+) -> CommandResponse<consumers::api::memos::MemoView> {
+    match consumers::api::memos::import_x(&url, visibility).await {
         Ok(data) => {
             app.state::<CmsState>()
-                .invalidate_view(cms_core::consumer::Channel::Memos)
+                .invalidate_view(consumers::view::Channel::Memos)
                 .await;
             CommandResponse::Ready { data }
         }
@@ -191,13 +168,13 @@ pub(crate) async fn import_x_memo(
 #[tauri::command]
 pub(crate) async fn update_memo(
     id: String,
-    input: cms_core::api::memos::Update,
+    input: consumers::api::memos::Update,
     app: tauri::AppHandle,
-) -> CommandResponse<cms_core::api::memos::MemoView> {
-    match cms_core::api::memos::update(&id, &input).await {
+) -> CommandResponse<consumers::api::memos::MemoView> {
+    match consumers::api::memos::update(&id, &input).await {
         Ok(data) => {
             app.state::<CmsState>()
-                .invalidate_view(cms_core::consumer::Channel::Memos)
+                .invalidate_view(consumers::view::Channel::Memos)
                 .await;
             CommandResponse::Ready { data }
         }
@@ -209,10 +186,10 @@ pub(crate) async fn update_memo(
 
 #[tauri::command]
 pub(crate) async fn delete_memo(id: String, app: tauri::AppHandle) -> CommandResponse<String> {
-    match cms_core::api::memos::delete(&id).await {
+    match consumers::api::memos::delete(&id).await {
         Ok(()) => {
             app.state::<CmsState>()
-                .invalidate_view(cms_core::consumer::Channel::Memos)
+                .invalidate_view(consumers::view::Channel::Memos)
                 .await;
             CommandResponse::Ready { data: id }
         }
@@ -223,20 +200,95 @@ pub(crate) async fn delete_memo(id: String, app: tauri::AppHandle) -> CommandRes
 }
 
 #[tauri::command]
+pub(crate) async fn publish_telegram(
+    id: String,
+    app: tauri::AppHandle,
+) -> CommandResponse<social::PublishedPost> {
+    let memo = match consumers::api::memos::read(&id).await {
+        Ok(memo) => memo.memo,
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
+    let memo = social::MemoPublication {
+        id: memo.id,
+        content: memo.content,
+        visibility: match memo.visibility {
+            consumers::api::memos::Visibility::Public => social::PublicationVisibility::Public,
+            consumers::api::memos::Visibility::Private => social::PublicationVisibility::Private,
+        },
+    };
+    let authorization = app.state::<crate::telegram::TelegramAuthorizationState>();
+    if let Err(message) = authorization.begin_operation().await {
+        return CommandResponse::Failed { message };
+    }
+    let session_path = match app.path().app_data_dir() {
+        Ok(path) => path.join("telegram.session"),
+        Err(error) => {
+            authorization.finish_operation().await;
+            return CommandResponse::Failed {
+                message: format!("could not resolve Telegram session storage: {error}"),
+            };
+        }
+    };
+    let response = match social::publish_telegram(&memo, &session_path).await {
+        Ok(data) => CommandResponse::Ready { data },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    };
+    authorization.finish_operation().await;
+    response
+}
+
+#[tauri::command]
+pub(crate) async fn publish_x(
+    id: String,
+    app: tauri::AppHandle,
+) -> CommandResponse<social::PublishedPost> {
+    let state = app.state::<crate::configuration::PublicationState>();
+    let _operation = state.x_operation.lock().await;
+    let memo = match consumers::api::memos::read(&id).await {
+        Ok(memo) => memo.memo,
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
+    let memo = social::MemoPublication {
+        id: memo.id,
+        content: memo.content,
+        visibility: match memo.visibility {
+            consumers::api::memos::Visibility::Public => social::PublicationVisibility::Public,
+            consumers::api::memos::Visibility::Private => social::PublicationVisibility::Private,
+        },
+    };
+    match social::publish_x(&memo).await {
+        Ok(data) => CommandResponse::Ready { data },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
 pub(crate) async fn create_photo(
-    input: cms_core::api::moment::Upload,
+    input: consumers::api::moment::Upload,
     source: Vec<u8>,
     app: tauri::AppHandle,
-) -> CommandResponse<cms_core::api::moment::Photo> {
+) -> CommandResponse<consumers::api::moment::Photo> {
     let state = app.state::<CmsState>();
     let repository = match state.repository().await {
         Ok(repository) => repository,
         Err(message) => return CommandResponse::Failed { message },
     };
-    match cms_core::api::moment::upload(repository.store(), input, source).await {
+    match consumers::api::moment::upload(repository.store(), input, source).await {
         Ok(data) => {
             state
-                .invalidate_view(cms_core::consumer::Channel::Moment)
+                .invalidate_view(consumers::view::Channel::Moment)
                 .await;
             CommandResponse::Ready { data }
         }
@@ -249,13 +301,13 @@ pub(crate) async fn create_photo(
 #[tauri::command]
 pub(crate) async fn update_photo(
     id: String,
-    input: cms_core::api::moment::Update,
+    input: consumers::api::moment::Update,
     app: tauri::AppHandle,
-) -> CommandResponse<cms_core::api::moment::Photo> {
-    match cms_core::api::moment::update(&id, &input).await {
+) -> CommandResponse<consumers::api::moment::Photo> {
+    match consumers::api::moment::update(&id, &input).await {
         Ok(data) => {
             app.state::<CmsState>()
-                .invalidate_view(cms_core::consumer::Channel::Moment)
+                .invalidate_view(consumers::view::Channel::Moment)
                 .await;
             CommandResponse::Ready { data }
         }
@@ -267,11 +319,11 @@ pub(crate) async fn update_photo(
 
 #[tauri::command]
 pub(crate) async fn delete_photo(id: String, app: tauri::AppHandle) -> CommandResponse<String> {
-    match cms_core::api::moment::delete(&id).await {
+    match consumers::api::moment::delete(&id).await {
         Ok(()) => {
             let state = app.state::<CmsState>();
             state
-                .invalidate_view(cms_core::consumer::Channel::Moment)
+                .invalidate_view(consumers::view::Channel::Moment)
                 .await;
             state.clear_assets().await;
             CommandResponse::Ready { data: id }
@@ -284,15 +336,15 @@ pub(crate) async fn delete_photo(id: String, app: tauri::AppHandle) -> CommandRe
 
 #[tauri::command]
 pub(crate) async fn create_knowledge(
-    input: cms_core::api::knowledge::Draft,
+    input: consumers::api::knowledge::Draft,
     app: tauri::AppHandle,
-) -> CommandResponse<cms_core::api::knowledge::Document> {
-    let input = cms_core::api::knowledge::Create::Draft(input);
-    match cms_core::api::knowledge::create(&input).await {
-        Ok(article) => match cms_core::api::knowledge::project_article(article).await {
+) -> CommandResponse<consumers::api::knowledge::Document> {
+    let input = consumers::api::knowledge::Create::Draft(input);
+    match consumers::api::knowledge::create(&input).await {
+        Ok(article) => match consumers::api::knowledge::project_article(article).await {
             Ok(data) => {
                 app.state::<CmsState>()
-                    .invalidate_view(cms_core::consumer::Channel::Knowledge)
+                    .invalidate_view(consumers::view::Channel::Knowledge)
                     .await;
                 CommandResponse::Ready { data }
             }
@@ -309,14 +361,14 @@ pub(crate) async fn create_knowledge(
 #[tauri::command]
 pub(crate) async fn update_knowledge(
     id: String,
-    input: cms_core::api::knowledge::DraftUpdate,
+    input: consumers::api::knowledge::DraftUpdate,
     app: tauri::AppHandle,
-) -> CommandResponse<cms_core::api::knowledge::Document> {
-    match cms_core::api::knowledge::update_draft(&id, &input).await {
-        Ok(article) => match cms_core::api::knowledge::project_article(article).await {
+) -> CommandResponse<consumers::api::knowledge::Document> {
+    match consumers::api::knowledge::update_draft(&id, &input).await {
+        Ok(article) => match consumers::api::knowledge::project_article(article).await {
             Ok(data) => {
                 app.state::<CmsState>()
-                    .invalidate_view(cms_core::consumer::Channel::Knowledge)
+                    .invalidate_view(consumers::view::Channel::Knowledge)
                     .await;
                 CommandResponse::Ready { data }
             }

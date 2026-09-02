@@ -27,6 +27,9 @@
 Use root commands for workspace-wide verification. A focused change may use package-specific Cargo
 or pnpm commands during iteration, but the owning package must pass before handoff.
 
+On macOS debug builds, the native View menu includes Reload and Toggle Developer Tools for local
+webview development. These development-only actions are omitted from release builds.
+
 Commit CI runs frontend and Rust verification as separate parallel jobs. The Rust job installs the
 Tauri Linux build dependencies and explicitly runs rustfmt, Clippy with warnings denied, Cargo check,
 and the complete workspace test suite. The `:frontend` and `:rust` root-script suffixes expose the
@@ -90,12 +93,44 @@ are not displayed as editable fields. The token must have read permission for `m
 Notification contents stay within the self-hosted ntfy deployment and are subject to its caching and
 availability policy.
 
+## Memo social publication configuration
+
+Memo publication supports Telegram Channels through a Telegram user account and X through OAuth 2.0
+user authorization. Settings owns provider setup. A public Memo card shows both publication actions
+beside its visibility label; private Memo cards do not show them.
+
+The registered Tauri surface is:
+
+- configuration: `read_publication`, `save_telegram`, and `connect_x`;
+- Telegram session: `read_auth`, `begin_auth`, `submit_code`, `submit_password`, and `cancel_auth`;
+- publication: `publish_telegram` and `publish_x`, each accepting only the Memo `id` and returning
+  the provider, external post ID, and public URL when available. Rust rereads the authoritative Memo
+  and rejects it unless the API still reports `public` before contacting either provider.
+
+For Telegram, create an application at `my.telegram.org` and configure its numeric API ID,
+32-character hexadecimal API hash, and the public username of a broadcast channel where the signed-in
+account can post. Call the authorization commands in order: begin with the account phone number,
+complete the verification code, then complete the 2FA password only when requested. The API ID, API
+hash, and channel username are stored as one operating-system credential record. The resulting
+MTProto session is stored separately as `telegram.session` below the application-data directory with
+owner-only file permissions on Unix. Login codes and 2FA passwords are not persisted.
+
+For X, create the Vesper project application in the X Developer Console, enable OAuth 2.0, and
+register `http://127.0.0.1:8792/callback` exactly as a callback URL. Set its public Client ID as the
+`VESPER_X_CLIENT_ID` environment variable while compiling the desktop application. Settings exposes
+only Connect/Reconnect: Vesper opens the browser and completes Authorization Code with PKCE,
+requesting `tweet.read`, `tweet.write`, `users.read`, and `offline.access`. It stores the returned
+access and refresh grants in the operating-system credential store and rotates them automatically;
+no Client ID, Client Secret, or manually copied token is accepted by the desktop UI.
+
 ## macOS development credentials
 
 An unsigned or ad-hoc-signed `tauri dev` executable changes its macOS code identity whenever it is
 rebuilt. Keychain may therefore request access again after an ordinary source edit. To avoid those
 prompts, debug builds resolve UGOS, R2, consumer API, and ntfy notification credentials only from
-process environment variables:
+process environment variables. Telegram checks its development variables first and otherwise reads
+the saved credential record so the Settings authorization flow remains usable; X OAuth grants are
+always read from the operating-system credential store.
 
 ```sh
 export UGOS_USERNAME="..."
@@ -106,16 +141,57 @@ export MEMOS_API_KEY="..."
 export MOMENT_API_KEY="..."
 export KNOWLEDGE_API_KEY="..."
 export NTFY_TOKEN="..."
+export TELEGRAM_API_ID="..."
+export TELEGRAM_API_HASH="..."
+export TELEGRAM_CHANNEL_USERNAME="channel_username"
 pnpm dev
 ```
 
-Only define the values needed by the features under development. Missing values report the feature
-as unconfigured; empty values and incomplete credential pairs fail explicitly. This environment path
-is compiled only for debug builds. Release builds ignore it and use the operating-system credential
-store. Settings writes still target Keychain and do not rewrite the shell environment.
-The same names are shown as commented examples in the root `.env.example`; `.env` remains ignored by
-Git. Debug desktop and CLI startup load the repository-root `.env` before credentials are resolved.
-Values already exported by the parent process take precedence over entries in that file.
+Only define values needed by the features under development. Debug desktop and CLI startup load the
+ignored repository-root `.env`; variables inherited from the parent process take precedence. Missing
+values leave a feature unconfigured, while empty values and incomplete credential pairs fail
+explicitly. This resolution path is compiled only for debug builds. Settings writes target Keychain
+and never rewrite the process environment or `.env`; release builds ignore these variables and use
+only the operating-system credential store.
+
+Music providers are exceptions to environment-backed debug credentials. Spotify connects through the
+browser PKCE flow and requires no `.env` entry. Debug builds store both refresh grants in a private
+`development-spotify.json` file below the local application-data directory and never access
+Keychain for Spotify. Release builds store the same typed record in the operating-system credential
+store. QQ Music connects through its QR flow and uses `development-qq-music.json` in debug builds;
+release builds store its renewable session in the operating-system credential store.
+
+## Spotify Music configuration
+
+Choose Connect in Settings to run two PKCE grants in sequence: the shared Web API identity reads
+Liked Songs and Spotify's desktop identity authorizes librespot playback. No user-created Spotify
+application, Client ID, or Client Secret is required. Closing or denying either browser grant fails
+the connection immediately; a successful connection stores both refresh grants together, and later
+token rotations are serialized before the credential record is replaced.
+
+Local playback requires Spotify Premium and uses librespot's Rodio backend. Spotify Web requests,
+token exchange, album artwork, and playback have bounded operations and honor the operating-system
+HTTP(S) proxy. Browser-only proxy extensions are not visible to the desktop process.
+
+## QQ Music configuration
+
+Choose Connect in Settings. Rust requests a QQ login QR code, retains its `qrsig` only in the active
+in-memory login session, and sends the image to the centered Settings dialog. After the user scans
+and confirms in the QQ mobile app, Rust follows the trusted QQ redirect, exchanges its authorization
+code for QQ Music credentials, and stores the complete renewable session. The WebView receives only
+the QR image and waiting, scanned, complete, or expired states; it never receives the resulting
+Cookie or refresh token. Closing the dialog cancels the in-memory login session.
+
+Rust renews the private session on demand after twenty hours and persists all rotated fields
+together. Failed renewals back off for one hour before another attempt. A server-revoked refresh
+credential requires reconnecting through Settings.
+
+Rust reads the authenticated recommendation feed, locates its `每日30首` card, and resolves that
+card's dynamic playlist ID. Playback accepts only HTTPS media URLs below QQ Music's domain, chooses
+the best available FLAC, MP3, or M4A response, enforces a 100 MiB download limit, and decodes on the
+default system output. Session expiry, region, copyright, purchase, and membership rules can still
+make an individual track unavailable. These personal web endpoints are not a public QQ Music OpenAPI
+and may require maintenance when its web protocol changes.
 
 ## Content workflow
 
@@ -128,9 +204,11 @@ object requires a separate, explicit operation outside the current publisher.
 
 ## Credential boundaries
 
-- R2, UGOS, all three consumer API credentials, and the ntfy read token belong to
-  `crates/credentials` and the operating-system store. Upstream producer secrets remain outside
-  Vesper.
+- R2, UGOS, all three consumer API credentials, Telegram publication configuration, the X OAuth
+  grants, the Spotify refresh grants, the QQ Music session, and the ntfy read token belong
+  to `crates/credentials` and the operating-system store. The Telegram MTProto authorization key is
+  the narrow exception: it lives in the private application-data session file required by the
+  client. Upstream producer secrets remain outside Vesper.
 - Debug builds may read App Lock from `APP_LOCK_PASSWORD` in the repository-root `.env` when the
   operating-system credential store has no App Lock value. Saving a password in Settings makes the
   credential-store value take precedence. Release builds use only the operating-system credential

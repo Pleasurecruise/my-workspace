@@ -1,5 +1,5 @@
 use super::ApiError;
-use crate::r2::Store;
+use cms_core::r2::Store;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use vesper_credentials::{ConsumerApi, Stored};
@@ -10,7 +10,7 @@ mod media;
 pub(super) use media::Error as MediaError;
 
 const ENDPOINT: &str = "https://moment.you-find.me/api/v1";
-const PAGE_SIZE: usize = 24;
+const PAGE_SIZE: usize = 100;
 
 #[derive(Clone)]
 struct Client {

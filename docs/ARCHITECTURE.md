@@ -10,11 +10,15 @@ publication artifacts; this repository does not run a cloud application backend.
 | -------------------- | ------------------------------------------------------------------------------------------- |
 | `apps/desktop`       | Tauri v2 deliverable. Svelte renders views; Rust owns commands and application behavior.    |
 | `apps/cli`           | `vesper` executable for provider status, builds, publication, Todo, and consumer workflows. |
-| `crates/cms-core`    | Todo storage, Worker APIs, generic Markdown, consumer projections, builds, and R2 access.   |
+| `crates/cms-core`    | Generic Markdown, content builds, static publication, and R2 access.                        |
+| `crates/consumers`   | Memos, Moment, and Knowledge APIs, projections, and Moment media processing.                |
 | `crates/credentials` | Typed records in macOS Keychain, Windows Credential Manager, or Linux Secret Service.       |
 | `crates/logger`      | Shared `tracing` initialization.                                                            |
 | `crates/md-dialect`  | Publication and Knowledge Markdown dialect compilation.                                     |
+| `crates/music`       | Spotify and QQ Music authentication, collections, playback, album art, and lyrics.          |
 | `crates/quotes`      | Shared astronomy, exchange, GitHub, quotation, stock, weather, and status read providers.   |
+| `crates/social`      | Outbound Telegram Channel and X publication.                                                |
+| `crates/todo`        | Local Todo storage and ICS schedule projection.                                             |
 | `crates/ugos`        | Read-only UGOS Pro authentication, certificate pinning, and Task Manager telemetry.         |
 | `crates/useage`      | AI subscription and account-credit integrations. The spelling is intentional.               |
 | `packages/ui`        | Reusable Svelte primitives and design tokens.                                               |
@@ -32,12 +36,15 @@ Trusted device
   │    └─ typed Tauri commands
   ├─ vesper CLI
   └─ Rust boundaries
-       ├─ cms-core ─────── Consumer APIs ───── my-memos / my-moment / my-knowledge
-       │          ├─────── md-dialect ──────── publication and Knowledge Markdown
-       │          ├─────── Rust S3 SDK ─────── Cloudflare R2
-       │          └─────── application data ── todos.json
+       ├─ cms-core ─────── Rust S3 SDK ─────── Cloudflare R2
+       │          └─────── md-dialect ──────── publication Markdown
+       ├─ consumers ────── Worker APIs ─────── my-memos / my-moment / my-knowledge
+       │          └─────── cms-core R2 / Markdown
+       ├─ social ───────── MTProto / X API ─── outbound Memo publication
+       ├─ todo ─────────── application data ── todos.json / ICS
        ├─ credentials ──── operating-system credential store
        ├─ quotes ───────── external read-only data used by Dashboard and Markdown compilation
+       ├─ music ────────── Spotify Web API, QQ Music, and LRCLIB
        ├─ ugos ─────────── Tailscale ───────── UGOS Pro NAS
        └─ useage
             ├─ local Codex app-server and Grok runtime
@@ -97,6 +104,23 @@ bar, including the system title, traffic-light controls, and drag behavior. The 
 `InitialViews` snapshot asynchronously, so a slow or unavailable consumer API cannot block
 application startup.
 
+Music is owned by `crates/music`, with provider code grouped below `spotify/` and `qq/`. Spotify uses
+separate PKCE grants for Web API reads and librespot playback; QQ Music uses a private QR exchange and
+renews its session on demand. Refresh credentials are stored as one typed record per provider and
+rotated under a provider lock. Release builds use the operating-system credential store, while debug
+builds use owner-only files below application data to avoid repeated prompts from an ad-hoc app
+identity. The WebView receives connection status, QR state, and typed music projections, never
+tokens or cookies.
+
+Rust reads Spotify Liked Songs and resolves QQ Music's Daily 30 from its authenticated recommendation
+feed and dynamic playlist ID. Each collection is cached for five minutes, and concurrent cache misses
+share one refresh. Rust also owns queue order, track advancement, lyrics, media downloads, and
+decoding through librespot or Rodio; QQ's audio device remains on a dedicated thread. Remote artwork
+and QQ audio URLs are restricted to their provider HTTPS domains, and artwork reaches only the main
+webview through `vesper-music-cover`. The desktop persists neither a library mirror nor a lyric
+cache. Spotify playback requires Premium, and QQ availability follows the signed-in account's
+rights.
+
 Memos and Knowledge load through authenticated APIs; Moment metadata uses its API while image bytes
 use R2. At startup, Rust may reuse an unfiltered first page for up to 30 seconds. Normal reads bypass
 that cache, and writes or credential changes invalidate it. Svelte retains settled pages while
@@ -112,12 +136,21 @@ Rust renders Memo and Knowledge Markdown. Memo rendering also links bare web add
 rewriting code or explicit Markdown links.
 
 Moment cards decode their ThumbHash immediately and fetch the R2 thumbnail only when approaching the
-viewport; the viewer requests the original. Rust retains up to 64 recently used image objects within
-a 128 MiB process-memory limit. R2 credential changes clear that cache.
+viewport. The viewer displays that clear thumbnail while requesting the original. A private
+asynchronous `vesper-asset` webview protocol streams image bytes from the Rust R2 boundary without
+serializing them as JSON arrays. The protocol is restricted to the main webview and does not retain
+a separate browser cache. Rust retains up to 64 recently used image objects within a 128 MiB
+process-memory limit. R2 credential changes clear that cache.
+Moment loads the API's complete metadata batch in one request so local tag filters operate on the
+whole returned gallery without repeating that request for client-side pages. Image bytes remain lazy.
 
-Newspaper is a Rust-owned projection of Knowledge. `cms-core` classifies established edition tags,
+Newspaper is a Rust-owned projection of Knowledge. `consumers` classifies established edition tags,
 selects the latest Programmer Daily and Personal Daily documents, and marks editions for exclusion
-from the regular Knowledge index. Svelte renders that typed projection without interpreting tags.
+from the regular Knowledge index. Its overview reads the API's maximum lightweight summary batch,
+then fetches bodies only for regular articles and the latest issue in each newspaper stream. This
+keeps the active Knowledge index complete without downloading and compiling historical daily bodies;
+older history remains available through the CLI's explicit cursor reads. Svelte renders that typed
+projection without interpreting tags.
 Entering Newspaper refreshes the first Knowledge page immediately while retaining its settled
 content, and the active view refreshes near the top every 60 seconds. The desktop also refreshes
 Knowledge daily at 09:00 local time.
@@ -210,6 +243,19 @@ X/Twitter imports are prepared by the trusted Rust boundary: it validates a publ
 reads the post from the fixed FxTwitter endpoint, renders text and photo links as Markdown, and then
 creates a favorite through the same authenticated my-memos API.
 
+Outbound Memo publication belongs to `crates/social`. Public Memo cards expose compact Telegram and
+X actions beside the visibility label; private cards expose neither action. Each desktop publication
+command accepts only an ID, rereads that Memo through its authenticated API, and passes the returned
+content and visibility to `crates/social`, which independently rejects non-public Memos. Both
+providers receive a bounded plain-text projection followed by the Memo's canonical URL.
+
+Telegram uses a serialized MTProto user session whose authorization key and peer cache use crash-safe
+replacement in an owner-only application-data file. X uses an OAuth 2.0 Authorization Code flow with
+PKCE and a loopback callback. Its access token, rotating refresh token, Client ID, and expiration are
+stored as one operating-system credential record; publishing refreshes an expiring access token
+before calling the user-context posting endpoint. Provider failures expose operation and status only,
+never credentials or response bodies.
+
 ### Moment
 
 Moment uses `https://moment.you-find.me/api/v1` for complete D1 photo metadata, including original
@@ -239,14 +285,28 @@ The stored body, API payload, and content-hash conflict contract remain Markdown
 
 ## Local Todo persistence
 
-The `cms_core::todo` module owns a date-keyed calendar of Todo lists in the single `todos.json` file
-below the operating system's application data directory for `me.you-find.vesper`. The previous
-`today-todos.json` file is not read or migrated. Desktop and CLI use the new file. A sidecar lock
-serializes their operations, and every operation reloads the complete calendar before applying a
-change.
-While the desktop is running, a Rust timer emits the new date at local midnight without deleting any
-prior list. This clears the visible daily list by advancing to the new, initially empty date while
-preserving history. A deliberately selected historical or future date remains selected.
+The `todo` crate owns one date-keyed `todos.json` calendar below the application data directory for
+`me.you-find.vesper`. Desktop and CLI serialize writes with a sidecar lock, reload the file before a
+mutation, and replace a synced temporary file so an interrupted write does not truncate the last
+calendar. They never read or migrate the former `today-todos.json` format. A Rust midnight timer
+advances only a view that is still showing today; deliberately selected historical or future dates
+remain unchanged, and prior lists are retained.
+
+An optional sibling `ics` directory contains editable schedule sources as application data. Rust
+validates every source and materializes matching VEVENT occurrences when a date is read or when the
+desktop advances at midnight. The supported recurrence subset is DAILY, WEEKLY, MONTHLY, and YEARLY
+with INTERVAL, COUNT, UNTIL, simple BYDAY or BYMONTHDAY values, and EXDATE. Date-only and floating
+values retain their calendar date; UTC and IANA TZID-qualified times are converted into the device's
+current time zone before selecting a Todo date. Unknown time zones, malformed calendar structure,
+unsupported RRULE fields, and unsupported recurrence overrides fail explicitly instead of producing
+an approximate schedule.
+
+An occurrence identity combines the source file, UID, and date and is retained independently from
+the visible item. Consequently, completing or deleting an imported Todo is stable across later
+syncs, calendars may reuse UIDs, and a later hand-authored Todo with the same text is never converted
+into an imported item. Adding or replacing an ICS file is additive and does not delete existing
+Todos. Imported items carry calendar, start, end, location, and description details; hand-authored
+items store an explicit null detail projection. Svelte renders this typed data without parsing ICS.
 
 ## CLI consumer surface
 
@@ -254,7 +314,7 @@ The CLI groups commands by feature in `status.rs`, `todo.rs`, `memo.rs`, `knowle
 `moment.rs`. The three consumer features reuse the same typed REST modules as the desktop, including
 Memo's X import.
 Memo and Knowledge content stays behind their Worker APIs; Moment exposes explicit R2 binary transfer
-before REST metadata registration. Todo commands reuse `cms_core::todo` and accept an explicit date
+before REST metadata registration. Todo commands reuse `todo` and accept an explicit date
 for the same calendar-day operations available in the desktop. Detailed sequencing and rollback
 rules live in [WORKFLOW.md](WORKFLOW.md).
 

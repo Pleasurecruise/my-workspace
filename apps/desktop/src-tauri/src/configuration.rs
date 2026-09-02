@@ -1,6 +1,12 @@
 use crate::CommandResponse;
 use crate::cms::CmsState;
 use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
+
+#[derive(Default)]
+pub(crate) struct PublicationState {
+    pub(crate) x_operation: tokio::sync::Mutex<()>,
+}
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,6 +18,9 @@ pub(crate) struct ConfigurationStatus {
     ntfy_dev: bool,
     app_lock: StoredConfiguration<String>,
     app_lock_dev: bool,
+    spotify: StoredConfiguration<String>,
+    qq_music: StoredConfiguration<String>,
+    publication: social::PublicationConfigurationStatus,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -108,6 +117,36 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
             };
         }
     };
+    let spotify = match vesper_credentials::spotify() {
+        Ok(vesper_credentials::Stored::Ready(_)) => {
+            StoredConfiguration::Ready("shared-web-and-local-playback".to_owned())
+        }
+        Ok(vesper_credentials::Stored::Missing) => StoredConfiguration::Missing,
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
+    let qq_music = match vesper_credentials::qq_music() {
+        Ok(vesper_credentials::Stored::Ready(_)) => {
+            StoredConfiguration::Ready("renewable-session".to_owned())
+        }
+        Ok(vesper_credentials::Stored::Missing) => StoredConfiguration::Missing,
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
+    let publication = match social::read_config() {
+        Ok(publication) => publication,
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
     CommandResponse::Ready {
         data: ConfigurationStatus {
             ugos,
@@ -121,6 +160,9 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
             ntfy_dev,
             app_lock,
             app_lock_dev,
+            spotify,
+            qq_music,
+            publication,
         },
     }
 }
@@ -200,6 +242,65 @@ pub(crate) async fn save_api_configuration(
                 data: service.name().to_owned(),
             }
         }
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) fn read_publication() -> CommandResponse<social::PublicationConfigurationStatus> {
+    match social::read_config() {
+        Ok(data) => CommandResponse::Ready { data },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) fn save_telegram(
+    credentials: vesper_credentials::TelegramCredentials,
+) -> CommandResponse<String> {
+    match vesper_credentials::save_telegram(credentials) {
+        Ok(()) => CommandResponse::Ready {
+            data: "telegram".to_owned(),
+        },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn connect_x(app: tauri::AppHandle) -> CommandResponse<String> {
+    let state = app.state::<PublicationState>();
+    let _operation = state.x_operation.lock().await;
+    let authorization = match social::x_authorization().await {
+        Ok(authorization) => authorization,
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
+    if let Err(error) = app.opener().open_url(&authorization.url, None::<String>) {
+        return CommandResponse::Failed {
+            message: format!("Could not open X authorization: {error}"),
+        };
+    }
+    let credentials = match social::authenticate_x(authorization).await {
+        Ok(credentials) => credentials,
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
+    match vesper_credentials::save_x(credentials) {
+        Ok(()) => CommandResponse::Ready {
+            data: "x".to_owned(),
+        },
         Err(error) => CommandResponse::Failed {
             message: error.to_string(),
         },

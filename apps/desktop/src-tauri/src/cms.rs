@@ -8,25 +8,25 @@ const ASSET_BYTES: usize = 128 * 1024 * 1024;
 const VIEW_TTL: Duration = Duration::from_secs(30);
 
 pub(crate) struct ChannelRequest {
-    pub(crate) channel: cms_core::consumer::Channel,
+    pub(crate) channel: consumers::view::Channel,
     pub(crate) cursor: Option<String>,
-    pub(crate) filters: cms_core::api::memos::ListFilters,
+    pub(crate) filters: consumers::api::memos::ListFilters,
     pub(crate) read_cached_first_page: bool,
 }
 
 impl ChannelRequest {
-    pub(crate) fn initial(channel: cms_core::consumer::Channel) -> Self {
+    pub(crate) fn initial(channel: consumers::view::Channel) -> Self {
         Self {
             channel,
             cursor: None,
-            filters: cms_core::api::memos::ListFilters::default(),
+            filters: consumers::api::memos::ListFilters::default(),
             read_cached_first_page: true,
         }
     }
 }
 
 struct CachedView {
-    data: cms_core::consumer::ChannelView,
+    data: consumers::view::ChannelView,
     loaded_at: Instant,
 }
 
@@ -38,36 +38,32 @@ struct ViewCache {
 }
 
 impl ViewCache {
-    fn get(&self, channel: cms_core::consumer::Channel) -> Option<cms_core::consumer::ChannelView> {
+    fn get(&self, channel: consumers::view::Channel) -> Option<consumers::view::ChannelView> {
         let entry = match channel {
-            cms_core::consumer::Channel::Memos => self.memos.as_ref(),
-            cms_core::consumer::Channel::Moment => self.moment.as_ref(),
-            cms_core::consumer::Channel::Knowledge => self.knowledge.as_ref(),
+            consumers::view::Channel::Memos => self.memos.as_ref(),
+            consumers::view::Channel::Moment => self.moment.as_ref(),
+            consumers::view::Channel::Knowledge => self.knowledge.as_ref(),
         }?;
         (entry.loaded_at.elapsed() <= VIEW_TTL).then(|| entry.data.clone())
     }
 
-    fn insert(
-        &mut self,
-        channel: cms_core::consumer::Channel,
-        data: cms_core::consumer::ChannelView,
-    ) {
+    fn insert(&mut self, channel: consumers::view::Channel, data: consumers::view::ChannelView) {
         let entry = Some(CachedView {
             data,
             loaded_at: Instant::now(),
         });
         match channel {
-            cms_core::consumer::Channel::Memos => self.memos = entry,
-            cms_core::consumer::Channel::Moment => self.moment = entry,
-            cms_core::consumer::Channel::Knowledge => self.knowledge = entry,
+            consumers::view::Channel::Memos => self.memos = entry,
+            consumers::view::Channel::Moment => self.moment = entry,
+            consumers::view::Channel::Knowledge => self.knowledge = entry,
         }
     }
 
-    fn clear(&mut self, channel: cms_core::consumer::Channel) {
+    fn clear(&mut self, channel: consumers::view::Channel) {
         match channel {
-            cms_core::consumer::Channel::Memos => self.memos = None,
-            cms_core::consumer::Channel::Moment => self.moment = None,
-            cms_core::consumer::Channel::Knowledge => self.knowledge = None,
+            consumers::view::Channel::Memos => self.memos = None,
+            consumers::view::Channel::Moment => self.moment = None,
+            consumers::view::Channel::Knowledge => self.knowledge = None,
         }
     }
 }
@@ -116,7 +112,7 @@ impl AssetCache {
 }
 
 pub(crate) struct CmsState {
-    repository: tokio::sync::Mutex<Option<Arc<cms_core::consumer::Repository>>>,
+    repository: tokio::sync::Mutex<Option<Arc<consumers::view::Repository>>>,
     views: tokio::sync::Mutex<ViewCache>,
     assets: tokio::sync::Mutex<AssetCache>,
 }
@@ -132,14 +128,14 @@ impl Default for CmsState {
 }
 
 impl CmsState {
-    pub(crate) async fn repository(&self) -> Result<Arc<cms_core::consumer::Repository>, String> {
+    pub(crate) async fn repository(&self) -> Result<Arc<consumers::view::Repository>, String> {
         let mut state = self.repository.lock().await;
         if let Some(repository) = state.as_ref() {
             return Ok(Arc::clone(repository));
         }
         let repository = cms_core::r2::Store::from_credentials()
             .await
-            .map(cms_core::consumer::Repository::new)
+            .map(consumers::view::Repository::new)
             .map(Arc::new)
             .map_err(|error| error.to_string())?;
         *state = Some(Arc::clone(&repository));
@@ -158,7 +154,19 @@ impl CmsState {
         self.assets.lock().await.clear();
     }
 
-    pub(crate) async fn invalidate_view(&self, channel: cms_core::consumer::Channel) {
+    pub(crate) async fn asset(&self, key: &str) -> Result<Vec<u8>, String> {
+        if let Some(data) = self.cached_asset(key).await {
+            return Ok(data);
+        }
+        let repository = self.repository().await?;
+        let data = consumers::view::asset(key, repository.as_ref())
+            .await
+            .map_err(|error| error.to_string())?;
+        self.cache_asset(key.to_owned(), data.clone()).await;
+        Ok(data)
+    }
+
+    pub(crate) async fn invalidate_view(&self, channel: consumers::view::Channel) {
         self.views.lock().await.clear(channel);
     }
 
@@ -175,7 +183,7 @@ impl CmsState {
     pub(crate) async fn channel(
         &self,
         request: ChannelRequest,
-    ) -> CommandResponse<cms_core::consumer::ChannelView> {
+    ) -> CommandResponse<consumers::view::ChannelView> {
         let ChannelRequest {
             channel,
             cursor,
@@ -197,9 +205,9 @@ impl CmsState {
             return CommandResponse::Ready { data };
         }
         let result = match channel {
-            cms_core::consumer::Channel::Memos => {
-                match cms_core::api::memos::list(cursor, &filters).await {
-                    Ok(page) => Ok(cms_core::consumer::ChannelView::Memos {
+            consumers::view::Channel::Memos => {
+                match consumers::api::memos::list(cursor, &filters).await {
+                    Ok(page) => Ok(consumers::view::ChannelView::Memos {
                         connected: true,
                         memos: page.memos,
                         tags: Vec::new(),
@@ -208,12 +216,16 @@ impl CmsState {
                     Err(error) => Err(error.to_string()),
                 }
             }
-            cms_core::consumer::Channel::Knowledge => {
-                match cms_core::api::knowledge::list(cursor).await {
+            consumers::view::Channel::Knowledge => {
+                let result = match cursor {
+                    Some(cursor) => consumers::api::knowledge::list(Some(cursor)).await,
+                    None => consumers::api::knowledge::overview().await,
+                };
+                match result {
                     Ok(page) => {
                         let newspaper =
-                            cms_core::api::knowledge::latest_newspaper_issues(&page.documents);
-                        Ok(cms_core::consumer::ChannelView::Knowledge {
+                            consumers::api::knowledge::latest_newspaper_issues(&page.documents);
+                        Ok(consumers::view::ChannelView::Knowledge {
                             connected: true,
                             knowledge: page.documents,
                             newspaper,
@@ -223,18 +235,16 @@ impl CmsState {
                     Err(error) => Err(error.to_string()),
                 }
             }
-            cms_core::consumer::Channel::Moment => {
-                match cms_core::api::moment::list(cursor).await {
-                    Ok(page) => Ok(cms_core::consumer::ChannelView::Moment {
-                        connected: true,
-                        photos: page.photos,
-                        tags: Vec::new(),
-                        total: page.total,
-                        next_cursor: page.next_cursor,
-                    }),
-                    Err(error) => Err(error.to_string()),
-                }
-            }
+            consumers::view::Channel::Moment => match consumers::api::moment::list(cursor).await {
+                Ok(page) => Ok(consumers::view::ChannelView::Moment {
+                    connected: true,
+                    photos: page.photos,
+                    tags: Vec::new(),
+                    total: page.total,
+                    next_cursor: page.next_cursor,
+                }),
+                Err(error) => Err(error.to_string()),
+            },
         };
         match result {
             Ok(data) => {
@@ -256,8 +266,8 @@ mod tests {
     fn expires_view_cache() {
         let mut cache = ViewCache::default();
         cache.insert(
-            cms_core::consumer::Channel::Moment,
-            cms_core::consumer::ChannelView::Moment {
+            consumers::view::Channel::Moment,
+            consumers::view::ChannelView::Moment {
                 connected: true,
                 photos: Vec::new(),
                 tags: Vec::new(),
@@ -265,11 +275,11 @@ mod tests {
                 next_cursor: Some("cursor".to_owned()),
             },
         );
-        assert!(cache.get(cms_core::consumer::Channel::Moment).is_some());
+        assert!(cache.get(consumers::view::Channel::Moment).is_some());
         cache.moment.as_mut().unwrap().loaded_at =
             Instant::now() - VIEW_TTL - Duration::from_secs(1);
-        assert!(cache.get(cms_core::consumer::Channel::Moment).is_none());
-        cache.clear(cms_core::consumer::Channel::Moment);
+        assert!(cache.get(consumers::view::Channel::Moment).is_none());
+        cache.clear(consumers::view::Channel::Moment);
         assert!(cache.moment.is_none());
     }
 
@@ -297,28 +307,28 @@ mod tests {
         let state = CmsState::default();
 
         for channel in [
-            cms_core::consumer::Channel::Memos,
-            cms_core::consumer::Channel::Moment,
+            consumers::view::Channel::Memos,
+            consumers::view::Channel::Moment,
         ] {
             let channel_name = match channel {
-                cms_core::consumer::Channel::Memos => "memos",
-                cms_core::consumer::Channel::Moment => "moment",
-                cms_core::consumer::Channel::Knowledge => "knowledge",
+                consumers::view::Channel::Memos => "memos",
+                consumers::view::Channel::Moment => "moment",
+                consumers::view::Channel::Knowledge => "knowledge",
             };
             let first = state
                 .channel(ChannelRequest {
                     channel,
                     cursor: None,
-                    filters: cms_core::api::memos::ListFilters::default(),
+                    filters: consumers::api::memos::ListFilters::default(),
                     read_cached_first_page: false,
                 })
                 .await;
             let cursor = match first {
                 CommandResponse::Ready {
-                    data: cms_core::consumer::ChannelView::Memos { next_cursor, .. },
+                    data: consumers::view::ChannelView::Memos { next_cursor, .. },
                 }
                 | CommandResponse::Ready {
-                    data: cms_core::consumer::ChannelView::Moment { next_cursor, .. },
+                    data: consumers::view::ChannelView::Moment { next_cursor, .. },
                 } => next_cursor.expect("the live first page should have a cursor"),
                 CommandResponse::Ready { .. } => panic!("channel returned the wrong view"),
                 CommandResponse::Failed { message } => {
@@ -330,19 +340,19 @@ mod tests {
                 .channel(ChannelRequest {
                     channel,
                     cursor: Some(cursor),
-                    filters: cms_core::api::memos::ListFilters::default(),
+                    filters: consumers::api::memos::ListFilters::default(),
                     read_cached_first_page: false,
                 })
                 .await;
             match second {
                 CommandResponse::Ready {
-                    data: cms_core::consumer::ChannelView::Memos { memos, tags, .. },
+                    data: consumers::view::ChannelView::Memos { memos, tags, .. },
                 } => {
                     assert!(!memos.is_empty());
                     assert!(tags.is_empty());
                 }
                 CommandResponse::Ready {
-                    data: cms_core::consumer::ChannelView::Moment { photos, tags, .. },
+                    data: consumers::view::ChannelView::Moment { photos, tags, .. },
                 } => {
                     assert!(!photos.is_empty());
                     assert!(tags.is_empty());

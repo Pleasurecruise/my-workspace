@@ -1,10 +1,10 @@
 use crate::print_json;
-use cms_core::api::memos::{Update, Visibility};
+use consumers::api::memos::{Update, Visibility};
 use serde::Deserialize;
 use serde_json::json;
 
 const DEFAULT_LIMIT: usize = 10;
-const MAX_LIMIT: usize = cms_core::api::memos::PAGE_SIZE;
+const MAX_LIMIT: usize = consumers::api::memos::PAGE_SIZE;
 
 enum MemoFlag {
     Pinned,
@@ -33,7 +33,7 @@ struct PageInput {
 pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
     match (action, arguments) {
         ("tags", []) => {
-            let tags = cms_core::api::memos::tags()
+            let tags = consumers::api::memos::tags()
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "tags": tags }))
@@ -54,11 +54,11 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             if !(1..=MAX_LIMIT).contains(&limit) {
                 return Err(format!("memo limit must be between 1 and {MAX_LIMIT}"));
             }
-            let page = cms_core::api::memos::list(
+            let page = consumers::api::memos::list(
                 None,
-                &cms_core::api::memos::ListFilters {
+                &consumers::api::memos::ListFilters {
                     limit: Some(limit),
-                    ..cms_core::api::memos::ListFilters::default()
+                    ..consumers::api::memos::ListFilters::default()
                 },
             )
             .await
@@ -79,9 +79,9 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             {
                 return Err(format!("memo page limit must be between 1 and {MAX_LIMIT}"));
             }
-            let page = cms_core::api::memos::list(
+            let page = consumers::api::memos::list(
                 input.cursor,
-                &cms_core::api::memos::ListFilters {
+                &consumers::api::memos::ListFilters {
                     limit: input.limit,
                     search: input.search,
                     tags: input.tags,
@@ -99,15 +99,15 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             if query.is_empty() {
                 return Err("memo search query is required".to_owned());
             }
-            let result = cms_core::api::memos::search(&query)
+            let result = consumers::api::memos::search(&query)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&result)
         }
         ("create", content) if !content.is_empty() => {
-            let memo = cms_core::api::memos::create(
+            let memo = consumers::api::memos::create(
                 &content.join(" "),
-                cms_core::api::memos::Visibility::Private,
+                consumers::api::memos::Visibility::Private,
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -131,7 +131,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                     ));
                 }
             };
-            let memo = cms_core::api::memos::import_x(url, visibility)
+            let memo = consumers::api::memos::import_x(url, visibility)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&memo)
@@ -186,7 +186,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
         ("archive", [id]) => update_flag(id, MemoFlag::Archived, true).await,
         ("restore", [id]) => update_flag(id, MemoFlag::Archived, false).await,
         ("delete", [id]) => {
-            cms_core::api::memos::delete(id)
+            consumers::api::memos::delete(id)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "id": id, "deleted": true }))
@@ -200,7 +200,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
 }
 
 async fn update(id: &str, input: Update) -> Result<(), String> {
-    let memo = cms_core::api::memos::update(id, &input)
+    let memo = consumers::api::memos::update(id, &input)
         .await
         .map_err(|error| error.to_string())?;
     print_json(&memo)

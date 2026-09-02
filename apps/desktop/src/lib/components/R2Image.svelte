@@ -1,31 +1,39 @@
 <script lang="ts">
-	import { invoke } from "@tauri-apps/api/core";
+	import { convertFileSrc } from "@tauri-apps/api/core";
 	import { onMount } from "svelte";
 	import { thumbHashToDataURL } from "thumbhash";
-	import type { CommandResponse } from "../consumer";
 
 	let {
 		objectKey,
+		previewObjectKey = null,
 		thumbHash,
 		alt,
 		width,
 		height,
+		eager = false,
+		fit = "cover",
+		retryable = false,
 	}: {
 		objectKey: string;
+		previewObjectKey?: string | null;
 		thumbHash: string | null;
 		alt: string;
 		width: number;
 		height: number;
+		eager?: boolean;
+		fit?: "cover" | "contain";
+		retryable?: boolean;
 	} = $props();
 
 	let container = $state<HTMLDivElement | null>(null);
-	let originalSource = $state<string | null>(null);
 	let originalReady = $state(false);
 	let originalFailed = $state(false);
+	let previewFailed = $state(false);
 	let visible = $state(false);
-	let originalRequested = false;
-	let active = false;
+	let requestRevision = $state(0);
 	let thumbHashSource = $derived(decodeThumbHash(thumbHash));
+	let previewSource = $derived(previewObjectKey === null ? null : convertFileSrc(previewObjectKey, "vesper-asset"));
+	let originalSource = $derived(`${convertFileSrc(objectKey, "vesper-asset")}?revision=${requestRevision}`);
 
 	function decodeThumbHash(hash: string | null): string | null {
 		if (hash === null || hash.length === 0 || hash.length % 2 !== 0 || !/^[\da-f]+$/i.test(hash)) {
@@ -37,53 +45,21 @@
 		return thumbHashToDataURL(decoded);
 	}
 
-	async function loadOriginal() {
-		if (originalRequested || !visible) return;
-		originalRequested = true;
-		const response = await invoke<CommandResponse<number[]>>("read_asset", {
-			key: objectKey,
-		});
-		if (!active) return;
-		if (response.status === "failed") {
-			originalFailed = true;
-			return;
-		}
-		const separator = objectKey.lastIndexOf(".");
-		if (separator === -1) {
-			originalFailed = true;
-			return;
-		}
-		let contentType: string;
-		switch (objectKey.slice(separator + 1).toLowerCase()) {
-			case "png":
-				contentType = "image/png";
-				break;
-			case "webp":
-				contentType = "image/webp";
-				break;
-			case "avif":
-				contentType = "image/avif";
-				break;
-			case "jpg":
-			case "jpeg":
-				contentType = "image/jpeg";
-				break;
-			default:
-				originalFailed = true;
-				return;
-		}
-		originalSource = URL.createObjectURL(
-			new Blob([new Uint8Array(response.data)], { type: contentType }),
-		);
+	function retry() {
+		originalReady = false;
+		originalFailed = false;
+		requestRevision += 1;
 	}
 
 	onMount(() => {
-		active = true;
+		if (eager) {
+			visible = true;
+			return;
+		}
 		const observer = new IntersectionObserver(
 			(entries) => {
 				if (!entries.some((entry) => entry.isIntersecting)) return;
 				visible = true;
-				void loadOriginal();
 				observer.disconnect();
 			},
 			{ rootMargin: "400px" },
@@ -91,9 +67,7 @@
 		if (container !== null) observer.observe(container);
 
 		return () => {
-			active = false;
 			observer.disconnect();
-			if (originalSource !== null) URL.revokeObjectURL(originalSource);
 		};
 	});
 </script>
@@ -101,10 +75,20 @@
 <div
 	bind:this={container}
 	class="progressive-image"
-	class:unavailable={originalFailed && thumbHashSource === null}
+	class:contain={fit === "contain"}
+	class:unavailable={originalFailed && previewSource === null && thumbHashSource === null}
 	style={`aspect-ratio: ${width > 0 && height > 0 ? `${width} / ${height}` : "4 / 3"}`}
 >
-	{#if thumbHashSource !== null}
+	{#if previewSource !== null && !previewFailed}
+		<img
+			class="preview"
+			class:hidden={originalReady}
+			src={previewSource}
+			alt=""
+			aria-hidden="true"
+			onerror={() => (previewFailed = true)}
+		/>
+	{:else if thumbHashSource !== null}
 		<img
 			class="thumbhash"
 			class:hidden={originalReady}
@@ -113,7 +97,7 @@
 			aria-hidden="true"
 		/>
 	{/if}
-	{#if originalSource !== null}
+	{#if visible}
 		<img
 			class="original"
 			class:ready={originalReady}
@@ -126,18 +110,25 @@
 			onerror={() => (originalFailed = true)}
 		/>
 	{/if}
-	{#if originalFailed && thumbHashSource === null}
-		<span role="img" aria-label={`${alt}: image unavailable`}>Image unavailable</span>
+	{#if originalFailed}
+		<div class="image-error" role="alert">
+			<span>Full-resolution image unavailable</span>
+			{#if retryable}<button type="button" onclick={retry}>Retry</button>{/if}
+		</div>
 	{/if}
 </div>
 
 <style>
 	.progressive-image { position: relative; display: block; width: 100%; overflow: hidden; }
 	img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+	.contain img { object-fit: contain; }
 	.thumbhash { scale: 1.1; filter: blur(0.25rem); transition: opacity var(--duration-slow); }
-	.thumbhash.hidden { opacity: 0; }
+	.preview, .thumbhash { transition: opacity var(--duration-slow); }
+	.preview.hidden, .thumbhash.hidden { opacity: 0; }
 	.original { opacity: 0; transition: opacity var(--duration-slow); }
 	.original.ready { opacity: 1; }
 	.unavailable { display: grid; min-height: 12rem; place-items: center; color: var(--color-error); font-size: 0.68rem; }
-	@media (prefers-reduced-motion: reduce) { .thumbhash, .original { transition: none; } }
+	.image-error { position: absolute; inset: auto 0 0; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 0.6rem; padding: 0.55rem; background: var(--color-image-scrim); color: var(--color-on-dark); font-size: 0.68rem; }
+	.image-error button { padding: 0.2rem 0.5rem; border: 1px solid currentColor; border-radius: var(--radius-sm); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+	@media (prefers-reduced-motion: reduce) { .preview, .thumbhash, .original { transition: none; } }
 </style>

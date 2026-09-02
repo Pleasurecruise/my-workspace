@@ -168,7 +168,7 @@ impl Client {
 
 impl RemoteMemo {
     fn into_view(self) -> MemoView {
-        let html = crate::markdown::render_memo(&strip_tags(&self.content));
+        let html = cms_core::markdown::render_memo(&strip_tags(&self.content));
         MemoView {
             metadata_complete: true,
             memo: Memo {
@@ -256,6 +256,33 @@ pub async fn search(query: &str) -> Result<Page, ApiError> {
         memos,
         next_cursor: page.next_cursor,
     })
+}
+
+pub async fn read(id: &str) -> Result<MemoView, ApiError> {
+    if id.trim().is_empty() {
+        return Err(ApiError::Protocol("a memo ID is required".to_owned()));
+    }
+    let mut url = reqwest::Url::parse(&format!("{ENDPOINT}/memos/"))
+        .map_err(|_| ApiError::Protocol("the Memos endpoint is invalid".to_owned()))?;
+    url.path_segments_mut()
+        .map_err(|_| ApiError::Protocol("the Memos endpoint cannot contain a memo ID".to_owned()))?
+        .push(id);
+    let client = Client::load()?;
+    let response = client
+        .http
+        .get(url)
+        .bearer_auth(&client.api_key)
+        .send()
+        .await?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ApiError::Status {
+            operation: "read memo",
+            status,
+        });
+    }
+    let result: MemoResponse = response.json().await?;
+    Ok(result.memo.into_view())
 }
 
 pub async fn tags() -> Result<Vec<TagCount>, ApiError> {
@@ -604,7 +631,7 @@ mod tests {
         assert!(content.contains("\\<script\\>alert\\(1\\)\\</script\\>"));
         assert!(content.contains("\\[click\\]\\(javascript:alert\\(1\\)\\)"));
         assert!(content.contains("— Cloudflare \\*team\\* (@Cloudflare)"));
-        let html = crate::markdown::render_memo(&content);
+        let html = cms_core::markdown::render_memo(&content);
         assert!(!html.contains("<script>"));
         assert!(!html.contains("href=\"javascript:"));
     }

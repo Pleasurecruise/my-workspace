@@ -17,21 +17,53 @@
 	let latitude = $state("");
 	let longitude = $state("");
 	let uploading = $state(false);
+	let dragging = $state(false);
 	let error = $state("");
 	let tags = $derived([...new Set(tagText.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean))]);
+	const sourceLimit = 20 * 1024 * 1024;
+	const acceptedTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/avif", "image/heic", "image/heif"]);
+	const acceptedExtensions = [".png", ".jpg", ".jpeg", ".webp", ".avif", ".heic", ".heif"];
 
-	function selectFile(input: HTMLInputElement) {
-		const files = input.files;
-		input.value = "";
-		if (files === null) return;
-		const selected = files.item(0);
-		if (selected === null) return;
+	function selectFile(selected: File) {
+		const name = selected.name.toLowerCase();
+		if (!acceptedTypes.has(selected.type) && !acceptedExtensions.some((extension) => name.endsWith(extension))) {
+			error = "Please select a PNG, JPEG, WebP, AVIF, or HEIC image.";
+			return;
+		}
+		if (selected.size > sourceLimit) {
+			error = "The photo exceeds the 20 MB limit.";
+			return;
+		}
 		if (preview !== null) URL.revokeObjectURL(preview);
 		file = selected;
 		preview = URL.createObjectURL(selected);
 		previewFailed = false;
 		title = selected.name.replace(/\.[^.]+$/, "");
 		error = "";
+	}
+
+	function selectInputFile(input: HTMLInputElement) {
+		const selected = input.files === null ? null : input.files.item(0);
+		input.value = "";
+		if (selected !== null) selectFile(selected);
+	}
+
+	function dragOver(event: DragEvent) {
+		event.preventDefault();
+		if (event.dataTransfer !== null) event.dataTransfer.dropEffect = "copy";
+		dragging = true;
+	}
+
+	function dragLeave(event: DragEvent) {
+		if (event.currentTarget instanceof HTMLElement && event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+		dragging = false;
+	}
+
+	function dropFile(event: DragEvent) {
+		event.preventDefault();
+		dragging = false;
+		const selected = event.dataTransfer === null ? null : event.dataTransfer.files.item(0);
+		if (selected !== null) selectFile(selected);
 	}
 
 	function clearFile() {
@@ -109,14 +141,14 @@
 	</header>
 
 	{#if file === null}
-		<label class="drop-zone">
+		<label class:dragging class="drop-zone" ondragover={dragOver} ondragleave={dragLeave} ondrop={dropFile}>
 			<Upload size={22} />
-			<span>Choose an image</span>
+			<span>{dragging ? "Release to select this photo" : "Click or drag to select a photo"}</span>
 			<small>PNG, JPEG, WebP, AVIF or HEIC · maximum 20 MB</small>
 			<input
 				type="file"
 				accept="image/png,image/jpeg,image/webp,image/avif,image/heic,image/heif,.heic,.heif"
-				onchange={(event) => selectFile(event.currentTarget)}
+				onchange={(event) => selectInputFile(event.currentTarget)}
 			/>
 		</label>
 	{:else}
@@ -156,7 +188,8 @@
 	.upload-title strong { font-size: 1.125rem; font-weight: 600; }
 	.upload-title :global(svg) { color: var(--color-muted-foreground); }
 	.drop-zone { display: grid; min-height: 15rem; place-items: center; align-content: center; gap: 0.5rem; padding: 2.5rem; border: 2px dashed var(--color-border); border-radius: var(--radius-lg); color: var(--color-muted-foreground); cursor: pointer; transition: border-color var(--duration-fast), background var(--duration-fast); }
-	.drop-zone:hover { border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 5%, transparent); color: var(--color-foreground); }
+	.drop-zone:hover, .drop-zone.dragging { border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 5%, transparent); color: var(--color-foreground); }
+	.drop-zone.dragging { transform: scale(1.01); }
 	.drop-zone span { font-size: 0.875rem; font-weight: 600; }
 	.drop-zone small { font-size: 0.75rem; }
 	.drop-zone input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }

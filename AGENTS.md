@@ -13,8 +13,10 @@
 - `apps/desktop`: Tauri v2 application. Svelte 5 owns the view layer; Rust owns commands and runtime
   behavior below `src-tauri` and the shared crates.
 - `apps/cli`: Rust `vesper` command-line binary.
-- `crates/cms-core`: Markdown, content builds, publication, memo operations, consumer projections,
-  and R2 access.
+- `crates/cms-core`: Markdown, content builds, static publication, and R2 access.
+- `crates/consumers`: Memos, Moment, and Knowledge APIs, projections, and Moment media processing.
+- `crates/social`: outbound Telegram Channel and X publication.
+- `crates/todo`: local Todo storage and ICS schedule projection.
 - `crates/credentials`: operating-system credential-store boundary.
 - `crates/ugos`: read-only UGOS Pro boundary.
 - `crates/useage`: read-only AI subscription and credit providers. The spelling is intentional.

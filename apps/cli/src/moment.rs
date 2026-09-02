@@ -1,31 +1,31 @@
 use crate::print_json;
-use cms_core::api::moment::{Create, Update, Upload};
+use consumers::api::moment::{Create, Update, Upload};
 use serde_json::json;
 use std::path::Path;
 
 pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
     match (action, arguments) {
         ("tags", []) => {
-            let tags = cms_core::api::moment::tags()
+            let tags = consumers::api::moment::tags()
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "tags": tags }))
         }
         ("list", []) => {
-            let page = cms_core::api::moment::list(None)
+            let page = consumers::api::moment::list(None)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&page)
         }
         ("list", [cursor]) => {
-            let page = cms_core::api::moment::list(Some(cursor.to_owned()))
+            let page = consumers::api::moment::list(Some(cursor.to_owned()))
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&page)
         }
         ("search", query) if !query.is_empty() => {
             let query = query.join(" ");
-            let photos = cms_core::api::moment::search(&query)
+            let photos = consumers::api::moment::search(&query)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "photos": photos }))
@@ -33,7 +33,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
         ("create", [input]) => {
             let input: Create = serde_json::from_str(input)
                 .map_err(|error| format!("invalid moment create JSON: {error}"))?;
-            let photo = cms_core::api::moment::create(&input)
+            let photo = consumers::api::moment::create(&input)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&photo)
@@ -47,7 +47,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             let store = cms_core::r2::Store::from_credentials()
                 .await
                 .map_err(|error| error.to_string())?;
-            let photo = cms_core::api::moment::upload(&store, input, source)
+            let photo = consumers::api::moment::upload(&store, input, source)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&photo)
@@ -55,13 +55,13 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
         ("update", [id, input]) => {
             let input: Update = serde_json::from_str(input)
                 .map_err(|error| format!("invalid moment update JSON: {error}"))?;
-            let photo = cms_core::api::moment::update(id, &input)
+            let photo = consumers::api::moment::update(id, &input)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&photo)
         }
         ("delete", [id]) => {
-            cms_core::api::moment::delete(id)
+            consumers::api::moment::delete(id)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "id": id, "deleted": true }))

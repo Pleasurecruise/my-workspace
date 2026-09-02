@@ -45,6 +45,10 @@ category rail without a search field. One System Status category contains UGREEN
 UGREEN Storage, and UGREEN Network alongside Device CPU, Device Memory, Device Storage, and Device
 Network. Quota and Balance each list one independent widget per provider rather than a provider
 table. Provider-card content is vertically centered in its card.
+Todo titles are buttons that switch the fixed-size card from its list to a detail view. The detail
+view always shows the selected date and status, adds calendar timing, location, and description for
+ICS items, keeps long content in an internal scroll area, and uses a back action to restore the list
+without resizing the dashboard layout.
 
 NAS CPU, memory, and network cards pair the latest numeric value with a compact in-session SVG trend
 line; storage uses a used/free capacity bar. Each weather card shows one configured city with a
@@ -64,6 +68,8 @@ Memo composer and inline-editor focus belongs to the containing surface: an acce
 semantic accent halo replace a second textarea ring. Search retains its own accent focus border. Only
 one memo can be edited at a time. Choosing another memo first saves the changed draft; an unchanged
 draft closes without a request, and a failed save keeps the original editor and draft intact.
+Automatic pagination that fills a short consumer view remains visually quiet. The shared loading-more
+status appears only when reaching the end through user scrolling, while settled content stays visible.
 The complete tag index sits above search as a horizontally scrollable strip with counts. In the
 unfiltered feed, pinned entries live in a collapsed section ahead of the timeline; filtering exposes
 matching pinned entries directly. After pinning changes the feed position, the affected entry is
@@ -78,6 +84,8 @@ layout and do not inherit the active feed's tag index, search, or sort controls.
 be restored or permanently deleted from their row; Favorites owns the X/Twitter import field. Memo
 creation, editing, favorite, archive, sharing, and deletion actions report completion through
 non-blocking application toasts while request errors remain visible in the active surface.
+Only public Memo cards expose outbound publication. Their Telegram paper-plane and X icons sit
+immediately after the `public` label in the card header; private cards render no publication control.
 
 ## Knowledge interaction
 
@@ -98,16 +106,30 @@ stack. They remain transparent and frame-free so the consumer theme stays visibl
 
 ## Moment interaction
 
-Moment keeps the masonry gallery as its default surface. Matching the Moment consumer, Upload is a
-quiet icon beside the Gallery title and opens a focused upload view, while Filter is a separate icon
-control at the right of the header. The filter panel owns the complete tag index, Any/All tag
-matching, and ascending or descending date order; active tags appear as removable chips above it.
-Selecting a photo opens an application-modal
-viewer with keyboard navigation, metadata editing, public-link copying, and confirmed deletion. The
-viewer owns scroll focus while open. The focused upload view pairs the selected image with title,
-description, parsed tags, date, and coordinates; validation and upload errors stay in that view
-without replacing settled gallery data.
-The viewer groups share, edit, delete, and close icon actions into one top toolbar.
+Moment opens on a masonry gallery. Upload is a quiet action beside the Gallery title and enters a
+focused upload view; Filter remains a separate header action. The filter panel owns the complete tag
+index, Any/All matching, and date order, with active tags summarized as removable chips.
+
+Selecting a photo opens an application-modal viewer with keyboard navigation and one toolbar for
+share, edit, delete, and close. The viewer owns scroll focus and shows the clear thumbnail while the
+original loads. The upload view combines preview, title, description, tags, date, and coordinates;
+validation and upload failures remain local to that view and never replace settled gallery data.
+
+## Music interaction
+
+Music follows Moment in primary navigation. The upper-right segmented switch replaces search and
+selects Spotify Liked Songs or QQ Music Daily 30. Each source retains its last settled collection
+while mounted; switching resets the dedicated player surface to the selected source's list. Music
+does not expose browse, external search, or additional playlist navigation. Selecting a row starts
+local playback and replaces the library with a dedicated player. Returning through primary Music
+navigation restores the current source's library.
+
+The player is one centered column: rotating vinyl, one rolling lyric subtitle, track metadata,
+transport controls, and a seekable timeline with elapsed and total time. Synced lyrics follow their
+timestamps; plain lyrics advance proportionally. Previous and Next use the loaded library order,
+while one mode control cycles sequential, repeat-one, and shuffle for Rust-owned track-boundary
+advancement. There is no separate lyric card or scrollable lyric pane. Reduced-motion preferences
+stop vinyl and subtitle animation without hiding playback state.
 
 ## Window and theme
 

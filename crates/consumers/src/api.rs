@@ -13,7 +13,7 @@ pub enum ApiError {
     Credentials(vesper_credentials::CredentialError),
     MissingCredentials(&'static str),
     Media(moment::MediaError),
-    Store(crate::r2::StoreError),
+    Store(cms_core::r2::StoreError),
     Request(reqwest::Error),
     Status {
         operation: &'static str,
@@ -60,8 +60,8 @@ impl From<vesper_credentials::CredentialError> for ApiError {
     }
 }
 
-impl From<crate::r2::StoreError> for ApiError {
-    fn from(source: crate::r2::StoreError) -> Self {
+impl From<cms_core::r2::StoreError> for ApiError {
+    fn from(source: cms_core::r2::StoreError) -> Self {
         Self::Store(source)
     }
 }

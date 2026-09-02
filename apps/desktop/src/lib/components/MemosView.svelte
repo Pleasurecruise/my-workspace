@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { Archive, Check, CheckCircle2, ChevronRight, Clock3, Globe, Heart, Lock, Pencil, RotateCcw, Share2, Star, Trash2, X, XCircle } from "@lucide/svelte";
+	import { Archive, Check, CheckCircle2, ChevronRight, Clock3, Globe, Heart, Lock, Pencil, RotateCcw, Send, Share2, Star, Trash2, X, XCircle } from "@lucide/svelte";
 	import { Alert, AlertDescription, Badge, Button, Input } from "@my-workspace/ui";
 	import { openUrl } from "@tauri-apps/plugin-opener";
 	import { onMount, tick } from "svelte";
-	import type { CommandResponse, MemoTagCount, MemoUpdate, MemoView } from "../consumer";
+	import type { CommandResponse, MemoTagCount, MemoUpdate, MemoView, PublishedPost } from "../consumer";
 	import MemoEditor from "./MemoEditor.svelte";
 
 	let {
@@ -16,6 +16,8 @@
 		onimportx,
 		onupdate,
 		ondelete,
+		onpublishtelegram,
+		onpublishx,
 	}: {
 		memos: MemoView[];
 		tags: MemoTagCount[];
@@ -31,6 +33,8 @@
 		onimportx: (url: string, visibility: "public" | "private") => Promise<CommandResponse<MemoView>>;
 		onupdate: (id: string, input: MemoUpdate) => Promise<CommandResponse<MemoView>>;
 		ondelete: (id: string) => Promise<CommandResponse<string>>;
+		onpublishtelegram: (memo: MemoView) => Promise<CommandResponse<PublishedPost>>;
+		onpublishx: (memo: MemoView) => Promise<CommandResponse<PublishedPost>>;
 	} = $props();
 
 	const relativeFormatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
@@ -59,6 +63,7 @@
 	let sharedId = $state<string | null>(null);
 	let confirmingDelete = $state<string | null>(null);
 	let deleting = $state(false);
+	let publishing = $state<{ memoId: string; provider: "telegram" | "x" } | null>(null);
 	let highlightedId = $state<string | null>(null);
 	let memoList = $state<HTMLDivElement | null>(null);
 	let focusVersion = 0;
@@ -269,6 +274,20 @@
 		);
 	}
 
+	async function publish(memo: MemoView, provider: "telegram" | "x") {
+		if (memo.visibility !== "public" || publishing !== null) return;
+		publishing = { memoId: memo.id, provider };
+		error = "";
+		const response = await (provider === "telegram" ? onpublishtelegram(memo) : onpublishx(memo));
+		publishing = null;
+		if (response.status === "failed") {
+			error = response.message;
+			notify("error", `${provider === "telegram" ? "Telegram" : "X"} publication failed`);
+			return;
+		}
+		notify("success", `Published to ${provider === "telegram" ? "Telegram" : "X"}`);
+	}
+
 	async function remove(memo: MemoView) {
 		if (deleting) return;
 		deleting = true;
@@ -430,13 +449,28 @@
 						<span class="visibility-label">
 							{#if memo.visibility === "public"}<Globe size={11} /> Public{:else}<Lock size={11} /> Private{/if}
 						</span>
+						{#if memo.visibility === "public"}
+							<span class="publication-actions" aria-label="Publish memo">
+								<button type="button" disabled={publishing !== null} onclick={() => publish(memo, "telegram")} aria-label="Publish to Telegram" title="Publish to Telegram">
+									<Send size={11} />
+								</button>
+								<button type="button" disabled={publishing !== null} onclick={() => publish(memo, "x")} aria-label="Publish to X" title="Publish to X">
+									{@render XLogo()}
+								</button>
+							</span>
+						{/if}
 					{/if}
 					<Badge class="ml-auto bg-foreground text-[0.68rem] text-background">{dateBadge(memo.createdAt)}</Badge>
 				</header>
 
 				{#if editingId === memo.id}
 					<div class="inline-editor">
-						<MemoEditor bind:value={editContent} placeholder="Edit memo..." onsubmit={() => saveEdit(memo.id)} />
+						<MemoEditor
+							bind:value={editContent}
+							tags={tags.map((tag) => tag.name)}
+							placeholder="Edit memo..."
+							onsubmit={() => saveEdit(memo.id)}
+						/>
 					</div>
 				{:else}
 					<div class="memo-content">{@html memo.html}</div>
@@ -549,6 +583,10 @@
 		{/if}
 	</div>
 </section>
+
+{#snippet XLogo()}
+	<svg aria-hidden="true" viewBox="0 0 24 24" width="11" height="11"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
+{/snippet}
 
 {#if display === "archived" && deleteTarget !== null}
 	<div class="delete-dialog-backdrop" role="presentation" onclick={(event) => { if (event.currentTarget === event.target && !deleting) confirmingDelete = null; }}>
@@ -804,6 +842,40 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.25rem;
+	}
+
+	.publication-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.125rem;
+	}
+
+	.publication-actions button {
+		display: grid;
+		width: 1.35rem;
+		height: 1.35rem;
+		padding: 0;
+		place-items: center;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--color-muted-foreground);
+		cursor: pointer;
+	}
+
+	.publication-actions button:hover {
+		background: var(--color-muted);
+		color: var(--color-foreground);
+	}
+
+	.publication-actions button:disabled {
+		cursor: default;
+		opacity: 0.35;
+	}
+
+	.publication-actions button:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 1px;
 	}
 
 	.memo-content {

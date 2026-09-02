@@ -10,6 +10,10 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 
 const CHECK_MENU_ID: &str = "check-for-updates";
+#[cfg(debug_assertions)]
+const RELOAD_MENU_ID: &str = "reload-webview";
+#[cfg(debug_assertions)]
+const TOGGLE_DEVTOOLS_MENU_ID: &str = "toggle-developer-tools";
 const CHECK_FOR_UPDATES_EVENT: &str = "check-for-updates-requested";
 const CHECK_TIMEOUT: Duration = Duration::from_secs(15);
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -69,6 +73,27 @@ pub(crate) fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         application_menu.insert(&check_for_updates, 1)?;
     }
 
+    #[cfg(all(target_os = "macos", debug_assertions))]
+    for item in menu.items()? {
+        let MenuItemKind::Submenu(submenu) = item else {
+            continue;
+        };
+        if submenu.text()? != "View" {
+            continue;
+        }
+        let reload = MenuItem::with_id(app, RELOAD_MENU_ID, "Reload", true, Some("CmdOrCtrl+R"))?;
+        let toggle_devtools = MenuItem::with_id(
+            app,
+            TOGGLE_DEVTOOLS_MENU_ID,
+            "Toggle Developer Tools",
+            true,
+            Some("CmdOrCtrl+Alt+I"),
+        )?;
+        submenu.prepend(&toggle_devtools)?;
+        submenu.prepend(&reload)?;
+        break;
+    }
+
     #[cfg(not(target_os = "macos"))]
     if let Some(MenuItemKind::Submenu(help_menu)) = menu.get(HELP_SUBMENU_ID) {
         help_menu.prepend(&check_for_updates)?;
@@ -78,6 +103,28 @@ pub(crate) fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 }
 
 pub(crate) fn handle_menu_event(app: &tauri::AppHandle, event: &MenuEvent) {
+    #[cfg(debug_assertions)]
+    if event.id() == RELOAD_MENU_ID {
+        if let Some(webview) = app.get_webview_window("main")
+            && let Err(error) = webview.reload()
+        {
+            tracing::warn!(%error, "failed to reload the main webview");
+        }
+        return;
+    }
+
+    #[cfg(debug_assertions)]
+    if event.id() == TOGGLE_DEVTOOLS_MENU_ID {
+        if let Some(webview) = app.get_webview_window("main") {
+            if webview.is_devtools_open() {
+                webview.close_devtools();
+            } else {
+                webview.open_devtools();
+            }
+        }
+        return;
+    }
+
     if event.id() != CHECK_MENU_ID {
         return;
     }

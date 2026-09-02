@@ -22,10 +22,10 @@ consumer data, or perform a Memo, Knowledge, or Moment mutation through `vesper`
 
 ## Todo
 
-Todo commands operate on the same local calendar-day JSON file as the desktop and need no
-credential. `list` and `get` are reads; the remaining commands mutate today's list. Prefix any
-action with `todo --date YYYY-MM-DD` to use another desktop-visible calendar day. The desktop
-advances to a new empty daily list at local midnight while retaining earlier dates.
+Todo commands need no credential and use the same date-keyed JSON calendar as the desktop. Commands
+default to today; prefix an action with `todo --date YYYY-MM-DD` to target another desktop-visible
+date. `get` and `schedule-path` are pure reads, while `list` and `sync-ics` may persist unseen
+occurrences from managed schedules.
 
 ```sh
 vesper todo list
@@ -35,9 +35,19 @@ vesper todo update <id> <text>
 vesper todo complete <id>
 vesper todo reopen <id>
 vesper todo delete <id>
+vesper todo schedule-path
+vesper todo import-ics <path>...
+vesper todo sync-ics
 vesper todo --date 2026-08-26 list
 vesper todo --date 2026-08-26 create <text>
 ```
+
+`schedule-path` reports the managed `ics` directory beside `todos.json`. `import-ics` validates all
+sources before installing them, projects UTC and IANA TZID times into the device time zone, rejects
+unsupported recurrence semantics, and then syncs the selected date. Occurrences are added once per
+source file, UID, and source date; later completion or deletion is stable, and same-text manual Todos
+remain manual. `list` and `get` return nullable `details`: imported items include calendar, timing,
+location, and description, while manual items return `null`.
 
 ## Provider status
 
@@ -157,7 +167,7 @@ vesper memo delete <id>
 
 The list limit must be between 1 and 25. `page` accepts `cursor`, `limit`, `search`, `tags`,
 `sortByUpdated`, `archivedOnly`, and `favoritesOnly`; the last two are mutually exclusive. `patch`
-accepts the optional fields in `cms_core::api::memos::Update` and rejects an empty object. Quote
+accepts the optional fields in `consumers::api::memos::Update` and rejects an empty object. Quote
 Markdown and JSON that contain shell metacharacters.
 `import-x` creates a favorite through the same Rust workflow as the desktop and defaults to private
 visibility.
@@ -179,7 +189,7 @@ vesper knowledge delete <id> <expected-hash>
 ```
 
 Inspect an existing article with `knowledge get` before constructing an update. Do not invent fields;
-use the Rust input types in `crates/cms-core/src/api/knowledge.rs` as the local contract.
+use the Rust input types in `crates/consumers/src/api/knowledge.rs` as the local contract.
 
 ## Moment
 
@@ -201,13 +211,13 @@ vesper moment remove-object <r2-key>
 ```
 
 `upload-photo` uses the desktop's coordinated Rust workflow. Its JSON follows
-`cms_core::api::moment::Upload`. Rust accepts PNG, JPEG, WebP, AVIF, or HEIC up to 20 MB, applies
+`consumers::api::moment::Upload`. Rust accepts PNG, JPEG, WebP, AVIF, or HEIC up to 20 MB, applies
 camera orientation and available EXIF defaults, derives the normalized PNG, JPEG thumbnail, and
 ThumbHash, then rolls back objects written by the operation when a later step fails.
 
 If metadata creation fails after an upload, retry metadata creation before removing anything.
 `remove-object` is only for a verified orphan and can break an existing photo if its key is still
-referenced. Use the Rust input types in `crates/cms-core/src/api/moment.rs` as the local contract.
+referenced. Use the Rust input types in `crates/consumers/src/api/moment.rs` as the local contract.
 
 ## Output and failures
 

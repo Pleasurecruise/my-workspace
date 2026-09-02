@@ -148,12 +148,11 @@ metadata and stored-image removal.
 
 ## Todo
 
-Todo operations are local and require no credential. Desktop and CLI share the date-keyed
-`todos.json` file in Vesper's operating-system application data directory. The previous
-`today-todos.json` file is ignored without fallback or migration. CLI commands infer the current
-local date unless prefixed with `todo --date YYYY-MM-DD`; the desktop month calendar can select any
-date. At local midnight Rust
-advances today's view to the new empty list without deleting previous lists.
+Todo is a local, credential-free workflow shared by desktop and CLI. Both operate on the date-keyed
+`todos.json` file and serialize mutations with its sidecar lock; the obsolete `today-todos.json`
+format is never read or migrated. Commands default to the current local date, while
+`todo --date YYYY-MM-DD` targets the same historical or future date available in the desktop
+calendar. At midnight, only a desktop view still showing today advances to the next date.
 
 ```text
 vesper todo list
@@ -163,10 +162,24 @@ vesper todo update <id> <text>
 vesper todo complete <id>
 vesper todo reopen <id>
 vesper todo delete <id>
+vesper todo schedule-path
+vesper todo import-ics <path>...
+vesper todo sync-ics
 ```
 
-For any action above, use `vesper todo --date <YYYY-MM-DD> <action> [...]` to operate on the same
-historical or future day selectable in the desktop.
+`schedule-path` prints the managed sibling `ics` directory. `import-ics` validates every supplied
+source before installing any of them under their original file names, then syncs the selected date;
+files placed in that directory directly are validated on the next read. The parser accepts the
+documented recurrence subset, floating local values, UTC values, and IANA TZID-qualified times;
+zoned times are projected into the device time zone before date selection. Malformed structure,
+unknown zones, duplicate or unsupported RRULE fields, recurrence overrides, and invalid dates fail
+explicitly instead of being approximated.
+
+Every read and `sync-ics` materializes unseen occurrences for its selected date. Persistence records
+the source-file/UID/date identity separately from the visible Todo, so completion and deletion remain
+stable, separate calendars may reuse UIDs, and a same-text manual Todo remains manual. Replacing a
+schedule is additive: it may introduce new occurrences but does not remove existing imported or
+hand-authored items.
 
 ## Credentials and failure boundaries
 

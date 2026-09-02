@@ -1,5 +1,5 @@
 use crate::api::memos::MemoView;
-use crate::r2::{Store, StoreError};
+use cms_core::r2::{Store, StoreError};
 use serde::Serialize;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -113,5 +113,5 @@ pub async fn asset(key: &str, repository: &Repository) -> Result<Vec<u8>, Consum
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/consumer.rs"]
+#[path = "../tests/unit/view.rs"]
 mod tests;

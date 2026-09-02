@@ -18,6 +18,12 @@ export interface MemoView extends Memo {
   metadataComplete: boolean;
 }
 
+export interface PublishedPost {
+  provider: "telegram" | "x";
+  externalId: string;
+  url: string | null;
+}
+
 export interface MemoTagCount {
   name: string;
   count: number;
@@ -490,13 +496,26 @@ export type DashboardEvent =
   | { source: "github"; result: CommandResponse<GithubSnapshot> }
   | { source: "quotation"; result: CommandResponse<Quotation | null> };
 
+export interface TodoDetails {
+  calendar: string;
+  startDate: string;
+  startTime: string | null;
+  endDate: string | null;
+  endTime: string | null;
+  location: string | null;
+  description: string | null;
+}
+
+export interface TodoItem {
+  id: string;
+  text: string;
+  completed: boolean;
+  details: TodoDetails | null;
+}
+
 export interface TodoList {
   date: string;
-  items: Array<{
-    id: string;
-    text: string;
-    completed: boolean;
-  }>;
+  items: TodoItem[];
 }
 
 export interface UgosConfiguration {
@@ -518,6 +537,18 @@ export interface NtfyConfig {
   token: string;
   development: boolean;
 }
+
+export interface TelegramCredentials {
+  apiId: number;
+  apiHash: string;
+  channelUsername: string;
+}
+
+export type TelegramAuthorizationStatus =
+  | { status: "disconnected" }
+  | { status: "ready" }
+  | { status: "codeRequired" }
+  | { status: "passwordRequired"; hint: string | null };
 
 export interface NtfyNotification {
   id: string;
@@ -543,4 +574,43 @@ export interface ConfigurationStatus {
   ntfyDev: boolean;
   appLock: StoredConfiguration<string>;
   appLockDev: boolean;
+  spotify: StoredConfiguration<string>;
+  qqMusic: StoredConfiguration<string>;
+  publication: { telegram: boolean; x: boolean };
+}
+
+export type MusicProvider = "spotify" | "qqMusic";
+
+export interface QqQr {
+  image: string;
+}
+
+export type QqLoginStatus =
+  | { status: "waiting" }
+  | { status: "scanned" }
+  | { status: "complete" }
+  | { status: "expired" };
+
+export interface MusicTrack {
+  id: string;
+  name: string;
+  artists: string[];
+  album: string;
+  durationMs: number;
+  addedAt: string;
+  coverKey: string | null;
+}
+
+export interface MusicPlayback {
+  trackId: string | null;
+  playing: boolean;
+  progressMs: number;
+  durationMs: number;
+  order: "sequential" | "repeatOne" | "shuffle";
+}
+
+export interface MusicLyrics {
+  lines: Array<{ startMs: number | null; text: string }>;
+  synced: boolean;
+  instrumental: boolean;
 }

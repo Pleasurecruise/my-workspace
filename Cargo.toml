@@ -3,10 +3,14 @@ members = [
   "apps/cli",
   "apps/desktop/src-tauri",
   "crates/cms-core",
+  "crates/consumers",
   "crates/credentials",
   "crates/logger",
   "crates/md-dialect",
+  "crates/music",
   "crates/quotes",
+  "crates/social",
+  "crates/todo",
   "crates/ugos",
   "crates/useage",
 ]
@@ -32,18 +36,29 @@ der = "0.8"
 dotenvy = "0.15"
 dirs = "6"
 futures-util = "0.3"
+grammers-client = "0.10.0"
+grammers-session = { version = "0.10.0", default-features = false, features = ["serde"] }
 cms-core = { path = "crates/cms-core" }
+consumers = { path = "crates/consumers" }
 md-dialect = { path = "crates/md-dialect" }
+music = { path = "crates/music" }
 quotes = { path = "crates/quotes" }
+social = { path = "crates/social" }
+todo-core = { package = "todo", path = "crates/todo" }
 hex = "0.4"
 heic = { version = "0.1.6", features = ["av1"] }
+http = "1"
+hyper-util = { version = "0.1", features = ["client-proxy-system"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+jiff = "0.2.35"
 kamadak-exif = "0.6.1"
 keyring = "4.2.0"
 linkify = "0.11"
 mermaid-svg = "0.7.0"
 my-workspace-logger = { path = "crates/logger" }
 pulldown-cmark = "0.13.4"
+rand = "0.9"
+rodio = "0.21"
 useage = { path = "crates/useage" }
 reqwest = { version = "0.13", default-features = false, features = [
   "cookies",
@@ -55,6 +70,7 @@ reqwest = { version = "0.13", default-features = false, features = [
 ] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 openssl = { version = "0.10", features = ["vendored"] }
+percent-encoding = "2.3"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -78,3 +94,10 @@ ugos = { path = "crates/ugos" }
 vesper-credentials = { path = "crates/credentials" }
 time = { version = "0.3", features = ["formatting", "local-offset", "macros", "parsing"] }
 uuid = { version = "1", features = ["v4"] }
+
+[patch.crates-io]
+librespot-audio = { git = "https://github.com/crmne/librespot", branch = "fastpotify-0.8" }
+librespot-core = { git = "https://github.com/crmne/librespot", branch = "fastpotify-0.8" }
+librespot-metadata = { git = "https://github.com/crmne/librespot", branch = "fastpotify-0.8" }
+librespot-playback = { git = "https://github.com/crmne/librespot", branch = "fastpotify-0.8" }
+librespot-protocol = { git = "https://github.com/crmne/librespot", branch = "fastpotify-0.8" }

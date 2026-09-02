@@ -10,6 +10,7 @@ use vesper_credentials::{ConsumerApi, Stored};
 
 const ENDPOINT: &str = "https://knowledge.you-find.me/api/articles";
 const READ_CONCURRENCY: usize = 6;
+const OVERVIEW_PAGE_SIZE: &str = "100";
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -195,12 +196,35 @@ impl Client {
 
 pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
     let client = Client::load()?;
+    let page = read_summary_page(&client, cursor.as_deref(), "20").await?;
+    let documents = read_documents(&client, page.articles).await?;
+    Ok(Page {
+        documents,
+        cursor: page.cursor,
+    })
+}
+
+pub async fn overview() -> Result<Page, ApiError> {
+    let client = Client::load()?;
+    let page = read_summary_page(&client, None, OVERVIEW_PAGE_SIZE).await?;
+    let documents = read_documents(&client, overview_summaries(page.articles)).await?;
+    Ok(Page {
+        documents,
+        cursor: None,
+    })
+}
+
+async fn read_summary_page(
+    client: &Client,
+    cursor: Option<&str>,
+    limit: &str,
+) -> Result<ArticlePage, ApiError> {
     let mut request = client
         .http
         .get(ENDPOINT)
         .bearer_auth(&client.api_key)
-        .query(&[("limit", "20")]);
-    if let Some(cursor) = cursor.as_deref() {
+        .query(&[("limit", limit)]);
+    if let Some(cursor) = cursor {
         request = request.query(&[("cursor", cursor)]);
     }
     let response = request.send().await?;
@@ -211,8 +235,14 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
             status,
         });
     }
-    let page: ArticlePage = response.json().await?;
-    let documents = stream::iter(page.articles)
+    Ok(response.json().await?)
+}
+
+async fn read_documents(
+    client: &Client,
+    summaries: Vec<Summary>,
+) -> Result<Vec<Document>, ApiError> {
+    stream::iter(summaries)
         .map(|summary| {
             let client = client.clone();
             async move {
@@ -236,11 +266,32 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
         })
         .buffered(READ_CONCURRENCY)
         .try_collect()
-        .await?;
-    Ok(Page {
-        documents,
-        cursor: page.cursor,
-    })
+        .await
+}
+
+fn overview_summaries(summaries: Vec<Summary>) -> Vec<Summary> {
+    let mut latest_developer: Option<&Summary> = None;
+    let mut latest_personal: Option<&Summary> = None;
+    for summary in &summaries {
+        let latest = match newspaper_edition(&summary.tags) {
+            Some(NewspaperEdition::Developer) => &mut latest_developer,
+            Some(NewspaperEdition::Personal) => &mut latest_personal,
+            None => continue,
+        };
+        if latest.is_none_or(|current| summary.created_at > current.created_at) {
+            *latest = Some(summary);
+        }
+    }
+    let latest_developer = latest_developer.map(|summary| summary.id.clone());
+    let latest_personal = latest_personal.map(|summary| summary.id.clone());
+    summaries
+        .into_iter()
+        .filter(|summary| {
+            newspaper_edition(&summary.tags).is_none()
+                || Some(&summary.id) == latest_developer.as_ref()
+                || Some(&summary.id) == latest_personal.as_ref()
+        })
+        .collect()
 }
 
 pub async fn project_article(article: Article) -> Result<Document, ApiError> {
@@ -486,6 +537,57 @@ mod tests {
 
         assert_eq!(page.cursor.as_deref(), Some("next-page"));
         assert_eq!(page.articles[0].tags, ["rust", "api"]);
+    }
+
+    #[test]
+    fn overview_keeps_regular_articles_and_latest_newspapers() {
+        fn summary(id: &str, tags: &[&str], created_at: &str) -> Summary {
+            Summary {
+                id: id.to_owned(),
+                slug: id.to_owned(),
+                editions: HashMap::new(),
+                tags: tags.iter().map(|tag| (*tag).to_owned()).collect(),
+                visibility: Visibility::Private,
+                content_hash: id.to_owned(),
+                created_at: created_at.to_owned(),
+                updated_at: created_at.to_owned(),
+            }
+        }
+
+        let summaries = vec![
+            summary(
+                "developer-latest",
+                &["developer-daily"],
+                "2026-09-02T00:00:00Z",
+            ),
+            summary("regular-one", &["rust"], "2026-09-01T00:00:00Z"),
+            summary(
+                "personal-latest",
+                &["personal-daily"],
+                "2026-08-31T00:00:00Z",
+            ),
+            summary(
+                "developer-old",
+                &["developer-daily"],
+                "2026-08-30T00:00:00Z",
+            ),
+            summary("regular-two", &[], "2026-08-29T00:00:00Z"),
+            summary("personal-old", &["personal-daily"], "2026-08-28T00:00:00Z"),
+        ];
+        let ids: Vec<_> = overview_summaries(summaries)
+            .into_iter()
+            .map(|summary| summary.id)
+            .collect();
+
+        assert_eq!(
+            ids,
+            [
+                "developer-latest",
+                "regular-one",
+                "personal-latest",
+                "regular-two",
+            ]
+        );
     }
 
     #[test]
