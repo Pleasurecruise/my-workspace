@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from "svelte";
 	import type { KnowledgeDocument, NewspaperIssues } from "../consumer";
 
 	let { documents, issues, loading }: { documents: KnowledgeDocument[]; issues: NewspaperIssues; loading: boolean } = $props();
@@ -9,22 +10,27 @@
 		personal: "每日日报",
 	};
 
+	let viewElement = $state<HTMLDivElement | null>(null);
 	let selectedEdition = $state<EditionKind>("developer");
 	let turnDirection = $state<"left" | "right">("right");
 	const issue = $derived(documents.find((document) => document.id === issues[selectedEdition]) ?? null);
+
+	async function turnPage(edition: EditionKind) {
+		turnDirection = edition === "developer" ? "left" : "right";
+		selectedEdition = edition;
+		await tick();
+		viewElement?.closest("main")?.scrollTo({ top: 0, behavior: "instant" });
+	}
 </script>
 
-<div class="newspaper-view">
+<div bind:this={viewElement} class="newspaper-view">
 	<button
 		class="page-arrow previous"
 		type="button"
 		disabled={selectedEdition === "developer"}
 		aria-label="翻到程序员日报"
 		title="程序员日报"
-		onclick={() => {
-			turnDirection = "left";
-			selectedEdition = "developer";
-		}}
+		onclick={() => void turnPage("developer")}
 	><span aria-hidden="true"></span></button>
 	<button
 		class="page-arrow next"
@@ -32,10 +38,7 @@
 		disabled={selectedEdition === "personal"}
 		aria-label="翻到每日日报"
 		title="每日日报"
-		onclick={() => {
-			turnDirection = "right";
-			selectedEdition = "personal";
-		}}
+		onclick={() => void turnPage("personal")}
 	><span aria-hidden="true"></span></button>
 
 	<div class="page-stage">

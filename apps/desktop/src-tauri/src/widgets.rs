@@ -2,12 +2,14 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use tauri::Manager;
 
 use crate::CommandResponse;
 
-const FILE_NAME: &str = "dashboard-layout.json";
+const FILE_NAME: &str = "layout.json";
+static ACCESS: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
@@ -205,112 +207,16 @@ fn valid_stock_symbol(symbol: &str) -> bool {
 }
 
 fn decode(bytes: &[u8]) -> Result<Layout, String> {
-    let mut value: serde_json::Value = serde_json::from_slice(bytes)
-        .map_err(|error| format!("Dashboard layout is invalid: {error}"))?;
-    migrate_provider_widgets(&mut value);
-    migrate_todo_widget(&mut value);
-    let layout: Layout = serde_json::from_value(value)
+    let layout: Layout = serde_json::from_slice(bytes)
         .map_err(|error| format!("Dashboard layout is invalid: {error}"))?;
     layout.validate()?;
     Ok(layout)
 }
 
-fn migrate_todo_widget(value: &mut serde_json::Value) {
-    let Some(widgets) = value
-        .get_mut("widgets")
-        .and_then(serde_json::Value::as_array_mut)
-    else {
-        return;
-    };
-    let mut migrated = Vec::with_capacity(widgets.len() + 1);
-    for mut placement in widgets.drain(..) {
-        let is_legacy_todo = placement
-            .get("widget")
-            .and_then(|widget| widget.get("kind"))
-            .and_then(serde_json::Value::as_str)
-            == Some("todo");
-        if !is_legacy_todo {
-            migrated.push(placement);
-            continue;
-        }
-        let id = placement
-            .get("id")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("todo")
-            .to_owned();
-        if let Some(widget) = placement
-            .get_mut("widget")
-            .and_then(serde_json::Value::as_object_mut)
-        {
-            widget.insert("kind".to_owned(), serde_json::Value::from("calendar"));
-        }
-        migrated.push(placement);
-        migrated.push(serde_json::json!({
-            "id": format!("{id}-list"),
-            "widget": { "kind": "todoList" }
-        }));
-    }
-    *widgets = migrated;
-}
-
-fn migrate_provider_widgets(value: &mut serde_json::Value) {
-    let Some(widgets) = value
-        .get_mut("widgets")
-        .and_then(serde_json::Value::as_array_mut)
-    else {
-        return;
-    };
-    let mut migrated = Vec::with_capacity(widgets.len() + 3);
-    for mut placement in widgets.drain(..) {
-        let legacy_kind = placement
-            .get("widget")
-            .and_then(|widget| widget.get("kind"))
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned);
-        if !matches!(legacy_kind.as_deref(), Some("usage" | "quota" | "balance")) {
-            migrated.push(placement);
-            continue;
-        }
-        let id = placement
-            .get("id")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("provider")
-            .to_owned();
-        let primary_kind = if legacy_kind.as_deref() == Some("balance") {
-            "deepSeek"
-        } else {
-            "codex"
-        };
-        if let Some(kind) = placement
-            .get_mut("widget")
-            .and_then(serde_json::Value::as_object_mut)
-        {
-            kind.insert("kind".to_owned(), serde_json::Value::from(primary_kind));
-        }
-        migrated.push(placement);
-        if legacy_kind.as_deref() != Some("balance") {
-            migrated.push(serde_json::json!({
-                "id": format!("{id}-open-code"),
-                "widget": { "kind": "openCode" }
-            }));
-        }
-        if legacy_kind.as_deref() == Some("usage") {
-            migrated.push(serde_json::json!({
-                "id": format!("{id}-deep-seek"),
-                "widget": { "kind": "deepSeek" }
-            }));
-        }
-        if legacy_kind.as_deref() != Some("quota") {
-            migrated.push(serde_json::json!({
-                "id": format!("{id}-cherry-in"),
-                "widget": { "kind": "cherryIn" }
-            }));
-        }
-    }
-    *widgets = migrated;
-}
-
 fn read(path: &Path) -> Result<Layout, String> {
+    let _access = ACCESS
+        .lock()
+        .map_err(|error| format!("Dashboard layout storage is unavailable: {error}"))?;
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Layout::default()),
@@ -320,6 +226,9 @@ fn read(path: &Path) -> Result<Layout, String> {
 }
 
 fn write(path: &Path, layout: &Layout) -> Result<(), String> {
+    let _access = ACCESS
+        .lock()
+        .map_err(|error| format!("Dashboard layout storage is unavailable: {error}"))?;
     layout.validate()?;
     let parent = path
         .parent()
@@ -525,36 +434,13 @@ mod tests {
     }
 
     #[test]
-    fn migrates_combined_usage_widget_to_provider_widgets() {
-        let json = br#"{"widgets":[{"id":"usage","widget":{"kind":"usage"}}]}"#;
-        let layout = decode(json).expect("legacy usage layout");
-
-        assert_eq!(layout.widgets.len(), 4);
-        assert!(matches!(layout.widgets[0].widget, Widget::Codex));
-        assert!(matches!(layout.widgets[1].widget, Widget::OpenCode));
-        assert!(matches!(layout.widgets[2].widget, Widget::DeepSeek));
-        assert!(matches!(layout.widgets[3].widget, Widget::CherryIn));
-    }
-
-    #[test]
-    fn migrates_intermediate_quota_and_balance_widgets() {
-        let json = br#"{"widgets":[{"id":"quota","widget":{"kind":"quota"}},{"id":"balance","widget":{"kind":"balance"}}]}"#;
-        let layout = decode(json).expect("intermediate provider layout");
-
-        assert_eq!(layout.widgets.len(), 4);
-        assert!(matches!(layout.widgets[0].widget, Widget::Codex));
-        assert!(matches!(layout.widgets[1].widget, Widget::OpenCode));
-        assert!(matches!(layout.widgets[2].widget, Widget::DeepSeek));
-        assert!(matches!(layout.widgets[3].widget, Widget::CherryIn));
-    }
-
-    #[test]
-    fn migrates_combined_todo_widget_to_calendar_and_list() {
-        let json = br#"{"widgets":[{"id":"todo","widget":{"kind":"todo"}}]}"#;
-        let layout = decode(json).expect("legacy Todo layout");
-
-        assert_eq!(layout.widgets.len(), 2);
-        assert!(matches!(layout.widgets[0].widget, Widget::Calendar));
-        assert!(matches!(layout.widgets[1].widget, Widget::TodoList));
+    fn rejects_legacy_widgets() {
+        for kind in ["usage", "quota", "balance", "todo"] {
+            let bytes = serde_json::to_vec(&serde_json::json!({
+                "widgets": [{ "id": "legacy", "widget": { "kind": kind } }]
+            }))
+            .unwrap();
+            assert!(decode(&bytes).is_err(), "legacy widget {kind}");
+        }
     }
 }

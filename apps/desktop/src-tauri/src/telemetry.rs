@@ -15,7 +15,7 @@ pub(crate) struct Snapshot {
     cpu_history: Vec<PercentSample>,
     memory: MemorySample,
     memory_history: Vec<PercentSample>,
-    storage: Option<StorageSample>,
+    storage: Option<crate::storage::Capacity>,
     network: NetworkSample,
     network_history: Vec<NetworkSample>,
 }
@@ -30,15 +30,6 @@ struct PercentSample {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MemorySample {
-    used_percent: f64,
-    used_bytes: u64,
-    total_bytes: u64,
-    sampled_at: i64,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StorageSample {
     used_percent: f64,
     used_bytes: u64,
     total_bytes: u64,
@@ -107,23 +98,7 @@ impl Monitor {
             total_bytes: total_memory,
             sampled_at,
         };
-        let total_storage = self
-            .disks
-            .iter()
-            .map(|disk| disk.total_space())
-            .sum::<u64>();
-        let available_storage = self
-            .disks
-            .iter()
-            .map(|disk| disk.available_space())
-            .sum::<u64>();
-        let used_storage = total_storage.saturating_sub(available_storage);
-        let storage = (total_storage > 0).then_some(StorageSample {
-            used_percent: (used_storage as f64 / total_storage as f64 * 100.0).clamp(0.0, 100.0),
-            used_bytes: used_storage,
-            total_bytes: total_storage,
-            sampled_at,
-        });
+        let storage = crate::storage::capacity(&self.disks, sampled_at);
         let network = NetworkSample {
             receive_rate: self
                 .networks

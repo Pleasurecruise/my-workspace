@@ -9,6 +9,7 @@
 	import ExchangePanel from "./ExchangePanel.svelte";
 	import ServiceStatusPanel from "./ServiceStatusPanel.svelte";
 	import StocksPanel from "./StocksPanel.svelte";
+	import StoragePanel from "./StoragePanel.svelte";
 	import Todo from "./Todo.svelte";
 	import CalendarPanel from "./CalendarPanel.svelte";
 	import QuotationPanel from "./QuotationPanel.svelte";
@@ -466,10 +467,7 @@
 							{#if deviceTelemetryError !== null}<p class="metric-message" role="alert">{deviceTelemetryError}</p>{:else if deviceTelemetry !== null}<p><strong>{percentFormatter.format(deviceTelemetry.memory.usedPercent)}%</strong><span>{bytesLabel(deviceTelemetry.memory.usedBytes)} / {bytesLabel(deviceTelemetry.memory.totalBytes)}</span></p><svg class="sparkline" viewBox="0 0 160 44" preserveAspectRatio="none" role="img" aria-label="Current-device memory usage trend"><polyline points={chartPoints(deviceTelemetry.memoryHistory.map((point) => point.usedPercent))}></polyline></svg>{:else}<p class="metric-message">Reading current device…</p>{/if}
 						</article>
 					{:else if kind === "localStorage"}
-						<article class="metric">
-							<h2><Database size={15} /> Device Storage <small>Capacity</small></h2>
-							{#if deviceTelemetryError !== null}<p class="metric-message" role="alert">{deviceTelemetryError}</p>{:else if deviceTelemetry !== null && deviceTelemetry.storage !== null}<p><strong>{percentFormatter.format(deviceTelemetry.storage.usedPercent)}%</strong><span>{bytesLabel(deviceTelemetry.storage.usedBytes)} / {bytesLabel(deviceTelemetry.storage.totalBytes)}</span></p><div class="capacity" role="progressbar" aria-label="Current-device storage used capacity" aria-valuenow={deviceTelemetry.storage.usedPercent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${deviceTelemetry.storage.usedPercent}%`}></span></div><div class="capacity-labels"><span>Used</span><span>Free</span></div>{:else}<p class="metric-message">Reading current device…</p>{/if}
-						</article>
+						<StoragePanel storage={deviceTelemetry === null ? null : deviceTelemetry.storage} error={deviceTelemetryError} />
 					{:else if kind === "localNetwork"}
 						<article class="metric">
 							<h2><Network size={15} /> Device Network <small>Live</small></h2>

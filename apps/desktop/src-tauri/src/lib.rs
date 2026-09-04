@@ -9,6 +9,7 @@ mod dashboard;
 mod music;
 mod notifications;
 mod status;
+mod storage;
 mod telegram;
 mod telemetry;
 mod todo;
@@ -99,7 +100,7 @@ pub fn run() {
                             .header(header::CONTENT_TYPE, content_type)
                             .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
                             .header(header::CACHE_CONTROL, "no-store")
-                            .body(data)
+                            .body(data.as_ref().clone())
                             .expect("static asset response should build"),
                         Err(error) => {
                             tracing::warn!(%error, %key, "could not serve a Moment image");
@@ -241,6 +242,7 @@ pub fn run() {
             dashboard::refresh_dashboard,
             dashboard::set_dashboard_active,
             status::read_service_status_catalog,
+            storage::read_storage,
             widgets::read_layout,
             widgets::reset_layout,
             widgets::save_layout,

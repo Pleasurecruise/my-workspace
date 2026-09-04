@@ -208,6 +208,23 @@ export interface LocalStorageSample extends PercentSample {
   totalBytes: number;
 }
 
+export interface StorageBreakdown {
+  categories: {
+    category:
+      | "system"
+      | "applications"
+      | "documents"
+      | "development"
+      | "media"
+      | "appData"
+      | "other";
+    bytes: number;
+  }[];
+  incomplete: boolean;
+  unclassifiedBytes: number | null;
+  sampledAt: number;
+}
+
 export interface CodexUsage {
   planType: string | null;
   primary: RateLimitWindow | null;
@@ -385,6 +402,7 @@ export interface ServiceStatusReport {
     operationalPercent: number;
     operationalComponents: number;
     totalComponents: number;
+    affectedComponents: Array<{ name: string; status: ServiceStatusLevel }>;
     activeIncidents: number;
     updatedAt: string;
   }>;
@@ -399,6 +417,18 @@ export interface GithubSnapshot {
     days: Array<{ date: string; count: number; level: number }>;
   }>;
   recentActivity: GithubActivity[];
+  notifications:
+    | { status: "ready"; items: GithubNotification[]; hasMore: boolean }
+    | { status: "failed"; message: string };
+}
+
+export interface GithubNotification {
+  id: string;
+  title: string;
+  repository: string;
+  reason: string;
+  updatedAt: string;
+  url: string | null;
 }
 
 export interface Quotation {

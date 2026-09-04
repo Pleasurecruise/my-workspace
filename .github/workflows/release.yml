@@ -72,10 +72,12 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_RELEASE_TARGET: ${{ matrix.rust-target }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/desktop
+          tauriScript: ${{ runner.os == 'macOS' && 'bash ../../.github/scripts/tauri-release.sh' || 'pnpm exec tauri' }}
           tagName: v__VERSION__
           releaseName: Vesper v__VERSION__
           releaseBody: Download the installer for your platform from the assets below.

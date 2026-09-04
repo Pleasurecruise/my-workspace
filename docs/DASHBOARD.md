@@ -58,6 +58,8 @@ Upstream producers ──> ntfy.you-find.me/mail-summary ── authenticated SS
 - Vesper subscribes in Rust, reconnects with ntfy's `since=<last-id>` behavior, and keeps the newest
   200 messages locally for Inbox rendering.
 
+## Widget layout
+
 Dashboard cards occupy a user-configurable fixed desktop widget canvas. In edit mode, users drag a
 card itself with the four-way move pointer to reorder it, delete it from the small upper-right
 button, or restore the Rust-owned default; there is no separate drag handle or card-level component
@@ -66,12 +68,11 @@ boundary so a full-width card cannot split a populated row. The Add Widget actio
 category-based library with widget metadata and a selected-widget preview. The canvas keeps the same
 twelve-track arrangement at every window width; a narrow window scrolls horizontally and never
 projects a different order or column count. The layout is validated and stored locally in
-`dashboard-layout.json`; a missing file creates the default, while invalid stored data is reported
-without a silent fallback. The stored document is exactly `{ widgets }`; placements contain only
-their unique ID and typed widget configuration. Unknown fields are errors, and there is no layout
-version. The compatibility projection replaces former combined `usage`, `quota`, and `balance`
-placements with independent Codex, OpenCode Go, DeepSeek, and Cherry provider placements. Existing
-card-level narrow-screen breakpoints remain intact.
+`layout.json`. A missing file uses the default layout; invalid stored data is reported without
+substituting defaults. The document is exactly `{ widgets }`, with each placement containing a unique
+ID and a current typed widget configuration. Unknown fields and obsolete widget kinds are errors;
+there is no layout version or compatibility migration. Existing card-level narrow-screen breakpoints
+remain intact.
 
 The widget library uses a category rail without a search input. System Status contains both the
 explicitly named UGREEN CPU, UGREEN Memory, UGREEN Storage, and UGREEN Network widgets and the
@@ -79,6 +80,32 @@ Device CPU, Device Memory, Device Storage, and Device Network widgets backed by 
 Quota contains separate Codex, OpenCode Go, Claude, Grok, and Copilot widgets. Balance contains
 separate DeepSeek and Cherry widgets. Existing singleton widgets remain visible and are marked as
 added instead of disappearing from the library.
+
+## Current device
+
+`sysinfo` supplies CPU, memory, network and startup-filesystem capacity. Device Storage reports
+only the startup filesystem, so macOS APFS system and Data volumes do not add the same container
+capacity twice. External drives and mounted images are outside this card's scope. Capacity uses
+decimal GB; a missing filesystem or invalid capacity produces an unavailable state.
+
+On Unix, the Storage card separately requests a file-category scan when mounted and exposes an
+explicit rescan action. Rust uses `walkdir` on the current user's home and selected system folders,
+restricted to the startup filesystem (and macOS Data volume). It does not follow symlinks or cross
+nested mounts, deduplicates hard links, and counts allocated blocks. Directory conventions identify
+system files, applications, documents, development dependencies and build output, media, application
+data, and other files. Build-directory names such as `target` and `dist` require a parent project
+manifest; dependencies and tool stores retain their category throughout their descendants.
+
+Scans run outside the live telemetry sampler, with a twenty-second traversal budget and a one-million
+entry limit. Results remain in memory for five minutes; the card's rescan action bypasses this cache.
+Permission failures and budget exhaustion yield explicitly partial estimates. APFS shared blocks,
+snapshots, other users and unscanned folders can prevent category totals from matching disk usage;
+Rust reports the unclassified remainder only when it can be calculated without a negative result.
+These are file-based estimates, not macOS System Settings categories. Windows retains capacity
+reporting and explicitly reports that category scanning is unavailable.
+
+## Weather
+
 Weather widgets accept a city, region-qualified place, or postal code. Rust resolves each saved
 query through the [Open-Meteo Geocoding API][open-meteo-geocoding], then reads its forecast and
 timezone from [Open-Meteo][open-meteo]. Each card shows a local clock and the next six hourly
@@ -87,19 +114,20 @@ card-local failure and does not discard other weather cards.
 
 ## Service status
 
-Each service-status widget stores one Rust-validated catalog ID selected by name in the Add Widget
-dialog. The initial catalog contains GitHub, Codex, and DeepSeek; arbitrary status URLs are not
-accepted. Rust reads the public Statuspage summaries for [GitHub][github-status],
-[OpenAI][openai-status], and [DeepSeek][deepseek-status] with a fifteen-second timeout and bounded
-concurrency. GitHub and DeepSeek summarize their non-group components. Codex uses only OpenAI status
-components whose names identify Codex, so an unrelated ChatGPT incident does not mark Codex
-unavailable.
+Service-status widgets store a Rust-validated catalog ID for GitHub, Codex, or DeepSeek. Rust reads
+public Statuspage summaries for [GitHub][github-status], [OpenAI][openai-status], and
+[DeepSeek][deepseek-status] with a fifteen-second timeout and bounded concurrency. GitHub and
+DeepSeek include non-group components and page-wide active incidents. Codex includes only components
+whose names identify Codex and unresolved incidents linked to their IDs, including monitoring
+incidents after a component recovers.
 
-The card's progress bar is the current percentage of matching components reported operational; it
-is not historical uptime. The most severe matching component determines the displayed state, and
-the card also shows the number of active incidents returned by the status page. One failed endpoint
-remains local to its configured card. Status reads run on Dashboard entry, explicit refresh, and the
-sixty-second Dashboard polling interval.
+The projection contains overall health, the operational percentage, active-incident count, and the
+names and states of affected components, including maintenance and unknown states. Overall health
+uses the most severe matching component; the percentage measures current component health rather
+than historical uptime. Svelte renders this projection without reclassifying provider responses.
+
+Reads run on Dashboard entry, explicit refresh, and the sixty-second polling interval. An endpoint
+failure remains local to its configured card.
 
 ## Stocks
 
@@ -127,18 +155,27 @@ explicit refresh only.
 
 ## GitHub
 
-Dashboard uses the locally installed, authenticated GitHub CLI rather than storing a GitHub token.
-The Rust `quotes::github` boundary starts `gh api graphql`, applies a fifteen-second timeout, parses the
-typed response, and returns no credentials or raw provider errors to Svelte. `GITHUB_CLI_BINARY` can
-override CLI discovery; otherwise Vesper searches `PATH` and the user's login shell. Users must run
-`gh auth login` outside Vesper before this card can load.
+Dashboard uses the locally installed, authenticated GitHub CLI. The Rust `quotes::github` boundary
+runs contribution and notification requests concurrently with a fifteen-second timeout per request.
+It returns typed projections without credentials or raw provider errors. `GITHUB_CLI_BINARY` can
+override CLI discovery; otherwise Vesper searches `PATH` and the user's login shell. Users sign in
+through `gh auth login` outside Vesper.
 
-One GraphQL request loads the viewer's contribution calendar and recent commit, pull-request, and
-pull-request-review contributions. The calendar renders the last year as semantic success-color
-tiles. Rust maps an approved review to `approve`, other review states to `review`, merges those with
-pull requests and repository commit groups, sorts by occurrence time, and exposes only the latest
-three activities. GitHub participates in the unified refresh on the first Dashboard load, every
-later entry into Dashboard, and the explicit refresh action; it does not poll in the background.
+GraphQL supplies the contribution calendar and recent commit, pull-request and review contributions.
+Rust distinguishes approved reviews, merges activity kinds, sorts by occurrence time and returns
+the latest three entries. The calendar initially scrolls to the newest dates and remains aligned to
+the right when resized; users can scroll left to inspect history.
+
+A separate REST notifications request reads up to twenty latest unread threads for the same GitHub
+account. The card displays the notification reason, subject, repository and update date, highlighting
+review requests. A twenty-first result indicates that more notifications are available; the displayed
+count is not a claimed account-wide total. Known issue, pull-request and commit subjects link directly
+to GitHub; other subjects remain visible and can be accessed through Open inbox. Reads do not mark
+threads as read or change review assignments. The API requires `notifications` or `repo` scope; a
+failure stays within the Notifications section without hiding contributions and activity.
+
+GitHub refreshes on Dashboard entry and explicit refresh, without background polling. Neither
+contribution activity nor GitHub notifications are persisted in the local ntfy Inbox.
 
 ## Calendar and Todo
 
@@ -150,8 +187,7 @@ the card, and Back restores the list without changing the dashboard layout.
 
 Each date read has its own request revision. The view keeps settled data while loading and accepts a
 response only if it still matches the selected date, preventing a slower earlier request from
-replacing a newer selection. Stored legacy `todo` placements expand to separate Calendar and Todo
-placements while decoding the dashboard layout.
+replacing a newer selection. Calendar and Todo are stored as separate placements in the dashboard layout.
 
 Rust stores the date-keyed calendar in `todos.json`, shares it with `vesper todo` through a sidecar
 lock, and ignores the former `today-todos.json` format. Reads also sync the optional sibling `ics`

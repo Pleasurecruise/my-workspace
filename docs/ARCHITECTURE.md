@@ -70,7 +70,7 @@ returns stored values to prefill that trusted local form.
 The Rust Dashboard runtime owns external-source concurrency, per-source request revisions, and
 page-active polling. It sends a closed tagged event to Svelte as each source settles; the view layer
 only updates the corresponding card.
-Rust also owns the Dashboard widget layout stored as `dashboard-layout.json` below the
+Rust also owns the Dashboard widget layout stored as `layout.json` below the
 application data directory. Svelte adds, removes, and pointer-orders widgets through typed commands;
 Rust rejects unsupported widget IDs, fields, stock symbols, and duplicate entries before saving. The
 desktop canvas retains one fixed twelve-track arrangement at every window width, so narrowing the
@@ -82,10 +82,12 @@ the saved layout. These widgets are separate from the remote UGREEN NAS telemetr
 
 Configured service-status widgets store only a Rust-validated catalog ID. The desktop Rust boundary
 reads each provider's public status summary, narrows Codex to Codex-specific OpenAI components, and
-projects component health without exposing an arbitrary frontend network or URL boundary.
+projects component health and the names and states of affected services without exposing an
+arbitrary frontend network or URL boundary.
 
 Below `apps/desktop/src-tauri`, `lib.rs` owns application setup and command registration.
-`telemetry.rs` owns desktop-device sampling and its short in-memory histories. `cms.rs` owns
+`telemetry.rs` owns desktop-device sampling and its short in-memory histories; `storage.rs` owns
+startup-volume capacity and file-category estimates using `sysinfo` and `walkdir`. `cms.rs` owns
 the consumer repository plus view and image caches, `consumer.rs` owns the Memo, Moment, and
 Knowledge commands, and `todo.rs` owns the Todo command adapters. Provider and protocol behavior
 continues to live in the owning crates rather than these Tauri modules.
@@ -135,14 +137,16 @@ default non-archived page.
 Rust renders Memo and Knowledge Markdown. Memo rendering also links bare web addresses without
 rewriting code or explicit Markdown links.
 
-Moment cards decode their ThumbHash immediately and fetch the R2 thumbnail only when approaching the
-viewport. The viewer displays that clear thumbnail while requesting the original. A private
-asynchronous `vesper-asset` webview protocol streams image bytes from the Rust R2 boundary without
-serializing them as JSON arrays. The protocol is restricted to the main webview and does not retain
-a separate browser cache. Rust retains up to 64 recently used image objects within a 128 MiB
-process-memory limit. R2 credential changes clear that cache.
-Moment loads the API's complete metadata batch in one request so local tag filters operate on the
-whole returned gallery without repeating that request for client-side pages. Image bytes remain lazy.
+Moment loads the API's complete metadata batch in one request so local tag filters cover the whole
+returned gallery without repeating requests for client-side pages. Cards decode their ThumbHash
+immediately and fetch thumbnails near the viewport; the viewer retains its preview until the
+original has decoded. A main-webview-only `vesper-asset` protocol serves image bytes from Rust
+without JSON-array serialization or a separate browser cache.
+
+Rust shares image buffers across cache hits and concurrent reads of the same object. The cache
+retains at most 64 objects within 128 MiB; failed reads remain retryable. Clearing the cache also
+invalidates pending entries so older reads cannot refill it. R2 credential changes reset both the
+repository and image cache.
 
 Newspaper is a Rust-owned projection of Knowledge. `consumers` classifies established edition tags,
 selects the latest Programmer Daily and Personal Daily documents, and marks editions for exclusion
@@ -180,8 +184,9 @@ Dashboard architecture and external protocol details are documented separately i
 [DASHBOARD.md](DASHBOARD.md).
 
 The Dashboard's GitHub source is a desktop-local Rust process boundary. It invokes the authenticated
-`gh` CLI for one typed GraphQL snapshot when Dashboard is entered or explicitly refreshed; Svelte
-does not access GitHub or receive the CLI's credentials. GitHub query and projection details live in
+`gh` CLI for GraphQL contributions and REST unread notifications when Dashboard is entered or
+explicitly refreshed. Notification failures remain separate from the contribution projection;
+Svelte does not access GitHub or receive the CLI's credentials. GitHub query and projection details live in
 `crates/quotes/src/github.rs` and [DASHBOARD.md](DASHBOARD.md).
 
 ## Content production
@@ -283,7 +288,27 @@ The editor uses a Tiptap rich-text surface with Markdown parsing and serializati
 source mode preserves constructs that the configured rich-text schema cannot round-trip exactly.
 The stored body, API payload, and content-hash conflict contract remain Markdown-based.
 
-## Local Todo persistence
+## Local persistence
+
+Local files live below the operating-system application data directory for `me.you-find.vesper`
+(`~/Library/Application Support/me.you-find.vesper` on macOS). Each feature owns its format and
+validation; Vesper does not maintain a local content database or a disk-backed provider cache.
+
+| Data                                      | Owner and storage                                |
+| ----------------------------------------- | ------------------------------------------------ |
+| Widget order and configuration            | Desktop Rust, `layout.json`                      |
+| Date-keyed tasks and imported occurrences | `todo`, `todos.json` with `todos.lock`           |
+| Calendar sources                          | `todo`, sibling `ics/` directory                 |
+| Pending Inbox messages and replay cursor  | Desktop Rust, `notifications.json`               |
+| Telegram authorization session            | `social`, owner-only `telegram.session`          |
+| Credentials and renewable grants          | `credentials`, operating-system credential store |
+| Theme, local profile and sidebar width    | Svelte, WebView local storage                    |
+
+The layout reader accepts only the current `layout.json` format. A missing file uses the default
+layout; malformed data remains an explicit error. Development credential exceptions are described
+in [DEVELOPMENT.md](DEVELOPMENT.md).
+
+### Todo and calendar
 
 The `todo` crate owns one date-keyed `todos.json` calendar below the application data directory for
 `me.you-find.vesper`. Desktop and CLI serialize writes with a sidecar lock, reload the file before a

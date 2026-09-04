@@ -84,6 +84,7 @@
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
+		if (event.isComposing || event.keyCode === 229) return;
 		if (event.currentTarget instanceof HTMLTextAreaElement) editorElement = event.currentTarget;
 		if (open && event.key === "Escape") {
 			open = false;
@@ -134,6 +135,7 @@
 			range = null;
 			return;
 		}
+		if (range?.start === start && range.end === position && query === fragment) return;
 		query = fragment;
 		range = { start, end: position };
 		activeIndex = 0;

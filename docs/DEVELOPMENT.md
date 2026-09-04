@@ -27,8 +27,8 @@
 Use root commands for workspace-wide verification. A focused change may use package-specific Cargo
 or pnpm commands during iteration, but the owning package must pass before handoff.
 
-On macOS debug builds, the native View menu includes Reload and Toggle Developer Tools for local
-webview development. These development-only actions are omitted from release builds.
+On macOS, the native View menu includes Reload and Toggle Developer Tools in both debug and
+packaged release builds. Tauri’s `devtools` feature keeps the web inspector available in releases.
 
 Commit CI runs frontend and Rust verification as separate parallel jobs. The Rust job installs the
 Tauri Linux build dependencies and explicitly runs rustfmt, Clippy with warnings denied, Cargo check,
@@ -37,32 +37,30 @@ same individual checks for local diagnosis.
 
 ## Desktop releases
 
-The `Release` GitHub Actions workflow is manual-only. It has only a `workflow_dispatch` trigger and
-does not run for pushes, tags, pull requests, schedules, or GitHub Release events. Before starting it
-from the Actions page, update and commit the same application version in
-`apps/desktop/src-tauri/tauri.conf.json` and `apps/desktop/src-tauri/Cargo.toml`. The release action
-reads the committed Tauri application version and replaces `__VERSION__` in the release tag and
-name; the manual workflow has no duplicate version input.
+Run the `Release` workflow manually from GitHub Actions. Before each release, commit the same new
+version in `apps/desktop/src-tauri/tauri.conf.json` and `apps/desktop/src-tauri/Cargo.toml`. The
+workflow derives its `v<version>` tag and release name from that version and creates a draft with
+macOS Apple Silicon, macOS Intel, Linux, and Windows bundles. Publish the draft manually after all
+matrix jobs pass and the expected assets are present.
 
-A successful run creates a draft `v<version>` GitHub Release and uploads Tauri bundles for macOS
-Apple Silicon, macOS Intel, Linux, and Windows. After every matrix job succeeds, verify that all
-expected assets are present and publish the draft manually. Releasing the same version again targets
-the same tag, so advance the version before every new release.
+macOS uses Tauri's ad-hoc signing identity (`-`) to sign the complete application before creating
+DMG and updater archives. Each macOS job uses the [release script](../.github/scripts/tauri-release.sh)
+to build and run `codesign --verify --deep --strict` before uploading its assets. A build or signature
+failure stops that job. Ad-hoc signing needs no Apple certificate but provides neither Developer ID
+trust nor notarization; downloaded apps may still need first-launch approval in
+**Privacy & Security > Open Anyway**. See
+[Apple's instructions](https://support.apple.com/en-us/102445) and
+[Tauri's signing guide](https://v2.tauri.app/distribute/sign/macos/#ad-hoc-signing).
 
-The workflow also signs updater bundles and uploads their `.sig` files plus `latest.json`. Configure
-the repository Actions secrets `TAURI_SIGNING_PRIVATE_KEY` and
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the matching public key is committed in
-`apps/desktop/src-tauri/tauri.conf.json`. The workflow merges
-`apps/desktop/src-tauri/tauri.release.conf.json` to enable signed updater artifacts; ordinary local
-desktop builds leave them disabled and do not require the private key. Never rotate or discard this
-key pair while installations signed by it remain in use. The application reads the latest published
-manifest from `https://github.com/Pleasurecruise/my-workspace/releases/latest/download/latest.json`;
-draft and prerelease releases are not offered as updates. Vesper checks once at startup and exposes
-Check for Updates in the native application menu for explicit retries or later checks during the same
-run. The desktop HTTP client enables operating-system proxy discovery, so updater checks and downloads
-honor the HTTP/HTTPS proxy configured in macOS or Windows. A proxy application must expose itself
-through the operating system's proxy settings; an application-local proxy mode is not visible to
-Vesper.
+Updater signatures use the Actions secrets `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, paired with the public key in `tauri.conf.json`. The release
+configuration enables updater archives, `.sig` files, and `latest.json`; local builds do not require
+the private key. Preserve the signing key pair while existing installations depend on it.
+
+Vesper reads `https://github.com/Pleasurecruise/my-workspace/releases/latest/download/latest.json`
+at startup or through the native Check for Updates menu. Only published stable releases are offered.
+Requests honor the operating-system HTTP/HTTPS proxy; proxy applications must expose their settings
+to the operating system.
 
 ## R2 configuration
 
@@ -228,6 +226,13 @@ object requires a separate, explicit operation outside the current publisher.
 ```sh
 RUST_LOG=debug pnpm dev:cli
 ```
+
+## Dependency updates
+
+Keep dependency manifests and lockfiles synchronized. Two upstream constraints currently require
+locked versions: librespot's `vergen-gitcl` 1.x needs `vergen` 9.0.6, and `grammers-crypto` 0.10 needs
+`glass_pumpkin` 2.0.0-rc0. Later versions change shared traits or types and fail to compile. Reassess
+these constraints when upgrading their owning dependencies.
 
 ## Verification
 

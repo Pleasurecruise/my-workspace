@@ -45,6 +45,20 @@
 		return thumbHashToDataURL(decoded);
 	}
 
+	function revealOriginal(event: Event) {
+		if (!(event.currentTarget instanceof HTMLImageElement)) return;
+		const image = event.currentTarget;
+		const source = image.currentSrc;
+		void image.decode().then(
+			() => {
+				if (image.isConnected && image.currentSrc === source) originalReady = true;
+			},
+			() => {
+				if (image.isConnected && image.currentSrc === source) originalFailed = true;
+			},
+		);
+	}
+
 	function retry() {
 		originalReady = false;
 		originalFailed = false;
@@ -79,6 +93,15 @@
 	class:unavailable={originalFailed && previewSource === null && thumbHashSource === null}
 	style={`aspect-ratio: ${width > 0 && height > 0 ? `${width} / ${height}` : "4 / 3"}`}
 >
+	{#if thumbHashSource !== null}
+		<img
+			class="thumbhash"
+			class:hidden={originalReady}
+			src={thumbHashSource}
+			alt=""
+			aria-hidden="true"
+		/>
+	{/if}
 	{#if previewSource !== null && !previewFailed}
 		<img
 			class="preview"
@@ -87,14 +110,6 @@
 			alt=""
 			aria-hidden="true"
 			onerror={() => (previewFailed = true)}
-		/>
-	{:else if thumbHashSource !== null}
-		<img
-			class="thumbhash"
-			class:hidden={originalReady}
-			src={thumbHashSource}
-			alt=""
-			aria-hidden="true"
 		/>
 	{/if}
 	{#if visible}
@@ -106,7 +121,7 @@
 			{width}
 			{height}
 			decoding="async"
-			onload={() => (originalReady = true)}
+			onload={revealOriginal}
 			onerror={() => (originalFailed = true)}
 		/>
 	{/if}
@@ -122,13 +137,11 @@
 	.progressive-image { position: relative; display: block; width: 100%; overflow: hidden; }
 	img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
 	.contain img { object-fit: contain; }
-	.thumbhash { scale: 1.1; filter: blur(0.25rem); transition: opacity var(--duration-slow); }
-	.preview, .thumbhash { transition: opacity var(--duration-slow); }
+	.thumbhash { scale: 1.1; filter: blur(0.25rem); }
 	.preview.hidden, .thumbhash.hidden { opacity: 0; }
-	.original { opacity: 0; transition: opacity var(--duration-slow); }
+	.original { opacity: 0; }
 	.original.ready { opacity: 1; }
 	.unavailable { display: grid; min-height: 12rem; place-items: center; color: var(--color-error); font-size: 0.68rem; }
 	.image-error { position: absolute; inset: auto 0 0; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 0.6rem; padding: 0.55rem; background: var(--color-image-scrim); color: var(--color-on-dark); font-size: 0.68rem; }
 	.image-error button { padding: 0.2rem 0.5rem; border: 1px solid currentColor; border-radius: var(--radius-sm); background: transparent; color: inherit; cursor: pointer; font: inherit; }
-	@media (prefers-reduced-motion: reduce) { .preview, .thumbhash, .original { transition: none; } }
 </style>

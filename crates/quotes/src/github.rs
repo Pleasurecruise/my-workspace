@@ -56,6 +56,56 @@ pub struct GithubSnapshot {
     total_contributions: u32,
     weeks: Vec<ContributionWeek>,
     recent_activity: Vec<GithubActivity>,
+    notifications: GithubNotifications,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(
+    tag = "status",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+enum GithubNotifications {
+    Ready {
+        items: Vec<GithubNotification>,
+        has_more: bool,
+    },
+    Failed {
+        message: String,
+    },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubNotification {
+    id: String,
+    title: String,
+    repository: String,
+    reason: String,
+    updated_at: String,
+    url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct NotificationWire {
+    id: String,
+    subject: NotificationSubject,
+    repository: NotificationRepository,
+    reason: String,
+    updated_at: String,
+}
+
+#[derive(Deserialize)]
+struct NotificationSubject {
+    title: String,
+    url: Option<String>,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+#[derive(Deserialize)]
+struct NotificationRepository {
+    full_name: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -256,15 +306,18 @@ struct PullRequestReview {
 pub async fn read() -> Result<GithubSnapshot, String> {
     let binary = resolve_gh_binary()?;
     let query = format!("query={GITHUB_QUERY}");
-    let mut command = Command::new(binary);
+    let mut command = Command::new(&binary);
     command
-        .args(["api", "graphql", "-f", &query])
+        .args(["api", "--hostname", "github.com", "graphql", "-f", &query])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    let output = tokio::time::timeout(QUERY_TIMEOUT, command.output())
-        .await
+    let (output, notifications) = tokio::join!(
+        tokio::time::timeout(QUERY_TIMEOUT, command.output()),
+        read_notifications(&binary),
+    );
+    let output = output
         .map_err(|_| "GitHub CLI timed out while loading Dashboard data".to_owned())?
         .map_err(|error| format!("Could not start GitHub CLI: {error}"))?;
 
@@ -275,7 +328,79 @@ pub async fn read() -> Result<GithubSnapshot, String> {
         );
     }
 
-    parse_snapshot(&output.stdout)
+    let notifications = match notifications {
+        Ok(data) => data,
+        Err(message) => GithubNotifications::Failed { message },
+    };
+    parse_snapshot(&output.stdout, notifications)
+}
+
+async fn read_notifications(binary: &std::path::Path) -> Result<GithubNotifications, String> {
+    let mut command = Command::new(binary);
+    command
+        .args([
+            "api",
+            "--hostname",
+            "github.com",
+            "notifications?all=false&per_page=21",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(QUERY_TIMEOUT, command.output())
+        .await
+        .map_err(|_| "GitHub notifications timed out".to_owned())?
+        .map_err(|error| format!("Could not start GitHub CLI: {error}"))?;
+    if !output.status.success() {
+        return Err("Could not read GitHub notifications. Check `gh auth status`; the account needs the notifications or repo scope.".to_owned());
+    }
+    parse_notifications(&output.stdout)
+}
+
+fn parse_notifications(bytes: &[u8]) -> Result<GithubNotifications, String> {
+    let mut notifications: Vec<NotificationWire> = serde_json::from_slice(bytes)
+        .map_err(|error| format!("GitHub returned unsupported notification JSON: {error}"))?;
+    let has_more = notifications.len() > 20;
+    notifications.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+    notifications.truncate(20);
+    let items = notifications
+        .into_iter()
+        .map(|notification| {
+            // Only known REST subject routes have a corresponding browser URL.
+            let url = notification.subject.url.as_deref().and_then(|url| {
+                let prefix = format!(
+                    "https://api.github.com/repos/{}/",
+                    notification.repository.full_name
+                );
+                let subject = url.strip_prefix(&prefix)?;
+                let (route, id) = subject.split_once('/')?;
+                let page = match (notification.subject.kind.as_str(), route) {
+                    ("PullRequest", "pulls") if id.parse::<u64>().is_ok() => "pull",
+                    ("Issue", "issues") if id.parse::<u64>().is_ok() => "issues",
+                    ("Commit", "commits")
+                        if !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
+                    {
+                        "commit"
+                    }
+                    _ => return None,
+                };
+                Some(format!(
+                    "https://github.com/{}/{page}/{id}",
+                    notification.repository.full_name
+                ))
+            });
+            GithubNotification {
+                id: notification.id,
+                title: notification.subject.title,
+                repository: notification.repository.full_name,
+                reason: notification.reason,
+                updated_at: notification.updated_at,
+                url,
+            }
+        })
+        .collect();
+    Ok(GithubNotifications::Ready { items, has_more })
 }
 
 pub async fn read_repository(repository: &str) -> Result<RepositorySnapshot, String> {
@@ -313,7 +438,10 @@ pub async fn read_repository(repository: &str) -> Result<RepositorySnapshot, Str
     })
 }
 
-fn parse_snapshot(bytes: &[u8]) -> Result<GithubSnapshot, String> {
+fn parse_snapshot(
+    bytes: &[u8],
+    notifications: GithubNotifications,
+) -> Result<GithubSnapshot, String> {
     let response: GraphqlResponse = serde_json::from_slice(bytes)
         .map_err(|error| format!("GitHub CLI returned unsupported JSON: {error}"))?;
     if !response.errors.is_empty() {
@@ -395,6 +523,7 @@ fn parse_snapshot(bytes: &[u8]) -> Result<GithubSnapshot, String> {
         total_contributions: calendar.total_contributions,
         weeks,
         recent_activity,
+        notifications,
     })
 }
 
@@ -432,6 +561,52 @@ fn resolve_gh_binary() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_review_notifications_and_preserves_absent_links() {
+        let report = parse_notifications(br#"[
+            {"id":"1","repository":{"full_name":"octocat/hello"},"subject":{"title":"Review this","type":"PullRequest","url":"https://api.github.com/repos/octocat/hello/pulls/42"},"reason":"review_requested","updated_at":"2026-09-05T12:00:00Z"},
+            {"id":"2","repository":{"full_name":"octocat/hello"},"subject":{"title":"Unknown subject","type":"Discussion","url":null},"reason":"mention","updated_at":"2026-09-05T11:00:00Z"},
+            {"id":"3","repository":{"full_name":"octocat/hello"},"subject":{"title":"Invalid link","type":"Issue","url":"https://example.com/repos/octocat/hello/issues/1"},"reason":"assign","updated_at":"2026-09-05T10:00:00Z"}
+        ]"#).unwrap();
+        let GithubNotifications::Ready { items, has_more } = report else {
+            panic!("valid notifications");
+        };
+        assert!(!has_more);
+        assert_eq!(items[0].reason, "review_requested");
+        assert_eq!(
+            items[0].url.as_deref(),
+            Some("https://github.com/octocat/hello/pull/42")
+        );
+        assert!(items[1].url.is_none());
+        assert!(items[2].url.is_none());
+        assert!(parse_notifications(br#"{"message":"Forbidden"}"#).is_err());
+        assert!(parse_notifications(br#"[{"id":"missing-fields"}]"#).is_err());
+    }
+
+    #[test]
+    fn bounds_notification_list_without_claiming_total_count() {
+        let input: Vec<_> = (0..21)
+            .map(|id| {
+                serde_json::json!({
+                    "id": id.to_string(), "repository": { "full_name": "octocat/hello" },
+                    "subject": { "title": "Issue", "type": "Issue", "url": null },
+                    "reason": "mention", "updated_at": format!("2026-09-05T12:00:{id:02}Z")
+                })
+            })
+            .collect();
+        let report = parse_notifications(&serde_json::to_vec(&input).unwrap()).unwrap();
+        let GithubNotifications::Ready { items, has_more } = report else {
+            panic!("valid notifications");
+        };
+        assert!(has_more);
+        assert_eq!(items.len(), 20);
+        assert_eq!(items[0].id, "20");
+        let empty = parse_notifications(b"[]").unwrap();
+        assert!(
+            matches!(empty, GithubNotifications::Ready { items, has_more: false } if items.is_empty())
+        );
+    }
 
     #[test]
     fn parses_activity() {
@@ -472,10 +647,15 @@ mod tests {
                 }
               } }
             }"#,
+            GithubNotifications::Failed { message: "Notifications unavailable".to_owned() },
         )
         .expect("valid GitHub response");
 
         assert_eq!(snapshot.total_contributions, 42);
+        assert!(matches!(
+            snapshot.notifications,
+            GithubNotifications::Failed { .. }
+        ));
         assert_eq!(snapshot.weeks[0].days[0].level, 2);
         assert_eq!(snapshot.recent_activity.len(), 3);
         assert_eq!(
@@ -491,8 +671,14 @@ mod tests {
 
     #[test]
     fn rejects_graphql_errors() {
-        let error = parse_snapshot(br#"{"errors":[{"message":"bad credentials"}]}"#)
-            .expect_err("GraphQL errors must fail the provider");
+        let error = parse_snapshot(
+            br#"{"errors":[{"message":"bad credentials"}]}"#,
+            GithubNotifications::Ready {
+                items: Vec::new(),
+                has_more: false,
+            },
+        )
+        .expect_err("GraphQL errors must fail the provider");
         assert_eq!(
             error,
             "GitHub GraphQL returned an error while loading Dashboard data"

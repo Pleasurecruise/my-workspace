@@ -1,6 +1,6 @@
 use crate::CommandResponse;
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 const ASSET_LIMIT: usize = 64;
@@ -68,22 +68,25 @@ impl ViewCache {
     }
 }
 
+type AssetRequest = tokio::sync::Mutex<Option<Result<Arc<Vec<u8>>, String>>>;
+
 #[derive(Default)]
 struct AssetCache {
-    data: HashMap<String, Vec<u8>>,
+    data: HashMap<String, Arc<Vec<u8>>>,
+    requests: HashMap<String, Weak<AssetRequest>>,
     order: VecDeque<String>,
     bytes: usize,
 }
 
 impl AssetCache {
-    fn get(&mut self, key: &str) -> Option<Vec<u8>> {
-        let data = self.data.get(key)?.clone();
+    fn get(&mut self, key: &str) -> Option<Arc<Vec<u8>>> {
+        let data = Arc::clone(self.data.get(key)?);
         self.order.retain(|cached| cached != key);
         self.order.push_back(key.to_owned());
         Some(data)
     }
 
-    fn insert(&mut self, key: String, data: Vec<u8>) {
+    fn insert(&mut self, key: String, data: Arc<Vec<u8>>) {
         if data.len() > ASSET_BYTES {
             return;
         }
@@ -106,6 +109,7 @@ impl AssetCache {
 
     fn clear(&mut self) {
         self.data.clear();
+        self.requests.clear();
         self.order.clear();
         self.bytes = 0;
     }
@@ -142,28 +146,57 @@ impl CmsState {
         Ok(repository)
     }
 
-    pub(crate) async fn cached_asset(&self, key: &str) -> Option<Vec<u8>> {
-        self.assets.lock().await.get(key)
-    }
-
-    pub(crate) async fn cache_asset(&self, key: String, data: Vec<u8>) {
-        self.assets.lock().await.insert(key, data);
-    }
-
     pub(crate) async fn clear_assets(&self) {
         self.assets.lock().await.clear();
     }
 
-    pub(crate) async fn asset(&self, key: &str) -> Result<Vec<u8>, String> {
-        if let Some(data) = self.cached_asset(key).await {
-            return Ok(data);
+    pub(crate) async fn asset(&self, key: &str) -> Result<Arc<Vec<u8>>, String> {
+        let request = {
+            let mut cache = self.assets.lock().await;
+            if let Some(data) = cache.get(key) {
+                return Ok(data);
+            }
+            cache
+                .requests
+                .retain(|_, request| request.strong_count() > 0);
+            match cache.requests.get(key).and_then(Weak::upgrade) {
+                Some(request) => request,
+                None => {
+                    let request = Arc::new(AssetRequest::new(None));
+                    cache
+                        .requests
+                        .insert(key.to_owned(), Arc::downgrade(&request));
+                    request
+                }
+            }
+        };
+        let mut loaded = request.lock().await;
+        let result = match loaded.as_ref() {
+            Some(result) => result.clone(),
+            None => {
+                let result = match self.repository().await {
+                    Ok(repository) => consumers::view::asset(key, repository.as_ref())
+                        .await
+                        .map(Arc::new)
+                        .map_err(|error| error.to_string()),
+                    Err(message) => Err(message),
+                };
+                *loaded = Some(result.clone());
+                result
+            }
+        };
+        let mut cache = self.assets.lock().await;
+        if cache
+            .requests
+            .get(key)
+            .is_some_and(|pending| pending.ptr_eq(&Arc::downgrade(&request)))
+        {
+            cache.requests.remove(key);
+            if let Ok(data) = &result {
+                cache.insert(key.to_owned(), Arc::clone(data));
+            }
         }
-        let repository = self.repository().await?;
-        let data = consumers::view::asset(key, repository.as_ref())
-            .await
-            .map_err(|error| error.to_string())?;
-        self.cache_asset(key.to_owned(), data.clone()).await;
-        Ok(data)
+        result
     }
 
     pub(crate) async fn invalidate_view(&self, channel: consumers::view::Channel) {
@@ -287,16 +320,133 @@ mod tests {
     fn evicts_oldest_asset() {
         let mut cache = AssetCache::default();
         for index in 0..=ASSET_LIMIT {
-            cache.insert(format!("img/{index}.jpg"), vec![index as u8]);
+            cache.insert(format!("img/{index}.jpg"), Arc::new(vec![index as u8]));
         }
         assert!(cache.get("img/0.jpg").is_none());
         assert_eq!(
             cache.get(&format!("img/{ASSET_LIMIT}.jpg")),
-            Some(vec![ASSET_LIMIT as u8])
+            Some(Arc::new(vec![ASSET_LIMIT as u8]))
         );
         cache.clear();
         assert!(cache.data.is_empty());
         assert_eq!(cache.bytes, 0);
+    }
+
+    #[test]
+    fn keeps_recently_read_assets() {
+        let mut cache = AssetCache::default();
+        for index in 0..ASSET_LIMIT {
+            cache.insert(format!("img/{index}.jpg"), Arc::new(vec![index as u8]));
+        }
+        assert_eq!(cache.get("img/0.jpg"), Some(Arc::new(vec![0])));
+
+        cache.insert("img/new.jpg".to_owned(), Arc::new(vec![255]));
+
+        assert!(cache.get("img/1.jpg").is_none());
+        assert_eq!(cache.get("img/0.jpg"), Some(Arc::new(vec![0])));
+        assert_eq!(cache.get("img/new.jpg"), Some(Arc::new(vec![255])));
+        assert_eq!(cache.bytes, ASSET_LIMIT);
+    }
+
+    #[test]
+    fn replaces_cached_assets() {
+        let mut cache = AssetCache::default();
+        cache.insert("img/photo.jpg".to_owned(), Arc::new(vec![1, 2, 3]));
+        cache.insert("img/other.jpg".to_owned(), Arc::new(vec![4]));
+        cache.insert("img/photo.jpg".to_owned(), Arc::new(vec![5, 6]));
+
+        assert_eq!(cache.get("img/photo.jpg"), Some(Arc::new(vec![5, 6])));
+        assert_eq!(cache.get("img/other.jpg"), Some(Arc::new(vec![4])));
+        assert_eq!(cache.bytes, 3);
+        assert_eq!(cache.order.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn shares_pending_asset_reads() {
+        let state = CmsState::default();
+        let request = Arc::new(AssetRequest::new(None));
+        state
+            .assets
+            .lock()
+            .await
+            .requests
+            .insert("photo".to_owned(), Arc::downgrade(&request));
+        let mut loaded = request.lock().await;
+        let first = state.asset("photo");
+        let second = state.asset("photo");
+        tokio::pin!(first, second);
+        assert!(futures_util::poll!(&mut first).is_pending());
+        assert!(futures_util::poll!(&mut second).is_pending());
+        let bytes = Arc::new(vec![1, 2, 3]);
+        *loaded = Some(Ok(Arc::clone(&bytes)));
+        drop(loaded);
+
+        let (first, second) = tokio::join!(first, second);
+        assert!(Arc::ptr_eq(&first.expect("first read"), &bytes));
+        assert!(Arc::ptr_eq(&second.expect("second read"), &bytes));
+        assert!(Arc::ptr_eq(
+            &state.asset("photo").await.expect("cached read"),
+            &bytes
+        ));
+        assert!(state.assets.lock().await.requests.is_empty());
+    }
+
+    #[tokio::test]
+    async fn shares_asset_errors_without_caching_them() {
+        let state = CmsState::default();
+        let request = Arc::new(AssetRequest::new(None));
+        state
+            .assets
+            .lock()
+            .await
+            .requests
+            .insert("photo".to_owned(), Arc::downgrade(&request));
+        let mut loaded = request.lock().await;
+        let first = state.asset("photo");
+        let second = state.asset("photo");
+        tokio::pin!(first, second);
+        assert!(futures_util::poll!(&mut first).is_pending());
+        assert!(futures_util::poll!(&mut second).is_pending());
+        *loaded = Some(Err("download failed".to_owned()));
+        drop(loaded);
+
+        let (first, second) = tokio::join!(first, second);
+        assert_eq!(first, Err("download failed".to_owned()));
+        assert_eq!(second, Err("download failed".to_owned()));
+        let cache = state.assets.lock().await;
+        assert!(cache.requests.is_empty());
+        assert!(cache.data.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cleared_assets_stay_invalidated() {
+        let state = CmsState::default();
+        let request = Arc::new(AssetRequest::new(None));
+        state
+            .assets
+            .lock()
+            .await
+            .requests
+            .insert("photo".to_owned(), Arc::downgrade(&request));
+        let mut loaded = request.lock().await;
+        let read = state.asset("photo");
+        tokio::pin!(read);
+        assert!(futures_util::poll!(&mut read).is_pending());
+        state.clear_assets().await;
+        let replacement = Arc::new(AssetRequest::new(None));
+        state
+            .assets
+            .lock()
+            .await
+            .requests
+            .insert("photo".to_owned(), Arc::downgrade(&replacement));
+        *loaded = Some(Ok(Arc::new(vec![1])));
+        drop(loaded);
+
+        assert!(read.await.is_ok());
+        let cache = state.assets.lock().await;
+        assert!(cache.data.is_empty());
+        assert!(cache.requests["photo"].ptr_eq(&Arc::downgrade(&replacement)));
     }
 
     #[tokio::test]

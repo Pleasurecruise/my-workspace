@@ -51,13 +51,20 @@ ICS items, keeps long content in an internal scroll area, and uses a back action
 without resizing the dashboard layout.
 
 NAS CPU, memory, and network cards pair the latest numeric value with a compact in-session SVG trend
-line; storage uses a used/free capacity bar. Each weather card shows one configured city with a
-24-hour local clock and six hourly forecast cells. Stock cards show a configured ticker's current
+line; NAS storage uses a used/free capacity bar. Device Storage shows startup-disk used, total and
+free capacity in decimal GB, followed by the complete category breakdown. A separate rescan control
+and timestamp describe the estimates; partial scans remain labeled and do not replace live capacity.
+Each weather card shows one configured city with a 24-hour local clock and six hourly forecast cells. Stock cards show a configured ticker's current
 price, daily change, and recent trend. The optional exchange card uses the same four-track footprint
 to compare USD, GBP, and EUR against CNY, emphasizing USD/CNY while keeping the provider date visible.
-Service-status cards pair a current state with an operational-component progress bar and expose
-numeric progress bounds to assistive technology. Their service name is searched and explicitly
-selected in the widget library rather than entered as a URL.
+Service-status cards pair overall health with the names and states of affected services. The list
+scrolls within the card when needed; a healthy card shows “All services operational.” The health
+bar exposes numeric bounds to assistive technology. Users select a service from the widget catalog.
+
+The GitHub card places recent activity and unread notifications beside the contribution calendar.
+The calendar opens at the most recent dates; notifications show their reason and repository, with
+review requests explicitly labeled. Long notification lists scroll within the card, and Open inbox
+leads to GitHub. Notification failures remain local to that section.
 
 Loading state must preserve already settled information. Initial placeholders belong inside the
 affected card; background polling must not replace the entire Dashboard with a loading surface.
@@ -68,6 +75,9 @@ Memo composer and inline-editor focus belongs to the containing surface: an acce
 semantic accent halo replace a second textarea ring. Search retains its own accent focus border. Only
 one memo can be edited at a time. Choosing another memo first saves the changed draft; an unchanged
 draft closes without a request, and a failed save keeps the original editor and draft intact.
+Tag completion supports Up/Down selection, Enter or Tab insertion, and Escape dismissal without
+interfering with input-method composition.
+
 Automatic pagination that fills a short consumer view remains visually quiet. The shared loading-more
 status appears only when reaching the end through user scrolling, while settled content stays visible.
 The complete tag index sits above search as a horizontally scrollable strip with counts. In the
@@ -77,6 +87,7 @@ centered in the viewport. Bare web addresses in memo bodies render as links. Ext
 the system browser; a `memos.you-find.me/memo/{id}` link remains in the application, loads successive
 feed pages until the target is present, expands the pinned section when needed, then smoothly centers
 and briefly highlights the card.
+
 The lower-right Archive and Favorites actions switch the feed between active, archived, and favorite
 memos. Selecting the current filter again returns to the active feed. Each view loads its matching
 server-side projection. Archive and Favorites follow the consumer's compact month-grouped reading
@@ -84,6 +95,7 @@ layout and do not inherit the active feed's tag index, search, or sort controls.
 be restored or permanently deleted from their row; Favorites owns the X/Twitter import field. Memo
 creation, editing, favorite, archive, sharing, and deletion actions report completion through
 non-blocking application toasts while request errors remain visible in the active surface.
+
 Only public Memo cards expose outbound publication. Their Telegram paper-plane and X icons sit
 immediately after the `public` label in the card header; private cards render no publication control.
 
@@ -110,10 +122,11 @@ Moment opens on a masonry gallery. Upload is a quiet action beside the Gallery t
 focused upload view; Filter remains a separate header action. The filter panel owns the complete tag
 index, Any/All matching, and date order, with active tags summarized as removable chips.
 
-Selecting a photo opens an application-modal viewer with keyboard navigation and one toolbar for
-share, edit, delete, and close. The viewer owns scroll focus and shows the clear thumbnail while the
-original loads. The upload view combines preview, title, description, tags, date, and coordinates;
-validation and upload failures remain local to that view and never replace settled gallery data.
+Selecting a photo opens an application-modal viewer with keyboard navigation, contained scroll
+focus, and a toolbar for sharing, editing, deleting, and closing. The preview remains visible until
+the original is decoded and ready to replace it. Upload combines preview, title, description, tags,
+date, and coordinates; errors stay within the active surface while settled gallery content remains
+visible.
 
 ## Music interaction
 
@@ -165,12 +178,11 @@ creation, replacement, and removal, and describes App Lock as a privacy screen r
 
 ## Newspaper and Inbox
 
-Newspaper remains in primary navigation and presents the latest Programmer Daily and Personal Daily
-articles without an archive. Page-edge arrows switch streams like an album, turning the complete
-reading surface instead of exposing a separate tab control; reduced-motion preferences remove the
-animation. Its reading surface is distinct from Knowledge: a warm paper field, compact edition line,
-editorial masthead, serif hierarchy, restrained ink accent, and dense long-form rhythm inspired by
-Kami while still using Vesper's semantic tokens.
+Newspaper presents the latest Programmer Daily and Personal Daily articles without an archive.
+Page-edge arrows turn the reading surface like an album and start the selected edition at the top;
+background refreshes preserve the reading position. Reduced-motion preferences disable the turn
+animation. The Kami-inspired reading surface uses warm paper, a compact edition line, an editorial
+masthead, serif hierarchy, restrained ink, and dense long-form rhythm with Vesper's semantic tokens.
 
 The Inbox control in the sidebar footer opens a dedicated empty state independent of content views.
 Knowledge articles and Newspaper editions never appear as notifications. Newspaper editions are

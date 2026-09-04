@@ -94,6 +94,7 @@ ugos = { path = "crates/ugos" }
 vesper-credentials = { path = "crates/credentials" }
 time = { version = "0.3", features = ["formatting", "local-offset", "macros", "parsing"] }
 uuid = { version = "1", features = ["v4"] }
+walkdir = "2.5"
 
 [patch.crates-io]
 librespot-audio = { git = "https://github.com/crmne/librespot", branch = "fastpotify-0.8" }

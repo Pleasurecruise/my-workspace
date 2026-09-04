@@ -53,7 +53,18 @@
 			<div class:operational={service.status === "operational"} class:maintenance={service.status === "underMaintenance"} class:unavailable={service.status === "partialOutage" || service.status === "majorOutage"} class="status-icon">
 				{#if service.status === "operational"}<CircleCheck size={19} />{:else if service.status === "underMaintenance"}<Wrench size={18} />{:else}<CircleAlert size={19} />{/if}
 			</div>
-			<div><strong>{label(service.status)}</strong><span>{service.operationalComponents}/{service.totalComponents} components operational</span></div>
+			<div>
+				<strong>{label(service.status)}</strong>
+				{#if service.affectedComponents.length > 0}
+					<ul class="affected-components" aria-label="Affected services">
+						{#each service.affectedComponents as component}
+							<li><span class="component-name">{component.name}</span><span>{label(component.status)}</span></li>
+						{/each}
+					</ul>
+				{:else}
+					<span>All services operational</span>
+				{/if}
+			</div>
 			<time datetime={service.updatedAt}>{time(service.updatedAt)}</time>
 		</div>
 		<div
@@ -93,6 +104,9 @@
 	.summary span,
 	.summary time { color: var(--color-muted-foreground); font-size: 0.52rem; }
 	.summary time { margin-left: auto; font-family: var(--font-mono); white-space: nowrap; }
+	.affected-components { display: grid; gap: 0.3rem; max-height: 4.5rem; overflow-y: auto; margin: 0.2rem 0 0; padding: 0; list-style: none; }
+	.affected-components li { display: flex; flex-wrap: wrap; gap: 0.2rem 0.5rem; overflow-wrap: anywhere; }
+	.affected-components .component-name { color: var(--color-foreground); font-weight: 600; }
 	.status-icon { display: grid; width: 2rem; height: 2rem; flex: 0 0 auto; place-items: center; border-radius: var(--radius-full); background: color-mix(in srgb, var(--color-warning) 12%, transparent); color: var(--color-warning); }
 	.status-icon.operational { background: color-mix(in srgb, var(--color-success) 12%, transparent); color: var(--color-success); }
 	.status-icon.maintenance { background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); }
