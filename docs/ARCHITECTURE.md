@@ -60,6 +60,16 @@ this repository. The sidebar's editable local profile badge is presentation-only
 represent an authenticated session; its display name and cropped avatar remain in WebView local
 storage. Each online consumer remains responsible for its public presentation and runtime.
 
+## Credential storage
+
+`crates/credentials` owns typed validation and operating-system storage. On macOS, all such values
+share one Keychain item: service `me.you-find.vesper`, account `credentials`. A process-local Rust
+cache loads it once. A mutex and the application-data `credentials.lock` file serialize desktop and
+CLI access; its random revision invalidates another process's cache after a write. The file contains
+no credentials, and a failed Keychain write never installs the attempted values in the cache.
+Windows and Linux use per-provider system entries. Development credential resolution and macOS
+setup are documented in [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ## Desktop boundary
 
 Svelte owns interaction state, presentation, accessibility, and invoking named Tauri commands. It
@@ -70,11 +80,10 @@ returns stored values to prefill that trusted local form.
 The Rust Dashboard runtime owns external-source concurrency, per-source request revisions, and
 page-active polling. It sends a closed tagged event to Svelte as each source settles; the view layer
 only updates the corresponding card.
-Rust also owns the Dashboard widget layout stored as `layout.json` below the
-application data directory. Svelte adds, removes, and pointer-orders widgets through typed commands;
-Rust rejects unsupported widget IDs, fields, stock symbols, and duplicate entries before saving. The
-desktop canvas retains one fixed twelve-track arrangement at every window width, so narrowing the
-window scrolls the canvas instead of deriving and displaying a different layout.
+Rust owns `layout.json` below application data. Typed commands validate widget IDs, configurations,
+and duplicates before writing a same-directory temporary file, syncing it, and atomically replacing
+the saved layout. Invalid stored data remains an explicit Dashboard error. Svelte owns add, remove,
+and pointer-order interactions on one twelve-track canvas; narrowing the window scrolls the canvas.
 
 Current-device CPU, memory, storage, and network telemetry is read in the desktop Rust boundary with
 `sysinfo`. Its sampler runs on a blocking worker only while at least one Current Device widget is in
@@ -110,7 +119,7 @@ application startup.
 
 Music is owned by `crates/music`, with provider code grouped below `spotify/` and `qq/`. Spotify uses
 separate PKCE grants for Web API reads and librespot playback; QQ Music uses a private QR exchange and
-renews its session on demand. Refresh credentials are stored as one typed record per provider and
+renews its session on demand. Refresh credentials are represented as one typed record per provider and
 rotated under a provider lock. Release builds use the operating-system credential store, while debug
 builds use owner-only files below application data to avoid repeated prompts from an ad-hoc app
 identity. The WebView receives connection status, QR state, and typed music projections, never
@@ -137,7 +146,10 @@ The Memos active, archived, and favorites views request independent API projecti
 default non-archived page.
 
 Rust renders Memo and Knowledge Markdown. Memo rendering also links bare web addresses without
-rewriting code or explicit Markdown links.
+rewriting code or explicit Markdown links. Svelte retains composer and editor drafts in their
+feature's session state across page unmounts. Pending saves update the owning view cache even after
+navigation, and successful responses preserve text entered after submission. Drafts are not written
+to disk and do not survive a WebView reload or application restart.
 
 Moment loads the API's complete metadata batch in one request so local tag filters cover the whole
 returned gallery without repeating requests for client-side pages. Cards decode their ThumbHash
@@ -161,18 +173,18 @@ appear in Knowledge, while Newspaper displays the two current issues. Entering N
 the overview while retaining settled content. The active view refreshes near the top every 60 seconds,
 and the desktop also refreshes Knowledge daily at 09:00 local time.
 
-Inbox is the consumer boundary for messages published through ntfy. Rust owns one authenticated SSE
-subscription to the fixed `mail-summary` topic on `https://ntfy.you-find.me`, deduplicates ntfy
-message IDs, retains the newest 200 notifications in `notifications.json` below the application data
-directory, and reconnects with the last message ID so ntfy can replay cached messages. Svelte only
-renders the typed local projection. A notification body may be a plain message or a normalized JSON
-envelope with `source`, optional `title`, and `body`; the envelope separates the producer identity
-from the transport topic. Newly received live messages also use the registered operating-system
-notification adapter; replayed historical messages only populate Inbox. Marking a message as read
-removes it from the Rust-owned notification list. No separate read-message archive is retained.
+Inbox receives ntfy messages through one Rust-owned authenticated SSE subscription to the fixed
+`mail-summary` topic on `https://ntfy.you-find.me`. Rust deduplicates IDs, retains the newest 200
+notifications, and reconnects from the last message ID. The current projection and cursor share
+`notifications.json`; writes sync a same-directory temporary file before atomic replacement, and
+in-memory state advances only after persistence succeeds. An unreadable or invalid file disables
+notification consumption and produces an Inbox error without aborting application startup or
+replacing the file with empty data.
 
-Settings stores only the ntfy read token; the server address and topic are fixed application policy.
-Producer routes, credentials, signing secrets, and processing remain outside Vesper.
+Bodies may be plain text or a JSON envelope containing `source`, optional `title`, and `body`.
+Live messages can trigger operating-system notifications; historical replay only populates Inbox.
+Marking a message as read removes it from local storage. Settings owns only the ntfy read token;
+producer routes and credentials remain outside Vesper.
 
 The desktop checks the latest published GitHub Release once per application launch through Tauri's
 signed updater manifest. The native application menu can request another check without restarting;

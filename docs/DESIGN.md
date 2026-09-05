@@ -52,8 +52,10 @@ without resizing the dashboard layout.
 
 NAS CPU, memory, and network cards pair the latest numeric value with a compact in-session SVG trend
 line; NAS storage uses a used/free capacity bar. Device Storage shows startup-disk used, total and
-free capacity in decimal GB, followed by the complete category breakdown. A separate rescan control
-and timestamp describe the estimates; partial scans remain labeled and do not replace live capacity.
+free capacity in decimal GB in a card stretched to the same row height as Device CPU and Stock.
+Three-track widgets share a minimum height; storage contents never contribute to the row height. Category details switches to the complete
+breakdown in an internal scroll area; Back to capacity restores the overview without resizing the
+row. A separate rescan control and timestamp describe the estimates; partial scans remain labeled and do not replace live capacity.
 Each weather card shows one configured city with a 24-hour local clock and six hourly forecast cells. Stock cards show a configured ticker's current
 price, daily change, and recent trend. The optional exchange card uses the same four-track footprint
 to compare USD, GBP, and EUR against CNY, emphasizing USD/CNY while keeping the provider date visible.
@@ -71,12 +73,13 @@ affected card; background polling must not replace the entire Dashboard with a l
 
 ## Memo interaction
 
-Memo composer and inline-editor focus belongs to the containing surface: an accent border and subtle
-semantic accent halo replace a second textarea ring. Search retains its own accent focus border. Only
-one memo can be edited at a time. Choosing another memo first saves the changed draft; an unchanged
-draft closes without a request, and a failed save keeps the original editor and draft intact.
-Tag completion supports Up/Down selection, Enter or Tab insertion, and Escape dismissal without
-interfering with input-method composition.
+Memo composer and inline-editor focus belongs to the containing surface: an accent border and
+subtle semantic halo replace a second textarea ring. Search retains its own focus border. Composer
+text and the active edit survive switching pages during the current session. A successful save clears an
+unchanged draft; text changed while a request is pending remains editable. Selecting another memo
+saves the current edit first and switches only when no unsaved changes remain. Cancel explicitly
+discards the active edit. Tag completion supports Up/Down, Enter/Tab, and Escape without interfering
+with input-method composition.
 
 Automatic pagination that fills a short consumer view remains visually quiet. The shared loading-more
 status appears only when reaching the end through user scrolling, while settled content stays visible.
@@ -101,13 +104,12 @@ immediately after the `public` label in the card header; private cards render no
 
 ## Knowledge interaction
 
-Knowledge article navigation and editing actions live in a quiet side rail on wide layouts and move
-as one floating group to the lower-right edge on narrow layouts; they do not compete with the article
-heading.
-Article creation and editing use a rich-text toolbar for headings, emphasis, lists, quotes, code, and
-links. A Markdown source mode remains available, and the editor selects it instead of silently
-rewriting content that the rich-text schema cannot represent exactly. The reader and remote storage
-keep Markdown as their one source format.
+Knowledge article navigation and editing actions occupy a quiet side rail on wide layouts and move
+as one lower-right group on narrow layouts. Article editing uses a rich-text toolbar and an explicit
+Markdown source mode; unsupported rich-text syntax opens in source mode without rewriting content.
+The selected article, draft fields, and pending save survive switching pages during the session.
+Saving preserves subsequent edits and updates the article revision for the next submission. Cancel
+discards the current edit. Session drafts end when the WebView reloads or the application restarts.
 
 Compiled GitHub and stock embeds use an Innei-inspired editorial card treatment: warm paper, fine
 outlines, light shadows, compact line icons, and one muted accent. The compiler emits the styles.
@@ -130,20 +132,19 @@ visible.
 
 ## Music interaction
 
-Music opens the current provider's collection from primary navigation. The upper-right segmented
-switch selects Spotify Liked Songs or QQ Music Daily 30; each source retains its settled collection,
-and switching providers returns to that source's list. The view has no external search or additional
-playlist navigation.
+Music opens the selected provider's collection: Spotify Liked Songs or QQ Music Daily 30. Switching
+providers restores that collection's settled list. A successful song selection opens the player;
+a failed selection keeps the current song visible and reports the error. The lower-right back action
+returns to the prior page, while primary Music navigation opens the collection.
 
-Selecting a song starts local playback and opens the player. A global action also opens the player
-from other pages. Its lower-right back arrow returns to the page used to enter it, including the
-collection when opened by selecting a song. Primary Music navigation always opens the collection.
+The player fills the available canvas height with vinyl, a lyric subtitle, metadata, transport
+controls, and a seekable timeline. The record area absorbs extra height; short windows scroll the
+complete player. Synced lyrics follow timestamps, and plain lyrics advance proportionally.
+Previous and Next follow the collection, with sequential, repeat-one, and shuffle modes owned by Rust.
 
-The player arranges rotating vinyl, one rolling lyric subtitle, track metadata, transport controls,
-and a seekable timeline in a centered column. Synced lyrics follow their timestamps; plain lyrics
-advance proportionally. Previous and Next follow the loaded collection order, and one mode control
-selects sequential playback, repeat-one, or shuffle for Rust-owned track advancement. Reduced-motion
-preferences stop vinyl and subtitle animation while preserving playback state.
+Playback controls serialize pending actions. Polling pauses during an action, and stale collection,
+playback, or lyric responses cannot overwrite newer selections. Reduced-motion preferences disable
+vinyl and subtitle animation while retaining playback state.
 
 ## Window and theme
 
@@ -185,7 +186,8 @@ background refreshes preserve the reading position. Reduced-motion preferences d
 animation. The Kami-inspired reading surface uses warm paper, a compact edition line, an editorial
 masthead, serif hierarchy, restrained ink, and dense long-form rhythm with Vesper's semantic tokens.
 
-The Inbox control in the sidebar footer opens a dedicated empty state independent of content views.
+The Inbox control opens notification content independently from other views. An unreadable local
+store shows an error instead of an empty inbox; the rest of the application remains available.
 Knowledge articles and Newspaper editions never appear as notifications. Newspaper editions are
 reserved for Newspaper and do not appear in the regular Knowledge index.
 

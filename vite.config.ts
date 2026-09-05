@@ -2,7 +2,10 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   test: {
-    include: ["**/*.test.ts"],
+    projects: [
+      { test: { name: "ui", include: ["packages/ui/**/*.test.ts"] } },
+      "apps/desktop/vite.config.ts",
+    ],
   },
   run: {
     cache: true,

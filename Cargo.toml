@@ -78,6 +78,7 @@ sha2 = "0.11"
 syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
 sysinfo = "0.39.6"
 svg-hush = "0.9.7"
+tempfile = "3"
 thiserror = "2"
 thumbhash = "0.1"
 tokio = { version = "1", features = [

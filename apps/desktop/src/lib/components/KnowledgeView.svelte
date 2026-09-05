@@ -1,6 +1,19 @@
+<script module lang="ts">
+	import type { KnowledgeDocument } from "../consumer";
+
+	let selected = $state<KnowledgeDocument | null>(null);
+	let editing = $state(false);
+	let draftTitle = $state("");
+	let draftSummary = $state("");
+	let draftTags = $state("");
+	let draftSource = $state("");
+	let saving = $state(false);
+	let error = $state("");
+</script>
+
 <script lang="ts">
 	import { Library, Pencil, Plus } from "@lucide/svelte";
-	import type { CommandResponse, KnowledgeDocument, KnowledgeDraft, KnowledgeUpdate } from "../consumer";
+	import type { CommandResponse, KnowledgeDraft, KnowledgeUpdate } from "../consumer";
 	import KnowledgeHeader from "./KnowledgeHeader.svelte";
 	import KnowledgeToc from "./KnowledgeToc.svelte";
 	import RichMarkdownEditor from "./RichMarkdownEditor.svelte";
@@ -16,14 +29,6 @@
 		oncreate: (input: KnowledgeDraft) => Promise<CommandResponse<KnowledgeDocument>>;
 		onupdate: (id: string, input: KnowledgeUpdate) => Promise<CommandResponse<KnowledgeDocument>>;
 	} = $props();
-	let selected = $state<KnowledgeDocument | null>(null);
-	let editing = $state(false);
-	let draftTitle = $state("");
-	let draftSummary = $state("");
-	let draftTags = $state("");
-	let draftSource = $state("");
-	let saving = $state(false);
-	let error = $state("");
 
 	type KnowledgeMonth = {
 		month: number;
@@ -132,6 +137,7 @@
 			body: draftSource,
 			tags,
 		};
+		const submitted = { title: draftTitle, summary: draftSummary, tags: draftTags, source: draftSource };
 		const current = selected;
 		const response = current === null
 			? await oncreate(input)
@@ -142,7 +148,7 @@
 			return;
 		}
 		selected = response.data;
-		editing = false;
+		editing = draftTitle !== submitted.title || draftSummary !== submitted.summary || draftTags !== submitted.tags || draftSource !== submitted.source;
 	}
 </script>
 

@@ -1,11 +1,17 @@
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
-import { defineConfig } from "vite-plus";
+import { defaultClientConditions, defineConfig } from "vite-plus";
 
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
   plugins: [svelte(), tailwindcss()],
+  resolve: { conditions: [...defaultClientConditions] },
+  test: {
+    name: "desktop",
+    environment: "happy-dom",
+    include: ["src/**/*.test.ts"],
+  },
   clearScreen: false,
   server: {
     port: 5173,

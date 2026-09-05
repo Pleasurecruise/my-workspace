@@ -175,10 +175,7 @@ pub fn run() {
             let todo_path = app.path().app_data_dir()?.join("todos.json");
             app.manage(todo_core::Store::new(todo_path));
             let notifications_path = app.path().app_data_dir()?.join("notifications.json");
-            app.manage(
-                notifications::NotificationState::new(notifications_path)
-                    .map_err(std::io::Error::other)?,
-            );
+            app.manage(notifications::NotificationState::new(notifications_path));
             let notifications_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(error) = notifications::restart(notifications_app).await {

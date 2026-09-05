@@ -3,13 +3,13 @@
 
 	let { todayDate, selectedDate, loading, onselect }: { todayDate: string; selectedDate: string; loading: boolean; onselect: (date: string) => Promise<void> } = $props();
 	const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC", year: "numeric" });
-	const weekdays = ["M", "T", "W", "T", "F", "S", "S"];
+	const weekdays = ["S", "M", "T", "W", "T", "F", "S"];
 	let monthOffset = $state(0);
 	let calendar = $derived.by(() => {
 		const selected = new Date(`${selectedDate}T00:00:00Z`);
 		const first = new Date(Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth() + monthOffset, 1));
 		const dayCount = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
-		return { label: monthFormatter.format(first), leadingDays: (first.getUTCDay() + 6) % 7, days: Array.from({ length: dayCount }, (_, index) => { const day = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), index + 1)); return { date: day.toISOString().slice(0, 10), number: index + 1 }; }) };
+		return { label: monthFormatter.format(first), leadingDays: first.getUTCDay(), days: Array.from({ length: dayCount }, (_, index) => { const day = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), index + 1)); return { date: day.toISOString().slice(0, 10), number: index + 1 }; }) };
 	});
 </script>
 

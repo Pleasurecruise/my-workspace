@@ -4,9 +4,11 @@
 
 	let {
 		notifications,
+		loadError,
 		onread,
 	}: {
 		notifications: NtfyNotification[];
+		loadError: string | null;
 		onread: (id: string) => Promise<CommandResponse<NtfyNotification[]>>;
 	} = $props();
 	let markingRead = $state<string | null>(null);
@@ -29,7 +31,9 @@
 <section class="inbox" aria-label="Inbox">
 	<header><h1>Inbox</h1><p>Notifications will appear here.</p></header>
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
-	{#if notifications.length === 0}
+	{#if loadError !== null}
+		<p class="error" role="alert">{loadError}</p>
+	{:else if notifications.length === 0}
 		<div class="empty">
 			<span><Bell size={16} /></span>
 			<strong>No notifications</strong>

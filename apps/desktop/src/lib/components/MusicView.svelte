@@ -33,6 +33,10 @@
 	let error = $state<string | null>(null);
 	let lyricsError = $state<string | null>(null);
 	let progressMs = $state(0);
+	let tracksRequest = 0;
+	let playbackRequest = 0;
+	let lyricsRequest = 0;
+	let playbackError = $state<string | null>(null);
 	let providerName = $derived(provider === "spotify" ? "Spotify" : "QQ Music");
 	let collectionName = $derived(provider === "spotify" ? "Liked Songs" : "Daily 30");
 	let selectedIndex = $derived(selectedTrack === null ? -1 : tracks.findIndex((track) => track.id === selectedTrack?.id));
@@ -66,10 +70,11 @@
 	}
 
 	async function loadTracks(target = provider) {
+		const version = ++tracksRequest;
 		loading = tracks.length === 0;
 		error = null;
 		const response = await invoke<CommandResponse<MusicTrack[]>>("read_music_tracks", { provider: target });
-		if (provider !== target) return;
+		if (provider !== target || version !== tracksRequest) return;
 		loading = false;
 		if (response.status === "failed") {
 			error = response.message;
@@ -81,7 +86,11 @@
 	}
 
 	function selectProvider(next: MusicProvider) {
-		if (provider === next) return;
+		if (provider === next || acting) return;
+		tracksRequest += 1;
+		playbackRequest += 1;
+		lyricsRequest += 1;
+		playbackError = null;
 		provider = next;
 		settledProvider = next;
 		const cachedTracks = settledTracks[next];
@@ -97,10 +106,16 @@
 	}
 
 	async function syncPlayback() {
+		if (acting) return;
+		const version = ++playbackRequest;
 		const target = provider;
 		const response = await invoke<CommandResponse<MusicPlayback | null>>("read_music_playback", { provider: target });
-		if (provider !== target) return;
-		if (response.status === "failed") return;
+		if (provider !== target || version !== playbackRequest) return;
+		if (response.status === "failed") {
+			playbackError = response.message;
+			return;
+		}
+		playbackError = null;
 		playback = response.data;
 		progressMs = response.data === null ? 0 : response.data.progressMs;
 		const playingTrack = tracks.find((track) => track.id === response.data?.trackId);
@@ -111,42 +126,46 @@
 	}
 
 	async function selectTrack(track: MusicTrack, startPlayback = true, showPlayer = true) {
-		if (startPlayback && acting) return;
+		if (acting) return;
 		const target = provider;
+		if (startPlayback) {
+			const version = ++playbackRequest;
+			acting = true;
+			error = null;
+			const response = await invoke<CommandResponse<string>>("play_music_track", { provider: target, trackId: track.id });
+			if (provider !== target || version !== playbackRequest) return;
+			acting = false;
+			if (response.status === "failed") {
+				error = response.message;
+				return;
+			}
+			playback = { trackId: track.id, playing: true, progressMs: 0, durationMs: track.durationMs, order: playbackOrder };
+			playerAvailable = true;
+		}
+		const version = ++lyricsRequest;
 		selectedTrack = track;
 		if (showPlayer && !playerVisible) onopenplayer();
 		playerVisible = showPlayer;
 		lyrics = null;
 		lyricsError = null;
-		progressMs = startPlayback || playback === null ? 0 : playback.progressMs;
+		progressMs = playback === null ? 0 : playback.progressMs;
 		lyricsLoading = true;
-		const lyricsRequest = invoke<CommandResponse<MusicLyrics | null>>("read_music_lyrics", { provider: target, trackId: track.id });
-		if (startPlayback) {
-			acting = true;
-			error = null;
-			const response = await invoke<CommandResponse<string>>("play_music_track", { provider: target, trackId: track.id });
-			acting = false;
-			if (provider !== target) return;
-			if (response.status === "failed") error = response.message;
-			else {
-				playback = { trackId: track.id, playing: true, progressMs: 0, durationMs: track.durationMs, order: playbackOrder };
-				playerAvailable = true;
-			}
-		}
-		const lyricsResponse = await lyricsRequest;
+		const response = await invoke<CommandResponse<MusicLyrics | null>>("read_music_lyrics", { provider: target, trackId: track.id });
+		if (provider !== target || version !== lyricsRequest) return;
 		lyricsLoading = false;
-		if (provider !== target || selectedTrack?.id !== track.id) return;
-		if (lyricsResponse.status === "ready") lyrics = lyricsResponse.data;
-		else lyricsError = lyricsResponse.message;
+		if (response.status === "ready") lyrics = response.data;
+		else lyricsError = response.message;
 	}
 
 	async function togglePlayback() {
 		if (selectedTrack === null || acting) return;
+		const version = ++playbackRequest;
 		acting = true;
 		const playing = playback?.playing === true;
 		const response = playback === null
 			? await invoke<CommandResponse<string>>("play_music_track", { provider, trackId: selectedTrack.id })
 			: await invoke<CommandResponse<string>>(playing ? "pause_music" : "resume_music", { provider });
+		if (version !== playbackRequest) return;
 		acting = false;
 		if (response.status === "failed") {
 			error = response.message;
@@ -163,9 +182,11 @@
 
 	async function cyclePlaybackOrder() {
 		if (acting) return;
+		const version = ++playbackRequest;
 		const order: MusicPlayback["order"] = playbackOrder === "sequential" ? "repeatOne" : playbackOrder === "repeatOne" ? "shuffle" : "sequential";
 		acting = true;
 		const response = await invoke<CommandResponse<string>>("set_music_playback_order", { provider, order });
+		if (version !== playbackRequest) return;
 		acting = false;
 		if (response.status === "failed") {
 			error = response.message;
@@ -180,8 +201,13 @@
 	}
 
 	async function seek(position: number) {
+		if (acting || selectedTrack === null) return;
+		const version = ++playbackRequest;
+		acting = true;
 		progressMs = position;
 		const response = await invoke<CommandResponse<string>>("seek_music", { provider, positionMs: Math.round(position) });
+		if (version !== playbackRequest) return;
+		acting = false;
 		if (response.status === "failed") error = response.message;
 	}
 
@@ -198,13 +224,16 @@
 		}, 500);
 		const syncTimer = window.setInterval(() => void syncPlayback(), 5_000);
 		return () => {
+			tracksRequest += 1;
+			playbackRequest += 1;
+			lyricsRequest += 1;
 			window.clearInterval(progressTimer);
 			window.clearInterval(syncTimer);
 		};
 	});
 </script>
 
-<section class="music" aria-label={`${providerName} ${collectionName}`}>
+<section class="music" class:player-visible={playerVisible} aria-label={`${providerName} ${collectionName}`}>
 	{#if !playerVisible}
 	<header>
 		<div><p>{providerName}</p><h1>{collectionName}</h1><span>{tracks.length} songs</span></div>
@@ -218,6 +247,8 @@
 	{#if error !== null}
 		<div class="notice" role="alert"><span>{error}</span>{#if tracks.length === 0}<button type="button" onclick={onopensettings}>Open Settings</button>{/if}</div>
 	{/if}
+
+	{#if playbackError !== null}<div class="notice" role="alert">{playbackError}</div>{/if}
 
 	{#if loading}
 		<div class="loading"><LoaderCircle size={18} /> Loading {collectionName}…</div>
@@ -245,7 +276,7 @@
 					<button type="button" disabled={selectedIndex < 0 || selectedIndex >= tracks.length - 1 || acting} onclick={() => move(1)} aria-label="Next song"><SkipForward size={20} fill="currentColor" /></button>
 					<span class="transport-spacer" aria-hidden="true"></span>
 				</div>
-				<div class="timeline"><span>{formatTime(progressMs)}</span><input type="range" min="0" max={selectedTrack.durationMs} value={progressMs} oninput={(event) => (progressMs = event.currentTarget.valueAsNumber)} onchange={(event) => seek(event.currentTarget.valueAsNumber)} aria-label="Playback position" /><span>{formatTime(selectedTrack.durationMs)}</span></div>
+				<div class="timeline"><span>{formatTime(progressMs)}</span><input type="range" disabled={acting} min="0" max={selectedTrack.durationMs} value={progressMs} oninput={(event) => (progressMs = event.currentTarget.valueAsNumber)} onchange={(event) => seek(event.currentTarget.valueAsNumber)} aria-label="Playback position" /><span>{formatTime(selectedTrack.durationMs)}</span></div>
 			</div>
 		</div>
 	{:else}
@@ -270,6 +301,7 @@
 
 <style>
 	.music { width: min(100%, 76rem); margin: 0 auto; }
+	.music.player-visible { display: flex; flex: 1; flex-direction: column; }
 	header { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
 	header p, header h1, header span { margin: 0; }
 	header p { margin-bottom: 0.3rem; color: var(--color-accent); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -301,10 +333,10 @@
 	.track-title { display: grid; min-width: 0; gap: 0.18rem; }
 	.track-title strong, .track-title small, .album { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.track-title strong { font-size: 0.72rem; font-weight: 600; }
-	.player-page { display: grid; width: min(100%, 50rem); min-height: 34rem; grid-template-columns: minmax(0, 1fr); gap: 1rem; margin: 0 auto; }
+	.player-page { display: grid; flex: 1; width: min(100%, 50rem); min-height: 34rem; grid-template-columns: minmax(0, 1fr); gap: 1rem; margin: 0 auto; }
 	.record-column { display: flex; min-width: 0; align-items: center; flex-direction: column; justify-content: center; padding: 2rem 1.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-card); box-shadow: var(--shadow-sm); }
-	.record-wrap { display: grid; width: 100%; min-height: 19rem; place-items: center; }
-	.record { position: relative; display: grid; width: min(18rem, 78vw); aspect-ratio: 1; place-items: center; overflow: hidden; border: 1rem solid var(--color-image-scrim); border-radius: 50%; background: repeating-radial-gradient(circle, var(--color-image-scrim) 0 0.35rem, var(--color-background) 0.38rem, var(--color-image-scrim) 0.42rem); box-shadow: var(--shadow-lg); }
+	.record-wrap { display: grid; width: 100%; min-height: 19rem; flex: 1; place-items: center; }
+	.record { position: relative; display: grid; width: min(18rem, 100%); box-sizing: border-box; aspect-ratio: 1; place-items: center; overflow: hidden; border: 1rem solid var(--color-image-scrim); border-radius: 50%; background: repeating-radial-gradient(circle, var(--color-image-scrim) 0 0.35rem, var(--color-background) 0.38rem, var(--color-image-scrim) 0.42rem); box-shadow: var(--shadow-lg); }
 	.record::before { position: absolute; inset: 8%; border: 1px solid var(--color-border); border-radius: 50%; content: ""; box-shadow: 0 0 0 0.7rem var(--color-image-scrim), 0 0 0 0.75rem var(--color-border), 0 0 0 1.4rem var(--color-image-scrim); }
 	.record img { z-index: 1; width: 58%; aspect-ratio: 1; border-radius: 50%; object-fit: cover; }
 	.record > span { position: absolute; z-index: 2; width: 0.7rem; aspect-ratio: 1; border-radius: 50%; background: var(--color-card); }

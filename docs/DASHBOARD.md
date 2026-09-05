@@ -9,6 +9,11 @@ Telegram and X are outbound Memo publication providers, not Dashboard sources. T
 authorization, and token refresh paths remain outside the Dashboard runtime so its read-only provider
 contract does not expand.
 
+On macOS, Vesper-owned Keychain configuration uses the shared `credentials` item and Rust cache
+owned by `crates/credentials`; provider polling does not reread separate Keychain items. Existing
+Codex, pi, Claude Code, GitHub CLI, and Cherry Studio credential sources remain independent. Setup
+and authorization behavior are documented in [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ## Data flow
 
 ```text
@@ -60,19 +65,15 @@ Upstream producers ──> ntfy.you-find.me/mail-summary ── authenticated SS
 
 ## Widget layout
 
-Dashboard cards occupy a user-configurable fixed desktop widget canvas. In edit mode, users drag a
-card itself with the four-way move pointer to reorder it, delete it from the small upper-right
-button, or restore the Rust-owned default; there is no separate drag handle or card-level component
-menu. Reordering within one row targets individual cards, while crossing rows inserts at the row
-boundary so a full-width card cannot split a populated row. The Add Widget action opens a
-category-based library with widget metadata and a selected-widget preview. The canvas keeps the same
-twelve-track arrangement at every window width; a narrow window scrolls horizontally and never
-projects a different order or column count. The layout is validated and stored locally in
-`layout.json`. A missing file uses the default layout; invalid stored data is reported without
-substituting defaults. The document is exactly `{ widgets }`, with each placement containing a unique
-ID and a current typed widget configuration. Unknown fields and obsolete widget kinds are errors;
-there is no layout version or compatibility migration. Existing card-level narrow-screen breakpoints
-remain intact.
+Dashboard cards occupy a fixed twelve-track canvas. Edit mode supports dragging a card, deleting it
+with its upper-right action, and restoring the Rust-owned default. Within a row, dragging targets
+individual cards; across rows, it inserts at a row boundary. The Add Widget library groups available
+widgets by category and shows a preview. Narrow windows scroll the canvas without changing its order.
+
+Rust validates and atomically replaces `layout.json`. Its shape is exactly `{ widgets }`: each
+placement has a unique ID and a current typed configuration. Unknown fields, duplicate widgets,
+and obsolete kinds fail validation. Only a missing file uses the default; invalid data remains an
+error until the user explicitly restores a layout. There is no versioning or migration.
 
 The widget library uses a category rail without a search input. System Status contains both the
 explicitly named UGREEN CPU, UGREEN Memory, UGREEN Storage, and UGREEN Network widgets and the
@@ -180,7 +181,7 @@ contribution activity nor GitHub notifications are persisted in the local ntfy I
 ## Calendar and Todo
 
 Calendar and Todo are independent widgets with one selected date. Calendar renders a complete
-Monday-first month; Todo creates, completes, reopens, and deletes items for the selected day.
+Sunday-first month; Todo creates, completes, reopens, and deletes items for the selected day.
 Selecting a title replaces the list with a fixed-size detail view showing status and date plus the
 calendar, time, location, and description available on imported items. Long details scroll inside
 the card, and Back restores the list without changing the dashboard layout.

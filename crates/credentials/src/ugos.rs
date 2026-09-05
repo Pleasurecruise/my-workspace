@@ -1,4 +1,4 @@
-use crate::{CredentialError, SERVICE, Stored};
+use crate::{CredentialError, Stored, store};
 use serde::{Deserialize, Serialize};
 
 const ACCOUNT: &str = "ugos";
@@ -49,11 +49,9 @@ pub fn ugos() -> Result<Stored<UgosCredentials>, CredentialError> {
     }
     #[cfg(not(debug_assertions))]
     {
-        let entry = keyring::Entry::new(SERVICE, ACCOUNT)?;
-        let encoded = match entry.get_password() {
-            Ok(encoded) => encoded,
-            Err(keyring::Error::NoEntry) => return Ok(Stored::Missing),
-            Err(error) => return Err(CredentialError::Store(error)),
+        let encoded = match store::read(ACCOUNT)? {
+            Stored::Ready(encoded) => encoded,
+            Stored::Missing => return Ok(Stored::Missing),
         };
         let stored: StoredUgosCredentials = serde_json::from_str(&encoded)?;
         Ok(Stored::Ready(UgosCredentials {
@@ -74,23 +72,18 @@ pub fn save_ugos(credentials: UgosCredentials) -> Result<(), CredentialError> {
         username: credentials.username.trim().to_owned(),
         password: credentials.password,
     };
-    keyring::Entry::new(SERVICE, ACCOUNT)?.set_password(&serde_json::to_string(&stored)?)?;
+    store::save(ACCOUNT, &serde_json::to_string(&stored)?)?;
     Ok(())
 }
 
 pub fn ugos_certificate() -> Result<Stored<String>, CredentialError> {
-    let entry = keyring::Entry::new(SERVICE, TLS_PIN_ACCOUNT)?;
-    match entry.get_password() {
-        Ok(fingerprint) => Ok(Stored::Ready(fingerprint)),
-        Err(keyring::Error::NoEntry) => Ok(Stored::Missing),
-        Err(error) => Err(CredentialError::Store(error)),
-    }
+    store::read(TLS_PIN_ACCOUNT)
 }
 
 pub fn save_ugos_certificate(fingerprint: &str) -> Result<(), CredentialError> {
     if fingerprint.is_empty() {
         return Err(CredentialError::Empty("UGOS certificate fingerprint"));
     }
-    keyring::Entry::new(SERVICE, TLS_PIN_ACCOUNT)?.set_password(fingerprint)?;
+    store::save(TLS_PIN_ACCOUNT, fingerprint)?;
     Ok(())
 }

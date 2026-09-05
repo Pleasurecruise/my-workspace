@@ -119,6 +119,7 @@
 	let configuration = $state<ConfigurationStatus | null>(null);
 	let configurationError = $state<string | null>(null);
 	let notifications = $state<NtfyNotification[]>([]);
+	let notificationsError = $state<string | null>(null);
 	let updateAvailable = $state<UpdateInfo | null>(null);
 	let updateProgress = $state<UpdateProgress | null>(null);
 	let updateError = $state<string | null>(null);
@@ -741,9 +742,9 @@
 			content: markdown,
 			visibility,
 		});
-		if (response.status === "ready" && content !== null && content.channel === "memos") {
-			content = { ...content, memos: [response.data, ...content.memos] };
-			cache.memos = content;
+		if (response.status === "ready" && cache.memos !== null && cache.memos.channel === "memos") {
+			cache.memos = { ...cache.memos, memos: [response.data, ...cache.memos.memos] };
+			if (content?.channel === "memos") content = cache.memos;
 		}
 		return response;
 	}
@@ -762,12 +763,12 @@
 			id,
 			input,
 		});
-		if (response.status === "ready" && content !== null && content.channel === "memos") {
-			content = {
-				...content,
-				memos: content.memos.map((memo) => (memo.id === id ? response.data : memo)),
+		if (response.status === "ready" && cache.memos !== null && cache.memos.channel === "memos") {
+			cache.memos = {
+				...cache.memos,
+				memos: cache.memos.memos.map((memo) => (memo.id === id ? response.data : memo)),
 			};
-			cache.memos = content;
+			if (content?.channel === "memos") content = cache.memos;
 		}
 		return response;
 	}
@@ -831,9 +832,9 @@
 
 	async function createKnowledge(input: KnowledgeDraft): Promise<CommandResponse<KnowledgeDocument>> {
 		const response = await invoke<CommandResponse<KnowledgeDocument>>("create_knowledge", { input });
-		if (response.status === "ready" && content?.channel === "knowledge") {
-			content = { ...content, knowledge: [response.data, ...content.knowledge] };
-			cache.knowledge = content;
+		if (response.status === "ready" && cache.knowledge !== null && cache.knowledge.channel === "knowledge") {
+			cache.knowledge = { ...cache.knowledge, knowledge: [response.data, ...cache.knowledge.knowledge] };
+			if (content?.channel === "knowledge") content = cache.knowledge;
 			if (response.data.newspaperEdition !== null) void refreshKnowledge();
 		}
 		return response;
@@ -847,12 +848,12 @@
 			id,
 			input,
 		});
-		if (response.status === "ready" && content?.channel === "knowledge") {
-			content = {
-				...content,
-				knowledge: content.knowledge.map((document) => (document.id === id ? response.data : document)),
+		if (response.status === "ready" && cache.knowledge !== null && cache.knowledge.channel === "knowledge") {
+			cache.knowledge = {
+				...cache.knowledge,
+				knowledge: cache.knowledge.knowledge.map((document) => (document.id === id ? response.data : document)),
 			};
-			cache.knowledge = content;
+			if (content?.channel === "knowledge") content = cache.knowledge;
 			if (response.data.newspaperEdition !== null) void refreshKnowledge();
 		}
 		return response;
@@ -1117,6 +1118,7 @@
 		});
 		void invoke<CommandResponse<NtfyNotification[]>>("read_notifications").then((response) => {
 			if (response.status === "ready") notifications = response.data;
+			else notificationsError = response.message;
 		});
 		const unlistenTodo = listen<TodoList>("todo-list-changed", (event) => {
 			const followsToday = todoDate === todayDate;
@@ -1288,6 +1290,7 @@
 	</aside>
 
 	<main
+		class:player-shell={selected === "music" && musicPlayerVisible}
 		bind:this={mainElement}
 		onscroll={() => {
 			if (
@@ -1350,7 +1353,7 @@
 			{:else if selected === "settings"}
 				<SettingsView {configuration} error={configurationError} onsaveugos={saveUgosConfiguration} onsaver2={saveR2Configuration} onsaveapi={saveApiConfiguration} onsaventfy={saveNtfy} onsaveapplock={saveAppLock} onremoveapplock={removeAppLock} onconnectspotify={connectSpotify} onbeginqq={beginQqLogin} onpollqq={pollQqLogin} oncancelqq={cancelQqLogin} onconfigurationchanged={loadConfiguration} />
 			{:else if selected === "inbox"}
-				<InboxView {notifications} onread={markNotificationRead} />
+				<InboxView {notifications} loadError={notificationsError} onread={markNotificationRead} />
 			{:else if selected === "music"}
 				<MusicView bind:playerVisible={musicPlayerVisible} bind:playerAvailable={musicPlayerAvailable} onopenplayer={openMusicPlayer} onopensettings={() => void select("settings")} />
 			{:else if error}
@@ -1888,6 +1891,9 @@
 	}
 
 	.canvas.wide { width: 100%; }
+	main.player-shell { display: flex; flex-direction: column; }
+	.player-shell .topbar { flex-shrink: 0; }
+	.player-shell .canvas { display: flex; flex: 1 0 auto; width: 100%; padding-bottom: 2rem; }
 
 	.global-scroll-action {
 		position: fixed;

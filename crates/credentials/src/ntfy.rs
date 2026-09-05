@@ -1,4 +1,4 @@
-use crate::{CredentialError, SERVICE, Stored};
+use crate::{CredentialError, Stored, store};
 use serde::{Deserialize, Serialize};
 
 const ACCOUNT: &str = "ntfy-notifications";
@@ -29,11 +29,9 @@ pub fn ntfy() -> Result<Stored<NtfyConfig>, CredentialError> {
     }
     #[cfg(not(debug_assertions))]
     {
-        let entry = keyring::Entry::new(SERVICE, ACCOUNT)?;
-        let encoded = match entry.get_password() {
-            Ok(encoded) => encoded,
-            Err(keyring::Error::NoEntry) => return Ok(Stored::Missing),
-            Err(error) => return Err(CredentialError::Store(error)),
+        let encoded = match store::read(ACCOUNT)? {
+            Stored::Ready(encoded) => encoded,
+            Stored::Missing => return Ok(Stored::Missing),
         };
         let mut configuration: NtfyConfig = serde_json::from_str(&encoded)?;
         if configuration.token.trim().is_empty() {
@@ -49,7 +47,7 @@ pub fn save_ntfy(mut configuration: NtfyConfig) -> Result<(), CredentialError> {
     validate(&configuration)?;
     configuration.token = configuration.token.trim().to_owned();
     configuration.development = false;
-    keyring::Entry::new(SERVICE, ACCOUNT)?.set_password(&serde_json::to_string(&configuration)?)?;
+    store::save(ACCOUNT, &serde_json::to_string(&configuration)?)?;
     Ok(())
 }
 

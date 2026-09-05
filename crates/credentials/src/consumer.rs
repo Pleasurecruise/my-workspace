@@ -1,4 +1,4 @@
-use crate::{CredentialError, SERVICE, Stored};
+use crate::{CredentialError, Stored, store};
 use serde::Deserialize;
 
 const MEMOS_ACCOUNT: &str = "my-memos-api";
@@ -64,12 +64,7 @@ pub fn consumer_api(api: ConsumerApi) -> Result<Stored<String>, CredentialError>
     }
     #[cfg(not(debug_assertions))]
     {
-        let entry = keyring::Entry::new(SERVICE, api.account())?;
-        match entry.get_password() {
-            Ok(api_key) => Ok(Stored::Ready(api_key)),
-            Err(keyring::Error::NoEntry) => Ok(Stored::Missing),
-            Err(error) => Err(CredentialError::Store(error)),
-        }
+        store::read(api.account())
     }
 }
 
@@ -77,6 +72,6 @@ pub fn save_consumer_api(api: ConsumerApi, api_key: &str) -> Result<(), Credenti
     if api_key.trim().is_empty() {
         return Err(CredentialError::Empty(api.field()));
     }
-    keyring::Entry::new(SERVICE, api.account())?.set_password(api_key.trim())?;
+    store::save(api.account(), api_key.trim())?;
     Ok(())
 }

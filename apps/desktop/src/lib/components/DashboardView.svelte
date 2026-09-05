@@ -637,7 +637,7 @@
 		container-type: inline-size;
 		animation: card-enter var(--duration-slow) cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
-	.widget.columns-3 { grid-column: span 3; }
+	.widget.columns-3 { grid-column: span 3; min-height: 10rem; }
 	.widget.columns-4 { grid-column: span 4; }
 	.widget.columns-6 { grid-column: span 6; }
 	.widget.columns-8 { grid-column: span 8; }

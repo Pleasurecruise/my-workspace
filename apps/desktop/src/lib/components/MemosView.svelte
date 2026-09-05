@@ -1,3 +1,16 @@
+<script module lang="ts">
+	let draft = $state("");
+	let visibility = $state<"public" | "private">("private");
+	let saving = $state(false);
+	let error = $state("");
+	let editingId = $state<string | null>(null);
+	let editContent = $state("");
+	let editVisibility = $state<"public" | "private">("private");
+	let savedContent = "";
+	let savedVisibility: "public" | "private" = "private";
+	let updating = $state(false);
+</script>
+
 <script lang="ts">
 	import { Archive, Check, CheckCircle2, ChevronRight, Clock3, Globe, Heart, Lock, Pencil, RotateCcw, Send, Share2, Star, Trash2, X, XCircle } from "@lucide/svelte";
 	import { Alert, AlertDescription, Badge, Button, Input } from "@my-workspace/ui";
@@ -40,8 +53,6 @@
 	const relativeFormatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 	const dateFormatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 	const monthFormatter = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
-	let draft = $state("");
-	let visibility = $state<"public" | "private">("private");
 	let importUrl = $state("");
 	let importVisibility = $state<"public" | "private">("private");
 	let importing = $state(false);
@@ -51,14 +62,6 @@
 	let sortByUpdated = $state(false);
 	let filtering = $state(false);
 	let filterVersion = 0;
-	let saving = $state(false);
-	let error = $state("");
-	let editingId = $state<string | null>(null);
-	let editContent = $state("");
-	let editVisibility = $state<"public" | "private">("private");
-	let savedContent = "";
-	let savedVisibility: "public" | "private" = "private";
-	let updating = $state(false);
 	let mutatingId = $state<string | null>(null);
 	let sharedId = $state<string | null>(null);
 	let confirmingDelete = $state<string | null>(null);
@@ -164,13 +167,15 @@
 		if (saving || draft.trim() === "") return;
 		saving = true;
 		error = "";
-		const response = await oncreate(draft, visibility);
+		const submitted = draft;
+		const submittedVisibility = visibility;
+		const response = await oncreate(submitted, submittedVisibility);
 		saving = false;
 		if (response.status === "failed") {
 			error = response.message;
 			return;
 		}
-		draft = "";
+		if (draft === submitted && visibility === submittedVisibility) draft = "";
 		notify("success", "Memo saved");
 	}
 
@@ -215,14 +220,19 @@
 		}
 		updating = true;
 		error = "";
-		const response = await onupdate(id, { content: editContent, visibility: editVisibility });
+		const submitted = editContent;
+		const submittedVisibility = editVisibility;
+		const response = await onupdate(id, { content: submitted, visibility: submittedVisibility });
 		updating = false;
 		if (response.status === "failed") {
 			error = response.message;
 			return false;
 		}
-		cancelEdit();
+		savedContent = submitted;
+		savedVisibility = submittedVisibility;
 		notify("success", "Memo updated");
+		if (editContent !== submitted || editVisibility !== submittedVisibility) return false;
+		cancelEdit();
 		return true;
 	}
 

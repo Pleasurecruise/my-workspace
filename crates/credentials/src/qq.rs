@@ -1,4 +1,8 @@
-use crate::{CredentialError, SERVICE, Stored};
+#[cfg(debug_assertions)]
+use crate::SERVICE;
+#[cfg(not(debug_assertions))]
+use crate::store;
+use crate::{CredentialError, Stored};
 
 #[cfg(not(debug_assertions))]
 const ACCOUNT: &str = "qq-music";
@@ -22,22 +26,20 @@ pub fn save_qq_music(credentials: QqMusicCredentials) -> Result<(), CredentialEr
     #[cfg(not(debug_assertions))]
     {
         let encoded = serde_json::to_string(&credentials)?;
-        keyring::Entry::new(SERVICE, ACCOUNT)?.set_password(&encoded)?;
+        store::save(ACCOUNT, &encoded)?;
         Ok(())
     }
 }
 
 #[cfg(not(debug_assertions))]
 fn read_store() -> Result<Stored<QqMusicCredentials>, CredentialError> {
-    let entry = keyring::Entry::new(SERVICE, ACCOUNT)?;
-    match entry.get_password() {
-        Ok(encoded) => {
+    match store::read(ACCOUNT)? {
+        Stored::Ready(encoded) => {
             let credentials: QqMusicCredentials = serde_json::from_str(&encoded)?;
             validate(&credentials.cookie)?;
             Ok(Stored::Ready(credentials))
         }
-        Err(keyring::Error::NoEntry) => Ok(Stored::Missing),
-        Err(error) => Err(CredentialError::Store(error)),
+        Stored::Missing => Ok(Stored::Missing),
     }
 }
 

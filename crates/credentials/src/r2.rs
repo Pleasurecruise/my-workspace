@@ -1,4 +1,4 @@
-use crate::{CredentialError, SERVICE, Stored};
+use crate::{CredentialError, Stored, store};
 use serde::{Deserialize, Serialize};
 
 const ACCOUNT: &str = "cloudflare-r2";
@@ -51,11 +51,9 @@ pub fn r2() -> Result<Stored<R2Credentials>, CredentialError> {
     }
     #[cfg(not(debug_assertions))]
     {
-        let entry = keyring::Entry::new(SERVICE, ACCOUNT)?;
-        let encoded = match entry.get_password() {
-            Ok(encoded) => encoded,
-            Err(keyring::Error::NoEntry) => return Ok(Stored::Missing),
-            Err(error) => return Err(CredentialError::Store(error)),
+        let encoded = match store::read(ACCOUNT)? {
+            Stored::Ready(encoded) => encoded,
+            Stored::Missing => return Ok(Stored::Missing),
         };
         let stored: StoredR2Credentials = serde_json::from_str(&encoded)?;
         Ok(Stored::Ready(R2Credentials {
@@ -76,6 +74,6 @@ pub fn save_r2(credentials: R2Credentials) -> Result<(), CredentialError> {
         access_key_id: credentials.access_key_id.trim().to_owned(),
         secret_access_key: credentials.secret_access_key,
     };
-    keyring::Entry::new(SERVICE, ACCOUNT)?.set_password(&serde_json::to_string(&stored)?)?;
+    store::save(ACCOUNT, &serde_json::to_string(&stored)?)?;
     Ok(())
 }

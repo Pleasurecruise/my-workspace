@@ -79,8 +79,8 @@ coordination.
 
 Open Settings and save the separate my-memos, my-moment, and my-knowledge Bearer keys. Generate each
 key in its application's settings. The services retain key digests rather than the original keys.
-Vesper stores each value as a separate operating-system credential and does not expose stored values
-to provider commands. The typed Settings read command does return them to the local Svelte webview
+Vesper stores each value in the operating-system credential store and does not expose stored values
+to provider commands. On macOS these values share the unified Keychain item described below. The typed Settings read command does return them to the local Svelte webview
 so the form can display and edit the current configuration; avoid retaining or forwarding them
 outside that view.
 
@@ -111,7 +111,7 @@ For Telegram, create an application at `my.telegram.org` and configure its numer
 32-character hexadecimal API hash, and the public username of a broadcast channel where the signed-in
 account can post. Call the authorization commands in order: begin with the account phone number,
 complete the verification code, then complete the 2FA password only when requested. The API ID, API
-hash, and channel username are stored as one operating-system credential record. The resulting
+hash, and channel username form one typed record in the operating-system credential store. The resulting
 MTProto session is stored separately as `telegram.session` below the application-data directory with
 owner-only file permissions on Unix. Login codes and 2FA passwords are not persisted.
 
@@ -122,6 +122,17 @@ only Connect/Reconnect: Vesper opens the browser and completes Authorization Cod
 requesting `tweet.read`, `tweet.write`, `users.read`, and `offline.access`. It stores the returned
 access and refresh grants in the operating-system credential store and rotates them automatically;
 no Client ID, Client Secret, or manually copied token is accepted by the desktop UI.
+
+## macOS Keychain access
+
+Vesper reads one Keychain item, service `me.you-find.vesper` and account `credentials`, then serves
+provider reads from a Rust cache. Separate items from previous installations are not read or
+migrated: save configuration in Settings and reconnect music and X accounts to populate this item.
+
+macOS controls authorization. An ad-hoc application update can request access again; Allow grants
+one access, while Always Allow records permission for the app. Startup reads one item rather than
+one per provider. Writes and refreshes after another process changes credentials can require further
+authorization. See [Apple's Keychain guidance](https://support.apple.com/guide/keychain-access/if-youre-asked-for-access-to-your-keychain-kyca1243/mac).
 
 ## macOS development credentials
 
@@ -247,7 +258,9 @@ pnpm check
 pnpm test
 ```
 
-For desktop UI changes, also run the desktop production build. For provider changes, test response
+Frontend tests run through Vite Plus projects: shared UI tests use Node, and desktop component
+regressions use Happy DOM. Component tests mock Tauri commands and exercise view interactions without
+accessing live services. For desktop UI changes, also run the desktop production build. For provider changes, test response
 parsing without credentials and keep live authenticated tests explicitly ignored. For publication
 changes, inspect the dry-run plan before any live upload.
 

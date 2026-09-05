@@ -1,4 +1,4 @@
-use crate::{CredentialError, SERVICE, Stored};
+use crate::{CredentialError, Stored, store};
 
 const ACCOUNT: &str = "app-lock";
 
@@ -19,29 +19,23 @@ pub fn app_lock() -> Result<Stored<AppLock>, CredentialError> {
             development: true,
         }));
     }
-    let entry = keyring::Entry::new(SERVICE, ACCOUNT)?;
-    match entry.get_password() {
-        Ok(password) => Ok(Stored::Ready(AppLock {
+    match store::read(ACCOUNT)? {
+        Stored::Ready(password) => Ok(Stored::Ready(AppLock {
             password,
             development: false,
         })),
-        Err(keyring::Error::NoEntry) => Ok(Stored::Missing),
-        Err(error) => Err(CredentialError::Store(error)),
+        Stored::Missing => Ok(Stored::Missing),
     }
 }
 
 pub fn save_app_lock(password: &str) -> Result<(), CredentialError> {
     validate(password)?;
-    keyring::Entry::new(SERVICE, ACCOUNT)?.set_password(password)?;
+    store::save(ACCOUNT, password)?;
     Ok(())
 }
 
 pub fn delete_app_lock() -> Result<(), CredentialError> {
-    let entry = keyring::Entry::new(SERVICE, ACCOUNT)?;
-    match entry.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(error) => Err(CredentialError::Store(error)),
-    }
+    store::delete(ACCOUNT)
 }
 
 fn validate(password: &str) -> Result<(), CredentialError> {

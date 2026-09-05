@@ -1,4 +1,8 @@
-use crate::{CredentialError, SERVICE, Stored};
+#[cfg(debug_assertions)]
+use crate::SERVICE;
+#[cfg(not(debug_assertions))]
+use crate::store;
+use crate::{CredentialError, Stored};
 
 #[cfg(not(debug_assertions))]
 const ACCOUNT: &str = "spotify-music";
@@ -26,16 +30,15 @@ pub fn save_spotify(credentials: SpotifyCredentials) -> Result<(), CredentialErr
     #[cfg(not(debug_assertions))]
     {
         let encoded = serde_json::to_string(&credentials)?;
-        keyring::Entry::new(SERVICE, ACCOUNT)?.set_password(&encoded)?;
+        store::save(ACCOUNT, &encoded)?;
         Ok(())
     }
 }
 
 #[cfg(not(debug_assertions))]
 fn read_store() -> Result<Stored<SpotifyCredentials>, CredentialError> {
-    let entry = keyring::Entry::new(SERVICE, ACCOUNT)?;
-    match entry.get_password() {
-        Ok(encoded) => {
+    match store::read(ACCOUNT)? {
+        Stored::Ready(encoded) => {
             let credentials: SpotifyCredentials = serde_json::from_str(&encoded)?;
             validate(
                 &credentials.web_refresh_token,
@@ -43,8 +46,7 @@ fn read_store() -> Result<Stored<SpotifyCredentials>, CredentialError> {
             )?;
             Ok(Stored::Ready(credentials))
         }
-        Err(keyring::Error::NoEntry) => Ok(Stored::Missing),
-        Err(error) => Err(CredentialError::Store(error)),
+        Stored::Missing => Ok(Stored::Missing),
     }
 }
 

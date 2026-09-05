@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -69,16 +69,28 @@ pub(crate) enum ProviderWidget {
 impl Default for Layout {
     fn default() -> Self {
         let widgets = [
-            ("cpu", Widget::Cpu),
-            ("memory", Widget::Memory),
-            ("storage", Widget::Storage),
-            ("network", Widget::Network),
             (
-                "weather-shanghai",
-                Widget::Weather {
-                    location: "shanghai".to_owned(),
+                "stock-aapl",
+                Widget::Stock {
+                    symbol: "AAPL".to_owned(),
                 },
             ),
+            (
+                "stock-tsla",
+                Widget::Stock {
+                    symbol: "TSLA".to_owned(),
+                },
+            ),
+            ("localCpu", Widget::LocalCpu),
+            ("localStorage", Widget::LocalStorage),
+            ("exchange", Widget::Exchange),
+            (
+                "service-status-github",
+                Widget::ServiceStatus {
+                    service_id: "github".to_owned(),
+                },
+            ),
+            ("quotation", Widget::Quotation),
             (
                 "weather-ningbo",
                 Widget::Weather {
@@ -89,6 +101,12 @@ impl Default for Layout {
                 "weather-nottingham",
                 Widget::Weather {
                     location: "nottingham".to_owned(),
+                },
+            ),
+            (
+                "weather-shanghai",
+                Widget::Weather {
+                    location: "shanghai".to_owned(),
                 },
             ),
             ("github", Widget::Github),
@@ -237,7 +255,16 @@ fn write(path: &Path, layout: &Layout) -> Result<(), String> {
         .map_err(|error| format!("Could not create Dashboard layout directory: {error}"))?;
     let bytes = serde_json::to_vec_pretty(layout)
         .map_err(|error| format!("Could not encode Dashboard layout: {error}"))?;
-    fs::write(path, bytes).map_err(|error| format!("Could not save Dashboard layout: {error}"))
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|error| format!("Could not prepare Dashboard layout: {error}"))?;
+    temporary
+        .write_all(&bytes)
+        .and_then(|()| temporary.as_file().sync_all())
+        .map_err(|error| format!("Could not write Dashboard layout: {error}"))?;
+    temporary
+        .persist(path)
+        .map_err(|error| format!("Could not replace Dashboard layout: {}", error.error))?;
+    Ok(())
 }
 
 fn path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -351,6 +378,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn replaces_layout_and_preserves_it_when_validation_fails() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("layout.json");
+        write(&path, &Layout::default()).unwrap();
+        write(&path, &Layout { widgets: vec![] }).unwrap();
+        let saved = fs::read(&path).unwrap();
+        assert!(read(&path).unwrap().widgets.is_empty());
+        let invalid = Layout {
+            widgets: vec![Placement {
+                id: String::new(),
+                widget: Widget::Cpu,
+            }],
+        };
+        assert!(write(&path, &invalid).is_err());
+        assert_eq!(fs::read(&path).unwrap(), saved);
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn reports_corrupt_layout_without_replacing_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("layout.json");
+        fs::write(&path, b"{").unwrap();
+        assert!(read(&path).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"{");
+    }
+
+    #[test]
     fn rejects_kind() {
         let json = br#"{"widgets":[{"id":"bad","widget":{"kind":"unsupported"}}]}"#;
         assert!(decode(json).is_err());
@@ -410,13 +465,8 @@ mod tests {
     }
 
     #[test]
-    fn default_layout_omits_exchange_widget() {
-        assert!(
-            !Layout::default()
-                .widgets
-                .iter()
-                .any(|placement| matches!(placement.widget, Widget::Exchange))
-        );
+    fn default_layout_is_valid() {
+        Layout::default().validate().unwrap();
     }
 
     #[test]

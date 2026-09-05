@@ -1,4 +1,4 @@
-use crate::{CredentialError, SERVICE, Stored};
+use crate::{CredentialError, Stored, store};
 use serde::{Deserialize, Serialize};
 
 const TELEGRAM_ACCOUNT: &str = "telegram-publication";
@@ -98,11 +98,9 @@ fn read_json<T>(
 where
     T: serde::de::DeserializeOwned,
 {
-    let entry = keyring::Entry::new(SERVICE, account)?;
-    let encoded = match entry.get_password() {
-        Ok(encoded) => encoded,
-        Err(keyring::Error::NoEntry) => return Ok(Stored::Missing),
-        Err(error) => return Err(CredentialError::Store(error)),
+    let encoded = match store::read(account)? {
+        Stored::Ready(encoded) => encoded,
+        Stored::Missing => return Ok(Stored::Missing),
     };
     let credentials = serde_json::from_str(&encoded)?;
     validate(&credentials)?;
@@ -110,7 +108,7 @@ where
 }
 
 fn save_json<T: Serialize>(account: &'static str, value: &T) -> Result<(), CredentialError> {
-    keyring::Entry::new(SERVICE, account)?.set_password(&serde_json::to_string(value)?)?;
+    store::save(account, &serde_json::to_string(value)?)?;
     Ok(())
 }
 

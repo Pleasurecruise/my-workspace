@@ -9,6 +9,7 @@ mod qq;
 mod r2;
 mod social;
 mod spotify;
+mod store;
 mod ugos;
 
 pub use app_lock::{AppLock, app_lock, delete_app_lock, save_app_lock};
@@ -31,6 +32,14 @@ pub enum Stored<T> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CredentialError {
+    #[error("credential store coordination failed: {0}")]
+    StoreIo(#[from] std::io::Error),
+    #[error("the operating system did not provide a credential store data directory")]
+    StoreDataDirectory,
+    #[error("credential store synchronization is unavailable")]
+    StoreSynchronization,
+    #[error("stored credential collection is invalid")]
+    InvalidStore,
     #[error("system credential store failed: {0}")]
     Store(#[from] keyring::Error),
     #[error("stored credential is invalid: {0}")]
