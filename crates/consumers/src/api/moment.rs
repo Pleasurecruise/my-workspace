@@ -131,6 +131,121 @@ impl Client {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PhotoQuery {
+    pub from_date: Option<String>,
+    pub to_date: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub search: Option<String>,
+    pub limit: Option<usize>,
+}
+
+pub async fn query(input: &PhotoQuery) -> Result<Vec<Photo>, ApiError> {
+    if input.limit.is_some_and(|limit| !(1..=100).contains(&limit)) {
+        return Err(ApiError::Protocol(
+            "photo limit must be between 1 and 100".to_owned(),
+        ));
+    }
+    if input
+        .search
+        .as_ref()
+        .is_some_and(|query| query.trim().is_empty())
+    {
+        return Err(ApiError::Protocol(
+            "photo search cannot be empty".to_owned(),
+        ));
+    }
+    let has_filters =
+        input.from_date.is_some() || input.to_date.is_some() || !input.tags.is_empty();
+    if input.search.is_some() && has_filters {
+        return Err(ApiError::Protocol(
+            "photo search cannot be combined with date or tag filters".to_owned(),
+        ));
+    }
+    let date_format = time::macros::format_description!("[year]-[month]-[day]");
+    for date in [&input.from_date, &input.to_date].into_iter().flatten() {
+        time::Date::parse(date, &date_format)
+            .map_err(|_| ApiError::Protocol("photo dates must use YYYY-MM-DD".to_owned()))?;
+    }
+    if let (Some(from), Some(to)) = (&input.from_date, &input.to_date)
+        && from > to
+    {
+        return Err(ApiError::Protocol(
+            "photo fromDate must not follow toDate".to_owned(),
+        ));
+    }
+    if input
+        .tags
+        .iter()
+        .any(|tag| tag.trim().is_empty() || tag.contains(','))
+    {
+        return Err(ApiError::Protocol(
+            "photo tags must be non-empty and contain no commas".to_owned(),
+        ));
+    }
+    let client = Client::load()?;
+    let mut request = client
+        .http
+        .get(format!("{ENDPOINT}/photos"))
+        .bearer_auth(&client.api_key);
+    if let Some(limit) = input.limit {
+        request = request.query(&[("limit", limit)]);
+    }
+    if let Some(from) = &input.from_date {
+        request = request.query(&[("fromDate", from)]);
+    }
+    if let Some(to) = &input.to_date {
+        request = request.query(&[("toDate", to)]);
+    }
+    if let Some(search) = &input.search {
+        request = request.query(&[("search", search)]);
+    }
+    if !input.tags.is_empty() {
+        request = request.query(&[("tags", input.tags.join(","))]);
+    }
+    let response = request.send().await?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ApiError::Status {
+            operation: "query photos",
+            status,
+        });
+    }
+    let result: PhotoList = response.json().await?;
+    Ok(result.photos)
+}
+
+pub async fn get(id: &str) -> Result<Photo, ApiError> {
+    if id.trim().is_empty() {
+        return Err(ApiError::Protocol("a photo ID is required".to_owned()));
+    }
+    let mut url = reqwest::Url::parse(&format!("{ENDPOINT}/photos/"))
+        .map_err(|_| ApiError::Protocol("the Moment endpoint is invalid".to_owned()))?;
+    url.path_segments_mut()
+        .map_err(|_| {
+            ApiError::Protocol("the Moment endpoint cannot contain a photo ID".to_owned())
+        })?
+        .push(id);
+    let client = Client::load()?;
+    let response = client
+        .http
+        .get(url)
+        .bearer_auth(&client.api_key)
+        .send()
+        .await?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ApiError::Status {
+            operation: "read photo",
+            status,
+        });
+    }
+    let result: PhotoResponse = response.json().await?;
+    Ok(result.photo)
+}
+
 pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
     let client = Client::load()?;
     let response = client

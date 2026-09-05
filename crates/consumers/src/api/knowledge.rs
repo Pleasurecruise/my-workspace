@@ -10,7 +10,7 @@ use vesper_credentials::{ConsumerApi, Stored};
 
 const ENDPOINT: &str = "https://knowledge.you-find.me/api/articles";
 const READ_CONCURRENCY: usize = 6;
-const OVERVIEW_PAGE_SIZE: &str = "100";
+const OVERVIEW_PAGE_SIZE: usize = 100;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,10 +168,38 @@ pub struct VisibilityUpdate {
     pub visibility: Visibility,
 }
 
-#[derive(Deserialize)]
-struct ArticlePage {
-    articles: Vec<Summary>,
-    cursor: Option<String>,
+#[derive(Deserialize, Serialize)]
+pub struct ArticlePage {
+    pub articles: Vec<Summary>,
+    pub cursor: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListFilters {
+    pub cursor: Option<String>,
+    pub limit: Option<usize>,
+    pub visibility: Option<Visibility>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+pub async fn summaries(filters: &ListFilters) -> Result<ArticlePage, ApiError> {
+    if filters
+        .limit
+        .is_some_and(|limit| !(1..=100).contains(&limit))
+    {
+        return Err(ApiError::Protocol(
+            "article limit must be between 1 and 100".to_owned(),
+        ));
+    }
+    if filters.tags.len() > 5 || filters.tags.iter().any(|tag| tag.trim().is_empty()) {
+        return Err(ApiError::Protocol(
+            "article filters accept at most five non-empty tags".to_owned(),
+        ));
+    }
+    let client = Client::load()?;
+    read_summary_page(&client, filters).await
 }
 
 #[derive(Deserialize)]
@@ -196,7 +224,15 @@ impl Client {
 
 pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
     let client = Client::load()?;
-    let page = read_summary_page(&client, cursor.as_deref(), "20").await?;
+    let page = read_summary_page(
+        &client,
+        &ListFilters {
+            cursor,
+            limit: Some(20),
+            ..ListFilters::default()
+        },
+    )
+    .await?;
     let documents = read_documents(&client, page.articles).await?;
     Ok(Page {
         documents,
@@ -206,7 +242,14 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
 
 pub async fn overview() -> Result<Page, ApiError> {
     let client = Client::load()?;
-    let page = read_summary_page(&client, None, OVERVIEW_PAGE_SIZE).await?;
+    let page = read_summary_page(
+        &client,
+        &ListFilters {
+            limit: Some(OVERVIEW_PAGE_SIZE),
+            ..ListFilters::default()
+        },
+    )
+    .await?;
     let documents = read_documents(&client, overview_summaries(page.articles)).await?;
     Ok(Page {
         documents,
@@ -216,15 +259,19 @@ pub async fn overview() -> Result<Page, ApiError> {
 
 async fn read_summary_page(
     client: &Client,
-    cursor: Option<&str>,
-    limit: &str,
+    filters: &ListFilters,
 ) -> Result<ArticlePage, ApiError> {
-    let mut request = client
-        .http
-        .get(ENDPOINT)
-        .bearer_auth(&client.api_key)
-        .query(&[("limit", limit)]);
-    if let Some(cursor) = cursor {
+    let mut request = client.http.get(ENDPOINT).bearer_auth(&client.api_key);
+    if let Some(limit) = filters.limit {
+        request = request.query(&[("limit", limit)]);
+    }
+    if let Some(visibility) = filters.visibility {
+        request = request.query(&[("visibility", visibility)]);
+    }
+    for tag in &filters.tags {
+        request = request.query(&[("tag", tag)]);
+    }
+    if let Some(cursor) = &filters.cursor {
         request = request.query(&[("cursor", cursor)]);
     }
     let response = request.send().await?;

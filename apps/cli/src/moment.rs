@@ -5,6 +5,21 @@ use std::path::Path;
 
 pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
     match (action, arguments) {
+        ("get", [id]) => {
+            let photo = consumers::api::moment::get(id)
+                .await
+                .map_err(|error| error.to_string())?;
+            print_json(&photo)
+        }
+        ("query", input) => {
+            let input = crate::read_input(input).await?;
+            let query = serde_json::from_str(&input)
+                .map_err(|error| format!("invalid Moment query: {error}"))?;
+            let photos = consumers::api::moment::query(&query)
+                .await
+                .map_err(|error| error.to_string())?;
+            print_json(&json!({ "photos": photos }))
+        }
         ("tags", []) => {
             let tags = consumers::api::moment::tags()
                 .await
@@ -30,16 +45,29 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "photos": photos }))
         }
-        ("create", [input]) => {
-            let input: Create = serde_json::from_str(input)
+        ("create", input) => {
+            let input = crate::read_input(input).await?;
+            let input: Create = serde_json::from_str(&input)
                 .map_err(|error| format!("invalid moment create JSON: {error}"))?;
             let photo = consumers::api::moment::create(&input)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&photo)
         }
-        ("upload-photo", [input, source_path]) => {
-            let input: Upload = serde_json::from_str(input)
+        ("upload-photo", arguments) => {
+            let (input, source_path) = match arguments {
+                [flag, _, source] if flag == "--file" => (&arguments[..2], source),
+                [flag, source] if flag == "--stdin" => (&arguments[..1], source),
+                [input, source] if !input.starts_with("--") => (&arguments[..1], source),
+                _ => {
+                    return Err(
+                        "expected upload-photo <input> <source-image>; run `vesper help`"
+                            .to_owned(),
+                    );
+                }
+            };
+            let input = crate::read_input(input).await?;
+            let input: Upload = serde_json::from_str(&input)
                 .map_err(|error| format!("invalid Moment upload JSON: {error}"))?;
             let source = tokio::fs::read(source_path).await.map_err(|error| {
                 format!("could not read Moment source image {source_path}: {error}")
@@ -52,8 +80,9 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&photo)
         }
-        ("update", [id, input]) => {
-            let input: Update = serde_json::from_str(input)
+        ("update", [id, input @ ..]) => {
+            let input = crate::read_input(input).await?;
+            let input: Update = serde_json::from_str(&input)
                 .map_err(|error| format!("invalid moment update JSON: {error}"))?;
             let photo = consumers::api::moment::update(id, &input)
                 .await

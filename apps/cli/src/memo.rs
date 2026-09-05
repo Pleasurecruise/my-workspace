@@ -32,6 +32,12 @@ struct PageInput {
 
 pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
     match (action, arguments) {
+        ("get", [id]) => {
+            let memo = consumers::api::memos::read(id)
+                .await
+                .map_err(|error| error.to_string())?;
+            print_json(&memo)
+        }
         ("tags", []) => {
             let tags = consumers::api::memos::tags()
                 .await
@@ -65,8 +71,9 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             .map_err(|error| error.to_string())?;
             print_json(&json!({ "memos": page.memos, "nextCursor": page.next_cursor }))
         }
-        ("page", [input]) => {
-            let input: PageInput = serde_json::from_str(input)
+        ("page", input) => {
+            let input = crate::read_input(input).await?;
+            let input: PageInput = serde_json::from_str(&input)
                 .map_err(|error| format!("invalid memo page JSON: {error}"))?;
             if input.archived_only && input.favorites_only {
                 return Err(
@@ -105,12 +112,11 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             print_json(&result)
         }
         ("create", content) if !content.is_empty() => {
-            let memo = consumers::api::memos::create(
-                &content.join(" "),
-                consumers::api::memos::Visibility::Private,
-            )
-            .await
-            .map_err(|error| error.to_string())?;
+            let content = crate::read_input(content).await?;
+            let memo =
+                consumers::api::memos::create(&content, consumers::api::memos::Visibility::Private)
+                    .await
+                    .map_err(|error| error.to_string())?;
             print_json(&memo)
         }
         ("import-x", arguments) => {
@@ -140,7 +146,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             update(
                 id,
                 Update {
-                    content: Some(content.join(" ")),
+                    content: Some(crate::read_input(content).await?),
                     visibility: None,
                     tags: None,
                     pinned: None,
@@ -150,8 +156,9 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             )
             .await
         }
-        ("patch", [id, input]) => {
-            let input: Update = serde_json::from_str(input)
+        ("patch", [id, input @ ..]) => {
+            let input = crate::read_input(input).await?;
+            let input: Update = serde_json::from_str(&input)
                 .map_err(|error| format!("invalid memo patch JSON: {error}"))?;
             if input.content.is_none()
                 && input.visibility.is_none()

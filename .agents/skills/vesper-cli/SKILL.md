@@ -51,14 +51,27 @@ location, and description, while manual items return `null`.
 
 ## Provider status
 
-`vesper status` concurrently reads the same shared Rust UGOS, Codex, OpenCode Go, DeepSeek, and
-CherryIN boundaries used by Desktop. It is read-only apart from CherryIN's existing token-renewal
-policy. Each source reports `ready` or `failed` independently as JSON, so one unavailable provider
-does not hide the others. The command never prints credentials.
+`vesper status` concurrently reads UGOS, Claude, Codex, Copilot, Grok, OpenCode Go, DeepSeek, and
+CherryIN through the same Rust boundaries as Desktop. Each source independently reports `ready`
+or `failed` as JSON. `status <source>` queries only that source, prints its data, and exits with
+failure if that read fails. Existing credential-renewal policies still apply.
 
 ```sh
 vesper status
+vesper status codex
 ```
+
+Source names are `ugos`, `claude`, `codex`, `copilot`, `grok`, `opencode`, `deepseek`, and `cherryin`.
+
+## Content input
+
+Replace an inline Markdown or JSON payload with `--file <path>` or `--stdin` to preserve multiline
+content. This applies to Memo create/update/page/patch, Knowledge page/create/update/visibility,
+and Moment query/create/update/upload-photo. For image uploads, the image path follows the metadata
+input: `vesper moment upload-photo --file metadata.json photo.heic`.
+
+Read and parse errors stop before consumer requests. Do not pass credentials in files or stdin
+intended for content payloads. These input forms do not change which commands are mutations.
 
 ## Local artifacts and publication
 
@@ -147,6 +160,7 @@ Memo reads and writes go through the my-memos REST API so the consumer can coord
 metadata, and KV invalidation. List and search responses already include the mirrored Markdown body.
 
 ```sh
+vesper memo get <id>
 vesper memo tags
 vesper memo list [limit]
 vesper memo page '<json>'
@@ -180,6 +194,7 @@ must fail rather than overwrite a newer article.
 
 ```sh
 vesper knowledge list [cursor]
+vesper knowledge page '<json>'
 vesper knowledge get <id>
 vesper knowledge create '<json>'
 vesper knowledge update-draft <id> '<json-with-expectedHash>'
@@ -187,6 +202,9 @@ vesper knowledge update-documents <id> '<json-with-expectedHash>'
 vesper knowledge visibility <id> '<json-with-expectedHash>'
 vesper knowledge delete <id> <expected-hash>
 ```
+
+`knowledge page` accepts `cursor`, `limit` (1–100), `tags` (up to five), and `visibility`. It returns
+compact `{ articles, cursor }` summaries through REST, corresponding to MCP `listArticles`.
 
 Inspect an existing article with `knowledge get` before constructing an update. Do not invent fields;
 use the Rust input types in `crates/consumers/src/api/knowledge.rs` as the local contract.
@@ -198,6 +216,8 @@ Prefer `upload-photo` for a coordinated create; use the separate object upload a
 for explicit recovery workflows.
 
 ```sh
+vesper moment get <id>
+vesper moment query '<json>'
 vesper moment tags
 vesper moment list [cursor]
 vesper moment search <query>
@@ -209,6 +229,11 @@ vesper moment download <r2-key> <local-path>
 vesper moment delete <id>
 vesper moment remove-object <r2-key>
 ```
+
+`moment query` accepts `fromDate`/`toDate` in `YYYY-MM-DD`, `tags`, and `limit` (1–100, service
+default 20). Alternatively, use `search` and `limit`; search cannot be combined with dates or tags.
+It returns `{ photos }` using the same REST operations as MCP browsing and search. `moment get`
+reads one photo directly by ID.
 
 `upload-photo` uses the desktop's coordinated Rust workflow. Its JSON follows
 `consumers::api::moment::Upload`. Rust accepts PNG, JPEG, WebP, AVIF, or HEIC up to 20 MB, applies

@@ -48,6 +48,20 @@ remote state. `vesper publish --live` passes the staged files to `publish.rs`, w
 through `r2.rs` below the `blog/` prefix. The temporary directory is removed when its Rust guard is
 dropped. Publication is additive and does not delete destination-only objects.
 
+## CLI input
+
+Content commands accept inline Markdown or JSON, `--file <path>`, or `--stdin` in the payload's
+position. File and standard-input reads preserve newlines and require UTF-8; read and parse errors
+stop before consumer requests. This applies to Memo create/update/page/patch, Knowledge
+page/create/update-draft/update-documents/visibility, and Moment query/create/update/upload-photo.
+
+```sh
+vesper memo create --file note.md
+vesper knowledge update-documents <id> --file article.json
+cat filters.json | vesper moment query --stdin
+vesper moment upload-photo --file metadata.json photo.heic
+```
+
 ## Memos
 
 Memo metadata operations use the my-memos REST API. Create, update, and delete requests must pass
@@ -58,6 +72,7 @@ locally without a second R2 read.
 CLI surface:
 
 ```text
+vesper memo get <id>
 vesper memo tags
 vesper memo list [limit]
 vesper memo page <json>
@@ -97,6 +112,7 @@ schema.
 
 ```text
 vesper knowledge list [cursor]
+vesper knowledge page <json>
 vesper knowledge get <id>
 vesper knowledge create <json>
 vesper knowledge update-draft <id> <json>
@@ -104,6 +120,12 @@ vesper knowledge update-documents <id> <json>
 vesper knowledge visibility <id> <json>
 vesper knowledge delete <id> <expected-hash>
 ```
+
+`knowledge page` exposes the compact listing capability used by the consumer's `listArticles` MCP
+tool through the same REST service. It accepts `cursor`, `limit` (1–100), `tags` (up to five), and
+`visibility` (`public` or `private`), returning `{ articles, cursor }` without fetching or rendering
+article bodies. `knowledge list` retains its existing rendered-document projection; use `get` when
+an edit needs the complete source and current content hash.
 
 ## Moment
 
@@ -133,6 +155,8 @@ deletion path; raw object removal is an explicit maintenance operation.
 The remaining Moment commands cover tags, listing, search, metadata updates, downloads, and deletion:
 
 ```text
+vesper moment get <id>
+vesper moment query <json>
 vesper moment tags
 vesper moment list [cursor]
 vesper moment search <query>
@@ -140,6 +164,12 @@ vesper moment update <id> <json>
 vesper moment download <r2-key> <local-path>
 vesper moment delete <id>
 ```
+
+`moment query` exposes MCP-style metadata browsing through REST: `fromDate` and `toDate` use
+`YYYY-MM-DD`, `tags` filters the photo list, and `limit` is 1–100 (the service defaults to 20).
+Alternatively, `search` queries titles, descriptions and tags. Search cannot be combined with dates
+or tags because the service does not apply those filters in search mode. The result is `{ photos }`
+with no invented pagination cursor. `moment get` reads one photo directly by ID.
 
 The desktop sends the original image and user-entered metadata into the same Rust workflow. Its
 viewer sends title, description, and tag edits to the authenticated Moment update endpoint and sends
@@ -183,9 +213,14 @@ hand-authored items.
 
 ## Credentials and failure boundaries
 
-`vesper status` reads UGOS and the four shared AI-provider integrations concurrently. Its JSON keeps
-each source's success or failure independent and does not expose credentials. Weather and GitHub
-remain desktop-local integrations.
+`vesper status` reads UGOS and seven AI providers concurrently. Its JSON keeps each source's success
+or failure independent and does not expose credentials. `status <source>` queries only the selected
+source and prints its data, returning a failing exit code if that read fails. Sources are `ugos`,
+`claude`, `codex`, `copilot`, `grok`, `opencode`, `deepseek`, and `cherryin`.
+
+The CLI shares consumer business operations through Rust APIs. Consumer-specific chat memory,
+web-search tools, interactive visuals, desktop layout, and media-player state remain outside its
+command surface. Existing GitHub CLI commands cover GitHub account automation.
 
 Release builds read consumer API keys and R2 credentials from the operating-system credential store.
 Debug builds can use the variables listed in `.env.example` to avoid repeated macOS Keychain prompts

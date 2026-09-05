@@ -336,12 +336,17 @@ items store an explicit null detail projection. Svelte renders this typed data w
 ## CLI consumer surface
 
 The CLI groups commands by feature in `status.rs`, `todo.rs`, `memo.rs`, `knowledge.rs`, and
-`moment.rs`. The three consumer features reuse the same typed REST modules as the desktop, including
-Memo's X import.
-Memo and Knowledge content stays behind their Worker APIs; Moment exposes explicit R2 binary transfer
-before REST metadata registration. Todo commands reuse `todo` and accept an explicit date
-for the same calendar-day operations available in the desktop. Detailed sequencing and rollback
-rules live in [WORKFLOW.md](WORKFLOW.md).
+`moment.rs`. Consumer commands reuse the desktop's typed Rust REST boundaries. Compact Knowledge
+summary pages and filtered Moment queries expose the corresponding consumer MCP business
+capabilities without introducing an MCP proxy or duplicating server-side filtering.
+
+Markdown and JSON payloads can come from arguments, UTF-8 files or standard input; read and parse
+failures precede remote operations. Memo and Knowledge writes retain Worker coordination and
+Knowledge content-hash checks. Moment coordinates image preparation and R2 transfer before metadata
+registration. Todo shares the date-keyed local calendar, and provider status can query all sources
+or one explicitly selected source. Desktop layout, player state, consumer chat memory and interactive
+visuals remain outside the CLI. Command contracts and recovery behavior live in
+[WORKFLOW.md](WORKFLOW.md).
 
 ## Current limitations
 

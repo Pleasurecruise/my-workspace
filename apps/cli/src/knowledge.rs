@@ -4,6 +4,15 @@ use serde_json::json;
 
 pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
     match (action, arguments) {
+        ("page", input) => {
+            let input = crate::read_input(input).await?;
+            let filters = serde_json::from_str(&input)
+                .map_err(|error| format!("invalid Knowledge filters: {error}"))?;
+            let page = consumers::api::knowledge::summaries(&filters)
+                .await
+                .map_err(|error| error.to_string())?;
+            print_json(&page)
+        }
         ("list", []) => {
             let page = consumers::api::knowledge::list(None)
                 .await
@@ -22,32 +31,36 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&article)
         }
-        ("create", [input]) => {
-            let input: Create = serde_json::from_str(input)
+        ("create", input) => {
+            let input = crate::read_input(input).await?;
+            let input: Create = serde_json::from_str(&input)
                 .map_err(|error| format!("invalid knowledge create JSON: {error}"))?;
             let article = consumers::api::knowledge::create(&input)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&article)
         }
-        ("update-draft", [id, input]) => {
-            let input: DraftUpdate = serde_json::from_str(input)
+        ("update-draft", [id, input @ ..]) => {
+            let input = crate::read_input(input).await?;
+            let input: DraftUpdate = serde_json::from_str(&input)
                 .map_err(|error| format!("invalid knowledge draft JSON: {error}"))?;
             let article = consumers::api::knowledge::update_draft(id, &input)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&article)
         }
-        ("update-documents", [id, input]) => {
-            let input: DocumentUpdate = serde_json::from_str(input)
+        ("update-documents", [id, input @ ..]) => {
+            let input = crate::read_input(input).await?;
+            let input: DocumentUpdate = serde_json::from_str(&input)
                 .map_err(|error| format!("invalid knowledge documents JSON: {error}"))?;
             let article = consumers::api::knowledge::update_documents(id, &input)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&article)
         }
-        ("visibility", [id, input]) => {
-            let input: VisibilityUpdate = serde_json::from_str(input)
+        ("visibility", [id, input @ ..]) => {
+            let input = crate::read_input(input).await?;
+            let input: VisibilityUpdate = serde_json::from_str(&input)
                 .map_err(|error| format!("invalid knowledge visibility JSON: {error}"))?;
             let article = consumers::api::knowledge::set_visibility(id, &input)
                 .await

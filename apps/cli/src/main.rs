@@ -51,7 +51,7 @@ async fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             Ok(())
         }
         [command] if command == "publish" => publish(&repository, false).await,
-        [command] if command == "status" => status::run().await,
+        [command, sources @ ..] if command == "status" => status::run(sources).await,
         [command, flag] if command == "publish" && flag == "--live" => {
             publish(&repository, true).await
         }
@@ -99,6 +99,25 @@ fn print_json(value: &impl serde::Serialize) -> Result<(), String> {
     Ok(())
 }
 
+async fn read_input(arguments: &[String]) -> Result<String, String> {
+    match arguments {
+        [flag, path] if flag == "--file" => tokio::fs::read_to_string(path)
+            .await
+            .map_err(|error| format!("could not read input file {path}: {error}")),
+        [flag] if flag == "--stdin" => {
+            use tokio::io::AsyncReadExt;
+            let mut content = String::new();
+            tokio::io::stdin()
+                .read_to_string(&mut content)
+                .await
+                .map_err(|error| format!("could not read standard input: {error}"))?;
+            Ok(content)
+        }
+        [first, ..] if !first.starts_with("--") => Ok(arguments.join(" ")),
+        _ => Err("expected content, --file <path>, or --stdin".to_owned()),
+    }
+}
+
 fn print_help() {
     println!(
         "vesper\n\n\
@@ -106,7 +125,8 @@ fn print_help() {
          build             validate content using temporary output\n  \
          publish           compile, then preview the SDK upload\n  \
          publish --live    compile, upload with the SDK, then remove temporary output\n  \
-         status            read UGOS and AI provider status as JSON\n  \
+         status [source]   read all or one UGOS/AI source as JSON\n  \
+         memo get <id>               read one memo as JSON\n  \
          memo tags                   list memo tags with counts\n  \
          memo list [limit]            list newest memos as JSON\n  \
          memo page <json>             list a filtered or paginated memo page\n  \
@@ -124,12 +144,15 @@ fn print_help() {
          memo restore <id>             restore an archived memo\n  \
          memo delete <id>             permanently delete a memo\n  \
          knowledge list [cursor]       list Knowledge articles\n  \
+         knowledge page <json>         list compact summaries by tags, visibility and cursor\n  \
          knowledge get <id>            read one Knowledge article\n  \
          knowledge create <json>       create an article from a typed JSON payload\n  \
          knowledge update-draft <id> <json>      update draft fields with expectedHash\n  \
          knowledge update-documents <id> <json>  update editions with expectedHash\n  \
          knowledge visibility <id> <json>        update visibility with expectedHash\n  \
          knowledge delete <id> <hash>  delete an unchanged article\n  \
+         moment get <id>                read one photo\n  \
+         moment query <json>            filter photos by dates/tags or search\n  \
          moment tags                   list Moment tags\n  \
          moment list [cursor]          list photos\n  \
          moment search <query>         search photo metadata\n  \
@@ -150,7 +173,13 @@ fn print_help() {
          todo update <id> <text>        replace a Todo's text\n  \
          todo complete <id>             mark a Todo complete\n  \
          todo reopen <id>               mark a Todo incomplete\n  \
-         todo delete <id>               delete a Todo"
+         todo delete <id>               delete a Todo\n\n\
+         Status sources: ugos, claude, codex, copilot, grok, opencode, deepseek, cherryin\n\n\
+         Content input: replace Markdown or JSON with --file <path> or --stdin for\n\
+         memo create/update/page/patch, Knowledge page/create/update/visibility, and\n\
+         Moment query/create/update/upload-photo. Examples:\n  \
+         moment upload-photo --file <metadata.json> <source-image>\n  \
+         moment upload-photo --stdin <source-image>"
     );
 }
 

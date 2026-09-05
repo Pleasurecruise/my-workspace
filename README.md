@@ -37,12 +37,12 @@ photo stream, continue a longer draft, or publish content without switching betw
 
 ```mermaid
 flowchart LR
-    Desktop[Tauri + Svelte desktop] --> Rust[Rust capabilities]
-    CLI[vesper CLI] --> Rust
-    Rust --> APIs[Memos · Knowledge · Moment APIs]
-    Rust --> R2[(Cloudflare R2)]
-    Rust --> Local[Local storage and credentials]
-    Rust --> Providers[Dashboard · Music · Social providers]
+    Desktop[Tauri + Svelte desktop] --> Core[Rust core]
+    CLI[vesper CLI] --> Core
+    Core --> APIs[Consumer APIs]
+    Core --> R2[(Cloudflare R2)]
+    APIs --> Services[Memos · Knowledge · Moment]
+    R2 --> Services
 ```
 
 The workspace is built with Tauri v2, Svelte 5, Rust, and a small shared UI package. Companion APIs

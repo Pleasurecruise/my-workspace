@@ -20,7 +20,30 @@ struct Report {
     cherry_in: Source<useage::cherryin::CherryInBalance>,
 }
 
-pub(super) async fn run() -> Result<(), String> {
+pub(super) async fn run(sources: &[String]) -> Result<(), String> {
+    if let [source] = sources {
+        return match source.as_str() {
+            "ugos" => super::print_json(
+                &ugos::task_manager()
+                    .await
+                    .map_err(|error| error.to_string())?,
+            ),
+            "claude" => super::print_json(&useage::claude::read().await?),
+            "codex" => super::print_json(&useage::codex::read().await?),
+            "copilot" => super::print_json(&useage::copilot::read().await?),
+            "grok" => super::print_json(&useage::grok::read().await?),
+            "opencode" => super::print_json(&useage::opencode::read().await?),
+            "deepseek" => super::print_json(&useage::deepseek::read().await?),
+            "cherryin" => super::print_json(&useage::cherryin::read().await?),
+            _ => Err(format!(
+                "unknown status source: {source}; run `vesper help`"
+            )),
+        };
+    }
+    if !sources.is_empty() {
+        return Err("status accepts at most one source".to_owned());
+    }
+
     let (task_manager, claude, codex, copilot, grok, open_code, deep_seek, cherry_in) = tokio::join!(
         ugos::task_manager(),
         useage::claude::read(),
