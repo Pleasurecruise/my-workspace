@@ -332,7 +332,10 @@ pub(crate) fn remove_app_lock() -> CommandResponse<String> {
 }
 
 #[tauri::command]
-pub(crate) fn unlock_app(password: String) -> CommandResponse<String> {
+pub(crate) fn unlock_app(
+    state: tauri::State<'_, AppLockState>,
+    password: String,
+) -> CommandResponse<String> {
     let stored = match vesper_credentials::app_lock() {
         Ok(vesper_credentials::Stored::Ready(app_lock)) => app_lock.password,
         Ok(vesper_credentials::Stored::Missing) => {
@@ -346,13 +349,58 @@ pub(crate) fn unlock_app(password: String) -> CommandResponse<String> {
             };
         }
     };
-    if !passwords_match(&stored, &password) {
+    if !state.unlock(&stored, &password) {
         return CommandResponse::Failed {
             message: "Incorrect password.".to_owned(),
         };
     }
     CommandResponse::Ready {
         data: "app-lock".to_owned(),
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct AppLockState(std::sync::atomic::AtomicBool);
+
+impl AppLockState {
+    fn unlock(&self, stored: &str, supplied: &str) -> bool {
+        if !passwords_match(stored, supplied) {
+            return false;
+        }
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+        true
+    }
+
+    pub(crate) fn locked(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+#[tauri::command]
+pub(crate) fn read_app_lock(state: tauri::State<'_, AppLockState>) -> bool {
+    state.locked()
+}
+
+#[tauri::command]
+pub(crate) fn lock_app(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppLockState>,
+) -> CommandResponse<()> {
+    use tauri::Manager;
+    match vesper_credentials::app_lock() {
+        Ok(vesper_credentials::Stored::Ready(_)) => {
+            state.0.store(true, std::sync::atomic::Ordering::SeqCst);
+            if let Some(webview) = app.get_webview_window("main") {
+                webview.close_devtools();
+            }
+            CommandResponse::Ready { data: () }
+        }
+        Ok(vesper_credentials::Stored::Missing) => CommandResponse::Failed {
+            message: "App Lock is not configured.".to_owned(),
+        },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
     }
 }
 
@@ -372,7 +420,19 @@ fn passwords_match(stored: &str, supplied: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::passwords_match;
+    use super::{AppLockState, passwords_match};
+
+    #[test]
+    fn locked_session_requires_valid_password_to_clear() {
+        let state = AppLockState::default();
+        state.0.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(state.locked());
+        assert!(state.locked());
+        assert!(!state.unlock("correct horse", "correct house"));
+        assert!(state.locked());
+        assert!(state.unlock("correct horse", "correct horse"));
+        assert!(!state.locked());
+    }
 
     #[test]
     fn compares_full_passwords() {

@@ -130,19 +130,20 @@ visible.
 
 ## Music interaction
 
-Music follows Moment in primary navigation. The upper-right segmented switch replaces search and
-selects Spotify Liked Songs or QQ Music Daily 30. Each source retains its last settled collection
-while mounted; switching resets the dedicated player surface to the selected source's list. Music
-does not expose browse, external search, or additional playlist navigation. Selecting a row starts
-local playback and replaces the library with a dedicated player. Returning through primary Music
-navigation restores the current source's library.
+Music opens the current provider's collection from primary navigation. The upper-right segmented
+switch selects Spotify Liked Songs or QQ Music Daily 30; each source retains its settled collection,
+and switching providers returns to that source's list. The view has no external search or additional
+playlist navigation.
 
-The player is one centered column: rotating vinyl, one rolling lyric subtitle, track metadata,
-transport controls, and a seekable timeline with elapsed and total time. Synced lyrics follow their
-timestamps; plain lyrics advance proportionally. Previous and Next use the loaded library order,
-while one mode control cycles sequential, repeat-one, and shuffle for Rust-owned track-boundary
-advancement. There is no separate lyric card or scrollable lyric pane. Reduced-motion preferences
-stop vinyl and subtitle animation without hiding playback state.
+Selecting a song starts local playback and opens the player. A global action also opens the player
+from other pages. Its lower-right back arrow returns to the page used to enter it, including the
+collection when opened by selecting a song. Primary Music navigation always opens the collection.
+
+The player arranges rotating vinyl, one rolling lyric subtitle, track metadata, transport controls,
+and a seekable timeline in a centered column. Synced lyrics follow their timestamps; plain lyrics
+advance proportionally. Previous and Next follow the loaded collection order, and one mode control
+selects sequential playback, repeat-one, or shuffle for Rust-owned track advancement. Reduced-motion
+preferences stop vinyl and subtitle animation while preserving playback state.
 
 ## Window and theme
 

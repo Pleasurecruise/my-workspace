@@ -413,27 +413,11 @@ pub async fn upload(store: &Store, input: Upload, source: Vec<u8>) -> Result<Pho
         aspect_ratio: Some(f64::from(prepared.width) / f64::from(prepared.height)),
         format: Some("PNG".to_owned()),
     };
-    match create(&metadata).await {
-        Ok(photo) => Ok(photo),
-        Err(error) => {
-            let original_cleanup = store.delete(&r2_key).await;
-            let thumbnail_cleanup = store.delete(&thumbnail_r2_key).await;
-            match (original_cleanup, thumbnail_cleanup) {
-                (Ok(()), Ok(())) => Err(error),
-                (Err(cleanup), Ok(())) => Err(ApiError::Protocol(format!(
-                    "photo metadata creation failed: {error}; original cleanup failed: {cleanup}"
-                ))),
-                (Ok(()), Err(cleanup)) => Err(ApiError::Protocol(format!(
-                    "photo metadata creation failed: {error}; thumbnail cleanup failed: {cleanup}"
-                ))),
-                (Err(original_cleanup), Err(thumbnail_cleanup)) => {
-                    Err(ApiError::Protocol(format!(
-                        "photo metadata creation failed: {error}; original cleanup failed: {original_cleanup}; thumbnail cleanup failed: {thumbnail_cleanup}"
-                    )))
-                }
-            }
-        }
-    }
+    create(&metadata).await.map_err(|error| {
+        ApiError::Protocol(format!(
+            "photo registration could not be confirmed: {error}; retained objects {r2_key} and {thumbnail_r2_key}; check the gallery before retrying or removing these objects"
+        ))
+    })
 }
 
 pub async fn update(id: &str, input: &Update) -> Result<Photo, ApiError> {

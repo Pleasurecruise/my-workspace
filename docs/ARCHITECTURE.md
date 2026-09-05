@@ -96,10 +96,12 @@ The Tauri layer maps transport input and output. Domain and protocol behavior st
 crate. Commands return a tagged `ready` or `failed` response so expected provider and storage errors
 remain data rather than uncaught frontend exceptions.
 
-App Lock is a local privacy boundary, not content encryption. Rust owns password storage and
-verification; Svelte only makes the application shell inert and renders the unlock surface. Debug
-credential resolution and the Settings prefill exception are documented in
-[DEVELOPMENT.md](DEVELOPMENT.md).
+App Lock provides a privacy screen for the running application. Rust owns its password storage,
+verification, and in-memory lock state. Svelte reads that state before revealing the shell, keeps the
+shell inert while locked, and renders the unlock form. Reloading the WebView preserves the lock;
+restarting the application starts a new unlocked session. Locking also closes developer tools and
+prevents reopening them until the password is verified. App Lock does not encrypt content. Credential
+resolution and Settings prefill behavior are documented in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 The main window is visible as soon as Tauri creates it. On macOS it retains the complete native title
 bar, including the system title, traffic-light controls, and drag behavior. The frontend requests one
@@ -148,16 +150,16 @@ retains at most 64 objects within 128 MiB; failed reads remain retryable. Cleari
 invalidates pending entries so older reads cannot refill it. R2 credential changes reset both the
 repository and image cache.
 
-Newspaper is a Rust-owned projection of Knowledge. `consumers` classifies established edition tags,
-selects the latest Programmer Daily and Personal Daily documents, and marks editions for exclusion
-from the regular Knowledge index. Its overview reads the API's maximum lightweight summary batch,
-then fetches bodies only for regular articles and the latest issue in each newspaper stream. This
-keeps the active Knowledge index complete without downloading and compiling historical daily bodies;
-older history remains available through the CLI's explicit cursor reads. Svelte renders that typed
-projection without interpreting tags.
-Entering Newspaper refreshes the first Knowledge page immediately while retaining its settled
-content, and the active view refreshes near the top every 60 seconds. The desktop also refreshes
-Knowledge daily at 09:00 local time.
+Knowledge and Newspaper share a Rust-owned overview. `consumers` traverses the default and
+`tag=daily` summary pages, deduplicates articles, and rejects repeated cursors. Edition tags identify
+Programmer Daily and Personal Daily; the overview retains all regular articles and the latest issue
+from each stream, then fetches and compiles only those bodies. Historical issues remain accessible
+through the CLI's tag-filtered cursor reads.
+
+Svelte renders the resulting articles and edition IDs without interpreting tags. Regular articles
+appear in Knowledge, while Newspaper displays the two current issues. Entering Newspaper refreshes
+the overview while retaining settled content. The active view refreshes near the top every 60 seconds,
+and the desktop also refreshes Knowledge daily at 09:00 local time.
 
 Inbox is the consumer boundary for messages published through ntfy. Rust owns one authenticated SSE
 subscription to the fixed `mail-summary` topic on `https://ntfy.you-find.me`, deduplicates ntfy
@@ -263,13 +265,18 @@ never credentials or response bodies.
 
 ### Moment
 
-Moment uses `https://moment.you-find.me/api/v1` for complete D1 photo metadata, including original
-and thumbnail R2 keys. The shared Rust upload path accepts PNG, JPEG, WebP, AVIF, and HEIC sources,
-normalizes orientation, reads available EXIF time and coordinates, and produces a PNG original, JPEG
-thumbnail, and ThumbHash. It then assigns both `img/` keys, uploads the objects, and registers the
-metadata, removing objects already written if a later step fails. Listing, tags, metadata edits, and
-deletion remain authenticated Worker operations. The current remote list endpoint has no cursor and
-returns at most 100 records, so the desktop cursor pages only that returned set.
+Moment uses `https://moment.you-find.me/api/v1` for photo metadata and authenticated listing, tag,
+edit, and delete operations. Records contain the original and thumbnail R2 keys. The remote list
+endpoint returns at most 100 records without a cursor; desktop pagination covers that returned set.
+
+The shared Rust upload path accepts PNG, JPEG, WebP, AVIF, and HEIC, normalizes orientation, and reads
+available EXIF time and coordinates. It produces a PNG original, JPEG thumbnail, and ThumbHash,
+assigns both `img/` keys, uploads the objects, and registers their metadata through the API.
+
+Cleanup follows the registration boundary. If thumbnail upload fails, Rust removes the original
+before any metadata request. After registration starts, an unsuccessful response may still follow a
+committed record, so both objects are retained. The error reports their keys for checking the gallery
+and reconciling the upload before retrying or removing objects.
 
 ### Knowledge
 

@@ -16,9 +16,10 @@
 
 	let {
 		onopensettings,
+		onopenplayer,
 		playerVisible = $bindable(false),
 		playerAvailable = $bindable(false),
-	}: { onopensettings: () => void; playerVisible?: boolean; playerAvailable?: boolean } = $props();
+	}: { onopensettings: () => void; onopenplayer: () => void; playerVisible?: boolean; playerAvailable?: boolean } = $props();
 
 	const initialTracks = settledTracks[settledProvider];
 	let provider = $state<MusicProvider>(settledProvider);
@@ -113,6 +114,7 @@
 		if (startPlayback && acting) return;
 		const target = provider;
 		selectedTrack = track;
+		if (showPlayer && !playerVisible) onopenplayer();
 		playerVisible = showPlayer;
 		lyrics = null;
 		lyricsError = null;

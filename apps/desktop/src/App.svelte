@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
-	import { Archive, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, ListMusic, Lock, Menu, Moon, Music2, Newspaper as NewspaperIcon, Settings, Sun, X } from "@lucide/svelte";
+	import { Archive, ArrowLeft, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, Lock, Menu, Moon, Music2, Newspaper as NewspaperIcon, Settings, Sun, X } from "@lucide/svelte";
 	import { onMount, tick } from "svelte";
 	import MemosView from "./lib/components/MemosView.svelte";
 	import MomentView from "./lib/components/MomentView.svelte";
@@ -66,6 +66,7 @@
 	let selected = $state<View>("dashboard");
 	let musicPlayerVisible = $state(false);
 	let musicPlayerAvailable = $state(false);
+	let musicReturnView: View = "music";
 	let previousView = $state<Exclude<View, "inbox">>("dashboard");
 	let memoDisplay = $state<MemoDisplay>("active");
 	let content = $state<ChannelView | null>(null);
@@ -135,7 +136,7 @@
 		if (updateAvailable === null || locked) return;
 		void tick().then(() => updateDialog?.focus());
 	});
-	let locked = $state(false);
+	let locked = $state(true);
 	let unlockPassword = $state("");
 	let unlockError = $state<string | null>(null);
 	let unlocking = $state(false);
@@ -319,13 +320,19 @@
 		else todos.error = response.message;
 	}
 
+	function openMusicPlayer() {
+		musicReturnView = selected;
+		void select("music");
+		musicPlayerVisible = true;
+	}
+
 	async function select(view: View) {
 		if (view === "inbox") {
 			if (selected === "inbox") view = previousView;
 			else previousView = selected;
 		}
 		request += 1;
-		if (view !== "music") musicPlayerVisible = false;
+		musicPlayerVisible = false;
 		selected = view;
 		void invoke<CommandResponse<null>>("set_dashboard_active", { active: view === "dashboard" });
 		sidebarOpen = false;
@@ -487,6 +494,13 @@
 			return;
 		}
 		locked = true;
+		const response = await invoke<CommandResponse<null>>("lock_app");
+		if (response.status === "failed") {
+			locked = false;
+			configurationError = response.message;
+			await select("settings");
+			return;
+		}
 		sidebarOpen = false;
 		unlockPassword = "";
 		unlockError = null;
@@ -964,6 +978,13 @@
 	}
 
 	onMount(() => {
+		void invoke<boolean>("read_app_lock").then(async (value) => {
+			locked = value;
+			if (value) {
+				await tick();
+				unlockInput?.focus();
+			}
+		});
 		loadProfile();
 		void loadConfiguration();
 		const unlistenDashboard = listen<DashboardEvent>("dashboard-source-updated", (event) => {
@@ -1331,7 +1352,7 @@
 			{:else if selected === "inbox"}
 				<InboxView {notifications} onread={markNotificationRead} />
 			{:else if selected === "music"}
-				<MusicView bind:playerVisible={musicPlayerVisible} bind:playerAvailable={musicPlayerAvailable} onopensettings={() => void select("settings")} />
+				<MusicView bind:playerVisible={musicPlayerVisible} bind:playerAvailable={musicPlayerAvailable} onopenplayer={openMusicPlayer} onopensettings={() => void select("settings")} />
 			{:else if error}
 				<section class="consumer-error">
 					<header>
@@ -1398,18 +1419,15 @@
 				</button>
 			{/if}
 			{#if selected === "music" && musicPlayerVisible}
-				<button class="music-list-action" type="button" onclick={() => (musicPlayerVisible = false)} aria-label="Back to song list" title="Back to song list">
-					<ListMusic size={15} />
+				<button class="music-list-action" type="button" onclick={() => void select(musicReturnView)} aria-label="Back to previous page" title="Back to previous page">
+					<ArrowLeft size={15} />
 				</button>
 			{:else}
 				{#if musicPlayerAvailable}
 					<button
 						class="music-list-action"
 						type="button"
-						onclick={() => {
-							musicPlayerVisible = true;
-							void select("music");
-						}}
+						onclick={openMusicPlayer}
 						aria-label="Return to music player"
 						title="Return to music player"
 					>

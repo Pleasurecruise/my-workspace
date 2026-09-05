@@ -3,7 +3,7 @@ use futures_util::stream::{self, StreamExt, TryStreamExt};
 use md_dialect::{TocEntry, compile_knowledge_enriched, compile_knowledge_plain, knowledge_body};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use vesper_credentials::{ConsumerApi, Stored};
@@ -242,19 +242,69 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
 
 pub async fn overview() -> Result<Page, ApiError> {
     let client = Client::load()?;
-    let page = read_summary_page(
-        &client,
-        &ListFilters {
-            limit: Some(OVERVIEW_PAGE_SIZE),
-            ..ListFilters::default()
-        },
-    )
-    .await?;
-    let documents = read_documents(&client, overview_summaries(page.articles)).await?;
+    let client_ref = &client;
+    let (regular, daily) = tokio::try_join!(
+        overview_pages(|cursor| async move {
+            read_summary_page(
+                client_ref,
+                &ListFilters {
+                    cursor,
+                    limit: Some(OVERVIEW_PAGE_SIZE),
+                    ..ListFilters::default()
+                },
+            )
+            .await
+        }),
+        overview_pages(|cursor| async move {
+            read_summary_page(
+                client_ref,
+                &ListFilters {
+                    cursor,
+                    limit: Some(OVERVIEW_PAGE_SIZE),
+                    tags: vec!["daily".to_owned()],
+                    ..ListFilters::default()
+                },
+            )
+            .await
+        }),
+    )?;
+    let summaries = regular
+        .into_iter()
+        .chain(
+            daily
+                .into_iter()
+                .filter(|summary| newspaper_edition(&summary.tags).is_some()),
+        )
+        .collect();
+    let documents = read_documents(&client, overview_summaries(summaries)).await?;
     Ok(Page {
         documents,
         cursor: None,
     })
+}
+
+async fn overview_pages<F, Fut>(mut read: F) -> Result<Vec<Summary>, ApiError>
+where
+    F: FnMut(Option<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<ArticlePage, ApiError>>,
+{
+    let mut cursor = None;
+    let mut seen_cursors = HashSet::new();
+    let mut summaries = Vec::new();
+    loop {
+        let page = read(cursor).await?;
+        summaries.extend(page.articles);
+        summaries = overview_summaries(summaries);
+        let Some(next) = page.cursor else {
+            return Ok(summaries);
+        };
+        if !seen_cursors.insert(next.clone()) {
+            return Err(ApiError::Protocol(
+                "article pagination repeated a cursor".to_owned(),
+            ));
+        }
+        cursor = Some(next);
+    }
 }
 
 async fn read_summary_page(
@@ -331,8 +381,10 @@ fn overview_summaries(summaries: Vec<Summary>) -> Vec<Summary> {
     }
     let latest_developer = latest_developer.map(|summary| summary.id.clone());
     let latest_personal = latest_personal.map(|summary| summary.id.clone());
+    let mut seen = HashSet::new();
     summaries
         .into_iter()
+        .filter(|summary| seen.insert(summary.id.clone()))
         .filter(|summary| {
             newspaper_edition(&summary.tags).is_none()
                 || Some(&summary.id) == latest_developer.as_ref()
@@ -563,6 +615,63 @@ mod tests {
         .expect("article should project")
     }
 
+    #[tokio::test]
+    async fn overview_follows_pages_and_rejects_cursor_cycles() {
+        let mut requested = Vec::new();
+        let summaries = overview_pages(|cursor: Option<String>| {
+            requested.push(cursor.clone());
+            let (id, next) = match cursor.as_deref() {
+                None => ("first", Some("second")),
+                Some("second") => ("older", None),
+                _ => panic!("unexpected cursor"),
+            };
+            std::future::ready(Ok(ArticlePage {
+                articles: vec![Summary {
+                    id: id.to_owned(),
+                    slug: id.to_owned(),
+                    editions: HashMap::new(),
+                    tags: vec![],
+                    visibility: Visibility::Private,
+                    content_hash: id.to_owned(),
+                    created_at: "2026-09-05T00:00:00Z".to_owned(),
+                    updated_at: "2026-09-05T00:00:00Z".to_owned(),
+                }],
+                cursor: next.map(str::to_owned),
+            }))
+        })
+        .await
+        .unwrap();
+        assert_eq!(requested, vec![None, Some("second".to_owned())]);
+        assert_eq!(
+            summaries
+                .iter()
+                .map(|summary| summary.id.as_str())
+                .collect::<Vec<_>>(),
+            ["first", "older"]
+        );
+        let error = overview_pages(|_| async {
+            Ok(ArticlePage {
+                articles: vec![],
+                cursor: Some("same".to_owned()),
+            })
+        })
+        .await
+        .expect_err("cursor loop must fail");
+        assert!(error.to_string().contains("repeated a cursor"));
+        let error = overview_pages(|cursor| async move {
+            if cursor.is_some() {
+                return Err(ApiError::Protocol("second page failed".to_owned()));
+            }
+            Ok(ArticlePage {
+                articles: vec![],
+                cursor: Some("next".to_owned()),
+            })
+        })
+        .await
+        .expect_err("failed page must not become a complete overview");
+        assert!(error.to_string().contains("second page failed"));
+    }
+
     #[test]
     fn decodes_list_metadata() {
         let page: ArticlePage = serde_json::from_value(serde_json::json!({
@@ -621,7 +730,7 @@ mod tests {
             summary("regular-two", &[], "2026-08-29T00:00:00Z"),
             summary("personal-old", &["personal-daily"], "2026-08-28T00:00:00Z"),
         ];
-        let ids: Vec<_> = overview_summaries(summaries)
+        let ids: Vec<_> = overview_summaries(summaries.clone())
             .into_iter()
             .map(|summary| summary.id)
             .collect();
@@ -633,6 +742,37 @@ mod tests {
                 "regular-one",
                 "personal-latest",
                 "regular-two",
+            ]
+        );
+
+        let default_page = summaries
+            .iter()
+            .filter(|item| item.tags.is_empty() || item.tags == ["rust"]);
+        let mut daily: Vec<_> = summaries
+            .iter()
+            .filter(|item| newspaper_edition(&item.tags).is_some())
+            .cloned()
+            .collect();
+        for item in &mut daily {
+            item.tags.push("daily".to_owned());
+        }
+        daily.reverse();
+        daily[0].updated_at = "2026-09-05T00:00:00Z".to_owned();
+        let mut retained = Vec::new();
+        for page in daily.chunks(2) {
+            retained.extend_from_slice(page);
+            retained = overview_summaries(retained);
+        }
+        retained.push(retained[0].clone());
+        let merged = overview_summaries(default_page.cloned().chain(retained).collect());
+        let ids: Vec<_> = merged.iter().map(|item| item.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "regular-one",
+                "regular-two",
+                "personal-latest",
+                "developer-latest"
             ]
         );
     }

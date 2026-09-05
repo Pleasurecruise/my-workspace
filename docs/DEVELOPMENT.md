@@ -27,8 +27,10 @@
 Use root commands for workspace-wide verification. A focused change may use package-specific Cargo
 or pnpm commands during iteration, but the owning package must pass before handoff.
 
-On macOS, the native View menu includes Reload and Toggle Developer Tools in both debug and
-packaged release builds. Tauri’s `devtools` feature keeps the web inspector available in releases.
+The macOS View menu exposes Reload and Toggle Developer Tools in debug and packaged builds through
+Tauri's `devtools` feature. Reload recreates the WebView and restores the running process's App Lock
+state before showing content. Developer tools are available only while unlocked and close when the
+application is locked. Restarting the application begins a new session without a startup password.
 
 Commit CI runs frontend and Rust verification as separate parallel jobs. The Rust job installs the
 Tauri Linux build dependencies and explicitly runs rustfmt, Clippy with warnings denied, Cargo check,

@@ -160,6 +160,7 @@ pub fn run() {
             },
         )
         .manage(CmsState::default())
+        .manage(configuration::AppLockState::default())
         .manage(configuration::PublicationState::default())
         .manage(telegram::TelegramAuthorizationState::default())
         .manage(music::MusicState::default())
@@ -268,6 +269,8 @@ pub fn run() {
             configuration::save_app_lock,
             configuration::remove_app_lock,
             configuration::unlock_app,
+            configuration::lock_app,
+            configuration::read_app_lock,
             music::connect_spotify,
             music::begin_qq_music_login,
             music::poll_qq_music_login,
