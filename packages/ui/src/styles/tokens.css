@@ -22,6 +22,20 @@
   --font-serif: "Lora", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
   --font-mono: "Geist Mono", "JetBrains Mono", "Fira Code", Consolas, Monaco, monospace;
 
+  --font-size-heading-1: 2rem;
+  --font-size-heading-2: 1.125rem;
+  --font-size-heading-3: 0.9375rem;
+  --font-size-heading-4: 0.875rem;
+  --font-size-heading-5: 0.8125rem;
+  --font-size-heading-6: 0.75rem;
+  --font-weight-heading: 600;
+  --font-weight-page-title: 500;
+  --font-leading-heading: 1.4;
+  --font-leading-page-title: 1.2;
+  --font-tracking-heading: -0.015em;
+  --font-tracking-page-title: -0.03em;
+  --font-size-page-description: 0.875rem;
+
   --radius-xs: 2px;
   --radius-sm: 3px;
   --radius-md: 5px;
@@ -49,6 +63,7 @@
 }
 
 .dark {
+  --color-overlay: color-mix(in srgb, var(--palette-black) 60%, transparent);
   --color-background: var(--palette-dark-base);
   --color-muted: var(--palette-dark-muted);
   --color-foreground: var(--palette-dark-text);

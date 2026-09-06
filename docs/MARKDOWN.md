@@ -16,7 +16,7 @@ API or local Markdown
 ```
 
 `render_memo` converts soft line breaks into hard line breaks to preserve the compact writing style
-used by my-memos. `compile_knowledge` assigns stable, de-duplicated heading IDs and produces the table
+used by my-memos. `compile_knowledge_enriched` assigns stable, de-duplicated heading IDs and produces the table
 of contents and excerpt in the same pass boundary as HTML compilation. Consumers continue to own
 storage and metadata; Vesper does not retain a second Markdown mirror.
 

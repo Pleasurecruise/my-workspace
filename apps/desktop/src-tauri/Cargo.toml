@@ -5,6 +5,11 @@ description = "Personal Assistant named Vesper lived in this desktop application
 authors = ["you"]
 edition.workspace = true
 rust-version.workspace = true
+default-run = "vesper-desktop"
+
+[[bin]]
+name = "vesper-desktop"
+path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -21,6 +26,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 cms-core.workspace = true
 consumers.workspace = true
+games.workspace = true
 futures-util.workspace = true
 my-workspace-logger.workspace = true
 music.workspace = true
@@ -31,7 +37,7 @@ serde.workspace = true
 serde_json.workspace = true
 social.workspace = true
 sysinfo.workspace = true
-tauri = { version = "2", features = ["devtools"] }
+tauri = { version = "2", features = ["devtools", "webview-data-url"] }
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 tempfile.workspace = true

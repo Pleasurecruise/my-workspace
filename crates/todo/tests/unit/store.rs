@@ -201,3 +201,101 @@ async fn rejects_schedule_names_that_collide_case_insensitively() {
     assert!(!store.schedule_directory().exists());
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[tokio::test]
+async fn replaces_schedule_without_modifying_previous_file() {
+    let (directory, store) = test_store();
+    std::fs::create_dir_all(store.schedule_directory()).unwrap();
+    let original = "BEGIN:VCALENDAR\nEND:VCALENDAR\n";
+    let replacement = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:new\nSUMMARY:New\nDTSTART:20260823\nEND:VEVENT\nEND:VCALENDAR\n";
+    let target = store.schedule_directory().join("work.ics");
+    let previous = directory.join("previous.ics");
+    std::fs::write(&target, original).unwrap();
+    std::fs::hard_link(&target, &previous).unwrap();
+    let sources = directory.join("sources");
+    std::fs::create_dir_all(&sources).unwrap();
+    let source = sources.join("work.ics");
+    std::fs::write(&source, replacement).unwrap();
+    store.import_schedules(&[source]).await.unwrap();
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), replacement);
+    assert_eq!(std::fs::read_to_string(&previous).unwrap(), original);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn preserves_schedule_when_staging_fails() {
+    struct Interrupted;
+    impl std::io::Read for Interrupted {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("injected staging failure"))
+        }
+    }
+    let (directory, store) = test_store();
+    std::fs::create_dir_all(store.schedule_directory()).unwrap();
+    let target = store.schedule_directory().join("work.ics");
+    let original = "BEGIN:VCALENDAR\nEND:VCALENDAR\n";
+    std::fs::write(&target, original).unwrap();
+    let source = std::io::Read::chain(std::io::Cursor::new(b"partial"), Interrupted);
+    assert!(install_schedule(&target, source).is_err());
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), original);
+    assert_eq!(
+        std::fs::read_dir(store.schedule_directory())
+            .unwrap()
+            .count(),
+        1
+    );
+    crate::schedule::validate(&std::fs::read_to_string(target).unwrap()).unwrap();
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
+async fn keeps_completed_imports_when_a_later_replacement_fails() {
+    let (directory, store) = test_store();
+    let sources = directory.join("sources");
+    std::fs::create_dir_all(&sources).unwrap();
+    std::fs::create_dir_all(store.schedule_directory().join("second.ics")).unwrap();
+    let content = "BEGIN:VCALENDAR\nEND:VCALENDAR\n";
+    let first = sources.join("first.ics");
+    let second = sources.join("second.ics");
+    std::fs::write(&first, content).unwrap();
+    std::fs::write(&second, content).unwrap();
+    let error = store.import_schedules(&[first, second]).await.unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("earlier files may already be installed")
+    );
+    assert_eq!(
+        std::fs::read_to_string(store.schedule_directory().join("first.ics")).unwrap(),
+        content
+    );
+    assert!(store.schedule_directory().join("second.ics").is_dir());
+    assert_eq!(
+        std::fs::read_dir(store.schedule_directory())
+            .unwrap()
+            .count(),
+        2
+    );
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
+async fn validates_all_sources_before_replacing_any_schedule() {
+    let (directory, store) = test_store();
+    let sources = directory.join("sources");
+    std::fs::create_dir_all(&sources).unwrap();
+    std::fs::create_dir_all(store.schedule_directory()).unwrap();
+    let target = store.schedule_directory().join("first.ics");
+    let original = "BEGIN:VCALENDAR\nEND:VCALENDAR\n";
+    std::fs::write(&target, original).unwrap();
+    let first = sources.join("first.ics");
+    let second = sources.join("second.ics");
+    std::fs::write(&first, "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:new\nSUMMARY:New\nDTSTART:20260823\nEND:VEVENT\nEND:VCALENDAR\n").unwrap();
+    std::fs::write(&second, "invalid").unwrap();
+    assert!(matches!(
+        store.import_schedules(&[first, second]).await,
+        Err(Error::ScheduleParse { .. })
+    ));
+    assert_eq!(std::fs::read_to_string(target).unwrap(), original);
+    std::fs::remove_dir_all(directory).unwrap();
+}

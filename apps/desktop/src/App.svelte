@@ -1,50 +1,36 @@
 <script lang="ts">
+	import "./lib/components/layout/page.css";
+	import PageSkeleton from "./lib/components/layout/PageSkeleton.svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import { Archive, ArrowLeft, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, Lock, Menu, Moon, Music2, Newspaper as NewspaperIcon, Settings, Sun, X } from "@lucide/svelte";
 	import { onMount, tick } from "svelte";
-	import MemosView from "./lib/components/MemosView.svelte";
-	import MomentView from "./lib/components/MomentView.svelte";
-	import MusicView from "./lib/components/MusicView.svelte";
-	import KnowledgeView from "./lib/components/KnowledgeView.svelte";
-	import InboxView from "./lib/components/InboxView.svelte";
-	import NewspaperView from "./lib/components/NewspaperView.svelte";
-	import DashboardView from "./lib/components/DashboardView.svelte";
-	import SettingsView from "./lib/components/SettingsView.svelte";
-	import ScrollToTop from "./lib/components/ScrollToTop.svelte";
+	import MemosView from "./lib/components/pages/MemosView.svelte";
+	import MomentView from "./lib/components/pages/MomentView.svelte";
+	import MusicView from "./lib/components/pages/MusicView.svelte";
+	import KnowledgeView from "./lib/components/pages/KnowledgeView.svelte";
+	import InboxView from "./lib/components/pages/InboxView.svelte";
+	import NewspaperView from "./lib/components/pages/NewspaperView.svelte";
+	import DashboardView from "./lib/components/pages/DashboardView.svelte";
+	import SettingsView from "./lib/components/pages/SettingsView.svelte";
+	import ScrollToTop from "./lib/components/layout/ScrollToTop.svelte";
 	import type {
-		ApiConfiguration,
-		Channel,
-		ChannelView,
 		CommandResponse,
-		ConfigurationStatus,
-		DashboardEvent,
-		DashboardState,
+		Channel,
 		InitialViews,
-		NtfyConfig,
-		NtfyNotification,
-		KnowledgeDocument,
-		KnowledgeDraft,
-		KnowledgeUpdate,
-		MemoTagCount,
-		MemoView,
-		MemoUpdate,
-		PublishedPost,
-		PhotoUpdate,
-		PhotoItem,
-		QueryState,
-		R2Configuration,
-		QqLoginStatus,
-		QqQr,
-		TodoList,
-		UgosConfiguration,
 		UpdateInfo,
 		UpdateProgress,
 	} from "./lib/consumer";
+	import { createDashboardSession } from "./lib/components/dashboard/session.svelte";
+	import { createInboxSession } from "./lib/components/inbox/session.svelte";
+	import { createSettingsSession } from "./lib/components/settings/session.svelte";
+	import { createMemosSession } from "./lib/components/memos/session.svelte";
+	import { createMomentSession } from "./lib/components/moment/session.svelte";
+	import { createKnowledgeSession } from "./lib/components/knowledge/session.svelte";
 	import { applyTheme, initTheme } from "./lib/theme";
 
 	type View = "dashboard" | "inbox" | "music" | "newspaper" | "settings" | Channel;
-	type MemoDisplay = "active" | "favorites" | "archived";
+
 	const navigation: Array<{ id: View; label: string }> = [
 		{ id: "dashboard", label: "Dashboard" },
 		{ id: "newspaper", label: "Newspaper" },
@@ -54,8 +40,6 @@
 		{ id: "knowledge", label: "Knowledge" },
 		{ id: "settings", label: "Settings" },
 	];
-	const consumerChannels: Channel[] = ["memos", "moment", "knowledge"];
-	const memoPageSize = 25;
 	const defaultProfileAvatar = new URL("./assets/pleasure1234-avatar.png", import.meta.url).href;
 	const profileNameKey = "vesper.profile.name";
 	const profileAvatarKey = "vesper.profile.avatar";
@@ -63,63 +47,46 @@
 	const minimumSidebarWidth = 220;
 	const maximumSidebarWidth = 360;
 
+	let contentWidth = $state(0);
 	let selected = $state<View>("dashboard");
+	let reconnectMihoyo = $state(false);
 	let musicPlayerVisible = $state(false);
 	let musicPlayerAvailable = $state(false);
 	let musicReturnView: View = "music";
 	let previousView = $state<Exclude<View, "inbox">>("dashboard");
-	let memoDisplay = $state<MemoDisplay>("active");
-	let content = $state<ChannelView | null>(null);
-	let error = $state<string | null>(null);
-	let cache = $state<Record<Channel, ChannelView | null>>({
-		memos: null,
-		moment: null,
-		knowledge: null,
-	});
-	let errors = $state<Record<Channel, string | null>>({
-		memos: null,
-		moment: null,
-		knowledge: null,
-	});
-	let loading = $state(false);
-	let loadingMore = $state(false);
 	let mainElement = $state<HTMLElement | null>(null);
-	let request = 0;
-	let memoFilterRequest = 0;
-	let memoSearch = "";
-	let memoTags: string[] = [];
-	let memoSortByUpdated = false;
-	let memoTagIndex: MemoTagCount[] = [];
-	let momentTagIndex: string[] = [];
+	const memos = createMemosSession({
+		get active() { return selected === "memos"; },
+		get mainElement() { return mainElement; },
+	});
+	const moment = createMomentSession({
+		get active() { return selected === "moment"; },
+		get mainElement() { return mainElement; },
+	});
+	const knowledge = createKnowledgeSession({
+		get active() { return selected === "knowledge" || selected === "newspaper"; },
+		get mainElement() { return mainElement; },
+	});
+	const activeContent = $derived(
+		selected === "memos" ? memos : selected === "moment" ? moment
+			: selected === "knowledge" || selected === "newspaper" ? knowledge : null,
+	);
+	const content = $derived(activeContent === null ? null : activeContent.content);
+	const contentError = $derived(activeContent === null ? null : activeContent.error);
+	let initializationRequest = 0;
 	let dark = $state(initTheme());
 	let sidebarOpen = $state(false);
-	let dashboard = $state<DashboardState>({
-		taskManager: { data: null, error: null, loading: false },
-		deviceTelemetry: { data: null, error: null, loading: false },
-		codex: { data: null, error: null, loading: false },
-		openCode: { data: null, error: null, loading: false },
-		claude: { data: null, error: null, loading: false },
-		grok: { data: null, error: null, loading: false },
-		copilot: { data: null, error: null, loading: false },
-		deepSeek: { data: null, error: null, loading: false },
-		cherryIn: { data: null, error: null, loading: false },
-		weather: { data: null, error: null, loading: false },
-		stocks: { data: null, error: null, loading: false },
-		exchange: { data: null, error: null, loading: false },
-		serviceStatus: { data: null, error: null, loading: false },
-		github: { data: null, error: null, loading: false },
-		quotation: { data: null, error: null, loading: false },
+	const dashboardSession = createDashboardSession(() => selected === "dashboard");
+	const inbox = createInboxSession(() => selected === "inbox");
+	const settings = createSettingsSession({
+		resetChannel: (channel) => {
+			if (channel === "memos") memos.reset();
+			else if (channel === "moment") moment.reset();
+			else knowledge.reset();
+		},
+		initializeConsumers,
+		refreshDashboard: dashboardSession.refreshDashboard,
 	});
-	let dashboardRefreshing = $state(false);
-	let todos = $state<QueryState<TodoList>>({ data: null, error: null, loading: false });
-	const initialTodoDate = currentDate();
-	let todayDate = $state(initialTodoDate);
-	let todoDate = $state(initialTodoDate);
-	let todoRequest = 0;
-	let configuration = $state<ConfigurationStatus | null>(null);
-	let configurationError = $state<string | null>(null);
-	let notifications = $state<NtfyNotification[]>([]);
-	let notificationsError = $state<string | null>(null);
 	let updateAvailable = $state<UpdateInfo | null>(null);
 	let updateProgress = $state<UpdateProgress | null>(null);
 	let updateError = $state<string | null>(null);
@@ -152,20 +119,6 @@
 	let profileNameInput = $state<HTMLInputElement | null>(null);
 	let profilePopover = $state<HTMLDivElement | null>(null);
 	let sidebarWidth = $state(240);
-
-	function currentDate() {
-		return new Intl.DateTimeFormat("en-CA").format(new Date());
-	}
-
-	async function loadConfiguration() {
-		configurationError = null;
-		const response = await invoke<CommandResponse<ConfigurationStatus>>("read_configuration");
-		if (response.status === "failed") {
-			configurationError = response.message;
-			return;
-		}
-		configuration = response.data;
-	}
 
 	async function checkForUpdate(manual = false) {
 		if (updateChecking) {
@@ -201,12 +154,6 @@
 		}
 	}
 
-	async function markNotificationRead(id: string) {
-		const response = await invoke<CommandResponse<NtfyNotification[]>>("mark_notification_read", { id });
-		if (response.status === "ready") notifications = response.data;
-		return response;
-	}
-
 	async function installUpdate() {
 		if (updateAvailable === null) return;
 		installingUpdate = true;
@@ -239,88 +186,6 @@
 		}
 	}
 
-	async function refreshDashboard() {
-		if (dashboardRefreshing) return;
-		dashboardRefreshing = true;
-		for (const state of Object.values(dashboard)) {
-			state.loading = true;
-			state.error = null;
-		}
-		const [response] = await Promise.all([
-			invoke<CommandResponse<null>>("refresh_dashboard"),
-			loadTodos(todoDate),
-		]);
-		if (response.status === "failed") {
-			for (const state of Object.values(dashboard)) {
-				state.loading = false;
-				state.error = response.message;
-			}
-		}
-		dashboardRefreshing = false;
-	}
-
-	async function loadTodos(date = todoDate) {
-		const version = ++todoRequest;
-		todoDate = date;
-		todos.loading = true;
-		todos.error = null;
-		const response = await invoke<CommandResponse<TodoList>>("read_todos", { date });
-		if (version !== todoRequest) return;
-		todos.loading = false;
-		if (response.status === "ready") todos.data = response.data;
-		else todos.error = response.message;
-	}
-
-	async function addTodo(text: string): Promise<boolean> {
-		if (todos.loading) return false;
-		const version = ++todoRequest;
-		const date = todoDate;
-		todos.loading = true;
-		todos.error = null;
-		const response = await invoke<CommandResponse<TodoList>>("add_todo", { date, text });
-		if (version !== todoRequest) return false;
-		todos.loading = false;
-		if (response.status === "failed") {
-			todos.error = response.message;
-			return false;
-		}
-		todos.data = response.data;
-		return true;
-	}
-
-	async function toggleTodo(id: string, completed: boolean) {
-		if (todos.loading) return;
-		const version = ++todoRequest;
-		const date = todoDate;
-		todos.loading = true;
-		todos.error = null;
-		const response = await invoke<CommandResponse<TodoList>>("set_todo_completed", {
-			date,
-			id,
-			completed,
-		});
-		if (version !== todoRequest) return;
-		todos.loading = false;
-		if (response.status === "ready") todos.data = response.data;
-		else todos.error = response.message;
-	}
-
-	async function deleteTodo(id: string) {
-		if (todos.loading) return;
-		const version = ++todoRequest;
-		const date = todoDate;
-		todos.loading = true;
-		todos.error = null;
-		const response = await invoke<CommandResponse<TodoList>>("delete_todo", {
-			date,
-			id,
-		});
-		if (version !== todoRequest) return;
-		todos.loading = false;
-		if (response.status === "ready") todos.data = response.data;
-		else todos.error = response.message;
-	}
-
 	function openMusicPlayer() {
 		musicReturnView = selected;
 		void select("music");
@@ -328,169 +193,23 @@
 	}
 
 	async function select(view: View) {
+		reconnectMihoyo = false;
 		if (view === "inbox") {
 			if (selected === "inbox") view = previousView;
 			else previousView = selected;
 		}
-		request += 1;
+		activeContent?.leave();
 		musicPlayerVisible = false;
 		selected = view;
-		void invoke<CommandResponse<null>>("set_dashboard_active", { active: view === "dashboard" });
+		void inbox.activate(view === "inbox");
+		const activation = dashboardSession.activate(view === "dashboard");
 		sidebarOpen = false;
-		if (view === "dashboard" || view === "inbox" || view === "music" || view === "settings") {
-			content = null;
-			error = null;
-			loading = false;
-			loadingMore = false;
-			if (view === "dashboard") void refreshDashboard();
-			return;
-		}
-		const channel: Channel = view === "newspaper" ? "knowledge" : view;
-		content = cache[channel];
-		error = content === null ? errors[channel] : null;
-		loading = false;
-		loadingMore = false;
-		if (content !== null && error === null) {
-			if (view === "newspaper") {
-				await load(channel, null, true, request);
-				return;
-			}
-			await tick();
-			if (
-				mainElement !== null &&
-				mainElement.scrollHeight - mainElement.scrollTop - mainElement.clientHeight < 600
-			) loadMore();
-			return;
-		}
-		await load(channel, null, true, request);
-	}
-
-	async function load(
-		channel: Channel,
-		cursor: string | null,
-		replace: boolean,
-		viewVersion: number,
-		showPaginationStatus = false,
-	) {
-		if (loading) return;
-		loading = true;
-		loadingMore = cursor !== null && showPaginationStatus;
-		const response = await invoke<CommandResponse<ChannelView>>("read_channel", {
-			query: {
-				channel,
-				cursor,
-				search: channel === "memos" && memoSearch !== "" ? memoSearch : null,
-				tags: channel === "memos" ? memoTags : [],
-				sortByUpdated: channel === "memos" && memoSortByUpdated,
-				archivedOnly: channel === "memos" && memoDisplay === "archived",
-				favoritesOnly: channel === "memos" && memoDisplay === "favorites",
-			},
-		});
-		if (viewVersion !== request) return;
-		loading = false;
-		loadingMore = false;
-		if (response.status === "failed") {
-			errors[channel] = response.message;
-			if (content === null || content.channel !== channel) error = response.message;
-			return;
-		}
-		const page = response.data.channel === "memos"
-			? { ...response.data, tags: memoTagIndex }
-			: response.data.channel === "moment"
-				? { ...response.data, tags: momentTagIndex }
-				: response.data;
-		if (replace && content?.channel === "memos" && page.channel === "memos") {
-			const tail = content.memos.slice(memoPageSize);
-			const refreshedIds = new Set(page.memos.map((memo) => memo.id));
-			content = {
-				...page,
-				memos: [...page.memos, ...tail.filter((memo) => !refreshedIds.has(memo.id))],
-				nextCursor: tail.length > 0 ? content.nextCursor : page.nextCursor,
-			};
-		} else if (replace) {
-			content = page;
-		} else if (content?.channel === "memos" && page.channel === "memos") {
-			content = { ...page, memos: [...content.memos, ...page.memos], tags: content.tags };
-		} else if (content?.channel === "moment" && page.channel === "moment") {
-			content = { ...page, photos: [...content.photos, ...page.photos], tags: content.tags };
-		} else if (content?.channel === "knowledge" && page.channel === "knowledge") {
-			content = { ...page, knowledge: [...content.knowledge, ...page.knowledge], newspaper: content.newspaper };
-		}
-		cache[channel] = content;
-		errors[channel] = null;
-		await tick();
-		if (
-			mainElement !== null &&
-			mainElement.scrollHeight - mainElement.scrollTop - mainElement.clientHeight < 600
-		) loadMore(showPaginationStatus);
-	}
-
-	async function filterMemos(
-		search: string,
-		tags: string[],
-		sortByUpdated: boolean,
-		display: MemoDisplay,
-	): Promise<string | null> {
-		const version = ++memoFilterRequest;
-		const requestVersion = ++request;
-		memoSearch = search;
-		memoTags = tags;
-		memoSortByUpdated = sortByUpdated;
-		loading = true;
-		loadingMore = false;
-		const response = await invoke<CommandResponse<ChannelView>>("read_channel", {
-			query: {
-				channel: "memos",
-				cursor: null,
-				search: search === "" ? null : search,
-				tags,
-				sortByUpdated,
-				archivedOnly: display === "archived",
-				favoritesOnly: display === "favorites",
-			},
-		});
-		if (version !== memoFilterRequest || requestVersion !== request || selected !== "memos") return null;
-		loading = false;
-		loadingMore = false;
-		if (response.status === "failed") {
-			return response.message;
-		}
-		if (response.data.channel !== "memos") return "The memo command returned the wrong channel.";
-		const page = { ...response.data, tags: memoTagIndex };
-		content = page;
-		cache.memos = page;
-		errors.memos = null;
-		error = null;
-		await tick();
-		if (
-			mainElement !== null &&
-			mainElement.scrollHeight - mainElement.scrollTop - mainElement.clientHeight < 600
-		) loadMore();
-		return null;
-	}
-
-	async function revealMemo(id: string): Promise<boolean> {
-		if (selected !== "memos" || content === null || content.channel !== "memos") return false;
-		if (content.memos.some((memo) => memo.id === id)) return true;
-		if (loading) return false;
-
-		while (content.nextCursor !== null) {
-			const cursor = content.nextCursor;
-			await load("memos", cursor, false, request);
-			if (content === null || content.channel !== "memos") return false;
-			if (content.memos.some((memo) => memo.id === id)) return true;
-			if (content.nextCursor === cursor) return false;
-		}
-		return false;
-	}
-
-	function loadMore(showPaginationStatus = false) {
-		if (selected === "dashboard" || selected === "inbox" || selected === "music" || selected === "newspaper" || selected === "settings" || loading || content === null || content.nextCursor === null) return;
-		void load(selected, content.nextCursor, false, request, showPaginationStatus);
+		await activeContent?.enter(view === "newspaper");
+		if (view === "dashboard") await activation;
 	}
 
 	async function lockApp() {
-		if (configuration?.appLock.status !== "ready") {
+		if (settings.configuration?.appLock.status !== "ready") {
 			await select("settings");
 			return;
 		}
@@ -498,7 +217,7 @@
 		const response = await invoke<CommandResponse<null>>("lock_app");
 		if (response.status === "failed") {
 			locked = false;
-			configurationError = response.message;
+			settings.error = response.message;
 			await select("settings");
 			return;
 		}
@@ -525,75 +244,7 @@
 		}
 		unlockPassword = "";
 		locked = false;
-		void refreshConsumers();
-	}
-
-	async function refreshConsumers() {
-		const version = ++request;
-		loading = false;
-		loadingMore = false;
-		const responses = await Promise.all(
-			consumerChannels.map(async (channel) => {
-				return {
-					channel,
-					response: await invoke<CommandResponse<ChannelView>>("read_channel", {
-						query: {
-							channel,
-							cursor: null,
-							search: channel === "memos" && memoSearch !== "" ? memoSearch : null,
-							tags: channel === "memos" ? memoTags : [],
-							sortByUpdated: channel === "memos" && memoSortByUpdated,
-							archivedOnly: channel === "memos" && memoDisplay === "archived",
-							favoritesOnly: channel === "memos" && memoDisplay === "favorites",
-						},
-					}),
-				};
-			}),
-		);
-		if (version !== request) return;
-		for (const { channel, response } of responses) {
-			if (response.status === "failed") {
-				errors[channel] = response.message;
-				continue;
-			}
-			const page = response.data.channel === "memos"
-				? { ...response.data, tags: memoTagIndex }
-				: response.data.channel === "moment"
-					? { ...response.data, tags: momentTagIndex }
-					: response.data;
-			cache[channel] = page;
-			errors[channel] = null;
-			const selectedChannel = selected === "newspaper" ? "knowledge" : selected;
-			if (selectedChannel === channel) {
-				content = page;
-				error = null;
-			}
-		}
-	}
-
-	async function refreshKnowledge() {
-		const response = await invoke<CommandResponse<ChannelView>>("read_channel", {
-			query: {
-				channel: "knowledge",
-				cursor: null,
-				search: null,
-				tags: [],
-				sortByUpdated: false,
-				archivedOnly: false,
-				favoritesOnly: false,
-			},
-		});
-		if (response.status === "failed") {
-			errors.knowledge = response.message;
-			if (selected === "knowledge" || selected === "newspaper") error = response.message;
-			return;
-		}
-		cache.knowledge = response.data;
-		errors.knowledge = null;
-		if (selected === "knowledge" || selected === "newspaper") {
-			content = response.data;
-			error = null;
-		}
+		void Promise.all([memos.refresh(), moment.refresh(), knowledge.refresh()]);
 	}
 
 	function loadProfile() {
@@ -737,248 +388,19 @@
 		applyTheme(dark);
 	}
 
-	async function createMemo(markdown: string, visibility: "public" | "private"): Promise<CommandResponse<MemoView>> {
-		const response = await invoke<CommandResponse<MemoView>>("create_memo", {
-			content: markdown,
-			visibility,
-		});
-		if (response.status === "ready" && cache.memos !== null && cache.memos.channel === "memos") {
-			cache.memos = { ...cache.memos, memos: [response.data, ...cache.memos.memos] };
-			if (content?.channel === "memos") content = cache.memos;
-		}
-		return response;
-	}
-
-	async function importXMemo(url: string, visibility: "public" | "private"): Promise<CommandResponse<MemoView>> {
-		const response = await invoke<CommandResponse<MemoView>>("import_x_memo", { url, visibility });
-		if (response.status === "ready" && content !== null && content.channel === "memos") {
-			content = { ...content, memos: [response.data, ...content.memos] };
-			cache.memos = content;
-		}
-		return response;
-	}
-
-	async function updateMemo(id: string, input: MemoUpdate): Promise<CommandResponse<MemoView>> {
-		const response = await invoke<CommandResponse<MemoView>>("update_memo", {
-			id,
-			input,
-		});
-		if (response.status === "ready" && cache.memos !== null && cache.memos.channel === "memos") {
-			cache.memos = {
-				...cache.memos,
-				memos: cache.memos.memos.map((memo) => (memo.id === id ? response.data : memo)),
-			};
-			if (content?.channel === "memos") content = cache.memos;
-		}
-		return response;
-	}
-
-	async function deleteMemo(id: string): Promise<CommandResponse<string>> {
-		const response = await invoke<CommandResponse<string>>("delete_memo", { id });
-		if (response.status === "ready" && content !== null && content.channel === "memos") {
-			content = { ...content, memos: content.memos.filter((memo) => memo.id !== id) };
-			cache.memos = content;
-		}
-		return response;
-	}
-
-	async function publishMemoToTelegram(memo: MemoView): Promise<CommandResponse<PublishedPost>> {
-		return invoke<CommandResponse<PublishedPost>>("publish_telegram", { id: memo.id });
-	}
-
-	async function publishMemoToX(memo: MemoView): Promise<CommandResponse<PublishedPost>> {
-		return invoke<CommandResponse<PublishedPost>>("publish_x", { id: memo.id });
-	}
-
-	function addUploadedPhoto(photo: PhotoItem) {
-		if (content === null || content.channel !== "moment") return;
-		momentTagIndex = Array.from(new Set([...momentTagIndex, ...content.tags, ...photo.tags])).sort();
-		content = {
-			...content,
-			photos: [photo, ...content.photos],
-			tags: momentTagIndex,
-			total: content.total + 1,
-		};
-		cache.moment = content;
-	}
-
-	async function updatePhoto(id: string, input: PhotoUpdate): Promise<CommandResponse<PhotoItem>> {
-		const response = await invoke<CommandResponse<PhotoItem>>("update_photo", { id, input });
-		if (response.status === "ready" && content !== null && content.channel === "moment") {
-			momentTagIndex = Array.from(new Set([...momentTagIndex, ...content.tags, ...response.data.tags])).sort();
-			content = {
-				...content,
-				photos: content.photos.map((photo) => (photo.id === id ? response.data : photo)),
-				tags: momentTagIndex,
-			};
-			cache.moment = content;
-		}
-		return response;
-	}
-
-	async function deletePhoto(id: string): Promise<CommandResponse<string>> {
-		const response = await invoke<CommandResponse<string>>("delete_photo", { id });
-		if (response.status === "ready" && content !== null && content.channel === "moment") {
-			const photos = content.photos.filter((photo) => photo.id !== id);
-			content = {
-				...content,
-				photos,
-				total: content.total - 1,
-			};
-			cache.moment = content;
-		}
-		return response;
-	}
-
-	async function createKnowledge(input: KnowledgeDraft): Promise<CommandResponse<KnowledgeDocument>> {
-		const response = await invoke<CommandResponse<KnowledgeDocument>>("create_knowledge", { input });
-		if (response.status === "ready" && cache.knowledge !== null && cache.knowledge.channel === "knowledge") {
-			cache.knowledge = { ...cache.knowledge, knowledge: [response.data, ...cache.knowledge.knowledge] };
-			if (content?.channel === "knowledge") content = cache.knowledge;
-			if (response.data.newspaperEdition !== null) void refreshKnowledge();
-		}
-		return response;
-	}
-
-	async function updateKnowledge(
-		id: string,
-		input: KnowledgeUpdate,
-	): Promise<CommandResponse<KnowledgeDocument>> {
-		const response = await invoke<CommandResponse<KnowledgeDocument>>("update_knowledge", {
-			id,
-			input,
-		});
-		if (response.status === "ready" && cache.knowledge !== null && cache.knowledge.channel === "knowledge") {
-			cache.knowledge = {
-				...cache.knowledge,
-				knowledge: cache.knowledge.knowledge.map((document) => (document.id === id ? response.data : document)),
-			};
-			if (content?.channel === "knowledge") content = cache.knowledge;
-			if (response.data.newspaperEdition !== null) void refreshKnowledge();
-		}
-		return response;
-	}
-
-	async function saveUgosConfiguration(input: UgosConfiguration): Promise<CommandResponse<string>> {
-		const response = await invoke<CommandResponse<string>>("save_ugos_configuration", {
-			username: input.username,
-			password: input.password,
-		});
-		if (response.status === "ready") {
-			await loadConfiguration();
-			await refreshDashboard();
-		}
-		return response;
-	}
-
-	async function saveR2Configuration(input: R2Configuration): Promise<CommandResponse<string>> {
-		const response = await invoke<CommandResponse<string>>("save_r2_configuration", {
-			accessKeyId: input.accessKeyId,
-			secretAccessKey: input.secretAccessKey,
-		});
-		if (response.status === "ready") {
-			await loadConfiguration();
-			await initializeConsumers();
-		}
-		return response;
-	}
-
-	async function saveApiConfiguration(input: ApiConfiguration): Promise<CommandResponse<string>> {
-		const response = await invoke<CommandResponse<string>>("save_api_configuration", {
-			service: input.service,
-			apiKey: input.apiKey,
-		});
-		if (response.status === "ready") {
-			await loadConfiguration();
-			await initializeConsumers();
-		}
-		return response;
-	}
-
-	async function connectSpotify(): Promise<CommandResponse<string>> {
-		const response = await invoke<CommandResponse<string>>("connect_spotify");
-		if (response.status === "ready") await loadConfiguration();
-		return response;
-	}
-
-	async function beginQqLogin(): Promise<CommandResponse<QqQr>> {
-		return invoke<CommandResponse<QqQr>>("begin_qq_music_login");
-	}
-
-	async function pollQqLogin(): Promise<CommandResponse<QqLoginStatus>> {
-		const response = await invoke<CommandResponse<QqLoginStatus>>("poll_qq_music_login");
-		if (response.status === "ready" && response.data.status === "complete") await loadConfiguration();
-		return response;
-	}
-
-	async function cancelQqLogin(): Promise<CommandResponse<null>> {
-		return invoke<CommandResponse<null>>("cancel_qq_music_login");
-	}
-
-	async function saveNtfy(configuration: NtfyConfig): Promise<CommandResponse<string>> {
-		const response = await invoke<CommandResponse<string>>("save_ntfy_configuration", {
-			configuration,
-		});
-		if (response.status === "ready") await loadConfiguration();
-		return response;
-	}
-
-	async function saveAppLock(password: string): Promise<CommandResponse<string>> {
-		const response = await invoke<CommandResponse<string>>("save_app_lock", { password });
-		if (response.status === "ready") await loadConfiguration();
-		return response;
-	}
-
-	async function removeAppLock(): Promise<CommandResponse<string>> {
-		const response = await invoke<CommandResponse<string>>("remove_app_lock");
-		if (response.status === "ready") await loadConfiguration();
-		return response;
-	}
 
 	async function initializeConsumers() {
+		const version = ++initializationRequest;
+		const versions = { memos: memos.version, moment: moment.version, knowledge: knowledge.version };
 		const initial = await invoke<InitialViews>("initialize_views");
-		for (const id of consumerChannels) {
-			const response = initial[id];
-			if (response.status === "ready") {
-				cache[id] = response.data.channel === "memos"
-					? { ...response.data, tags: memoTagIndex }
-					: response.data.channel === "moment"
-						? { ...response.data, tags: momentTagIndex }
-						: response.data;
-				errors[id] = null;
-			} else {
-				errors[id] = response.message;
-			}
-		}
-		if (selected === "dashboard" || selected === "inbox" || selected === "music" || selected === "settings") {
-			content = null;
-			error = null;
-		} else {
-			const channel: Channel = selected === "newspaper" ? "knowledge" : selected;
-			content = cache[channel];
-			error = errors[channel];
-		}
-		await tick();
-	}
-
-	async function loadConsumerTags() {
-		const [memos, moment] = await Promise.all([
-			invoke<CommandResponse<MemoTagCount[]>>("read_memo_tags"),
-			invoke<CommandResponse<string[]>>("read_moment_tags"),
-		]);
-		if (memos.status === "ready") {
-			memoTagIndex = memos.data;
-			if (cache.memos?.channel === "memos") cache.memos = { ...cache.memos, tags: memoTagIndex };
-			if (content?.channel === "memos") content = { ...content, tags: memoTagIndex };
-		}
-		if (moment.status === "ready") {
-			momentTagIndex = moment.data;
-			if (cache.moment?.channel === "moment") cache.moment = { ...cache.moment, tags: momentTagIndex };
-			if (content?.channel === "moment") content = { ...content, tags: momentTagIndex };
-		}
+		if (version !== initializationRequest) return;
+		memos.initialize(initial.memos, versions.memos);
+		moment.initialize(initial.moment, versions.moment);
+		knowledge.initialize(initial.knowledge, versions.knowledge);
 	}
 
 	onMount(() => {
+		void initializeConsumers();
 		void invoke<boolean>("read_app_lock").then(async (value) => {
 			locked = value;
 			if (value) {
@@ -987,194 +409,21 @@
 			}
 		});
 		loadProfile();
-		void loadConfiguration();
-		const unlistenDashboard = listen<DashboardEvent>("dashboard-source-updated", (event) => {
-			const update = event.payload;
-			switch (update.source) {
-				case "taskManager":
-					dashboard.taskManager.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.taskManager.data = update.result.data;
-						dashboard.taskManager.error = null;
-					}
-					else dashboard.taskManager.error = update.result.message;
-					break;
-				case "deviceTelemetry":
-					dashboard.deviceTelemetry.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.deviceTelemetry.data = update.result.data;
-						dashboard.deviceTelemetry.error = null;
-					}
-					else dashboard.deviceTelemetry.error = update.result.message;
-					break;
-				case "codex":
-					dashboard.codex.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.codex.data = update.result.data;
-						dashboard.codex.error = null;
-					}
-					else dashboard.codex.error = update.result.message;
-					break;
-				case "openCode":
-					dashboard.openCode.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.openCode.data = update.result.data;
-						dashboard.openCode.error = null;
-					}
-					else dashboard.openCode.error = update.result.message;
-					break;
-				case "claude":
-					dashboard.claude.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.claude.data = update.result.data;
-						dashboard.claude.error = null;
-					}
-					else dashboard.claude.error = update.result.message;
-					break;
-				case "grok":
-					dashboard.grok.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.grok.data = update.result.data;
-						dashboard.grok.error = null;
-					}
-					else dashboard.grok.error = update.result.message;
-					break;
-				case "copilot":
-					dashboard.copilot.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.copilot.data = update.result.data;
-						dashboard.copilot.error = null;
-					}
-					else dashboard.copilot.error = update.result.message;
-					break;
-				case "deepSeek":
-					dashboard.deepSeek.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.deepSeek.data = update.result.data;
-						dashboard.deepSeek.error = null;
-					}
-					else dashboard.deepSeek.error = update.result.message;
-					break;
-				case "cherryIn":
-					dashboard.cherryIn.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.cherryIn.data = update.result.data;
-						dashboard.cherryIn.error = null;
-					}
-					else dashboard.cherryIn.error = update.result.message;
-					break;
-				case "weather":
-					dashboard.weather.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.weather.data = update.result.data;
-						dashboard.weather.error = null;
-					}
-					else dashboard.weather.error = update.result.message;
-					break;
-				case "stocks":
-					dashboard.stocks.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.stocks.data = update.result.data;
-						dashboard.stocks.error = null;
-					}
-					else dashboard.stocks.error = update.result.message;
-					break;
-				case "exchange":
-					dashboard.exchange.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.exchange.data = update.result.data;
-						dashboard.exchange.error = null;
-					}
-					else dashboard.exchange.error = update.result.message;
-					break;
-				case "serviceStatus":
-					dashboard.serviceStatus.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.serviceStatus.data = update.result.data;
-						dashboard.serviceStatus.error = null;
-					}
-					else dashboard.serviceStatus.error = update.result.message;
-					break;
-				case "github":
-					dashboard.github.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.github.data = update.result.data;
-						dashboard.github.error = null;
-					}
-					else dashboard.github.error = update.result.message;
-					break;
-				case "quotation":
-					dashboard.quotation.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.quotation.data = update.result.data;
-						dashboard.quotation.error = null;
-					}
-					else dashboard.quotation.error = update.result.message;
-			}
-		}).then((unlisten) => {
-			void invoke<CommandResponse<null>>("set_dashboard_active", { active: true });
-			void refreshDashboard();
-			return unlisten;
-		});
-		void invoke<CommandResponse<NtfyNotification[]>>("read_notifications").then((response) => {
-			if (response.status === "ready") notifications = response.data;
-			else notificationsError = response.message;
-		});
-		const unlistenTodo = listen<TodoList>("todo-list-changed", (event) => {
-			const followsToday = todoDate === todayDate;
-			todayDate = event.payload.date;
-			if (followsToday) {
-				todoRequest += 1;
-				todoDate = event.payload.date;
-				todos.data = event.payload;
-				todos.error = null;
-				todos.loading = false;
-			}
-		});
+		void settings.loadConfiguration();
+		const unlistenGameLogin = listen("game-login-required", () => {
+            void select("settings").then(() => { reconnectMihoyo = true; });
+        });
 		const unlistenUpdater = listen<UpdateProgress>("updater-progress", (event) => {
 			updateProgress = event.payload;
 		});
 		const unlistenUpdateRequest = listen("check-for-updates-requested", () => {
 			void checkForUpdate(true);
 		});
-		const unlistenNotifications = listen<NtfyNotification[]>("notifications-updated", (event) => {
-			notifications = event.payload;
-		});
 		void checkForUpdate();
-		void initializeConsumers().then(loadConsumerTags);
-		const todoTimer = window.setInterval(() => {
-			if (!todos.loading) void loadTodos();
-		}, 60_000);
-		const contentTimer = window.setInterval(() => {
-			if (
-				(selected === "memos" || selected === "moment" || selected === "knowledge" || selected === "newspaper") &&
-				!loading &&
-				mainElement !== null &&
-				mainElement.scrollTop < 200
-			) {
-				const channel: Channel = selected === "newspaper" ? "knowledge" : selected;
-				void load(channel, null, true, request);
-			}
-		}, 60_000);
-		const nextNewspaperRefresh = new Date();
-		nextNewspaperRefresh.setHours(9, 0, 0, 0);
-		if (nextNewspaperRefresh.getTime() <= Date.now()) nextNewspaperRefresh.setDate(nextNewspaperRefresh.getDate() + 1);
-		let newspaperTimer: number | null = null;
-		const newspaperStartTimer = window.setTimeout(() => {
-			void refreshKnowledge();
-			newspaperTimer = window.setInterval(() => void refreshKnowledge(), 24 * 60 * 60 * 1_000);
-		}, nextNewspaperRefresh.getTime() - Date.now());
 		return () => {
-			void invoke<CommandResponse<null>>("set_dashboard_active", { active: false });
-			void unlistenDashboard.then((unlisten) => unlisten());
-			window.clearInterval(todoTimer);
-			void unlistenTodo.then((unlisten) => unlisten());
+			void unlistenGameLogin.then((unlisten) => unlisten());
 			void unlistenUpdater.then((unlisten) => unlisten());
 			void unlistenUpdateRequest.then((unlisten) => unlisten());
-			void unlistenNotifications.then((unlisten) => unlisten());
-			window.clearInterval(contentTimer);
-			window.clearTimeout(newspaperStartTimer);
-			if (newspaperTimer !== null) window.clearInterval(newspaperTimer);
 		};
 	});
 </script>
@@ -1218,13 +467,13 @@
 
 		<div class="storage">
 			<p>Connections</p>
-			<div><span class:offline={configuration === null || configuration.api.memos.status === "missing"}></span>my-memos API</div>
-			<div><span class:offline={configuration === null || configuration.api.moment.status === "missing"}></span>my-moment API</div>
-			<div><span class:offline={configuration === null || configuration.api.knowledge.status === "missing"}></span>my-knowledge API</div>
-			<div><span class:offline={configuration === null || configuration.spotify.status === "missing"}></span>Spotify</div>
-			<div><span class:offline={configuration === null || configuration.qqMusic.status === "missing"}></span>QQ Music</div>
-			<div><span class:offline={configuration === null || configuration.r2.status === "missing"}></span>Cloudflare R2</div>
-			{#if configuration === null}<small>Checking credential store</small>{:else}<small>Managed in Settings</small>{/if}
+			<div><span class:offline={settings.configuration === null || settings.configuration.api.memos.status === "missing"}></span>my-memos API</div>
+			<div><span class:offline={settings.configuration === null || settings.configuration.api.moment.status === "missing"}></span>my-moment API</div>
+			<div><span class:offline={settings.configuration === null || settings.configuration.api.knowledge.status === "missing"}></span>my-knowledge API</div>
+			<div><span class:offline={settings.configuration === null || settings.configuration.spotify.status === "missing"}></span>Spotify</div>
+			<div><span class:offline={settings.configuration === null || settings.configuration.qqMusic.status === "missing"}></span>QQ Music</div>
+			<div><span class:offline={settings.configuration === null || settings.configuration.r2.status === "missing"}></span>Cloudflare R2</div>
+			{#if settings.configuration === null}<small>Checking credential store</small>{:else}<small>Managed in Settings</small>{/if}
 		</div>
 
 		<div class="sidebar-footer">
@@ -1261,17 +510,17 @@
 						onclick={() => void select("inbox")}
 						aria-label={selected === "inbox"
 							? "Return to previous view"
-							: notifications.length > 0
-								? `Open inbox, ${notifications.length} unread notifications`
+							: inbox.notifications.length > 0
+								? `Open inbox, ${inbox.notifications.length} unread notifications`
 								: "Open inbox"}
 						title={selected === "inbox" ? "Back" : "Inbox"}
 					>
 						<Bell size={15} />
-						{#if notifications.length > 0}<span class="notification-dot" aria-hidden="true"></span>{/if}
+						{#if inbox.notifications.length > 0}<span class="notification-dot" aria-hidden="true"></span>{/if}
 					</button>
 				</div>
 				<div class="footer-actions">
-					<button type="button" onclick={lockApp} aria-label={configuration?.appLock.status === "ready" ? "Lock Vesper" : "Configure App Lock"} title={configuration?.appLock.status === "ready" ? "Lock Vesper" : "Configure App Lock in Settings"}>
+					<button type="button" onclick={lockApp} aria-label={settings.configuration?.appLock.status === "ready" ? "Lock Vesper" : "Configure App Lock"} title={settings.configuration?.appLock.status === "ready" ? "Lock Vesper" : "Configure App Lock in Settings"}>
 						<Lock size={15} />
 					</button>
 					<button type="button" onclick={toggleTheme} aria-label={dark ? "Switch to light mode" : "Switch to dark mode"} title={dark ? "Light mode" : "Dark mode"}>
@@ -1296,7 +545,7 @@
 			if (
 				mainElement !== null &&
 				mainElement.scrollHeight - mainElement.scrollTop - mainElement.clientHeight < 600
-			) loadMore(true);
+			) activeContent?.loadMore(true);
 		}}
 	>
 		<header class="topbar">
@@ -1305,120 +554,131 @@
 			</button>
 			<strong>vesper</strong>
 		</header>
-		<div class="canvas" class:wide={selected === "dashboard"}>
-			{#if selected === "dashboard"}
-				<DashboardView
-					snapshot={dashboard.taskManager.data}
-					error={dashboard.taskManager.error}
-					deviceTelemetry={dashboard.deviceTelemetry.data}
-					deviceTelemetryError={dashboard.deviceTelemetry.error}
-					refreshing={dashboardRefreshing}
-					usage={dashboard.codex.data}
-					usageError={dashboard.codex.error}
-					openCodeUsage={dashboard.openCode.data}
-					openCodeUsageError={dashboard.openCode.error}
-					claudeUsage={dashboard.claude.data}
-					claudeUsageError={dashboard.claude.error}
-					grokUsage={dashboard.grok.data}
-					grokUsageError={dashboard.grok.error}
-					copilotUsage={dashboard.copilot.data}
-					copilotUsageError={dashboard.copilot.error}
-					deepSeekBalance={dashboard.deepSeek.data}
-					deepSeekBalanceError={dashboard.deepSeek.error}
-					cherryInUsage={dashboard.cherryIn.data}
-					cherryInUsageError={dashboard.cherryIn.error}
-					weather={dashboard.weather.data}
-					weatherError={dashboard.weather.error}
-					stocks={dashboard.stocks.data}
-					stocksError={dashboard.stocks.error}
-					exchange={dashboard.exchange.data}
-					exchangeError={dashboard.exchange.error}
-					serviceStatus={dashboard.serviceStatus.data}
-					serviceStatusError={dashboard.serviceStatus.error}
-					github={dashboard.github.data}
-					githubError={dashboard.github.error}
-					quotation={dashboard.quotation.data}
-					quotationError={dashboard.quotation.error}
-					todos={todos.data}
-					todosError={todos.error}
-					todosLoading={todos.loading}
-					todayDate={todayDate}
-					todoDate={todoDate}
-					onselecttododate={loadTodos}
-					onaddtodo={addTodo}
-					ontoggletodo={toggleTodo}
-					ondeletetodo={deleteTodo}
-					onrefresh={refreshDashboard}
-				/>
-			{:else if selected === "settings"}
-				<SettingsView {configuration} error={configurationError} onsaveugos={saveUgosConfiguration} onsaver2={saveR2Configuration} onsaveapi={saveApiConfiguration} onsaventfy={saveNtfy} onsaveapplock={saveAppLock} onremoveapplock={removeAppLock} onconnectspotify={connectSpotify} onbeginqq={beginQqLogin} onpollqq={pollQqLogin} oncancelqq={cancelQqLogin} onconfigurationchanged={loadConfiguration} />
-			{:else if selected === "inbox"}
-				<InboxView {notifications} loadError={notificationsError} onread={markNotificationRead} />
-			{:else if selected === "music"}
-				<MusicView bind:playerVisible={musicPlayerVisible} bind:playerAvailable={musicPlayerAvailable} onopenplayer={openMusicPlayer} onopensettings={() => void select("settings")} />
-			{:else if error}
-				<section class="consumer-error">
-					<header>
-						<p>{selected === "moment" ? "Cloudflare R2" : "Consumer API"}</p>
-						{#if selected === "memos"}<h1>Memos</h1>{:else if selected === "moment"}<h1>Moment</h1>{:else if selected === "newspaper"}<h1>Newspaper</h1>{:else}<h1>Knowledge</h1>{/if}
-					</header>
-					<div class="error" role="alert">
-						<CloudOff size={18} />
-						<div><strong>Content unavailable</strong><span>{error}</span></div>
-						<button type="button" onclick={() => void select("settings")}>Open Settings</button>
-					</div>
-				</section>
-			{:else if content !== null}
-				{#if content.channel === "memos"}
-					<MemosView memos={content.memos} tags={content.tags} display={memoDisplay} onfilter={filterMemos} onopenmemo={revealMemo} oncreate={createMemo} onimportx={importXMemo} onupdate={updateMemo} ondelete={deleteMemo} onpublishtelegram={publishMemoToTelegram} onpublishx={publishMemoToX} />
-				{:else if content.channel === "moment"}
-					<MomentView photos={content.photos} tags={content.tags} total={content.total} onuploaded={addUploadedPhoto} onupdate={updatePhoto} ondelete={deletePhoto} />
-				{:else if selected === "newspaper"}
-					<NewspaperView documents={content.knowledge} issues={content.newspaper} {loading} />
+		<div class="canvas page-layout" data-layout={selected === "dashboard" || selected === "moment" || selected === "newspaper" || (selected === "music" && !musicPlayerVisible) ? "wide" : "narrow"}>
+			<div class="page-content" bind:clientWidth={contentWidth} data-stacked={contentWidth <= 640}>
+				{#if selected === "dashboard"}
+					<DashboardView
+						snapshot={dashboardSession.dashboard.taskManager.data}
+						error={dashboardSession.dashboard.taskManager.error}
+						deviceTelemetry={dashboardSession.dashboard.deviceTelemetry.data}
+						deviceTelemetryError={dashboardSession.dashboard.deviceTelemetry.error}
+						refreshing={dashboardSession.dashboardRefreshing}
+						usage={dashboardSession.dashboard.codex.data}
+						usageError={dashboardSession.dashboard.codex.error}
+						openCodeUsage={dashboardSession.dashboard.openCode.data}
+						openCodeUsageError={dashboardSession.dashboard.openCode.error}
+						claudeUsage={dashboardSession.dashboard.claude.data}
+						claudeUsageError={dashboardSession.dashboard.claude.error}
+						grokUsage={dashboardSession.dashboard.grok.data}
+						grokUsageError={dashboardSession.dashboard.grok.error}
+						copilotUsage={dashboardSession.dashboard.copilot.data}
+						copilotUsageError={dashboardSession.dashboard.copilot.error}
+						deepSeekBalance={dashboardSession.dashboard.deepSeek.data}
+						deepSeekBalanceError={dashboardSession.dashboard.deepSeek.error}
+						cherryInUsage={dashboardSession.dashboard.cherryIn.data}
+						cherryInUsageError={dashboardSession.dashboard.cherryIn.error}
+						weather={dashboardSession.dashboard.weather.data}
+						weatherError={dashboardSession.dashboard.weather.error}
+						stocks={dashboardSession.dashboard.stocks.data}
+						stocksError={dashboardSession.dashboard.stocks.error}
+						exchange={dashboardSession.dashboard.exchange.data}
+						exchangeError={dashboardSession.dashboard.exchange.error}
+						serviceStatus={dashboardSession.dashboard.serviceStatus.data}
+						serviceStatusError={dashboardSession.dashboard.serviceStatus.error}
+						github={dashboardSession.dashboard.github.data}
+						githubError={dashboardSession.dashboard.github.error}
+						quotation={dashboardSession.dashboard.quotation.data}
+						quotationError={dashboardSession.dashboard.quotation.error}
+						todos={dashboardSession.todos.data}
+						todosError={dashboardSession.todos.error}
+						todosLoading={dashboardSession.todos.loading}
+						todayDate={dashboardSession.todayDate}
+						todoDate={dashboardSession.todoDate}
+						onselecttododate={dashboardSession.loadTodos}
+						onaddtodo={dashboardSession.addTodo}
+						ontoggletodo={dashboardSession.toggleTodo}
+						ondeletetodo={dashboardSession.deleteTodo}
+						onrefresh={() => dashboardSession.refreshDashboard(true)}
+					/>
+				{:else if selected === "settings"}
+					<SettingsView {reconnectMihoyo} configuration={settings.configuration} error={settings.error} onsaveugos={settings.saveUgosConfiguration} onsaver2={settings.saveR2Configuration} onsaveapi={settings.saveApiConfiguration} onsaventfy={settings.saveNtfy} onsaveapplock={settings.saveAppLock} onremoveapplock={settings.removeAppLock} onconnectspotify={settings.connectSpotify} onbeginqq={settings.beginQqLogin} onpollqq={settings.pollQqLogin} oncancelqq={settings.cancelQqLogin} onconfigurationchanged={settings.loadConfiguration} />
+				{:else if selected === "inbox"}
+					<InboxView notifications={inbox.notifications} loadError={inbox.error} onread={inbox.markNotificationRead} />
+				{:else if selected === "music"}
+					<MusicView bind:playerVisible={musicPlayerVisible} bind:playerAvailable={musicPlayerAvailable} onopenplayer={openMusicPlayer} onopensettings={() => void select("settings")} />
+				{:else if contentError && content === null}
+					<section class="consumer-error">
+						<header class="page-header"><div>
+							{#if selected === "memos"}<h1>Memos</h1>{:else if selected === "moment"}<h1>Moment</h1>{:else if selected === "newspaper"}<h1>Newspaper</h1>{:else}<h1>Knowledge</h1>{/if}
+							<p class="page-description">Content unavailable</p>
+						</div></header>
+						<div class="error" role="alert">
+							<CloudOff size={18} />
+							<div><strong>Content unavailable</strong><span>{contentError}</span></div>
+							<button type="button" onclick={() => void select("settings")}>Open Settings</button>
+						</div>
+					</section>
+				{:else if content !== null}
+					{#if content.channel === "memos"}
+						<MemosView memos={content.memos} tags={memos.tags.tags} display={memos.memoDisplay} onfilter={memos.filterMemos} onopenmemo={memos.revealMemo} oncreate={memos.createMemo} onimportx={memos.importXMemo} onupdate={memos.updateMemo} ondelete={memos.deleteMemo} onpublishtelegram={memos.publishMemoToTelegram} onpublishx={memos.publishMemoToX}>
+							{#snippet tagStatus()}
+						{#if memos.tags.error}
+							<div class="tag-notice" role="alert"><span>Tags unavailable: {memos.tags.error}</span><button type="button" disabled={memos.tags.loading} onclick={() => void memos.tags.refresh()}>Retry tags</button></div>
+						{:else if memos.tags.loading && memos.tags.tags.length === 0}
+							<p class="tag-status" role="status">Loading tags…</p>
+						{/if}
+							{/snippet}
+						</MemosView>
+					{:else if content.channel === "moment"}
+						<MomentView photos={content.photos} tags={moment.tags.tags} total={content.total} onupload={moment.createPhoto} onupdate={moment.updatePhoto} ondelete={moment.deletePhoto}>
+							{#snippet tagStatus()}
+						{#if moment.tags.error}
+							<div class="tag-notice" role="alert"><span>Tags unavailable: {moment.tags.error}</span><button type="button" disabled={moment.tags.loading} onclick={() => void moment.tags.refresh()}>Retry tags</button></div>
+						{:else if moment.tags.loading && moment.tags.tags.length === 0}
+							<p class="tag-status" role="status">Loading tags…</p>
+						{/if}
+							{/snippet}
+						</MomentView>
+					{:else if selected === "newspaper"}
+						<NewspaperView documents={content.knowledge} issues={content.newspaper} loading={knowledge.loading} />
+					{:else}
+						<KnowledgeView documents={content.knowledge} loading={knowledge.loading} oncreate={knowledge.createKnowledge} onupdate={knowledge.updateKnowledge} />
+					{/if}
 				{:else}
-					<KnowledgeView documents={content.knowledge} {loading} oncreate={createKnowledge} onupdate={updateKnowledge} />
+					<PageSkeleton view={selected === "moment" ? "moment" : selected === "newspaper" ? "newspaper" : selected === "knowledge" ? "knowledge" : "memos"} title={selected === "moment" ? "Moment" : selected === "newspaper" ? "Newspaper" : selected === "knowledge" ? "Knowledge" : "Memos"} />
 				{/if}
-			{:else}
-				<div class="loading" aria-live="polite" aria-label="Loading view">
-					<div class="loading-card">
-						<div class="loading-meta"><span></span><span></span></div>
-						<div class="loading-copy"><span></span><span></span><span></span></div>
-						<div class="loading-footer"><span></span><span></span></div>
-					</div>
-					<div class="loading-card secondary" aria-hidden="true">
-						<div class="loading-meta"><span></span><span></span></div>
-						<div class="loading-copy"><span></span><span></span></div>
-					</div>
-				</div>
-			{/if}
-			<div class="sentinel" aria-hidden="true"></div>
-			{#if loadingMore && content}
-				<p class="loading-more">Loading more…</p>
-			{/if}
+				<div class="sentinel" aria-hidden="true"></div>
+				{#if contentError && content !== null}
+					<p class="tag-notice" role="alert">{contentError}</p>
+				{/if}
+				{#if activeContent?.loadingMore && content}
+					<p class="loading-more">Loading more…</p>
+				{/if}
+			</div>
 		</div>
 		<div class="global-scroll-action">
 			{#if selected === "memos"}
 				<button
 					class="memo-filter-action"
-					class:active={memoDisplay === "archived"}
+					class:active={memos.memoDisplay === "archived"}
 					type="button"
-					onclick={() => (memoDisplay = memoDisplay === "archived" ? "active" : "archived")}
-					aria-pressed={memoDisplay === "archived"}
-					aria-label={memoDisplay === "archived" ? "Show active memos" : "Show archived memos"}
-					title={memoDisplay === "archived" ? "Active memos" : "Archived memos"}
+					onclick={() => (memos.memoDisplay = memos.memoDisplay === "archived" ? "active" : "archived")}
+					aria-pressed={memos.memoDisplay === "archived"}
+					aria-label={memos.memoDisplay === "archived" ? "Show active memos" : "Show archived memos"}
+					title={memos.memoDisplay === "archived" ? "Active memos" : "Archived memos"}
 				>
 					<Archive size={15} />
 				</button>
 				<button
 					class="memo-filter-action"
-					class:active={memoDisplay === "favorites"}
+					class:active={memos.memoDisplay === "favorites"}
 					type="button"
-					onclick={() => (memoDisplay = memoDisplay === "favorites" ? "active" : "favorites")}
-					aria-pressed={memoDisplay === "favorites"}
-					aria-label={memoDisplay === "favorites" ? "Show active memos" : "Show favorite memos"}
-					title={memoDisplay === "favorites" ? "Active memos" : "Favorite memos"}
+					onclick={() => (memos.memoDisplay = memos.memoDisplay === "favorites" ? "active" : "favorites")}
+					aria-pressed={memos.memoDisplay === "favorites"}
+					aria-label={memos.memoDisplay === "favorites" ? "Show active memos" : "Show favorite memos"}
+					title={memos.memoDisplay === "favorites" ? "Active memos" : "Favorite memos"}
 				>
-					<Heart size={15} fill={memoDisplay === "favorites" ? "currentColor" : "none"} />
+					<Heart size={15} fill={memos.memoDisplay === "favorites" ? "currentColor" : "none"} />
 				</button>
 			{/if}
 			{#if selected === "music" && musicPlayerVisible}
@@ -1550,7 +810,6 @@
 	.update-dialog span,
 	.update-dialog small { margin: 0; }
 	.update-dialog p { color: var(--color-accent); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-	.update-dialog h1 { font-family: var(--font-serif); font-size: 1.35rem; font-weight: 500; }
 	.update-dialog > span,
 	.update-dialog small { color: var(--color-muted-foreground); font-size: 0.72rem; }
 	.update-notes { max-height: 10rem; overflow: auto; white-space: pre-wrap; font-size: 0.78rem; line-height: 1.6; }
@@ -1818,7 +1077,7 @@
 		text-align: center;
 	}
 
-	.lock-card h1 { margin: 0 0 0.35rem; font-size: 1rem; font-weight: 600; }
+	.lock-card h1 { margin: 0 0 0.35rem; }
 	.lock-card form { display: grid; width: 100%; gap: 0.55rem; text-align: left; }
 	.lock-card label { color: var(--color-muted-foreground); font-size: 0.65rem; }
 	.lock-card input { min-width: 0; height: 2rem; box-sizing: border-box; padding: 0 0.625rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-size: 0.75rem; }
@@ -1883,17 +1142,10 @@
 	.topbar .menu-button,
 	.topbar strong { display: none; }
 
-	.canvas {
-		width: min(100% - 2rem, 66rem);
-		margin: 0 auto;
-		padding: 2rem 1rem 5rem;
-		box-sizing: border-box;
-	}
-
-	.canvas.wide { width: 100%; }
 	main.player-shell { display: flex; flex-direction: column; }
 	.player-shell .topbar { flex-shrink: 0; }
-	.player-shell .canvas { display: flex; flex: 1 0 auto; width: 100%; padding-bottom: 2rem; }
+	.player-shell .canvas { display: flex; flex: 1 0 auto; padding-bottom: 2rem; }
+	.player-shell .page-content { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 
 	.global-scroll-action {
 		position: fixed;
@@ -1946,8 +1198,12 @@
 		outline-offset: 2px;
 	}
 
+	.tag-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1rem; padding: 0.75rem 1rem; border: 1px solid var(--color-error); border-radius: var(--radius-md); color: var(--color-error); font-size: 0.875rem; }
+	.tag-notice button { border: 1px solid currentColor; border-radius: var(--radius-sm); padding: 0.25rem 0.5rem; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+	.tag-status { margin: 0 0 1rem; color: var(--color-muted-foreground); font-size: 0.875rem; }
+
 	.consumer-error {
-		width: min(100%, 64rem);
+		width: 100%;
 		margin: 0 auto;
 	}
 
@@ -1967,12 +1223,6 @@
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-	}
-
-	.consumer-error header h1 {
-		font-family: var(--font-serif);
-		font-size: 2rem;
-		font-weight: 500;
 	}
 
 	.error {
@@ -2008,68 +1258,6 @@
 		color: var(--color-foreground);
 		cursor: pointer;
 		font-size: 0.72rem;
-	}
-
-	.loading {
-		display: grid;
-		width: min(100%, 42rem);
-		min-height: calc(100vh - 10rem);
-		align-content: center;
-		gap: 0.75rem;
-		margin: 0 auto;
-	}
-
-	.loading-card {
-		display: grid;
-		gap: 1rem;
-		padding: 1rem 1.25rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-		background: var(--color-background);
-		box-shadow: var(--shadow-xs);
-	}
-
-	.loading-card.secondary {
-		opacity: 0.65;
-	}
-
-	.loading-meta,
-	.loading-footer {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-	}
-
-	.loading-copy {
-		display: grid;
-		gap: 0.6rem;
-	}
-
-	.loading-footer {
-		padding-top: 0.75rem;
-		border-top: 1px solid var(--color-border);
-	}
-
-	.loading span {
-		display: block;
-		height: 0.55rem;
-		border-radius: var(--radius-full);
-		background: linear-gradient(90deg, var(--color-muted) 25%, var(--color-border) 50%, var(--color-muted) 75%);
-		background-size: 220% 100%;
-		animation: shimmer var(--duration-skeleton) ease-in-out infinite;
-	}
-
-	.loading-meta span:first-child { width: 5rem; }
-	.loading-meta span:last-child { width: 3.25rem; height: 1.25rem; }
-	.loading-copy span:nth-child(1) { width: 94%; }
-	.loading-copy span:nth-child(2) { width: 78%; }
-	.loading-copy span:nth-child(3) { width: 52%; }
-	.loading-footer span:first-child { width: 4rem; height: 1.5rem; }
-	.loading-footer span:last-child { width: 4.5rem; height: 1.5rem; }
-
-	@keyframes shimmer {
-		from { background-position: 100% 0; }
-		to { background-position: -120% 0; }
 	}
 
 	.sentinel {
@@ -2138,9 +1326,5 @@
 			font-size: 0.95rem;
 		}
 
-		.canvas {
-			width: auto;
-			padding: 1rem 1rem 3rem;
-		}
 	}
 </style>

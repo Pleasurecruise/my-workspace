@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(debug_assertions)))]
 use std::process::Stdio;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const OAUTH_BETA: &str = "oauth-2025-04-20";
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(debug_assertions)))]
 const KEYCHAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -118,7 +118,7 @@ async fn read_credentials() -> Result<Credentials, String> {
         .join(".credentials.json");
     let file_credentials = read_credentials_file(&credentials_path).await;
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(debug_assertions)))]
     if let Some(mut credentials) = read_keychain_credentials().await {
         if credentials.subscription_type.is_empty()
             && let Ok(file_credentials) = &file_credentials
@@ -141,7 +141,7 @@ async fn read_credentials_file(path: &Path) -> Result<Credentials, String> {
     parse_credentials(&content)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(debug_assertions)))]
 async fn read_keychain_credentials() -> Option<Credentials> {
     let mut command = tokio::process::Command::new("/usr/bin/security");
     command

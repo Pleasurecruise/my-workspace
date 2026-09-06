@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, watch};
 use tokio::task::JoinHandle;
 
 const NOTIFICATION_LIMIT: usize = 200;
@@ -53,7 +53,14 @@ struct NotificationEnvelope {
 pub(crate) struct NotificationState {
     path: PathBuf,
     store: RwLock<Result<NotificationStore, String>>,
-    subscription: Mutex<Option<JoinHandle<()>>>,
+    subscription: Mutex<Subscription>,
+}
+
+#[derive(Default)]
+struct Subscription {
+    active: bool,
+    stop: Option<watch::Sender<()>>,
+    task: Option<JoinHandle<()>>,
 }
 
 impl NotificationState {
@@ -69,7 +76,7 @@ impl NotificationState {
         Self {
             path,
             store: RwLock::new(store),
-            subscription: Mutex::new(None),
+            subscription: Mutex::new(Subscription::default()),
         }
     }
 
@@ -203,24 +210,73 @@ pub(crate) async fn mark_notification_read(
     }
 }
 
-pub(crate) async fn restart(app: tauri::AppHandle) -> Result<(), String> {
-    let state = app.state::<NotificationState>();
-    if let Some(subscription) = state.subscription.lock().await.take() {
-        subscription.abort();
+#[tauri::command]
+pub(crate) async fn set_notifications_active(
+    active: bool,
+    app: tauri::AppHandle,
+) -> CommandResponse<()> {
+    match update_subscription(app, Some(active)).await {
+        Ok(()) => CommandResponse::Ready { data: () },
+        Err(message) => CommandResponse::Failed { message },
     }
-    if let Err(message) = &*state.store.read().await {
-        return Err(message.clone());
-    }
-    let configuration = match vesper_credentials::ntfy().map_err(|error| error.to_string())? {
-        vesper_credentials::Stored::Missing => return Ok(()),
-        vesper_credentials::Stored::Ready(configuration) => configuration,
-    };
-    let task = tokio::spawn(run_subscription(app.clone(), configuration.token));
-    *state.subscription.lock().await = Some(task);
-    Ok(())
 }
 
-async fn run_subscription(app: tauri::AppHandle, token: String) {
+pub(crate) async fn restart(app: tauri::AppHandle) -> Result<(), String> {
+    update_subscription(app, None).await
+}
+
+async fn update_subscription(app: tauri::AppHandle, active: Option<bool>) -> Result<(), String> {
+    let state = app.state::<NotificationState>();
+    let mut subscription = state.subscription.lock().await;
+    subscription
+        .update(active, |stop| async {
+            if let Err(message) = &*state.store.read().await {
+                return Err(message.clone());
+            }
+            let configuration =
+                match vesper_credentials::ntfy().map_err(|error| error.to_string())? {
+                    vesper_credentials::Stored::Missing => return Ok(None),
+                    vesper_credentials::Stored::Ready(configuration) => configuration,
+                };
+            Ok(Some(tokio::spawn(run_subscription(
+                app.clone(),
+                configuration.token,
+                stop,
+            ))))
+        })
+        .await
+}
+
+impl Subscription {
+    async fn update<F>(
+        &mut self,
+        active: Option<bool>,
+        start: impl FnOnce(watch::Receiver<()>) -> F,
+    ) -> Result<(), String>
+    where
+        F: std::future::Future<Output = Result<Option<JoinHandle<()>>, String>>,
+    {
+        if let Some(active) = active {
+            if self.active == active && self.task.as_ref().is_some_and(|task| !task.is_finished()) {
+                return Ok(());
+            }
+            self.active = active;
+        }
+        if let Some(task) = self.task.take() {
+            // Stop network waits, but let an accepted message finish its disk/memory transaction.
+            self.stop.take();
+            let _ = task.await;
+        }
+        if self.active {
+            let (stop, receiver) = watch::channel(());
+            self.task = start(receiver).await?;
+            self.stop = self.task.as_ref().map(|_| stop);
+        }
+        Ok(())
+    }
+}
+
+async fn run_subscription(app: tauri::AppHandle, token: String, mut stop: watch::Receiver<()>) {
     let client = match reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(15))
         .build()
@@ -243,36 +299,64 @@ async fn run_subscription(app: tauri::AppHandle, token: String) {
                 return;
             }
         };
-        let response = client
+        let request = client
             .get(NTFY_SUBSCRIPTION_URL)
             .bearer_auth(&token)
             .query(&[("since", since)])
-            .send()
-            .await;
+            .send();
+        let response = tokio::select! {
+            biased;
+            _ = stop.changed() => return,
+            response = request => response,
+        };
         match response {
             Ok(response) => match response.error_for_status() {
-                Ok(response) => consume_stream(&app, response).await,
+                Ok(response) => consume_stream(&app, response, &mut stop).await,
                 Err(error) => {
                     tracing::warn!(%error, "ntfy subscription was rejected");
-                    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                    tokio::select! {
+                        biased;
+                        _ = stop.changed() => return,
+                        _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {},
+                    }
                     continue;
                 }
             },
             Err(error) => {
                 tracing::warn!(%error, "ntfy subscription could not connect");
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                tokio::select! {
+                    biased;
+                    _ = stop.changed() => return,
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {},
+                }
                 continue;
             }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        tokio::select! {
+            biased;
+            _ = stop.changed() => return,
+            _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {},
+        }
     }
 }
 
-async fn consume_stream(app: &tauri::AppHandle, response: reqwest::Response) {
+async fn consume_stream(
+    app: &tauri::AppHandle,
+    response: reqwest::Response,
+    stop: &mut watch::Receiver<()>,
+) {
     let state = app.state::<NotificationState>();
     let mut response = response.bytes_stream();
     let mut pending = Vec::new();
-    while let Some(chunk) = response.next().await {
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            _ = stop.changed() => return,
+            chunk = response.next() => chunk,
+        };
+        let Some(chunk) = chunk else {
+            return;
+        };
         let chunk = match chunk {
             Ok(chunk) => chunk,
             Err(error) => {
@@ -286,6 +370,9 @@ async fn consume_stream(app: &tauri::AppHandle, response: reqwest::Response) {
             return;
         }
         while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {
+            if stop.has_changed().is_err() {
+                return;
+            }
             if newline > SSE_LINE_LIMIT {
                 pending.drain(..=newline);
                 tracing::warn!("ntfy sent an oversized SSE line");
@@ -351,127 +438,5 @@ fn emit_notifications(app: &tauri::AppHandle, notifications: Vec<Notification>) 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn isolates_corrupt_notification_storage() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("notifications.json");
-        std::fs::write(&path, b"{").unwrap();
-        let state = NotificationState::new(path.clone());
-        assert!(state.store.read().await.is_err());
-        assert!(state.mark_read("message-1").await.is_err());
-        assert_eq!(std::fs::read(&path).unwrap(), b"{");
-    }
-
-    #[tokio::test]
-    async fn failed_replacement_preserves_notification_state() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("notifications.json");
-        let state = NotificationState::new(path.clone());
-        state
-            .accept(NtfyMessage {
-                id: "message-1".to_owned(),
-                time: 1,
-                event: "message".to_owned(),
-                topic: NTFY_TOPIC.to_owned(),
-                title: None,
-                message: Some("Message".to_owned()),
-                tags: vec![],
-            })
-            .await
-            .unwrap();
-        let saved = std::fs::read(&path).unwrap();
-        let retained = directory.path().join("retained.json");
-        std::fs::rename(&path, &retained).unwrap();
-        std::fs::create_dir(&path).unwrap();
-        assert!(state.mark_read("message-1").await.is_err());
-        assert_eq!(
-            state
-                .store
-                .read()
-                .await
-                .as_ref()
-                .unwrap()
-                .notifications
-                .len(),
-            1
-        );
-        assert_eq!(std::fs::read(retained).unwrap(), saved);
-        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
-    }
-
-    #[tokio::test]
-    async fn deduplicates_messages() {
-        let path =
-            std::env::temp_dir().join(format!("vesper-notifications-{}.json", std::process::id()));
-        drop(std::fs::remove_file(&path));
-        let state = NotificationState::new(path.clone());
-        let message = NtfyMessage {
-            id: "message-1".to_owned(),
-            time: 1,
-            event: "message".to_owned(),
-            topic: "mail-summary".to_owned(),
-            title: Some("Mail".to_owned()),
-            message: Some("Summary".to_owned()),
-            tags: vec![],
-        };
-        assert!(state.accept(message).await.unwrap().is_some());
-        let duplicate = NtfyMessage {
-            id: "message-1".to_owned(),
-            time: 2,
-            event: "message".to_owned(),
-            topic: "mail-summary".to_owned(),
-            title: None,
-            message: Some("Duplicate".to_owned()),
-            tags: vec![],
-        };
-        assert!(state.accept(duplicate).await.unwrap().is_none());
-        assert_eq!(
-            state
-                .store
-                .read()
-                .await
-                .as_ref()
-                .unwrap()
-                .notifications
-                .len(),
-            1
-        );
-        drop(std::fs::remove_file(path));
-    }
-
-    #[tokio::test]
-    async fn removes_read_message() {
-        let path = std::env::temp_dir().join(format!(
-            "vesper-read-notifications-{}.json",
-            std::process::id()
-        ));
-        let message = NtfyMessage {
-            id: "message-1".to_owned(),
-            time: 1,
-            event: "message".to_owned(),
-            topic: NTFY_TOPIC.to_owned(),
-            title: None,
-            message: Some("Message".to_owned()),
-            tags: vec![],
-        };
-        let state = NotificationState::new(path.clone());
-        state.accept(message).await.unwrap();
-        assert!(state.mark_read("message-1").await.unwrap().is_empty());
-
-        let restored = NotificationState::new(path.clone());
-        assert!(
-            restored
-                .store
-                .read()
-                .await
-                .as_ref()
-                .unwrap()
-                .notifications
-                .is_empty()
-        );
-        drop(std::fs::remove_file(path));
-    }
-}
+#[path = "../tests/unit/notifications.rs"]
+mod tests;

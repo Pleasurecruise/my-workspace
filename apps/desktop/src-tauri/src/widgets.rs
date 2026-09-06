@@ -9,6 +9,10 @@ use tauri::Manager;
 use crate::CommandResponse;
 
 const FILE_NAME: &str = "layout.json";
+
+#[cfg(test)]
+#[path = "../tests/unit/game_layout.rs"]
+mod game_tests;
 static ACCESS: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -44,6 +48,16 @@ pub(crate) enum Widget {
     DeepSeek,
     CherryIn,
     Quotation,
+    Game {
+        game: games::Game,
+    },
+    GameNotes {
+        game: games::Game,
+    },
+    GachaAnalysis {
+        game: games::Game,
+    },
+    Steam,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -64,6 +78,17 @@ pub(crate) enum ProviderWidget {
     Claude,
     Grok,
     Copilot,
+}
+
+impl Layout {
+    fn has_ugos(&self) -> bool {
+        self.widgets.iter().any(|placement| {
+            matches!(
+                placement.widget,
+                Widget::Cpu | Widget::Memory | Widget::Storage | Widget::Network
+            )
+        })
+    }
 }
 
 impl Default for Layout {
@@ -155,7 +180,7 @@ impl Layout {
                     }
                 }
                 Widget::ServiceStatus { service_id }
-                    if !crate::status::valid_service_id(service_id) =>
+                    if !quotes::status::valid_service_id(service_id) =>
                 {
                     return Err("Dashboard service status selection is invalid".to_owned());
                 }
@@ -187,6 +212,10 @@ impl Layout {
                 Widget::DeepSeek => "deep-seek".to_owned(),
                 Widget::CherryIn => "cherry-in".to_owned(),
                 Widget::Quotation => "quotation".to_owned(),
+                Widget::Game { game } => format!("game-{}", game.key()),
+                Widget::GameNotes { game } => format!("gameNotes-{}", game.key()),
+                Widget::GachaAnalysis { game } => format!("gachaAnalysis-{}", game.key()),
+                Widget::Steam => "steam".to_owned(),
             };
             if !singletons.insert(key.clone()) {
                 return Err(format!("Dashboard layout contains duplicate {key} widgets"));
@@ -225,8 +254,25 @@ fn valid_stock_symbol(symbol: &str) -> bool {
 }
 
 fn decode(bytes: &[u8]) -> Result<Layout, String> {
-    let layout: Layout = serde_json::from_slice(bytes)
+    let mut layout: Layout = serde_json::from_slice(bytes)
         .map_err(|error| format!("Dashboard layout is invalid: {error}"))?;
+    if layout.widgets.iter().any(|placement| {
+        matches!(
+            placement.widget,
+            Widget::GameNotes { .. } | Widget::GachaAnalysis { .. }
+        )
+    }) {
+        let mut games = HashSet::new();
+        for placement in &mut layout.widgets {
+            if let Widget::GameNotes { game } | Widget::GachaAnalysis { game } = placement.widget {
+                placement.widget = Widget::Game { game };
+            }
+        }
+        layout.widgets.retain(|placement| match placement.widget {
+            Widget::Game { game } => games.insert(game),
+            _ => true,
+        });
+    }
     layout.validate()?;
     Ok(layout)
 }
@@ -285,6 +331,20 @@ pub(crate) fn stock_symbols(app: &tauri::AppHandle) -> Result<Vec<String>, Strin
     Ok(symbols)
 }
 
+pub(crate) fn games(app: &tauri::AppHandle) -> Result<(Vec<games::Game>, bool), String> {
+    let layout = path(app).and_then(|path| read(&path))?;
+    let mut selected = Vec::new();
+    let mut steam = false;
+    for placement in layout.widgets {
+        match placement.widget {
+            Widget::Game { game } => selected.push(game),
+            Widget::Steam => steam = true,
+            _ => {}
+        }
+    }
+    Ok((selected, steam))
+}
+
 pub(crate) fn weather_locations(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
     let layout = path(app).and_then(|path| read(&path))?;
     let mut locations = Vec::new();
@@ -321,6 +381,11 @@ pub(crate) fn has_quotation(app: &tauri::AppHandle) -> Result<bool, String> {
         .widgets
         .iter()
         .any(|placement| matches!(placement.widget, Widget::Quotation)))
+}
+
+pub(crate) fn has_ugos(app: &tauri::AppHandle) -> Result<bool, String> {
+    let layout = path(app).and_then(|path| read(&path))?;
+    Ok(layout.has_ugos())
 }
 
 pub(crate) fn has_device_telemetry(app: &tauri::AppHandle) -> Result<bool, String> {
@@ -494,3 +559,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/ugos_layout.rs"]
+mod ugos_tests;

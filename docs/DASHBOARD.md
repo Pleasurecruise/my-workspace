@@ -1,15 +1,15 @@
 # Dashboard Integrations
 
 Dashboard is a local aggregation surface that does not mutate provider account data. Protocol code,
-request ordering, and polling live in Rust. Each external source has an independent request revision
-and result event. CherryIN token refresh is the narrow exception to local read-only credential
-access: a successful refresh may update the existing Cherry Studio OAuth session.
+request ordering, and polling live in Rust. Each external source has an independent request lock and result event. CherryIN token refresh is the narrow exception to local read-only credential
+access: a successful refresh may update the existing Cherry Studio OAuth session. Games also
+exchanges authorization and signing tokens within its own credential boundary.
 
 Telegram and X are outbound Memo publication providers, not Dashboard sources. Their configuration,
 authorization, and token refresh paths remain outside the Dashboard runtime so its read-only provider
 contract does not expand.
 
-On macOS, Vesper-owned Keychain configuration uses the shared `credentials` item and Rust cache
+In macOS release builds, Vesper-owned Keychain configuration uses the shared `credentials` item and Rust cache
 owned by `crates/credentials`; provider polling does not reread separate Keychain items. Existing
 Codex, pi, Claude Code, GitHub CLI, and Cherry Studio credential sources remain independent. Setup
 and authorization behavior are documented in [DEVELOPMENT.md](DEVELOPMENT.md).
@@ -18,7 +18,7 @@ and authorization behavior are documented in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ```text
 DashboardView.svelte
-  <- typed state in App.svelte
+  <- source projections in components/dashboard/session.svelte.ts
   <- typed source events and refresh commands
   <- dashboard runtime in apps/desktop/src-tauri
   ├─ current-device telemetry
@@ -40,18 +40,35 @@ DashboardView.svelte
        └─ cherryin.rs
 ```
 
-An unavailable credential or failed source does not block the other cards. Rust starts unified
+The shell passes route activation to the Dashboard view session, which owns source-event listeners,
+refresh feedback, Todo selection, and cleanup. An unavailable credential or failed source does not
+block the other cards. Rust starts unified
 Dashboard reads concurrently and emits each result as it settles. A per-source lock prevents
 overlapping reads; scheduled refreshes skip a source that is still running, while an explicit refresh
-waits for that source and then obtains fresh data. Polling exists only while Dashboard is active and
-retains settled data while refreshing: UGREEN NAS telemetry and configured current-device telemetry
+waits for that source and then obtains fresh data. Leaving Dashboard cancels queued and in-flight Dashboard runtime reads, including scheduled UGOS requests. Polling exists only while Dashboard is active and
+retains settled data while refreshing: configured UGREEN NAS telemetry and current-device telemetry
 run every two seconds, while subscription data and configured service status run every sixty
 seconds. Entering Dashboard or using its refresh action reads every source and the selected Todo
-date. Weather, stocks, exchange rates, GitHub, and random quotations have no timer.
+date. Steam activity refreshes every five minutes while Dashboard is active. Game daily notes only
+load once per game and login during the application process; subsequent reads reuse the cache.
+Their panels also read when mounted. Pull archives load locally and sync only on an explicit
+action. Weather, stocks, exchange rates, GitHub, and random quotations have no timer.
+
+## Games
+
+Each game has a combined daily-status and pull-archive card; Steam has a library/activity widget.
+Panels invoke the Rust games runtime directly. Dashboard entry reuses daily cache entries, while
+explicit Dashboard refresh also refreshes daily status. Steam polls every five minutes; archive
+sync remains an explicit action. Existing split daily/archive widget entries merge when layout loads.
+
+[GAMES.md](GAMES.md) owns account binding, QR authorization, cache ordering, human verification,
+archive transactions, Steam projections, and protocol references. [DESIGN.md](DESIGN.md#game-interaction)
+owns card layout and settings interactions.
 
 ## ntfy notifications
 
-Notification delivery is independent from Dashboard polling:
+`components/inbox/session.svelte.ts` projects notifications and passes route activation to Rust.
+Notification delivery is scoped to Inbox, independently from Dashboard polling:
 
 ```text
 Upstream producers ──> ntfy.you-find.me/mail-summary ── authenticated SSE ──> Vesper Inbox
@@ -60,6 +77,8 @@ Upstream producers ──> ntfy.you-find.me/mail-summary ── authenticated SS
 - Vesper does not connect to or configure upstream producers.
 - The transport is the self-hosted `https://ntfy.you-find.me` service. The current fixed topic is
   `mail-summary`; its ACL must grant the configured token read permission.
+- Vesper connects only when Inbox is active and an ntfy token is configured. Leaving Inbox cancels
+  the stream and reconnect loop; saving credentials while another route is active does not connect.
 - Vesper subscribes in Rust, reconnects with ntfy's `since=<last-id>` behavior, and keeps the newest
   200 messages locally for Inbox rendering.
 
@@ -192,39 +211,25 @@ replacing a newer selection. Calendar and Todo are stored as separate placements
 
 Rust stores the date-keyed calendar in `todos.json`, shares it with `vesper todo` through a sidecar
 lock, and ignores the former `today-todos.json` format. Reads also sync the optional sibling `ics`
-directory. Floating DTSTART values remain local, while UTC and IANA TZID-qualified times are
-converted to the device time zone before their date and `HH:MM` prefix are selected. The documented
-RRULE subset and EXDATE are materialized once per source file, UID, and source occurrence date.
-Invalid structure, unknown time zones, and unsupported recurrence fields fail the Todo read rather
-than silently changing meaning. At local midnight a view still showing today advances and syncs the
-new date without deleting history.
+directory. ICS import validates all sources before installation, then commits each file by writing
+and syncing a same-directory temporary file and replacing its destination. A staging or replacement
+failure preserves the previous destination. The blocking installer retains the storage lock until
+it finishes, including when its caller is cancelled. Import is a sequence of file commits: a later
+failure reports that earlier files may already be installed, without rolling them back.
+
+Floating DTSTART values remain local, while UTC and IANA TZID-qualified times are converted to the
+device time zone before their date and `HH:MM` prefix are selected. The documented RRULE subset and
+EXDATE are materialized once per source file, UID, and source occurrence date. Invalid structure,
+unknown time zones, and unsupported recurrence fields fail the Todo read rather than silently
+changing meaning. At local midnight a view still showing today advances and syncs the new date
+without deleting history.
 
 ## UGOS Pro
 
-### Connection and authentication
-
-- Fixed address: `https://ugreen:9443` through Tailscale MagicDNS.
-- UGOS clients bypass the operating-system HTTP proxy and connect directly to the Tailscale address.
-- Required local configuration: UGOS username and password saved through Settings.
-- On first connection, Vesper probes the NAS certificate and stores its SHA-256 fingerprint in the
-  operating-system credential store.
-- Later clients trust only the recorded fingerprint. Changing the NAS certificate requires an
-  explicit credential-record update rather than silent trust replacement.
-- The login client loads `/desktop/?os=ugospro` and extracts `window.clientNumberVersion` at runtime.
-- The authenticated API root is `/ugreen/v1`.
-
-The current implementation reads real-time CPU, memory, network, and volume samples from the
-configured device. The current Task Manager response exposes the live values under the top-level
-`cpu.series`, `mem.series`, and `net.series` fields; its `overview.cpu` and `overview.mem` values are
-an initial summary and must not feed the trend lines. Network history selects the aggregate series
-whose name is `overview`, rather than an individual interface. Vesper retains the latest 60 unique,
-chronologically increasing server-timestamped samples in
-memory for the CPU, memory, and network trend lines. The CPU chart renders usage and temperature as
-independently scaled primary and secondary lines. Storage utilization is calculated from volume
-`used` and `total` capacity and uses a capacity bar because it is a slow-changing snapshot. A missing
-or zero total volume capacity produces no storage sample instead of a misleading 0%. The history is
-not persisted. It does not currently query processes, services, fan data, machine identity, or
-firmware information.
+Remote NAS reads require both the active Dashboard route and at least one saved UGREEN widget.
+Current Device widgets do not enable NAS requests; startup and credential saves on other routes do
+not poll it. CPU, memory, and network use bounded in-memory histories; storage is a capacity snapshot.
+[UGOS.md](UGOS.md) owns connection, certificate trust, login, metric fields, and failure behavior.
 
 ## AI usage providers
 
@@ -243,7 +248,8 @@ response types; callers only expose its typed result.
 
 Claude, Copilot, and Grok are independent Quota widgets and Dashboard sources in addition to their
 CLI status checks. Claude reuses Claude Code's OAuth session and reads the five-hour and seven-day
-subscription windows. Copilot reuses the authenticated GitHub CLI and reads the same typed user and
+subscription windows. Debug builds read its local credential file only; macOS release builds may
+also read the existing Claude Code Keychain item. Copilot reuses the authenticated GitHub CLI and reads the same typed user and
 quota snapshot consumed by the official Copilot CLI, including unlimited flags and the account-level
 reset date. The Dashboard omits unlimited Chat and Completions rows and presents the metered Premium
 Requests quota; a zero row-level reset timestamp falls back to the account reset date. Grok launches
@@ -331,3 +337,38 @@ dependencies. All nonessential motion is disabled when the operating system requ
 [open-meteo]: https://open-meteo.com/en/docs
 [open-meteo-geocoding]: https://open-meteo.com/en/docs/geocoding-api
 [openai-status]: https://status.openai.com/api/v2/summary.json
+
+The most recent miHoYo verification response overwrites `mihoyo-verification.json` beside
+`games.sqlite3`. This diagnostic contains only game, register/submit stage, numeric return code,
+trace presence and timestamp. It excludes provider messages, account IDs and all credentials.
+Saving diagnostics never initiates a provider request.
+
+Star Rail uses the dedicated official RPG client's `https://api-takumi.mihoyo.com/event/toolcomsrv/risk/`
+`createGeetest` and `verifyGeetest` endpoints. Registration query and signed proof body both include
+`app_key=hkrpg_game_record`; its record headers include `x-rpc-tool_verison: v4.5.0` and
+`x-rpc-page: v4.5.0_#/rpg`. Genshin retains Hutao's `card/wapi` endpoints without that app key.
+Source: [official RPG client](https://webstatic.mihoyo.com/app/community-game-records/rpg/bundle_4f39d3de405a1031c4af.js).
+
+Manual miHoYo pull sync reuses the current record session and its cached CookieToken role lookup.
+Genshin generates a fresh `webview_gacha` AuthKey using SToken-only cookies, the
+Hutao Gen1/LK2 signing profile, persistent record device and fingerprint, and the app Referer.
+Errors identify role lookup, AuthKey authorization or history download; no stage automatically
+retries, and failed sync leaves the saved archive intact. Daily verification is separate from
+AuthKey authorization, so daily notes can work while pull authorization fails.
+
+Pull downloads preserve the generated AuthKey's `authkey_ver` and `sign_type` and include
+`auth_appid=webview_gacha`, matching Hutao's query composition. Percent-escaped keys are decoded
+once before URL serialization, preserving literal base64 plus signs. Download authorization
+errors refer to the pull key rather than instructing users to reconnect a working daily session.
+
+miHoYo verification return code `30001` means this verification request needs no captcha;
+it does not confirm daily access and supplies no challenge token. Registration/submission surface
+an explanatory failure and preserve the cached restriction. Only a successful response with a valid
+challenge can transition the card to `refreshRequired`; this performs no daily request.
+Both games bind `x-rpc-challenge_path` to the full daily endpoint URL. The official RPG client's
+Axios dispatcher combines its base URL and relative path before exposing the response config.
+
+Completing verification replaces only that game/login's cached verification error with a typed
+`refreshRequired` state. The native window emits the same state to the card immediately. This
+local transition performs no provider I/O, persists across view remounts and cache replays, and
+preserves successful cached notes. Only an explicit refresh reads fresh daily data.

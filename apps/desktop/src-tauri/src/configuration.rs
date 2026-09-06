@@ -249,16 +249,6 @@ pub(crate) async fn save_api_configuration(
 }
 
 #[tauri::command]
-pub(crate) fn read_publication() -> CommandResponse<social::PublicationConfigurationStatus> {
-    match social::read_config() {
-        Ok(data) => CommandResponse::Ready { data },
-        Err(error) => CommandResponse::Failed {
-            message: error.to_string(),
-        },
-    }
-}
-
-#[tauri::command]
 pub(crate) fn save_telegram(
     credentials: vesper_credentials::TelegramCredentials,
 ) -> CommandResponse<String> {

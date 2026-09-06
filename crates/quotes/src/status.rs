@@ -143,7 +143,7 @@ pub fn catalog() -> Vec<ServiceCatalogEntry> {
         .collect()
 }
 
-fn service(id: &str) -> Option<Service> {
+fn find_service(id: &str) -> Option<Service> {
     SERVICES.iter().copied().find(|service| service.id == id)
 }
 
@@ -262,7 +262,7 @@ pub async fn read(service_ids: Vec<String>) -> Result<ServiceStatusReport, Strin
         .build()
         .map_err(|error| format!("Could not create service status client: {error}"))?;
     let results = stream::iter(service_ids.into_iter().map(|service_id| {
-        let selected = service(&service_id);
+        let selected = find_service(&service_id);
         let client = &client;
         async move {
             let service = selected.ok_or_else(|| ServiceStatusFailure {
@@ -310,7 +310,7 @@ mod tests {
     #[test]
     fn projects_component_health() {
         let projected = project(
-            service("github").expect("known service"),
+            find_service("github").expect("known service"),
             summary(serde_json::json!([
                 { "name": "API", "status": "operational" },
                 { "name": "Actions", "status": "partial_outage" },
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn selects_only_codex_components() {
         let projected = project(
-            service("codex").expect("known service"),
+            find_service("codex").expect("known service"),
             summary(serde_json::json!([
                 { "name": "ChatGPT", "status": "major_outage" },
                 { "name": "Codex Web", "status": "operational" },
@@ -357,7 +357,7 @@ mod tests {
     #[test]
     fn includes_maintenance_and_unknown_services() {
         let projected = project(
-            service("deepseek").expect("known service"),
+            find_service("deepseek").expect("known service"),
             summary(serde_json::json!([
                 { "name": "API", "status": "operational" },
                 { "name": "Chat", "status": "under_maintenance" },
@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn healthy_services_have_no_affected_components() {
         let projected = project(
-            service("github").expect("known service"),
+            find_service("github").expect("known service"),
             summary(serde_json::json!([{ "name": "API", "status": "operational" }])),
         )
         .expect("valid status projection");
@@ -397,7 +397,7 @@ mod tests {
             serde_json::json!([{ "name": "ChatGPT", "status": "operational" }]),
         ] {
             let result = project(
-                service("codex").expect("known service"),
+                find_service("codex").expect("known service"),
                 summary(components),
             );
             assert_eq!(
@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn unrelated_outages_do_not_degrade_codex() {
         let projected = project(
-            service("codex").expect("known service"),
+            find_service("codex").expect("known service"),
             summary(serde_json::json!([
                 { "name": "ChatGPT", "status": "major_outage" },
                 { "name": "CODEX API", "status": "operational" }
@@ -442,7 +442,7 @@ mod tests {
                 ]
             }))
             .expect("valid incident summary");
-            let projected = project(service("codex").expect("known service"), summary)
+            let projected = project(find_service("codex").expect("known service"), summary)
                 .expect("valid status projection");
             assert_eq!(projected.active_incidents, 1);
         }

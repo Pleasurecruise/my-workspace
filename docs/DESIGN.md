@@ -24,21 +24,54 @@ Rules:
 ## Component ownership
 
 `packages/ui` owns primitives that are reusable across applications: buttons, inputs, labels,
-textareas, cards, alerts, badges, and design tokens. `apps/desktop/src/lib/components` owns composed
+textareas, selects, cards, alerts, badges, and design tokens. `apps/desktop/src/lib/components` owns composed
 views and desktop-specific interaction.
 
 Do not move a component into `packages/ui` solely to shorten an import. Promote it only when its API
 is stable and it has more than one plausible application consumer.
 
+## Page layout and typography
+
+The application shell owns the shared frame in `components/layout/page.css`. Wide and narrow
+content are horizontally centered within the main area to the right of the sidebar, with equal
+space on both sides. The outer frame is at most 84rem including 2rem side padding; below 768px,
+side padding is 1rem. Wide content fills the frame up to 80rem, while narrow content is at most
+48rem. Both use 100% of the space available below their maximum, without proportional scaling.
+Desktop top padding is 2rem; mobile top padding is 1.5rem.
+
+Dashboard, Moment, Newspaper, and the Music collection use the wide frame. Memos, Knowledge,
+Settings, Inbox, and the Music player use the narrow frame. Newspaper retains its centered 58rem
+paper surface inside the wide frame. Loading, errors, reading, and editing remain
+inside the same frame. Page components fill their allotted slot; internal paper and card proportions
+belong to the existing composition.
+The shell measures the content slot for the Music list, Knowledge editor fields, and Memos import
+controls to stack at ≤640px, including when the sidebar is resized. Settings form rows already
+respond to their own content container; footers wrap when needed. Other existing page compositions
+retain their own breakpoints. The frame does not establish containment around
+viewport-fixed dialogs.
+Shared headers use `page-header`, with the H1 first, an optional `page-description` below it, and
+wrapping actions. The page frame alone supplies the top inset; loading, ready, and error headers
+start at that same baseline. Paper padding applies only to Newspaper body content and placeholders,
+never to its page header. Tag status stays below the header so background reads cannot shift it.
+
+Page and section headings use the shared semantic scale by default. Existing content compositions
+own their internal typography: Dashboard cards, Moment's gallery controls and viewer, and Newspaper's
+editorial surface opt out through `data-content-typography`. An explicit `page-title` still uses the
+shared H1 typography inside these surfaces, as Moment does for its page heading. Shared frame changes must not change
+widget spans, gallery grouping, paper treatment, or article typography. H1–H6 defaults are 2rem,
+1.125rem, 0.9375rem, 0.875rem, 0.8125rem, and 0.75rem; the page title uses the serif family.
+
 ## Dashboard layout
 
-Dashboard uses a user-configurable fixed desktop widget canvas. Edit mode uses a four-way move
+Dashboard uses a user-configurable twelve-track widget canvas. Edit mode uses a four-way move
 pointer to drag the card itself, with no dedicated handle or card-level component menu. Each card has
-one small upper-right delete action. Cross-row movement inserts at row boundaries, preserving each
-row instead of splitting it around a full-width card. The Add Widget action opens a searchable library with a preview;
-weather accepts a user-entered place and stock accepts a ticker symbol. The canvas retains twelve
-tracks and scrolls horizontally when space is limited, so a breakpoint never rewrites the saved
-order.
+one small upper-right delete action. Dashboard uses compact 0.5rem canvas gaps, generally
+0.75rem card insets, and an 8.5rem minimum for three-track widgets. Compact headings and list
+rows increase visible information while retaining font sizes, saved spans, and Todo’s fixed detail surface. Cross-row movement inserts at row boundaries, preserving each
+row instead of splitting it around a full-width card. The Add Widget action opens a categorized library with a preview;
+weather accepts a user-entered place and stock accepts a ticker symbol. Cards retain their configured
+three-, four-, six-, eight-, or twelve-track spans as the outer frame changes width. Breakpoints do
+not regroup saved rows; drag placement follows those configured spans.
 
 Calendar and Todo are separate widgets that share the selected date. The widget library uses a
 category rail without a search field. One System Status category contains UGREEN CPU, UGREEN Memory,
@@ -60,16 +93,26 @@ Each weather card shows one configured city with a 24-hour local clock and six h
 price, daily change, and recent trend. The optional exchange card uses the same four-track footprint
 to compare USD, GBP, and EUR against CNY, emphasizing USD/CNY while keeping the provider date visible.
 Service-status cards pair overall health with the names and states of affected services. The list
-scrolls within the card when needed; a healthy card shows “All services operational.” The health
-bar exposes numeric bounds to assistive technology. Users select a service from the widget catalog.
+scrolls within the card when needed; a healthy card shows “All services operational.” The header
+stays at the top, while the status summary, health bar, numeric labels, and incident count form one
+naturally spaced group centered vertically in the remaining content area. The health bar exposes
+numeric bounds to assistive technology. Users select a service from the widget catalog.
 
 The GitHub card places recent activity and unread notifications beside the contribution calendar.
 The calendar opens at the most recent dates; notifications show their reason and repository, with
 review requests explicitly labeled. Long notification lists scroll within the card, and Open inbox
-leads to GitHub. Notification failures remain local to that section.
+leads to GitHub. Notification failures remain local to that section. Arknights and Endfield use
+a compact two-column daily summary and smaller archive rings to match the GitHub card’s
+visual density. Cards grow naturally without fixed-height scrolling; archive guidance is
+available through an expandable disclosure.
 
 Loading state must preserve already settled information. Initial placeholders belong inside the
 affected card; background polling must not replace the entire Dashboard with a loading surface.
+First-load consumer skeletons keep the shared page header at its settled position: Memos shows a
+composer and cards, Moment a responsive photo grid, Knowledge dated article rows, and Newspaper an
+article masthead and paragraphs. Music uses track rows below its existing header. Decorative
+placeholders stay hidden from assistive technology, the loading region announces its state, and
+reduced-motion preferences disable animation.
 
 ## Memo interaction
 
@@ -83,8 +126,10 @@ with input-method composition.
 
 Automatic pagination that fills a short consumer view remains visually quiet. The shared loading-more
 status appears only when reaching the end through user scrolling, while settled content stays visible.
-The complete tag index sits above search as a horizontally scrollable strip with counts. In the
-unfiltered feed, pinned entries live in a collapsed section ahead of the timeline; filtering exposes
+The complete tag index sits above search as a horizontally scrollable strip with counts. Selected
+tags have separate removal controls, so filters remain removable when a refreshed index no longer
+contains them. Tag loading and retryable errors remain separate from the feed and preserve the last
+successful index. In the unfiltered feed, pinned entries live in a collapsed section ahead of the timeline; filtering exposes
 matching pinned entries directly. After pinning changes the feed position, the affected entry is
 centered in the viewport. Bare web addresses in memo bodies render as links. External links open in
 the system browser; a `memos.you-find.me/memo/{id}` link remains in the application, loads successive
@@ -104,8 +149,9 @@ immediately after the `public` label in the card header; private cards render no
 
 ## Knowledge interaction
 
-Knowledge article navigation and editing actions occupy a quiet side rail on wide layouts and move
-as one lower-right group on narrow layouts. Article editing uses a rich-text toolbar and an explicit
+Knowledge uses the narrow frame for its index, article, and editor. Article navigation and editing
+actions wrap in the shared header; the collapsible table of contents stays in the content column.
+Article editing uses a rich-text toolbar and an explicit
 Markdown source mode; unsupported rich-text syntax opens in source mode without rewriting content.
 The selected article, draft fields, and pending save survive switching pages during the session.
 Saving preserves subsequent edits and updates the article revision for the next submission. Cancel
@@ -120,9 +166,12 @@ stack. They remain transparent and frame-free so the consumer theme stays visibl
 
 ## Moment interaction
 
-Moment opens on a masonry gallery. Upload is a quiet action beside the Gallery title and enters a
+Moment opens on its original masonry gallery: one column below a 640px window, two below 1024px,
+and three otherwise. Sidebar resizing changes column widths without regrouping photos. Upload is a
+quiet action beside the Moment page title and enters a
 focused upload view; Filter remains a separate header action. The filter panel owns the complete tag
-index, Any/All matching, and date order, with active tags summarized as removable chips.
+index, Any/All matching, and date order, with active tags summarized as removable chips. Tag reads
+show loading or retryable errors without replacing the gallery or clearing a settled index.
 
 Selecting a photo opens an application-modal viewer with keyboard navigation, contained scroll
 focus, and a toolbar for sharing, editing, deleting, and closing. The preview remains visible until
@@ -178,13 +227,62 @@ complete application shell inert and shows one opaque unlock surface. The unlock
 reports an incorrect password in place, and reveals no underlying content. Settings owns password
 creation, replacement, and removal, and describes App Lock as a privacy screen rather than encryption.
 
+## Settings interaction
+
+Settings uses horizontal categories above a single content column, with consistent card headers,
+field spacing and action footers. Narrow layouts scroll the categories and stack labels above inputs.
+Category switches keep forms mounted to preserve drafts and pending operations.
+
+Each credential form tracks its own saved values and pending operation. Save is enabled only when
+required fields are complete and the form differs from its saved values. Saving one form leaves
+other forms available and preserves their drafts when configuration refreshes. Successful saves
+record the submitted values, so edits made during a request remain unsaved; failures remain retryable.
+Telegram credential saving and account authorization serialize within the same provider.
+
+## Game interaction
+
+Settings presents separate miHoYo/Skland QR connections, saved miHoYo accounts with one selector
+per game, and a Steam credential form. QR dialogs center a scrollable card and paint their overlay
+on the dialog surface so themes work across WebViews. Escape/Close cancels login; expired codes can
+be renewed. The shared `Select` supports keyboard navigation, visible selection, Escape dismissal,
+and outside-click closing. Each game retains its own account selection; removing a login preserves
+its archive. Steam stacks SteamID64 and the concealed API key in full-width rows, prefills saved
+values, and preserves edits during reads and saves. Unchanged forms cannot be submitted.
+
+Game cards span all twelve Dashboard tracks. Daily metrics sit beside pull charts and manual archive
+actions, separated by a quiet divider. miHoYo content areas are 14rem high with independent scrolling;
+narrow cards stack the sections and allow each to scroll above 14rem. Refresh and verification
+controls remain reachable as errors or archive rows grow. Daily metrics use compact typography
+instead of native progress bars. Genshin uses two-column metrics and filled/outlined stars for
+commissions, expeditions, and weekly discounts, with numeric accessible labels and tooltips.
+
+Daily refresh is an icon-only action with a tooltip and accessible label. Genshin and Star Rail
+verification windows show loading, submission, and completion states, then direct the user to close
+the window and refresh the card. ZZZ uses its official record page, whose login action opens
+Settings → Games. Closing verification preserves the displayed daily state. Game status and
+verification copy, including Geetest, use English.
+
+Archive rings include textual counts and accessible labels. Star Rail uses a doughnut chart for
+pools' shares of official total pulls, semantic-color legend markers, and counts since the last
+five-star. It does not imply a rarity breakdown unavailable from that API. Six compact pool rows sit
+beside the chart; coverage guidance and five-star records share a disclosure below it. Expanded
+records use the panel's scroll area without a nested scroller. Archive refresh remains icon-only.
+
+Steam places account and statistics beside recent activity and the five most-played games. Presence
+sits beside the account name; update time shares the header with refresh. Summary values are
+right-aligned and do not wrap, with supporting text below. Compact single-line game rows keep the
+strip shallow, link to game store pages, and expose lifetime hours on hover in the recent list.
+There is no profile link.
+
 ## Newspaper and Inbox
 
 Newspaper presents the latest Programmer Daily and Personal Daily articles without an archive.
 Page-edge arrows turn the reading surface like an album and start the selected edition at the top;
 background refreshes preserve the reading position. Reduced-motion preferences disable the turn
-animation. The Kami-inspired reading surface uses warm paper, a compact edition line, an editorial
-masthead, serif hierarchy, restrained ink, and dense long-form rhythm with Vesper's semantic tokens.
+animation. The reading surface retains its warm paper background, generous inset, compact edition
+line, large serif masthead, and original article hierarchy. A shared Newspaper H1 sits above the
+paper at the same position as its loading header. Inside the paper, the issue title is an H2 with
+the original masthead styling; the paper does not inherit the shared page-title scale.
 
 The Inbox control opens notification content independently from other views. An unreadable local
 store shows an error instead of an empty inbox; the rest of the application remains available.

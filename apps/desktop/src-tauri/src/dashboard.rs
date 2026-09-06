@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, watch};
 use tokio::task::JoinSet;
 use tokio::time::{Instant, interval_at};
 
@@ -11,7 +11,7 @@ use crate::{CommandResponse, telemetry, widgets};
 use quotes::{exchange, github, quotations, status, stocks, weather};
 
 const EVENT: &str = "dashboard-source-updated";
-const SOURCE_COUNT: usize = 15;
+const SOURCE_COUNT: usize = 16;
 
 #[derive(Clone, Copy)]
 #[repr(usize)]
@@ -31,6 +31,7 @@ enum Source {
     ServiceStatus,
     Github,
     Quotation,
+    Games,
 }
 
 impl Source {
@@ -50,13 +51,14 @@ impl Source {
         Self::ServiceStatus,
         Self::Github,
         Self::Quotation,
+        Self::Games,
     ];
 }
 
 #[derive(serde::Serialize)]
 #[serde(tag = "source", content = "result", rename_all = "camelCase")]
 enum DashboardEvent {
-    TaskManager(CommandResponse<ugos::TaskManagerSnapshot>),
+    TaskManager(CommandResponse<Option<ugos::TaskManagerSnapshot>>),
     DeviceTelemetry(CommandResponse<Option<telemetry::Snapshot>>),
     Codex(CommandResponse<useage::codex::CodexUsage>),
     OpenCode(CommandResponse<useage::opencode::OpenCodeUsage>),
@@ -71,19 +73,28 @@ enum DashboardEvent {
     ServiceStatus(Box<CommandResponse<status::ServiceStatusReport>>),
     Github(CommandResponse<github::GithubSnapshot>),
     Quotation(CommandResponse<Option<quotations::Quotation>>),
+    Games(CommandResponse<()>),
 }
 
 impl DashboardEvent {
-    async fn read(source: Source, app: &AppHandle) -> Self {
+    async fn read(source: Source, app: &AppHandle, refresh_games: bool) -> Self {
         match source {
-            Source::TaskManager => match ugos::task_manager().await {
-                Ok(data) => Self::TaskManager(CommandResponse::Ready { data }),
-                Err(error) => {
-                    tracing::warn!(error = %error, "failed to load UGOS Task Manager");
-                    Self::TaskManager(CommandResponse::Failed {
-                        message: error.to_string(),
-                    })
-                }
+            Source::Games => match crate::gaming::refresh(app, refresh_games).await {
+                Ok(data) => Self::Games(CommandResponse::Ready { data }),
+                Err(message) => Self::Games(CommandResponse::Failed { message }),
+            },
+            Source::TaskManager => match widgets::has_ugos(app) {
+                Ok(false) => Self::TaskManager(CommandResponse::Ready { data: None }),
+                Ok(true) => match ugos::task_manager().await {
+                    Ok(data) => Self::TaskManager(CommandResponse::Ready { data: Some(data) }),
+                    Err(error) => {
+                        tracing::warn!(error = %error, "failed to load UGOS Task Manager");
+                        Self::TaskManager(CommandResponse::Failed {
+                            message: error.to_string(),
+                        })
+                    }
+                },
+                Err(message) => Self::TaskManager(CommandResponse::Failed { message }),
             },
             Source::DeviceTelemetry => match widgets::has_device_telemetry(app) {
                 Ok(false) => Self::DeviceTelemetry(CommandResponse::Ready { data: None }),
@@ -236,6 +247,7 @@ impl DashboardEvent {
 }
 
 struct RuntimeState {
+    active: watch::Sender<bool>,
     sources: [Arc<AsyncMutex<()>>; SOURCE_COUNT],
     polling: Mutex<Option<JoinHandle<()>>>,
 }
@@ -246,6 +258,7 @@ pub(crate) struct DashboardRuntime(Arc<RuntimeState>);
 impl Default for DashboardRuntime {
     fn default() -> Self {
         Self(Arc::new(RuntimeState {
+            active: watch::channel(false).0,
             sources: std::array::from_fn(|_| Arc::new(AsyncMutex::new(()))),
             polling: Mutex::new(None),
         }))
@@ -254,36 +267,73 @@ impl Default for DashboardRuntime {
 
 impl DashboardRuntime {
     fn refresh_if_idle(&self, app: AppHandle, source: Source) {
+        let active = self.0.active.subscribe();
         let Ok(source_guard) = Arc::clone(&self.0.sources[source as usize]).try_lock_owned() else {
             return;
         };
         tauri::async_runtime::spawn(async move {
-            let event = DashboardEvent::read(source, &app).await;
-            event.emit(&app);
+            if let Some(event) =
+                read_while_active(active, DashboardEvent::read(source, &app, false)).await
+            {
+                event.emit(&app);
+            }
             drop(source_guard);
         });
     }
 }
 
+// A route transition invalidates queued and in-flight reads, including a quick leave/re-entry.
+async fn read_while_active<T>(
+    mut active: watch::Receiver<bool>,
+    read: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    if !*active.borrow() || active.has_changed().unwrap_or(true) {
+        return None;
+    }
+    tokio::select! {
+        biased;
+        _ = active.changed() => None,
+        result = read => Some(result),
+    }
+}
+
 #[tauri::command]
-pub(crate) async fn refresh_dashboard(app: AppHandle) -> CommandResponse<()> {
+pub(crate) async fn refresh_dashboard(
+    app: AppHandle,
+    refresh_games: Option<bool>,
+) -> CommandResponse<()> {
     let runtime = app.state::<DashboardRuntime>().inner().clone();
+    let mut active = runtime.0.active.subscribe();
+    if !*active.borrow_and_update() {
+        return CommandResponse::Ready { data: () };
+    }
     let mut requests = JoinSet::new();
     for source in Source::ALL {
         let source_lock = Arc::clone(&runtime.0.sources[source as usize]);
         let request_app = app.clone();
+        let source_active = active.clone();
         requests.spawn(async move {
-            let source_guard = source_lock.lock_owned().await;
-            let event = DashboardEvent::read(source, &request_app).await;
-            drop(source_guard);
-            event
+            read_while_active(source_active, async {
+                let source_guard = source_lock.lock_owned().await;
+                let event =
+                    DashboardEvent::read(source, &request_app, refresh_games.unwrap_or(false))
+                        .await;
+                event.emit(&request_app);
+                drop(source_guard);
+            })
+            .await;
         });
     }
 
-    while let Some(request) = requests.join_next().await {
-        match request {
-            Ok(event) => event.emit(&app),
-            Err(error) => tracing::error!(%error, "Dashboard source task failed"),
+    loop {
+        tokio::select! {
+            biased;
+            _ = active.changed() => break,
+            request = requests.join_next() => match request {
+                Some(Ok(())) => {},
+                Some(Err(error)) => tracing::error!(%error, "Dashboard source task failed"),
+                None => break,
+            },
         }
     }
     CommandResponse::Ready { data: () }
@@ -305,6 +355,13 @@ pub(crate) fn set_dashboard_active(
         }
     };
 
+    runtime.0.active.send_if_modified(|current| {
+        if *current == active {
+            return false;
+        }
+        *current = active;
+        true
+    });
     if !active {
         if let Some(task) = polling.take() {
             task.abort();
@@ -323,8 +380,11 @@ pub(crate) fn set_dashboard_active(
         let now = Instant::now();
         let mut task_manager = interval_at(now + Duration::from_secs(2), Duration::from_secs(2));
         let mut subscriptions = interval_at(now + Duration::from_secs(60), Duration::from_secs(60));
+        // Steam keeps its polling interval; daily notes only replay their cache.
+        let mut games = interval_at(now + Duration::from_secs(300), Duration::from_secs(300));
         loop {
             tokio::select! {
+                _ = games.tick() => runtime.refresh_if_idle(app.clone(), Source::Games),
                 _ = task_manager.tick() => {
                     runtime.refresh_if_idle(app.clone(), Source::TaskManager);
                     runtime.refresh_if_idle(app.clone(), Source::DeviceTelemetry);
@@ -344,3 +404,7 @@ pub(crate) fn set_dashboard_active(
     }));
     CommandResponse::Ready { data: () }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/dashboard.rs"]
+mod tests;

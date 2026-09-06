@@ -24,6 +24,9 @@
 | `pnpm test`                 | Run frontend and Cargo tests.                       |
 | `pnpm format:check`         | Verify frontend and Rust formatting.                |
 
+The CLI binary is `vesper`; the desktop binary is `vesper-desktop`. Keep their Cargo target names
+distinct so workspace builds and CLI integration tests cannot overwrite or launch the wrong app.
+
 Use root commands for workspace-wide verification. A focused change may use package-specific Cargo
 or pnpm commands during iteration, but the owning package must pass before handoff.
 
@@ -67,7 +70,7 @@ to the operating system.
 ## R2 configuration
 
 Open Settings in Vesper and save the R2 Access Key ID and Secret Access Key. The token should be
-restricted to the project bucket. Vesper stores the pair in the operating-system credential store
+restricted to the project bucket. Vesper resolves the pair through the credential policy below
 and passes it directly to the Rust S3 SDK. It does not read `rclone.conf` or persist secrets in the
 repository.
 
@@ -79,14 +82,14 @@ coordination.
 
 Open Settings and save the separate my-memos, my-moment, and my-knowledge Bearer keys. Generate each
 key in its application's settings. The services retain key digests rather than the original keys.
-Vesper stores each value in the operating-system credential store and does not expose stored values
-to provider commands. On macOS these values share the unified Keychain item described below. The typed Settings read command does return them to the local Svelte webview
+Vesper resolves each value through the credential policy below and does not expose stored values
+to provider commands. The typed Settings read command does return them to the local Svelte webview
 so the form can display and edit the current configuration; avoid retaining or forwarding them
 outside that view.
 
 ## ntfy notification configuration
 
-Vesper is only an ntfy consumer. It subscribes to the fixed
+Vesper is only an ntfy consumer. With a configured token, it subscribes while Inbox is active and stops on leaving that route. It uses the fixed
 `https://ntfy.you-find.me/mail-summary/sse` endpoint and does not connect to or configure upstream
 producers. Settings only configures the ntfy token; the server and topic are application policy and
 are not displayed as editable fields. The token must have read permission for `mail-summary`.
@@ -101,7 +104,7 @@ beside its visibility label; private Memo cards do not show them.
 
 The registered Tauri surface is:
 
-- configuration: `read_publication`, `save_telegram`, and `connect_x`;
+- configuration: `read_configuration`, `save_telegram`, and `connect_x`;
 - Telegram session: `read_auth`, `begin_auth`, `submit_code`, `submit_password`, and `cancel_auth`;
 - publication: `publish_telegram` and `publish_x`, each accepting only the Memo `id` and returning
   the provider, external post ID, and public URL when available. Rust rereads the authoritative Memo
@@ -111,7 +114,7 @@ For Telegram, create an application at `my.telegram.org` and configure its numer
 32-character hexadecimal API hash, and the public username of a broadcast channel where the signed-in
 account can post. Call the authorization commands in order: begin with the account phone number,
 complete the verification code, then complete the 2FA password only when requested. The API ID, API
-hash, and channel username form one typed record in the operating-system credential store. The resulting
+hash, and channel username form one typed credential record. The resulting
 MTProto session is stored separately as `telegram.session` below the application-data directory with
 owner-only file permissions on Unix. Login codes and 2FA passwords are not persisted.
 
@@ -120,28 +123,35 @@ register `http://127.0.0.1:8792/callback` exactly as a callback URL. Set its pub
 `VESPER_X_CLIENT_ID` environment variable while compiling the desktop application. Settings exposes
 only Connect/Reconnect: Vesper opens the browser and completes Authorization Code with PKCE,
 requesting `tweet.read`, `tweet.write`, `users.read`, and `offline.access`. It stores the returned
-access and refresh grants in the operating-system credential store and rotates them automatically;
+access and refresh grants through the build-specific credential store and rotates them automatically;
 no Client ID, Client Secret, or manually copied token is accepted by the desktop UI.
 
-## macOS Keychain access
+## Credential resolution
 
-Vesper reads one Keychain item, service `me.you-find.vesper` and account `credentials`, then serves
-provider reads from a Rust cache. Separate items from previous installations are not read or
-migrated: save configuration in Settings and reconnect music and X accounts to populate this item.
+Debug builds do not compile Vesper's system credential-store backend. Settings writes, App Lock,
+Telegram/X authorization, and UGOS certificate pins use owner-restricted local storage below
+application data. Missing or invalid development data never falls back to Keychain. Release builds
+use the operating-system store and ignore development variables and files. Per-file locks serialize development session reads, temporary-file recovery, and replacement.
 
-macOS controls authorization. An ad-hoc application update can request access again; Allow grants
-one access, while Always Allow records permission for the app. Startup reads one item rather than
-one per provider. Writes and refreshes after another process changes credentials can require further
-authorization. See [Apple's Keychain guidance](https://support.apple.com/guide/keychain-access/if-youre-asked-for-access-to-your-keychain-kyca1243/mac).
+| Credential                                       | Debug source                                          |
+| ------------------------------------------------ | ----------------------------------------------------- |
+| UGOS login, R2, consumer APIs, ntfy              | Process environment / repository-root `.env`          |
+| App Lock, Telegram configuration                 | Environment first, then `credentials.json`            |
+| X grants, UGOS certificate pins, Settings writes | `credentials.json`                                    |
+| Spotify, QQ Music                                | `spotify.json`, `qq-music.json`                       |
+| miHoYo, Skland                                   | `games-{mihoyo,skland}.json`                          |
+| Steam                                            | `STEAM_API_KEY` + `STEAM_ID`, then `games-steam.json` |
 
-## macOS development credentials
+The shared development file is atomically replaced under a file lock so concurrent desktop and
+CLI writes preserve other entries. Music and Games retain their existing separate session files.
+These files contain credentials and must not be committed or attached to bug reports.
 
-An unsigned or ad-hoc-signed `tauri dev` executable changes its macOS code identity whenever it is
-rebuilt. Keychain may therefore request access again after an ordinary source edit. To avoid those
-prompts, debug builds resolve UGOS, R2, consumer API, and ntfy notification credentials only from
-process environment variables. Telegram checks its development variables first and otherwise reads
-the saved credential record so the Settings authorization flow remains usable; X OAuth grants are
-always read from the operating-system credential store.
+Steam development variables must be set together; empty or invalid values report an error.
+Settings saves to the local session file in debug builds and Keychain in macOS release builds.
+If Steam variables are configured, update `.env` and restart to change the development credentials;
+Settings does not rewrite `.env`.
+
+For environment-backed configuration:
 
 ```sh
 export UGOS_USERNAME="..."
@@ -158,19 +168,20 @@ export TELEGRAM_CHANNEL_USERNAME="channel_username"
 pnpm dev
 ```
 
-Only define values needed by the features under development. Debug desktop and CLI startup load the
-ignored repository-root `.env`; variables inherited from the parent process take precedence. Missing
-values leave a feature unconfigured, while empty values and incomplete credential pairs fail
-explicitly. This resolution path is compiled only for debug builds. Settings writes target Keychain
-and never rewrite the process environment or `.env`; release builds ignore these variables and use
-only the operating-system credential store.
+Only define values needed by the features under development. Debug desktop and CLI startup load
+the ignored repository-root `.env`; inherited variables take precedence. Missing values leave
+environment-only features unconfigured; empty values and incomplete pairs are errors. Settings
+writes never change the process environment or `.env`. `APP_LOCK_PASSWORD` may also supply a debug
+App Lock password. Browser and QR authorization need no manually copied session tokens.
 
-Music providers are exceptions to environment-backed debug credentials. Spotify connects through the
-browser PKCE flow and requires no `.env` entry. Debug builds store both refresh grants in a private
-`development-spotify.json` file below the local application-data directory and never access
-Keychain for Spotify. Release builds store the same typed record in the operating-system credential
-store. QQ Music connects through its QR flow and uses `development-qq-music.json` in debug builds;
-release builds store its renewable session in the operating-system credential store.
+Claude usage reads the existing Claude Code credential file in debug builds and does not invoke
+macOS `security`. Third-party CLI integrations retain their own authentication policies.
+
+On macOS, release credentials share one Keychain item: service `me.you-find.vesper`, account
+`credentials`. Rust caches the collection and coordinates changes across desktop and CLI. An
+ad-hoc application update can require renewed Keychain authorization. Older per-provider items are
+not migrated automatically; save configuration or reconnect in the release application. See
+[Apple's Keychain guidance](https://support.apple.com/guide/keychain-access/if-youre-asked-for-access-to-your-keychain-kyca1243/mac).
 
 ## Spotify Music configuration
 
@@ -215,16 +226,12 @@ object requires a separate, explicit operation outside the current publisher.
 
 ## Credential boundaries
 
-- R2, UGOS, all three consumer API credentials, Telegram publication configuration, the X OAuth
-  grants, the Spotify refresh grants, the QQ Music session, and the ntfy read token belong
-  to `crates/credentials` and the operating-system store. The Telegram MTProto authorization key is
+- Vesper-owned credentials belong to `crates/credentials`, using the build-specific resolution
+  policy above. The Telegram MTProto authorization key is
   the narrow exception: it lives in the private application-data session file required by the
   client. Upstream producer secrets remain outside Vesper.
-- Debug builds may read App Lock from `APP_LOCK_PASSWORD` in the repository-root `.env` when the
-  operating-system credential store has no App Lock value. Saving a password in Settings makes the
-  credential-store value take precedence. Release builds use only the operating-system credential
-  store. The typed Settings read response includes the resolved password solely to prefill the local
-  form; verification remains in Rust.
+- App Lock verification remains in Rust; its resolved password is returned only to the trusted
+  Settings form for editing.
 - Codex reuses the authenticated local CLI session.
 - Provider credentials reuse existing Codex, pi, and Cherry Studio sessions, as documented in
   [DASHBOARD.md](DASHBOARD.md). A successful CherryIN token refresh may conditionally update the
@@ -249,7 +256,20 @@ these constraints when upgrading their owning dependencies.
 
 ## Verification
 
-Before finishing a non-trivial change, run the checks proportional to the affected boundaries:
+Begin with the behavior under investigation. Record the input or action, relevant environment,
+expected result, and observed result. Reproduce a bug before changing it when possible; otherwise
+label the diagnosis provisional and identify the missing trace, response, or scenario. Choose a
+success criterion that distinguishes the proposed cause from a plausible alternative.
+
+Implement the smallest change that meets that criterion, then repeat the same scenario. When the claimed
+benefit depends on an added mechanism and its contribution is unclear, compare a baseline with one
+element removed or disabled at a time under equivalent conditions. A reproduced failure and a
+passing regression may already establish a focused correctness fix without a separate ablation. Record the metric and variation across runs when applicable;
+request count, error recovery, and preserved state can matter more than elapsed time. Do these
+experiments with mocks or isolated local configurations, without weakening live credential or data
+protection. Unmeasured benefit remains a hypothesis.
+
+Run checks proportional to the affected boundaries before finishing a non-trivial change:
 
 ```sh
 pnpm format:check
@@ -258,11 +278,25 @@ pnpm check
 pnpm test
 ```
 
-Frontend tests run through Vite Plus projects: shared UI tests use Node, and desktop component
-regressions use Happy DOM. Component tests mock Tauri commands and exercise view interactions without
-accessing live services. For desktop UI changes, also run the desktop production build. For provider changes, test response
-parsing without credentials and keep live authenticated tests explicitly ignored. For publication
-changes, inspect the dry-run plan before any live upload.
+Frontend component tests run through the desktop Vite Plus project in Happy DOM with mocked Tauri
+commands. Use controlled promises and clocks to check
+partial failure and response ordering. For desktop UI changes, also run the desktop production
+build. For provider changes, verify parsing without credentials and keep live authenticated tests
+explicitly ignored. For publication changes, inspect the dry-run plan before any live upload.
+Passing these checks does not substitute for the scenario that motivated the change.
+
+On macOS, `cargo run -p vesper --example cookie_probe` reproduces the WebView parent-domain cookie
+regression with a hidden isolated blank window and one synthetic cookie. It reads no credentials
+and makes no game API requests. It reports that the cookie exists in the native store while Wry’s
+exact-domain URL getter returns no cookies. Run it in a desktop session with native WebView access.
+`cargo run -p vesper --example captcha_probe` additionally loads the production captcha HTML in a
+native WebView with a synthetic local SDK. It checks the real page-to-native proof callback without
+contacting miHoYo or Geetest, reading credentials, or solving a real challenge.
+
+Apply the independent review process in [STYLEGUIDE.md](STYLEGUIDE.md#review) to non-trivial behavior
+and boundary changes. The handoff records the before/after result, commands actually run, unresolved
+counterexamples, and an explicit uncertainty list covering missing evidence, untested environments,
+and assumptions. If no implementation changed, report a diagnosis or experiment rather than a fix.
 
 ## Documentation synchronization
 

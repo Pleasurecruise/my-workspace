@@ -29,7 +29,7 @@ struct Keychain;
 
 impl Backend for Keychain {
     fn read(&self, account: &str) -> Result<Stored<String>, CredentialError> {
-        super::read_entry(account)
+        super::system::read_entry(account)
     }
 
     fn save(&self, value: &str) -> Result<(), CredentialError> {

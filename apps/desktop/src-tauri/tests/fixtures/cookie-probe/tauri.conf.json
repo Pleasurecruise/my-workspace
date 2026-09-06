@@ -1,0 +1,7 @@
+{
+  "productName": "Vesper Cookie Probe",
+  "version": "0.0.0",
+  "identifier": "me.you-find.vesper.cookie-probe",
+  "app": { "windows": [] },
+  "bundle": { "active": false, "icon": ["../../../icons/icon.png"] }
+}

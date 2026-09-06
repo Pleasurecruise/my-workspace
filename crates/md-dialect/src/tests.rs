@@ -1,4 +1,12 @@
-use super::{compile_knowledge, compile_knowledge_plain, knowledge_body, render_publication};
+use super::*;
+
+fn render_publication(source: &str) -> Result<String, PublicationError> {
+    render_publication_with(source, &embed::Data::default())
+}
+
+fn compile_knowledge(source: &str) -> Result<CompiledKnowledge, EmbedError> {
+    compile_knowledge_with(source, &embed::Data::default())
+}
 
 #[test]
 fn highlights_code() {

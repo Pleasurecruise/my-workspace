@@ -5,6 +5,7 @@ members = [
   "crates/cms-core",
   "crates/consumers",
   "crates/credentials",
+  "crates/games",
   "crates/logger",
   "crates/md-dialect",
   "crates/music",
@@ -40,6 +41,10 @@ grammers-client = "0.10.0"
 grammers-session = { version = "0.10.0", default-features = false, features = ["serde"] }
 cms-core = { path = "crates/cms-core" }
 consumers = { path = "crates/consumers" }
+games = { path = "crates/games" }
+hmac = "0.12"
+md-5 = "0.10"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 md-dialect = { path = "crates/md-dialect" }
 music = { path = "crates/music" }
 quotes = { path = "crates/quotes" }
@@ -75,6 +80,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
+sha2-legacy = { package = "sha2", version = "0.10" }
 syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
 sysinfo = "0.39.6"
 svg-hush = "0.9.7"

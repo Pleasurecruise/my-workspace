@@ -4,6 +4,9 @@ Vesper is a local-first content production and inspection tool. A trusted device
 compilation, credentials, and application execution. Cloudflare R2 stores durable content and
 publication artifacts; this repository does not run a cloud application backend.
 
+Feature implementation details are maintained in [Music](MUSIC.md), [UGOS Pro](UGOS.md), and
+[Games](GAMES.md), including their source boundaries and confirmed reference repositories where applicable.
+
 ## Repository layout
 
 | Path                 | Responsibility                                                                              |
@@ -12,10 +15,11 @@ publication artifacts; this repository does not run a cloud application backend.
 | `apps/cli`           | `vesper` executable for provider status, builds, publication, Todo, and consumer workflows. |
 | `crates/cms-core`    | Generic Markdown, content builds, static publication, and R2 access.                        |
 | `crates/consumers`   | Memos, Moment, and Knowledge APIs, projections, and Moment media processing.                |
-| `crates/credentials` | Typed records in macOS Keychain, Windows Credential Manager, or Linux Secret Service.       |
+| `crates/credentials` | Typed credentials in development files or the operating-system credential store.            |
 | `crates/logger`      | Shared `tracing` initialization.                                                            |
 | `crates/md-dialect`  | Publication and Knowledge Markdown dialect compilation.                                     |
 | `crates/music`       | Spotify and QQ Music authentication, collections, playback, album art, and lyrics.          |
+| `crates/games`       | Game account authorization, daily notes, Steam activity, and local pull archives.           |
 | `crates/quotes`      | Shared astronomy, exchange, GitHub, quotation, stock, weather, and status read providers.   |
 | `crates/social`      | Outbound Telegram Channel and X publication.                                                |
 | `crates/todo`        | Local Todo storage and ICS schedule projection.                                             |
@@ -42,9 +46,10 @@ Trusted device
        │          └─────── cms-core R2 / Markdown
        ├─ social ───────── MTProto / X API ─── outbound Memo publication
        ├─ todo ─────────── application data ── todos.json / ICS
-       ├─ credentials ──── operating-system credential store
+       ├─ credentials ──── development files / operating-system credential store
        ├─ quotes ───────── external read-only data used by Dashboard and Markdown compilation
        ├─ music ────────── Spotify Web API, QQ Music, and LRCLIB
+       ├─ games ────────── miHoYo / Skland / Steam; application-data games.sqlite3
        ├─ ugos ─────────── Tailscale ───────── UGOS Pro NAS
        └─ useage
             ├─ local Codex app-server and Grok runtime
@@ -55,15 +60,27 @@ Remote consumer projects
   └─ their own Cloudflare Workers and R2 bindings
 ```
 
-There is no application login, database, Worker, Wrangler configuration, or server-side session in
-this repository. The sidebar's editable local profile badge is presentation-only and does not
+There is no cloud application login, hosted database, Worker, Wrangler configuration, or server-side
+session in this repository. Game pull history uses a local SQLite database. The sidebar's editable local profile badge is presentation-only and does not
 represent an authenticated session; its display name and cropped avatar remain in WebView local
 storage. Each online consumer remains responsible for its public presentation and runtime.
 
 ## Credential storage
 
-`crates/credentials` owns typed validation and operating-system storage. On macOS, all such values
-share one Keychain item: service `me.you-find.vesper`, account `credentials`. A process-local Rust
+`crates/credentials` owns typed validation and build-specific storage. Credentials are grouped by
+feature: `content/` owns consumer APIs and R2, `music/` owns Spotify and QQ Music, and `games/` owns
+game sessions and account selections. Notifications, outbound publication, and UGOS have independent
+modules. Shared backends live in `store/`; `environment.rs` loads `.env`, and `app_lock.rs` owns the
+local application password.
+
+Debug builds select a local
+file backend at compile time; missing development values never fall back to the system store.
+Local credential filenames use data or provider names without a build-mode prefix; the shared file
+is `credentials.json`, while music and games retain separate provider files.
+Environment overrides and existing music/game session files remain provider-owned. Each development session file has its own lock covering reads, temporary-file recovery, and atomic replacement.
+
+Release builds use operating-system storage. On macOS, values share one Keychain item: service
+`me.you-find.vesper`, account `credentials`. A process-local Rust
 cache loads it once. A mutex and the application-data `credentials.lock` file serialize desktop and
 CLI access; its random revision invalidates another process's cache after a write. The file contains
 no credentials, and a failed Keychain write never installs the attempted values in the cache.
@@ -72,136 +89,83 @@ setup are documented in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Desktop boundary
 
-Svelte owns interaction state, presentation, accessibility, and invoking named Tauri commands. It
-does not compile Markdown, access R2, open credential stores, authenticate to UGOS, spawn Codex, or
-call provider APIs directly. The typed Settings read command is the one credential exception: it
-returns stored values to prefill that trusted local form.
+Svelte owns rendering, interaction state, accessibility, and named Tauri invocations. Rust owns
+application behavior, provider protocols, external I/O, parsing, credentials, and durable storage.
+Commands translate transport inputs and return tagged `ready` or `failed` responses. The trusted
+Settings prefill commands are the only frontend reads that expose stored credential values.
 
-The Rust Dashboard runtime owns external-source concurrency, per-source request revisions, and
-page-active polling. It sends a closed tagged event to Svelte as each source settles; the view layer
-only updates the corresponding card.
-Rust owns `layout.json` below application data. Typed commands validate widget IDs, configurations,
-and duplicates before writing a same-directory temporary file, syncing it, and atomically replacing
-the saved layout. Invalid stored data remains an explicit Dashboard error. Svelte owns add, remove,
-and pointer-order interactions on one twelve-track canvas; narrowing the window scrolls the canvas.
+### Shell and feature state
 
-Current-device CPU, memory, storage, and network telemetry is read in the desktop Rust boundary with
-`sysinfo`. Its sampler runs on a blocking worker only while at least one Current Device widget is in
-the saved layout. These widgets are separate from the remote UGREEN NAS telemetry owned by `ugos`.
+`apps/desktop/src/App.svelte` composes navigation, the wide/narrow page frame, sidebar/profile,
+theme, App Lock, and the update overlay. It creates feature view sessions for the lifetime of the
+WebView, distributes the initial Rust content snapshot, and connects route and configuration changes.
+It does not implement content CRUD, photo byte submission, provider login, or Dashboard projections.
 
-Configured service-status widgets store only a Rust-validated catalog ID. The desktop Rust boundary
-reads each provider's public status summary, narrows Codex to Codex-specific OpenAI components, and
-projects component health and the names and states of affected services without exposing an
-arbitrary frontend network or URL boundary.
+Under `src/lib/components`, `pages` owns complete navigation views and `layout` owns cross-page
+controls and `page.css`. Supporting components and their view state live together by feature:
 
-Below `apps/desktop/src-tauri`, `lib.rs` owns application setup and command registration.
-`telemetry.rs` owns desktop-device sampling and its short in-memory histories; `storage.rs` owns
-startup-volume capacity and file-category estimates using `sysinfo` and `walkdir`. `cms.rs` owns
-the consumer repository plus view and image caches, `consumer.rs` owns the Memo, Moment, and
-Knowledge commands, and `todo.rs` owns the Todo command adapters. Provider and protocol behavior
-continues to live in the owning crates rather than these Tauri modules.
+| Feature                       | View-state ownership                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `memos/session.svelte.ts`     | Feed cache, search/display filters, pagination, tag index, mutations, and publication command callbacks |
+| `moment/session.svelte.ts`    | Gallery cache, tag index, selected-file byte submission, and photo mutations                            |
+| `knowledge/session.svelte.ts` | Article and Newspaper overview, refresh scheduling, and editor save callbacks                           |
+| `dashboard/session.svelte.ts` | Independent source projections, route activation, event cleanup, and selected-date Todo interactions    |
+| `settings/session.svelte.ts`  | Configuration status, save/login callbacks, and explicit refresh effects supplied by the shell          |
+| `inbox/session.svelte.ts`     | Notification projection, mark-read interaction, and subscription activation                             |
 
-The Tauri layer maps transport input and output. Domain and protocol behavior stays in its owning
-crate. Commands return a tagged `ready` or `failed` response so expected provider and storage errors
-remain data rather than uncaught frontend exceptions.
+These sessions contain view state and typed command adaptation. Image processing, publication,
+authorization, and content classification stay in Rust. Reusable primitives and semantic tokens
+belong to `packages/ui`; visual composition is specified in [DESIGN.md](DESIGN.md).
 
-App Lock provides a privacy screen for the running application. Rust owns its password storage,
-verification, and in-memory lock state. Svelte reads that state before revealing the shell, keeps the
-shell inert while locked, and renders the unlock form. Reloading the WebView preserves the lock;
-restarting the application starts a new unlocked session. Locking also closes developer tools and
-prevents reopening them until the password is verified. App Lock does not encrypt content. Credential
-resolution and Settings prefill behavior are documented in [DEVELOPMENT.md](DEVELOPMENT.md).
+### Content lifecycle
 
-The main window is visible as soon as Tauri creates it. On macOS it retains the complete native title
-bar, including the system title, traffic-light controls, and drag behavior. The frontend requests one
-`InitialViews` snapshot asynchronously, so a slow or unavailable consumer API cannot block
-application startup.
+The window appears before content loading finishes. Rust supplies one asynchronous `InitialViews`
+snapshot; each feature accepts only a snapshot that has not been superseded by its own read or reset.
+Each feature retains settled content across navigation and owns its request generations. Leaving a
+page invalidates its pending reads; writes still update their owning feature after navigation.
+Memo and Knowledge drafts live in their feature's editor session and preserve edits made during a
+save. Failed background reads expose an error while preserving settled content. These caches and drafts end with the WebView session.
 
-Music is owned by `crates/music`, with provider code grouped below `spotify/` and `qq/`. Spotify uses
-separate PKCE grants for Web API reads and librespot playback; QQ Music uses a private QR exchange and
-renews its session on demand. Refresh credentials are represented as one typed record per provider and
-rotated under a provider lock. Release builds use the operating-system credential store, while debug
-builds use owner-only files below application data to avoid repeated prompts from an ad-hoc app
-identity. The WebView receives connection status, QR state, and typed music projections, never
-tokens or cookies.
+Memos and Moment own independent tag indexes. Startup, page entry, and active-page refresh request
+tags without blocking content or each other. Failures preserve settled tags and offer retry;
+successful writes supersede older tag reads. Credential changes clear the owning feature's cache
+and tag session. Moment captures that session before reading a selected File and checks it before
+submitting bytes and accepting the upload result.
 
-Rust reads Spotify Liked Songs and resolves QQ Music's Daily 30 from its authenticated recommendation
-feed and dynamic playlist ID. Each collection is cached for five minutes, and concurrent cache misses
-share one refresh. Rust also owns queue order, track advancement, lyrics, media downloads, and
-decoding through librespot or Rodio; QQ's audio device remains on a dedicated thread. Remote artwork
-and QQ audio URLs are restricted to their provider HTTPS domains, and artwork reaches only the main
-webview through `vesper-music-cover`. The desktop persists neither a library mirror nor a lyric
-cache. Spotify playback requires Premium, and QQ availability follows the signed-in account's
-rights.
+Active content refreshes every sixty seconds near the top of the scroll surface. Memos retains
+loaded pagination tails during a first-page refresh; its active, archived, and favorite feeds use
+independent API filters. Moment receives the API's complete bounded gallery batch for local display
+filtering. Knowledge and Newspaper share one Rust-classified overview, refreshed on Newspaper entry
+and daily at 09:00 local time. Consumer projections and write boundaries are described below.
 
-Memos and Knowledge load through authenticated APIs; Moment metadata uses its API while image bytes
-use R2. At startup, Rust may reuse an unfiltered first page for up to 30 seconds. Normal reads bypass
-that cache, and writes or credential changes invalidate it. Svelte retains settled pages while
-refreshing active content near the top of its scroll container every 60 seconds. Tag indexes load
-independently so they do not delay the first content page. R2 object reads have a 20-second deadline.
-Consumer API requests have a 30-second deadline so normal network latency does not abort otherwise
-valid paginated responses.
-The Memos active, archived, and favorites views request independent API projections with the
-`archivedOnly` and `favoritesOnly` query filters, so pagination never derives those views from the
-default non-archived page.
+Rust's desktop `cms.rs` owns the consumer repository and view/image caches; `consumer.rs` adapts
+content commands. Startup may reuse a first page for thirty seconds, while normal reads bypass that
+cache. Consumer writes and credential changes invalidate it. Moment image bytes use the
+main-WebView-only `vesper-asset` protocol, with shared in-flight reads and a cache bounded to 64
+objects / 128 MiB. Clearing it invalidates pending entries. R2 reads have a twenty-second deadline;
+consumer API requests have a thirty-second deadline.
 
-Rust renders Memo and Knowledge Markdown. Memo rendering also links bare web addresses without
-rewriting code or explicit Markdown links. Svelte retains composer and editor drafts in their
-feature's session state across page unmounts. Pending saves update the owning view cache even after
-navigation, and successful responses preserve text entered after submission. Drafts are not written
-to disk and do not survive a WebView reload or application restart.
+### Runtime services
 
-Moment loads the API's complete metadata batch in one request so local tag filters cover the whole
-returned gallery without repeating requests for client-side pages. Cards decode their ThumbHash
-immediately and fetch thumbnails near the viewport; the viewer retains its preview until the
-original has decoded. A main-webview-only `vesper-asset` protocol serves image bytes from Rust
-without JSON-array serialization or a separate browser cache.
+The Rust Dashboard runtime owns concurrent source reads, per-source locks, and active-route polling.
+Its Svelte session projects typed source events without clearing other cards when one fails. UGOS
+also requires a saved remote telemetry widget. Inbox independently activates the Rust ntfy stream
+only while its route is active. See [DASHBOARD.md](DASHBOARD.md) for scheduling and failure behavior.
 
-Rust shares image buffers across cache hits and concurrent reads of the same object. The cache
-retains at most 64 objects within 128 MiB; failed reads remain retryable. Clearing the cache also
-invalidates pending entries so older reads cannot refill it. R2 credential changes reset both the
-repository and image cache.
+Music playback and game accounts continue to live in their Rust runtimes independently of page
+mounts. [MUSIC.md](MUSIC.md), [GAMES.md](GAMES.md), and [UGOS.md](UGOS.md) own their protocols, cache
+rules, media/verification boundaries, and source maps. The desktop `lib.rs` owns setup and command
+registration; `telemetry.rs`, `storage.rs`, `todo.rs`, and `gaming.rs` adapt their named capabilities.
 
-Knowledge and Newspaper share a Rust-owned overview. `consumers` traverses the default and
-`tag=daily` summary pages, deduplicates articles, and rejects repeated cursors. Edition tags identify
-Programmer Daily and Personal Daily; the overview retains all regular articles and the latest issue
-from each stream, then fetches and compiles only those bodies. Historical issues remain accessible
-through the CLI's tag-filtered cursor reads.
+App Lock is a Rust-owned in-memory privacy screen with a stored password. Svelte reads its state
+before revealing the shell and keeps the shell inert while locked. WebView reload preserves the
+lock; application restart starts unlocked. Locking closes developer tools and blocks reopening
+until verification succeeds. It does not encrypt content.
 
-Svelte renders the resulting articles and edition IDs without interpreting tags. Regular articles
-appear in Knowledge, while Newspaper displays the two current issues. Entering Newspaper refreshes
-the overview while retaining settled content. The active view refreshes near the top every 60 seconds,
-and the desktop also refreshes Knowledge daily at 09:00 local time.
-
-Inbox receives ntfy messages through one Rust-owned authenticated SSE subscription to the fixed
-`mail-summary` topic on `https://ntfy.you-find.me`. Rust deduplicates IDs, retains the newest 200
-notifications, and reconnects from the last message ID. The current projection and cursor share
-`notifications.json`; writes sync a same-directory temporary file before atomic replacement, and
-in-memory state advances only after persistence succeeds. An unreadable or invalid file disables
-notification consumption and produces an Inbox error without aborting application startup or
-replacing the file with empty data.
-
-Bodies may be plain text or a JSON envelope containing `source`, optional `title`, and `body`.
-Live messages can trigger operating-system notifications; historical replay only populates Inbox.
-Marking a message as read removes it from local storage. Settings owns only the ntfy read token;
-producer routes and credentials remain outside Vesper.
-
-The desktop checks the latest published GitHub Release once per application launch through Tauri's
-signed updater manifest. The native application menu can request another check without restarting;
-overlapping checks and installations are rejected while later retries remain available.
-When a newer version exists, Svelte presents its version and notes; Rust rechecks the selected
-version with a bounded request, downloads and installs it within a bounded operation while emitting
-progress events, verifies its signature, and restarts the application. Update signing uses a public
-key embedded in the application and a private key available only to the release workflow.
-
-Dashboard architecture and external protocol details are documented separately in
-[DASHBOARD.md](DASHBOARD.md).
-
-The Dashboard's GitHub source is a desktop-local Rust process boundary. It invokes the authenticated
-`gh` CLI for GraphQL contributions and REST unread notifications when Dashboard is entered or
-explicitly refreshed. Notification failures remain separate from the contribution projection;
-Svelte does not access GitHub or receive the CLI's credentials. GitHub query and projection details live in
-`crates/quotes/src/github.rs` and [DASHBOARD.md](DASHBOARD.md).
+The signed updater checks once per launch and on native-menu request. Svelte presents the version
+and notes; installation requires an explicit action. Rust rechecks the version, downloads within a
+bounded operation, verifies the signature, installs, and restarts while emitting progress events.
+Update signing and operational setup belong to [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Content production
 
@@ -309,6 +273,9 @@ The stored body, API payload, and content-hash conflict contract remain Markdown
 
 ## Local persistence
 
+See [Local Persistence](PERSISTENCE.md) for file locations, on-disk schemas, credential backends,
+write coordination, recovery behavior, and the distinction between durable data and runtime caches.
+
 Local files live below the operating-system application data directory for `me.you-find.vesper`
 (`~/Library/Application Support/me.you-find.vesper` on macOS). Each feature owns its format and
 validation; Vesper does not maintain a local content database or a disk-backed provider cache.
@@ -319,6 +286,7 @@ validation; Vesper does not maintain a local content database or a disk-backed p
 | Date-keyed tasks and imported occurrences | `todo`, `todos.json` with `todos.lock`           |
 | Calendar sources                          | `todo`, sibling `ics/` directory                 |
 | Pending Inbox messages and replay cursor  | Desktop Rust, `notifications.json`               |
+| Game accounts and pull history            | `games`, `games.sqlite3`                         |
 | Telegram authorization session            | `social`, owner-only `telegram.session`          |
 | Credentials and renewable grants          | `credentials`, operating-system credential store |
 | Theme, local profile and sidebar width    | Svelte, WebView local storage                    |
@@ -329,28 +297,11 @@ in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ### Todo and calendar
 
-The `todo` crate owns one date-keyed `todos.json` calendar below the application data directory for
-`me.you-find.vesper`. Desktop and CLI serialize writes with a sidecar lock, reload the file before a
-mutation, and replace a synced temporary file so an interrupted write does not truncate the last
-calendar. They never read or migrate the former `today-todos.json` format. A Rust midnight timer
-advances only a view that is still showing today; deliberately selected historical or future dates
-remain unchanged, and prior lists are retained.
-
-An optional sibling `ics` directory contains editable schedule sources as application data. Rust
-validates every source and materializes matching VEVENT occurrences when a date is read or when the
-desktop advances at midnight. The supported recurrence subset is DAILY, WEEKLY, MONTHLY, and YEARLY
-with INTERVAL, COUNT, UNTIL, simple BYDAY or BYMONTHDAY values, and EXDATE. Date-only and floating
-values retain their calendar date; UTC and IANA TZID-qualified times are converted into the device's
-current time zone before selecting a Todo date. Unknown time zones, malformed calendar structure,
-unsupported RRULE fields, and unsupported recurrence overrides fail explicitly instead of producing
-an approximate schedule.
-
-An occurrence identity combines the source file, UID, and date and is retained independently from
-the visible item. Consequently, completing or deleting an imported Todo is stable across later
-syncs, calendars may reuse UIDs, and a later hand-authored Todo with the same text is never converted
-into an imported item. Adding or replacing an ICS file is additive and does not delete existing
-Todos. Imported items carry calendar, start, end, location, and description details; hand-authored
-items store an explicit null detail projection. Svelte renders this typed data without parsing ICS.
+`crates/todo` owns the date-keyed calendar and projects sibling ICS files into typed occurrences.
+Desktop and CLI share the same locked, atomic storage boundary. Rust validates recurrence and time
+zones; Svelte renders the selected date and follows midnight only while the user is viewing today.
+[Dashboard integrations](DASHBOARD.md#calendar-and-todo) defines supported calendar behavior, and
+[Local persistence](PERSISTENCE.md) defines file formats, occurrence identity, and recovery.
 
 ## CLI consumer surface
 
@@ -373,3 +324,37 @@ visuals remain outside the CLI. Command contracts and recovery behavior live in
 - Publication does not reconcile or delete destination-only objects.
 - UGOS compatibility depends on the responses observed from the configured device.
 - Provider usage APIs can change independently of this application.
+
+Game-note task projections may include typed numeric progress for visual completion indicators.
+The miHoYo record session retains a per-game verification trace from the last restricted daily
+response; each pending challenge captures that trace for registration and proof submission.
+Verification diagnostics retain only game, stage, numeric return code and trace presence.
+
+The most recent miHoYo verification response overwrites `mihoyo-verification.json` beside
+`games.sqlite3`. This diagnostic contains only game, register/submit stage, numeric return code,
+trace presence and timestamp. It excludes provider messages, account IDs and all credentials.
+Saving diagnostics never initiates a provider request.
+
+Manual miHoYo pull synchronization shares the account's existing `RecordSession` and role cache
+with daily notes. Genshin pull AuthKeys use a separate SToken request profile and are scoped to the manual
+sync operation. Sync does not invalidate or refresh the daily-note cache.
+
+miHoYo verification return code `30001` means this verification request needs no captcha;
+it does not confirm daily access and supplies no challenge token. Registration/submission surface
+an explanatory failure and preserve the cached restriction. Only a successful response with a valid
+challenge can transition the card to `refreshRequired`; this performs no daily request.
+Both games bind `x-rpc-challenge_path` to the full daily endpoint URL. The official RPG client's
+Axios dispatcher combines its base URL and relative path before exposing the response config.
+
+Completing verification replaces only that game/login's cached verification error with a typed
+`refreshRequired` state. The native window emits the same state to the card immediately. This
+local transition performs no provider I/O, persists across view remounts and cache replays, and
+preserves successful cached notes. Only an explicit refresh reads fresh daily data.
+
+Star Rail manual pull sync uses `mihoyo/rail_gacha.rs` to exchange the existing record cookies for
+an activity-only badge cookie and read official pool totals and five-star records. Schema v2 adds
+`official_reports`, keyed by game and UID with an account foreign key. An atomic transaction merges
+older five-star entries and replaces statistics without modifying real rows in `pulls`.
+`archive::Summary.official` is explicitly null for ordinary archives and otherwise carries this
+report. The view labels its partial coverage; it does not infer missing pulls or timestamps.
+The badge cookie is memory-only and scoped to one manual sync. No daily-note cache is changed.

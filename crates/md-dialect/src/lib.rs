@@ -43,10 +43,6 @@ pub struct TocEntry {
     pub depth: u8,
 }
 
-pub fn render_publication(source: &str) -> Result<String, PublicationError> {
-    render_publication_with(source, &embed::Data::default())
-}
-
 pub async fn render_publication_enriched(source: &str) -> Result<String, PublicationError> {
     let data = embed::load(source).await?;
     render_publication_with(source, &data)
@@ -114,10 +110,6 @@ fn highlight_code(source: &str, language: &str) -> Result<String, syntect::Error
     let themes = THEMES.get_or_init(ThemeSet::load_defaults);
     let html = highlighted_html_for_string(source, syntaxes, syntax, &themes.themes[CODE_THEME])?;
     Ok(format!("<div class=\"highlighted-code\">{html}</div>\n"))
-}
-
-pub fn compile_knowledge(source: &str) -> Result<CompiledKnowledge, EmbedError> {
-    compile_knowledge_with(source, &embed::Data::default())
 }
 
 pub async fn compile_knowledge_enriched(source: &str) -> Result<CompiledKnowledge, EmbedError> {

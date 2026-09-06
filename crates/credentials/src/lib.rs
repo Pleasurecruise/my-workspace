@@ -1,26 +1,23 @@
 mod app_lock;
-mod consumer;
+mod content;
 #[cfg(debug_assertions)]
-mod development;
-#[cfg(debug_assertions)]
-mod development_storage;
-mod ntfy;
-mod qq;
-mod r2;
-mod social;
-mod spotify;
+mod environment;
+pub mod games;
+mod music;
+mod notifications;
+mod publication;
 mod store;
 mod ugos;
 
 pub use app_lock::{AppLock, app_lock, delete_app_lock, save_app_lock};
-pub use consumer::{ConsumerApi, consumer_api, save_consumer_api};
+pub use content::{ConsumerApi, R2Credentials, consumer_api, r2, save_consumer_api, save_r2};
 #[cfg(debug_assertions)]
-pub use development::load_dev_environment;
-pub use ntfy::{NtfyConfig, ntfy, save_ntfy};
-pub use qq::{QqMusicCredentials, qq_music, save_qq_music};
-pub use r2::{R2Credentials, r2, save_r2};
-pub use social::{TelegramCredentials, XCredentials, save_telegram, save_x, telegram, x};
-pub use spotify::{SpotifyCredentials, save_spotify, spotify};
+pub use environment::load_dev_environment;
+pub use music::{
+    QqMusicCredentials, SpotifyCredentials, qq_music, save_qq_music, save_spotify, spotify,
+};
+pub use notifications::{NtfyConfig, ntfy, save_ntfy};
+pub use publication::{TelegramCredentials, XCredentials, save_telegram, save_x, telegram, x};
 pub use ugos::{UgosCredentials, save_ugos, save_ugos_certificate, ugos, ugos_certificate};
 
 const SERVICE: &str = "me.you-find.vesper";

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>miHoYo security verification</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    main {
+      max-width: 320px;
+    }
+    h1 {
+      font-size: 18px;
+    }
+    p {
+      line-height: 1.6;
+    }
+  </style>
+  <main>
+    <h1>miHoYo security verification</h1>
+    <p id="status" role="status">Loading verification…</p>
+  </main>
+  <script>
+    // Human verification UI adapted from Hutao's GeetestWebView2ContentProvider (MIT).
+    // The host supplies only the challenge; account cookies never enter this window.
+    const registration = __VESPER_CAPTCHA__;
+    let submitted = false;
+    window.showVerificationStatus = (text) => {
+      document.getElementById("status").textContent = text;
+    };
+    const sdk = document.createElement("script");
+    sdk.src = "https://static.geetest.com/static/js/gt.0.5.2.js";
+    sdk.onerror = () =>
+      showVerificationStatus("Verification failed to load. Close this window and open it again.");
+    sdk.onload = () => {
+      initGeetest(
+        {
+          protocol: "https://",
+          gt: registration.gt,
+          challenge: registration.challenge,
+          new_captcha: registration.new_captcha ?? true,
+          offline: registration.success === 0,
+          product: "bind",
+          api_server: "api.geetest.com",
+          lang: "en",
+        },
+        (captcha) => {
+          captcha.onReady(() => {
+            showVerificationStatus("Please complete the verification below.");
+            captcha.verify();
+          });
+          captcha.onError(() =>
+            showVerificationStatus(
+              "Verification failed to load. Close this window and open it again.",
+            ),
+          );
+          captcha.onSuccess(() => {
+            if (submitted) return;
+            const result = captcha.getValidate();
+            if (!result) return;
+            submitted = true;
+            showVerificationStatus("Submitting verification…");
+            location.href =
+              "vesper-captcha://result?data=" +
+              encodeURIComponent(
+                JSON.stringify({
+                  geetest_challenge: result.geetest_challenge,
+                  geetest_validate: result.geetest_validate,
+                  geetest_seccode: result.geetest_seccode,
+                }),
+              );
+          });
+        },
+      );
+    };
+    document.head.appendChild(sdk);
+  </script>
+</html>

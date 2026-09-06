@@ -6,6 +6,7 @@ mod cms;
 mod configuration;
 mod consumer;
 mod dashboard;
+mod gaming;
 mod music;
 mod notifications;
 mod status;
@@ -172,16 +173,11 @@ pub fn run() {
         .menu(updater::menu)
         .on_menu_event(|app, event| updater::handle_menu_event(app, &event))
         .setup(|app| {
+            app.manage(games::Runtime::new(app.path().app_data_dir()?.join("games.sqlite3")));
             let todo_path = app.path().app_data_dir()?.join("todos.json");
             app.manage(todo_core::Store::new(todo_path));
             let notifications_path = app.path().app_data_dir()?.join("notifications.json");
             app.manage(notifications::NotificationState::new(notifications_path));
-            let notifications_app = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(error) = notifications::restart(notifications_app).await {
-                    tracing::warn!(%error, "could not start ntfy notification subscription");
-                }
-            });
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -252,7 +248,6 @@ pub fn run() {
             configuration::save_ugos_configuration,
             configuration::save_r2_configuration,
             configuration::save_api_configuration,
-            configuration::read_publication,
             configuration::save_telegram,
             configuration::connect_x,
             telegram::read_auth,
@@ -261,6 +256,7 @@ pub fn run() {
             telegram::submit_password,
             telegram::cancel_auth,
             configuration::save_ntfy_configuration,
+            notifications::set_notifications_active,
             notifications::read_notifications,
             notifications::mark_notification_read,
             configuration::save_app_lock,
@@ -268,6 +264,19 @@ pub fn run() {
             configuration::unlock_app,
             configuration::lock_app,
             configuration::read_app_lock,
+            gaming::read_game_connections,
+            gaming::select_game_account,
+            gaming::remove_game_account,
+            gaming::begin_game_login,
+            gaming::poll_game_login,
+            gaming::cancel_game_login,
+            gaming::save_steam_connection,
+            gaming::read_steam_settings,
+            gaming::read_game_notes,
+            gaming::verify_game,
+            gaming::read_steam_games,
+            gaming::read_gacha_archive,
+            gaming::sync_gacha_archive,
             music::connect_spotify,
             music::begin_qq_music_login,
             music::poll_qq_music_login,

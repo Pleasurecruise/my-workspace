@@ -68,27 +68,33 @@ impl Store {
             schedules.push((name, content));
         }
         let _operation = self.operation.lock().await;
-        let _file = self.lock_file().await?;
-        tokio::fs::create_dir_all(&self.schedule_directory)
-            .await
-            .map_err(|source| Error::Io {
+        let file_guard = self.lock_file().await?;
+        let directory = self.schedule_directory.clone();
+        let outcome = tokio::task::spawn_blocking(move || {
+            // Keep the cross-process lock until installation finishes, even if the caller cancels.
+            let _file = file_guard;
+            std::fs::create_dir_all(&directory).map_err(|source| Error::Io {
                 operation: "create",
-                path: self.schedule_directory.clone(),
+                path: directory.clone(),
                 source,
             })?;
-        let mut installed = Vec::with_capacity(schedules.len());
-        for (name, content) in schedules {
-            let target = self.schedule_directory.join(name);
-            tokio::fs::write(&target, content)
-                .await
-                .map_err(|source| Error::Io {
-                    operation: "write",
+            let mut installed = Vec::with_capacity(schedules.len());
+            for (name, content) in schedules {
+                let target = directory.join(name);
+                install_schedule(&target, content.as_bytes()).map_err(|source| Error::Io {
+                    operation: "install schedule (earlier files may already be installed)",
                     path: target.clone(),
                     source,
                 })?;
-            installed.push(target);
+                installed.push(target);
+            }
+            Ok(installed)
+        })
+        .await;
+        match outcome {
+            Ok(result) => result,
+            Err(error) => Err(Error::Task(error.to_string())),
         }
-        Ok(installed)
     }
 
     pub async fn sync_schedule(&self, date: &str) -> Result<List, Error> {
@@ -393,6 +399,22 @@ impl Store {
                 source,
             })
     }
+}
+
+// Stage complete bytes before replacing a schedule. Temporary files have no .ics extension,
+// so an interrupted installation cannot become a schedule source on the next sync.
+fn install_schedule(
+    path: &std::path::Path,
+    mut content: impl std::io::Read,
+) -> std::io::Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("schedule path has no parent"))?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    std::io::copy(&mut content, temporary.as_file_mut())?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    Ok(())
 }
 
 #[cfg(not(windows))]

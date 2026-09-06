@@ -15,15 +15,6 @@ pub struct ExchangeReport {
     pub rates: Vec<ExchangeRate>,
 }
 
-impl ExchangeReport {
-    /// Returns the amount of `quote` currency represented by one unit of `base` currency.
-    pub fn conversion_rate(&self, base: &str, quote: &str) -> Option<f64> {
-        let base = self.rates.iter().find(|rate| rate.code == base)?;
-        let quote = self.rates.iter().find(|rate| rate.code == quote)?;
-        Some(quote.units_per_euro / base.units_per_euro)
-    }
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExchangeRate {
@@ -282,7 +273,7 @@ mod tests {
     }
 
     #[test]
-    fn projects_major_rates_and_cross_rate() {
+    fn projects_major_rates() {
         let report = project(payload()).expect("valid exchange report");
 
         assert_eq!(report.reference_currency, "EUR");
@@ -291,7 +282,8 @@ mod tests {
         assert_eq!(report.rates[1].code, "USD");
         assert_eq!(report.rates[2].code, "CNY");
         assert_eq!(report.rates[1].date, "2026-08-31");
-        assert_eq!(report.conversion_rate("USD", "CNY"), Some(7.79 / 1.17));
+        assert_eq!(report.rates[1].units_per_euro, 1.17);
+        assert_eq!(report.rates[2].units_per_euro, 7.79);
     }
 
     #[test]
@@ -314,6 +306,5 @@ mod tests {
         let report = read().await.expect("exchange rates should be readable");
 
         assert_eq!(report.rates.len(), CURRENCY_ORDER.len());
-        assert!(report.conversion_rate("USD", "CNY").is_some());
     }
 }
