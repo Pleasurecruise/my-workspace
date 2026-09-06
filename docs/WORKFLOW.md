@@ -178,11 +178,8 @@ metadata and stored-image removal.
 
 ## Todo
 
-Todo is a local, credential-free workflow shared by desktop and CLI. Both operate on the date-keyed
-`todos.json` file and serialize mutations with its sidecar lock; the obsolete `today-todos.json`
-format is never read or migrated. Commands default to the current local date, while
-`todo --date YYYY-MM-DD` targets the same historical or future date available in the desktop
-calendar. At midnight, only a desktop view still showing today advances to the next date.
+Desktop and CLI share dated tasks in `vesper.sqlite3`. Commands default to the local date;
+`todo --date YYYY-MM-DD` selects another date. The existing managed `ics/` directory remains active; legacy Todo JSON is not read.
 
 ```text
 vesper todo list
@@ -192,24 +189,34 @@ vesper todo update <id> <text>
 vesper todo complete <id>
 vesper todo reopen <id>
 vesper todo delete <id>
+vesper todo database-path
 vesper todo schedule-path
-vesper todo import-ics <path>...
 vesper todo sync-ics
+vesper todo import-ics <path>...
+vesper todo sync
+vesper todo notion status
+vesper todo notion connect <calendar-view-url>
+vesper todo notion disconnect
 ```
 
-`schedule-path` prints the managed sibling `ics` directory. `import-ics` validates every supplied
-source before installing any of them under their original file names, then syncs the selected date;
-files placed in that directory directly are validated on the next read. The parser accepts the
-documented recurrence subset, floating local values, UTC values, and IANA TZID-qualified times;
-zoned times are projected into the device time zone before date selection. Malformed structure,
-unknown zones, duplicate or unsupported RRULE fields, recurrence overrides, and invalid dates fail
-explicitly instead of being approximated.
+`import-ics` validates all sources before atomically replacing each file in the managed directory.
+`schedule-path` prints that directory; `sync-ics` reads its calendars without requesting Notion. Recurrences materialize
+once per source, UID and date; local deletion suppresses the occurrence. Replacing an ICS source is
+additive and does not remove existing tasks. Rust validates recurrence semantics and converts zoned
+times into the device time zone.
 
-Every read and `sync-ics` materializes unseen occurrences for its selected date. Persistence records
-the source-file/UID/date identity separately from the visible Todo, so completion and deletion remain
-stable, separate calendars may reuse UIDs, and a same-text manual Todo remains manual. Replacing a
-schedule is additive: it may introduce new occurrences but does not remove existing imported or
-hand-authored items.
+Run `ntn login` before connecting a view. `notion connect` saves only the link, which must include
+the calendar view ID. `list` and `sync` invoke `ntn api` and preserve the view filters; local completion
+survives successful refreshes. Notion pages are never modified. `notion status` prints configuration
+presence and the view URL; authentication remains owned by `ntn`.
+
+## Additional read commands
+
+`status` also accepts weather and astronomy locations, stock symbols, exchange rates, GitHub
+repository activity, quotations and service status IDs. `status service-catalog` lists valid services.
+`game notes <game>`, `game archive <game>` and `game sync <game>` use existing saved accounts; `game steam` reads Steam.
+Game verification and interactive sign-in remain in Desktop. Window layout, the native island and
+local media playback remain Desktop features.
 
 ## Credentials and failure boundaries
 

@@ -1,11 +1,12 @@
 mod date;
 mod model;
+mod notion;
 mod schedule;
 mod store;
 
 pub use date::{current_date, next_rollover_delay, validate_date};
 pub use model::{Details, Error, Item, List};
-pub use store::{Store, shared_path};
+pub use store::Store;
 
 pub(crate) use date::parse_date;
-pub(crate) use model::{Calendar, MAX_TEXT_LENGTH};
+pub(crate) use model::MAX_TEXT_LENGTH;

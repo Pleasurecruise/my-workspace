@@ -3,6 +3,7 @@ use super::{
     MemoPublication, PublicationProvider, PublishError, PublishedPost, TelegramAuthorizationStatus,
     memo_url,
 };
+use diesel::prelude::*;
 use grammers_client::{
     Client, SenderPool, SignInError,
     client::{LoginToken, PasswordToken},
@@ -14,7 +15,6 @@ use grammers_session::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::{self, Display, Formatter};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -22,7 +22,7 @@ use vesper_credentials::Stored;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 struct StoredSession {
     home_dc: i32,
     dc_options: HashMap<i32, DcOption>,
@@ -42,65 +42,43 @@ impl Default for StoredSession {
     }
 }
 
-struct FileSession {
+struct DatabaseSession {
     path: std::path::PathBuf,
     data: Mutex<StoredSession>,
 }
 
-#[derive(Debug)]
+diesel::table! {
+    telegram_session (id) { id -> Integer, data -> Text, }
+}
+
+#[derive(Debug, thiserror::Error)]
 enum SessionError {
+    #[error("session lock is poisoned")]
     Lock,
-    Read(std::io::Error),
-    Write(std::io::Error),
-    Decode(serde_json::Error),
-    Encode(serde_json::Error),
+    #[error(transparent)]
+    Database(#[from] vesper_database::Error),
+    #[error("session database operation failed")]
+    Query(#[from] diesel::result::Error),
+    #[error("session data is invalid")]
+    Codec(#[from] serde_json::Error),
 }
 
-impl Display for SessionError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Lock => write!(formatter, "session lock is poisoned"),
-            Self::Read(_) => write!(formatter, "session could not be read"),
-            Self::Write(_) => write!(formatter, "session could not be written"),
-            Self::Decode(_) => write!(formatter, "session data is invalid"),
-            Self::Encode(_) => write!(formatter, "session data could not be encoded"),
-        }
-    }
-}
-
-impl std::error::Error for SessionError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Read(source) | Self::Write(source) => Some(source),
-            Self::Decode(source) | Self::Encode(source) => Some(source),
-            Self::Lock => None,
-        }
-    }
-}
-
-impl FileSession {
+impl DatabaseSession {
     fn open(path: &Path) -> Result<Self, SessionError> {
-        let temporary = path.with_extension("session.tmp");
-        if !path.exists() && temporary.exists() {
-            std::fs::rename(&temporary, path).map_err(SessionError::Write)?;
-        }
-        let data = if path.exists() {
-            let encoded = std::fs::read(path).map_err(SessionError::Read)?;
-            serde_json::from_slice(&encoded).map_err(SessionError::Decode)?
-        } else {
-            StoredSession::default()
+        let mut connection = vesper_database::open(path)?;
+        let encoded = telegram_session::table
+            .find(1)
+            .select(telegram_session::data)
+            .first::<String>(&mut connection)
+            .optional()?;
+        let data = match encoded {
+            Some(encoded) => serde_json::from_str(&encoded)?,
+            None => StoredSession::default(),
         };
-        let session = Self {
+        Ok(Self {
             path: path.to_owned(),
             data: Mutex::new(data),
-        };
-        if !path.exists() {
-            let data = session.data()?;
-            session.persist(&data)?;
-        } else {
-            protect(path).map_err(SessionError::Write)?;
-        }
-        Ok(session)
+        })
     }
 
     fn data(&self) -> Result<MutexGuard<'_, StoredSession>, SessionError> {
@@ -108,42 +86,22 @@ impl FileSession {
     }
 
     fn persist(&self, data: &StoredSession) -> Result<(), SessionError> {
-        let encoded = serde_json::to_vec(data).map_err(SessionError::Encode)?;
-        let temporary = self.path.with_extension("session.tmp");
-        let mut options = std::fs::OpenOptions::new();
-        options.create(true).truncate(true).write(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        use std::io::Write;
-        let mut file = options.open(&temporary).map_err(SessionError::Write)?;
-        file.write_all(&encoded)
-            .and_then(|()| file.flush())
-            .and_then(|()| file.sync_all())
-            .map_err(SessionError::Write)?;
-        protect(&temporary).map_err(SessionError::Write)?;
-        replace_session_file(&temporary, &self.path).map_err(SessionError::Write)
+        let encoded = serde_json::to_string(data)?;
+        let mut connection = vesper_database::open(&self.path)?;
+        diesel::insert_into(telegram_session::table)
+            .values((
+                telegram_session::id.eq(1),
+                telegram_session::data.eq(&encoded),
+            ))
+            .on_conflict(telegram_session::id)
+            .do_update()
+            .set(telegram_session::data.eq(&encoded))
+            .execute(&mut connection)?;
+        Ok(())
     }
 }
 
-#[cfg(not(windows))]
-fn replace_session_file(temporary: &Path, path: &Path) -> std::io::Result<()> {
-    std::fs::rename(temporary, path)
-}
-
-#[cfg(windows)]
-fn replace_session_file(temporary: &Path, path: &Path) -> std::io::Result<()> {
-    match std::fs::remove_file(path) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    std::fs::rename(temporary, path)
-}
-
-impl Session for FileSession {
+impl Session for DatabaseSession {
     type Error = SessionError;
 
     fn home_dc_id(&self) -> Result<i32, Self::Error> {
@@ -152,9 +110,12 @@ impl Session for FileSession {
 
     fn set_home_dc_id(&self, dc_id: i32) -> BoxFuture<'_, Result<(), Self::Error>> {
         Box::pin(async move {
-            let mut data = self.data()?;
+            let mut current = self.data()?;
+            let mut data = current.clone();
             data.home_dc = dc_id;
-            self.persist(&data)
+            self.persist(&data)?;
+            *current = data;
+            Ok(())
         })
     }
 
@@ -165,9 +126,12 @@ impl Session for FileSession {
     fn set_dc_option(&self, dc_option: &DcOption) -> BoxFuture<'_, Result<(), Self::Error>> {
         let dc_option = dc_option.clone();
         Box::pin(async move {
-            let mut data = self.data()?;
+            let mut current = self.data()?;
+            let mut data = current.clone();
             data.dc_options.insert(dc_option.id, dc_option);
-            self.persist(&data)
+            self.persist(&data)?;
+            *current = data;
+            Ok(())
         })
     }
 
@@ -178,12 +142,15 @@ impl Session for FileSession {
     fn cache_peer(&self, peer: &PeerInfo) -> BoxFuture<'_, Result<(), Self::Error>> {
         let peer = peer.clone();
         Box::pin(async move {
-            let mut data = self.data()?;
+            let mut current = self.data()?;
+            let mut data = current.clone();
             data.peer_infos
                 .entry(peer.id())
                 .or_insert_with(|| peer.clone())
                 .extend_info(&peer);
-            self.persist(&data)
+            self.persist(&data)?;
+            *current = data;
+            Ok(())
         })
     }
 
@@ -193,7 +160,8 @@ impl Session for FileSession {
 
     fn set_update_state(&self, update: UpdateState) -> BoxFuture<'_, Result<(), Self::Error>> {
         Box::pin(async move {
-            let mut data = self.data()?;
+            let mut current = self.data()?;
+            let mut data = current.clone();
             match update {
                 UpdateState::All(state) => data.updates_state = state,
                 UpdateState::Primary { pts, date, seq } => {
@@ -209,7 +177,9 @@ impl Session for FileSession {
                     data.updates_state.channels.push(ChannelState { id, pts });
                 }
             }
-            self.persist(&data)
+            self.persist(&data)?;
+            *current = data;
+            Ok(())
         })
     }
 }
@@ -355,7 +325,12 @@ pub async fn read_auth(session_path: &Path) -> Result<TelegramAuthorizationStatu
         Stored::Ready(credentials) => credentials,
         Stored::Missing => return Err(PublishError::MissingCredentials("Telegram")),
     };
-    if !session_path.exists() {
+    let mut connection = vesper_database::open(session_path)
+        .map_err(|_| PublishError::Session("could not open local storage"))?;
+    let exists = diesel::select(diesel::dsl::exists(telegram_session::table.find(1)))
+        .get_result::<bool>(&mut connection)
+        .map_err(|_| PublishError::Session("could not read local session"))?;
+    if !exists {
         return Ok(TelegramAuthorizationStatus::Disconnected);
     }
     let (client, _runner) = connect(session_path, credentials.api_id).await?;
@@ -457,23 +432,11 @@ async fn connect(session_path: &Path, api_id: i32) -> Result<(Client, Runner), P
             .map_err(|_| PublishError::Session("could not create local storage"))?;
     }
     let session = Arc::new(
-        FileSession::open(session_path)
+        DatabaseSession::open(session_path)
             .map_err(|_| PublishError::Session("could not open local storage"))?,
     );
     let SenderPool { runner, handle, .. } = SenderPool::new(session, api_id);
     Ok((Client::new(handle), Runner(tokio::spawn(runner.run()))))
-}
-
-#[cfg(unix)]
-fn protect(path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-}
-
-#[cfg(not(unix))]
-fn protect(_path: &Path) -> std::io::Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]
@@ -495,17 +458,13 @@ mod tests {
         let directory =
             std::env::temp_dir().join(format!("vesper-session-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();
-        let path = directory.join("telegram.session");
-        let session = FileSession::open(&path).unwrap();
+        let path = directory.join(vesper_database::FILE_NAME);
+        let session = DatabaseSession::open(&path).unwrap();
         session.set_home_dc_id(4).await.unwrap();
         drop(session);
 
-        let temporary = path.with_extension("session.tmp");
-        std::fs::rename(&path, &temporary).unwrap();
-
-        let restored = FileSession::open(&path).unwrap();
+        let restored = DatabaseSession::open(&path).unwrap();
         assert_eq!(restored.home_dc_id().unwrap(), 4);
-        assert!(!temporary.exists());
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

@@ -15,14 +15,15 @@ Feature implementation details are maintained in [Music](MUSIC.md), [UGOS Pro](U
 | `apps/cli`           | `vesper` executable for provider status, builds, publication, Todo, and consumer workflows. |
 | `crates/cms-core`    | Generic Markdown, content builds, static publication, and R2 access.                        |
 | `crates/consumers`   | Memos, Moment, and Knowledge APIs, projections, and Moment media processing.                |
-| `crates/credentials` | Typed credentials in development files or the operating-system credential store.            |
+| `crates/database`    | Shared Diesel SQLite connection, schema initialization, and database location.              |
+| `crates/credentials` | Typed credentials in debug SQLite or the operating-system credential store.                 |
 | `crates/logger`      | Shared `tracing` initialization.                                                            |
 | `crates/md-dialect`  | Publication and Knowledge Markdown dialect compilation.                                     |
 | `crates/music`       | Spotify and QQ Music authentication, collections, playback, album art, and lyrics.          |
 | `crates/games`       | Game account authorization, daily notes, Steam activity, and local pull archives.           |
 | `crates/quotes`      | Shared astronomy, exchange, GitHub, quotation, stock, weather, and status read providers.   |
 | `crates/social`      | Outbound Telegram Channel and X publication.                                                |
-| `crates/todo`        | Local Todo storage and ICS schedule projection.                                             |
+| `crates/todo`        | Todo storage, ICS and Notion calendar projection.                                           |
 | `crates/ugos`        | Read-only UGOS Pro authentication, certificate pinning, and Task Manager telemetry.         |
 | `crates/useage`      | AI subscription and account-credit integrations. The spelling is intentional.               |
 | `packages/ui`        | Reusable Svelte primitives and design tokens.                                               |
@@ -45,16 +46,17 @@ Trusted device
        ├─ consumers ────── Worker APIs ─────── my-memos / my-moment / my-knowledge
        │          └─────── cms-core R2 / Markdown
        ├─ social ───────── MTProto / X API ─── outbound Memo publication
-       ├─ todo ─────────── application data ── todos.json / ICS
-       ├─ credentials ──── development files / operating-system credential store
+       ├─ todo ─────────── ICS files / ntn CLI ── SQLite task projections
+       ├─ credentials ──── debug SQLite / operating-system credential store
        ├─ quotes ───────── external read-only data used by Dashboard and Markdown compilation
        ├─ music ────────── Spotify Web API, QQ Music, and LRCLIB
-       ├─ games ────────── miHoYo / Skland / Steam; application-data games.sqlite3
+       ├─ games ────────── miHoYo / Skland / Steam; shared vesper.sqlite3
        ├─ ugos ─────────── Tailscale ───────── UGOS Pro NAS
        └─ useage
             ├─ local Codex app-server and Grok runtime
             ├─ existing Claude Code OAuth and GitHub CLI sessions
-            └─ provider HTTPS APIs and existing local sessions
+            ├─ Cherry Studio OAuth session and conditional token renewal
+            └─ provider HTTPS APIs
 
 Remote consumer projects
   └─ their own Cloudflare Workers and R2 bindings
@@ -73,11 +75,9 @@ game sessions and account selections. Notifications, outbound publication, and U
 modules. Shared backends live in `store/`; `environment.rs` loads `.env`, and `app_lock.rs` owns the
 local application password.
 
-Debug builds select a local
-file backend at compile time; missing development values never fall back to the system store.
-Local credential filenames use data or provider names without a build-mode prefix; the shared file
-is `credentials.json`, while music and games retain separate provider files.
-Environment overrides and existing music/game session files remain provider-owned. Each development session file has its own lock covering reads, temporary-file recovery, and atomic replacement.
+Debug builds select the shared SQLite credential table at compile time; missing development values
+never fall back to the system store. Music, games and other credentials retain their feature-owned validation
+and environment-resolution rules. No legacy credential JSON reader or temporary-file recovery runs.
 
 Release builds use operating-system storage. On macOS, values share one Keychain item: service
 `me.you-find.vesper`, account `credentials`. A process-local Rust
@@ -96,7 +96,7 @@ Settings prefill commands are the only frontend reads that expose stored credent
 
 ### Shell and feature state
 
-`apps/desktop/src/App.svelte` composes navigation, the wide/narrow page frame, sidebar/profile,
+`apps/desktop/src/App.svelte` composes navigation, the shared page frame, sidebar/profile,
 theme, App Lock, and the update overlay. It creates feature view sessions for the lifetime of the
 WebView, distributes the initial Rust content snapshot, and connects route and configuration changes.
 It does not implement content CRUD, photo byte submission, provider login, or Dashboard projections.
@@ -116,6 +116,15 @@ controls and `page.css`. Supporting components and their view state live togethe
 These sessions contain view state and typed command adaptation. Image processing, publication,
 authorization, and content classification stay in Rust. Reusable primitives and semantic tokens
 belong to `packages/ui`; visual composition is specified in [DESIGN.md](DESIGN.md).
+
+The shell creates a Dashboard layout session alongside the data session. Each WebView rejects layout
+responses superseded by a newer request and invalidates pending responses when its session is
+destroyed. Dashboard and the macOS native Dynamic Island render the same WidgetContent component.
+The layout uses Diesel models in the shared `vesper.sqlite3` database and stores a nullable
+`islandWidgetId` referencing one placement; defaults select Todo. Rust rejects dangling selections.
+Opening the island requests only that widget's source through `refresh_island`, using the same
+per-source request lock as Dashboard. It does not enable Dashboard route polling. Todo retains
+its own read and mutation commands; game panels retain their existing source reads.
 
 ### Content lifecycle
 
@@ -273,35 +282,24 @@ The stored body, API payload, and content-hash conflict contract remain Markdown
 
 ## Local persistence
 
-See [Local Persistence](PERSISTENCE.md) for file locations, on-disk schemas, credential backends,
-write coordination, recovery behavior, and the distinction between durable data and runtime caches.
-
-Local files live below the operating-system application data directory for `me.you-find.vesper`
-(`~/Library/Application Support/me.you-find.vesper` on macOS). Each feature owns its format and
-validation; Vesper does not maintain a local content database or a disk-backed provider cache.
-
-| Data                                      | Owner and storage                                |
-| ----------------------------------------- | ------------------------------------------------ |
-| Widget order and configuration            | Desktop Rust, `layout.json`                      |
-| Date-keyed tasks and imported occurrences | `todo`, `todos.json` with `todos.lock`           |
-| Calendar sources                          | `todo`, sibling `ics/` directory                 |
-| Pending Inbox messages and replay cursor  | Desktop Rust, `notifications.json`               |
-| Game accounts and pull history            | `games`, `games.sqlite3`                         |
-| Telegram authorization session            | `social`, owner-only `telegram.session`          |
-| Credentials and renewable grants          | `credentials`, operating-system credential store |
-| Theme, local profile and sidebar width    | Svelte, WebView local storage                    |
-
-The layout reader accepts only the current `layout.json` format. A missing file uses the default
-layout; malformed data remains an explicit error. Development credential exceptions are described
-in [DEVELOPMENT.md](DEVELOPMENT.md).
+`crates/database` owns the shared Diesel/SQLite schema and connection policy. Desktop and CLI use
+`vesper.sqlite3` in local application data. Feature modules own typed records, validation and
+transactions: layout, Todo, Inbox, game archives and Telegram sessions. Debug credentials use the
+same database; release credentials retain the operating-system store boundary. Legacy files are
+neither read nor migrated. Todo reads use a read transaction; mutations retain their immediate
+transactions. Existing-table constraint migration remains deferred.
+[Persistence](PERSISTENCE.md) owns the schema inventory and failure rules.
 
 ### Todo and calendar
 
-`crates/todo` owns the date-keyed calendar and projects sibling ICS files into typed occurrences.
-Desktop and CLI share the same locked, atomic storage boundary. Rust validates recurrence and time
-zones; Svelte renders the selected date and follows midnight only while the user is viewing today.
-[Dashboard integrations](DASHBOARD.md#calendar-and-todo) defines supported calendar behavior, and
-[Local persistence](PERSISTENCE.md) defines file formats, occurrence identity, and recovery.
+`crates/todo` owns dated tasks, ICS parsing, Notion calendar queries and local projection. Notion's
+view link is configured in Settings through `crates/credentials`. Rust runs bounded `ntn api`
+processes; the official CLI owns login and credentials. Vesper never reads or copies its tokens.
+Reads preserve the view's filters and sorting; completion remains local. Svelte owns date selection and
+rendering, with request generations preventing an older response from replacing a later selection.
+Desktop and CLI construct the production Todo store through `Store::shared()`, retaining ICS in
+`dirs::data_dir()/me.you-find.vesper/ics` while the database uses local application data.
+Desktop mutations notify the other trusted WebView so the main window and native island refresh.
 
 ## CLI consumer surface
 
@@ -330,8 +328,7 @@ The miHoYo record session retains a per-game verification trace from the last re
 response; each pending challenge captures that trace for registration and proof submission.
 Verification diagnostics retain only game, stage, numeric return code and trace presence.
 
-The most recent miHoYo verification response overwrites `mihoyo-verification.json` beside
-`games.sqlite3`. This diagnostic contains only game, register/submit stage, numeric return code,
+The most recent miHoYo verification response replaces the single `game_diagnostic` database row. This diagnostic contains only game, register/submit stage, numeric return code,
 trace presence and timestamp. It excludes provider messages, account IDs and all credentials.
 Saving diagnostics never initiates a provider request.
 

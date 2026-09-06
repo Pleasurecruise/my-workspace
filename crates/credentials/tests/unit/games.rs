@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn legacy_session() {
+fn session_without_record_device() {
     let session: Session = serde_json::from_str(r#"{"provider":"mihoyo","account_id":"1","stoken":"test-stoken","mid":"test-mid","ltoken":"test-ltoken","device":"test-device"}"#).unwrap();
     session.validate().unwrap();
     assert!(matches!(session, Session::Mihoyo { record: None, .. }));

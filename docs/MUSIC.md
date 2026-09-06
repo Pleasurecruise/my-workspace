@@ -81,7 +81,7 @@ Artwork reaches the main WebView through `vesper-music-cover`; Rust checks provi
 and limits each image to 10 MiB. QQ audio is restricted to provider domains and 100 MiB per download.
 The desktop pauses the inactive provider when starting or resuming another provider.
 
-Only credentials persist: debug uses `spotify.json` and `qq-music.json`; release uses the system
+Only credentials persist: debug uses the shared credential table; release uses the system
 store. Track collections, queue/player state, cover lookup maps, and lyrics are not an offline
 library mirror. See [PERSISTENCE.md](PERSISTENCE.md) for file locks and storage details.
 

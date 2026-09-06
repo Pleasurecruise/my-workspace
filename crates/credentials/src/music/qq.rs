@@ -1,10 +1,6 @@
-#[cfg(debug_assertions)]
-use crate::SERVICE;
-#[cfg(not(debug_assertions))]
 use crate::store;
 use crate::{CredentialError, Stored};
 
-#[cfg(not(debug_assertions))]
 const ACCOUNT: &str = "qq-music";
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
@@ -12,27 +8,14 @@ pub struct QqMusicCredentials {
     pub cookie: String,
 }
 
-pub fn qq_music() -> Result<Stored<QqMusicCredentials>, CredentialError> {
-    #[cfg(debug_assertions)]
-    return read_development();
-    #[cfg(not(debug_assertions))]
-    return read_store();
-}
-
 pub fn save_qq_music(credentials: QqMusicCredentials) -> Result<(), CredentialError> {
     validate(&credentials.cookie)?;
-    #[cfg(debug_assertions)]
-    return save_development(&credentials);
-    #[cfg(not(debug_assertions))]
-    {
-        let encoded = serde_json::to_string(&credentials)?;
-        store::save(ACCOUNT, &encoded)?;
-        Ok(())
-    }
+    let encoded = serde_json::to_string(&credentials)?;
+    store::save(ACCOUNT, &encoded)?;
+    Ok(())
 }
 
-#[cfg(not(debug_assertions))]
-fn read_store() -> Result<Stored<QqMusicCredentials>, CredentialError> {
+pub fn qq_music() -> Result<Stored<QqMusicCredentials>, CredentialError> {
     match store::read(ACCOUNT)? {
         Stored::Ready(encoded) => {
             let credentials: QqMusicCredentials = serde_json::from_str(&encoded)?;
@@ -41,31 +24,6 @@ fn read_store() -> Result<Stored<QqMusicCredentials>, CredentialError> {
         }
         Stored::Missing => Ok(Stored::Missing),
     }
-}
-
-#[cfg(debug_assertions)]
-fn development_path() -> Result<std::path::PathBuf, CredentialError> {
-    dirs::data_local_dir()
-        .map(|directory| directory.join(SERVICE).join("qq-music.json"))
-        .ok_or(CredentialError::DevelopmentDataDirectory)
-}
-
-#[cfg(debug_assertions)]
-fn read_development() -> Result<Stored<QqMusicCredentials>, CredentialError> {
-    let path = development_path()?;
-    match crate::store::file::read::<QqMusicCredentials>(&path)? {
-        Stored::Ready(credentials) => {
-            validate(&credentials.cookie)?;
-            Ok(Stored::Ready(credentials))
-        }
-        Stored::Missing => Ok(Stored::Missing),
-    }
-}
-
-#[cfg(debug_assertions)]
-fn save_development(credentials: &QqMusicCredentials) -> Result<(), CredentialError> {
-    let path = development_path()?;
-    crate::store::file::save(&path, credentials)
 }
 
 fn validate(cookie: &str) -> Result<(), CredentialError> {

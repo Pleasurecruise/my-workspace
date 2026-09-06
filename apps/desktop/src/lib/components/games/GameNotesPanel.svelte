@@ -77,7 +77,7 @@
 				<div><dl><dt>{meter.label}</dt><dd>{meter.current} / {meter.max}</dd></dl>
 				{#if meter.fullAt !== null && meter.current < meter.max}<p class="muted">Full at {new Date(meter.fullAt * 1000).toLocaleString()}</p>{/if}</div>
 			{/each}
-			{#each notes.tasks as task (task.label)}<dl><dt>{task.label}</dt><dd>{#if game === "genshin" && task.progress !== null && task.progress.total > 0 && task.progress.total <= 5}<span class="task-stars" role="img" aria-label={`${task.label}: ${task.progress.current} of ${task.progress.total}`} title={`${task.label}: ${task.progress.current} of ${task.progress.total}`}>{#each Array.from({ length: task.progress.total }, (_, index) => index) as index}<Star size={15} fill={index < task.progress.current ? "currentColor" : "none"} aria-hidden="true" />{/each}</span>{:else}{task.value}{/if}</dd></dl>{/each}
+			{#each notes.tasks as task (task.label)}<dl><dt>{task.label}</dt><dd>{#if task.progress !== null && task.progress.total > 0 && task.progress.total <= 5}<span class="task-stars" role="img" aria-label={`${task.label}: ${task.progress.current} of ${task.progress.total}`} title={`${task.label}: ${task.value}`}>{#each Array.from({ length: task.progress.total }, (_, index) => index) as index}<Star size={15} fill={index < task.progress.current ? "currentColor" : "none"} aria-hidden="true" />{/each}</span>{:else}{task.value}{/if}</dd></dl>{/each}
 		</div>
 		<p class="muted">Updated {new Date(notes.sampledAt * 1000).toLocaleTimeString()}</p>
 	{/if}

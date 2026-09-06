@@ -185,7 +185,7 @@ async fn complete(
 
 fn session_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     app.path()
-        .app_data_dir()
-        .map(|path| path.join("telegram.session"))
+        .app_local_data_dir()
+        .map(|path| path.join(vesper_database::FILE_NAME))
         .map_err(|error| format!("could not resolve Telegram session storage: {error}"))
 }

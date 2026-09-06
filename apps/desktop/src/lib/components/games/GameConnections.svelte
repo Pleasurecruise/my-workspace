@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ConfigurationBadge from "../settings/ConfigurationBadge.svelte";
 	import { X } from "@lucide/svelte";
 	import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Select } from "@my-workspace/ui";
 	import { invoke } from "@tauri-apps/api/core";
@@ -129,7 +130,7 @@
 	<CardContent>
 		{#if connectionError !== null}<p class="error" role="alert">{connectionError}</p>{/if}
 		{#each providers as item (item.id)}
-			<div class="connection"><div><strong>{item.name}</strong><p>{item.description}</p>{#if connections.providers.includes(item.id)}<span class="connected">{item.id === "mihoyo" ? `${connections.mihoyo.length} accounts` : "Connected"}</span>{/if}</div><Button size="sm" disabled={changing} onclick={() => connect(item.id)}>{item.id === "mihoyo" && connections.mihoyo.length > 0 ? "Add account" : connections.providers.includes(item.id) ? "Reconnect" : "Scan to connect"}</Button></div>
+			<div class="connection"><div><strong>{item.name}</strong><p>{item.description}</p>{#if connections.providers.includes(item.id)}<ConfigurationBadge label={item.id === "mihoyo" ? `${connections.mihoyo.length} accounts` : "Configured"} />{/if}</div><Button size="sm" disabled={changing} onclick={() => connect(item.id)}>{item.id === "mihoyo" && connections.mihoyo.length > 0 ? "Add account" : connections.providers.includes(item.id) ? "Reconnect" : "Scan to connect"}</Button></div>
 			{#if item.id === "mihoyo" && connections.mihoyo.length > 0}
 				<div class="accounts">
 					{#each connections.mihoyo as id (id)}
@@ -146,7 +147,7 @@
 			{/if}
 		{/each}
 		<form onsubmit={(event) => { event.preventDefault(); void saveSteam(); }}>
-			<div class="connection"><div><strong>Steam</strong><p>Use your personal Steam Web API key and SteamID64.</p>{#if connections.providers.includes("steam")}<span class="connected">Connected</span>{/if}</div><Button size="sm" type="submit" disabled={steamLoading || steamSaving || !steamChanged || !apiKey.trim() || !/^\d{17}$/.test(steamId.trim())}>{steamSaving ? "Saving…" : "Save"}</Button></div>
+			<div class="connection"><div><strong>Steam</strong><p>Use your personal Steam Web API key and SteamID64.</p>{#if connections.providers.includes("steam")}<ConfigurationBadge />{/if}</div><Button size="sm" type="submit" disabled={steamLoading || steamSaving || !steamChanged || !apiKey.trim() || !/^\d{17}$/.test(steamId.trim())}>{steamSaving ? "Saving…" : "Save"}</Button></div>
 			<div class="fields"><div><Label for="games-steam-id">SteamID64</Label><Input id="games-steam-id" oninput={() => { idEdited = true; }} autocomplete="off" bind:value={steamId} /></div><div><Label for="games-steam-key">API key</Label><Input id="games-steam-key" oninput={() => { keyEdited = true; }} type="password" autocomplete="off" bind:value={apiKey} /></div></div>
 			{#if steamLoading}<p role="status">Loading saved configuration…</p>{/if}
 			{#if steamError !== null}<p class="error" role="alert">{steamError}</p>{/if}
@@ -168,7 +169,6 @@
 	.connection { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 	strong { font-size: 0.85rem; }
 	p { margin: 0.3rem 0; color: var(--color-muted-foreground); font-size: 0.75rem; }
-	.connected { color: var(--color-accent); font-size: 0.7rem; }
 	.error { color: var(--color-error); }
 	.fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 	.fields > div { display: grid; gap: 0.4rem; }

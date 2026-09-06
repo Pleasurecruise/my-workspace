@@ -297,6 +297,46 @@ async fn read_while_active<T>(
     }
 }
 
+fn island_source(widget: &widgets::Widget) -> Option<Source> {
+    use widgets::Widget;
+    Some(match widget {
+        Widget::Cpu | Widget::Memory | Widget::Storage | Widget::Network => Source::TaskManager,
+        Widget::LocalCpu | Widget::LocalMemory | Widget::LocalStorage | Widget::LocalNetwork => {
+            Source::DeviceTelemetry
+        }
+        Widget::Weather { .. } => Source::Weather,
+        Widget::Stock { .. } => Source::Stocks,
+        Widget::Exchange => Source::Exchange,
+        Widget::ServiceStatus { .. } => Source::ServiceStatus,
+        Widget::Github => Source::Github,
+        Widget::Codex => Source::Codex,
+        Widget::OpenCode => Source::OpenCode,
+        Widget::Claude => Source::Claude,
+        Widget::Grok => Source::Grok,
+        Widget::Copilot => Source::Copilot,
+        Widget::DeepSeek => Source::DeepSeek,
+        Widget::CherryIn => Source::CherryIn,
+        Widget::Quotation => Source::Quotation,
+        // Todo is read through its own session; game panels own their initial read.
+        Widget::Calendar | Widget::TodoList | Widget::Game { .. } | Widget::Steam => return None,
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn refresh_island(app: AppHandle) -> CommandResponse<()> {
+    let widget = match widgets::island_widget(&app) {
+        Ok(Some(widget)) => widget,
+        Ok(None) => return CommandResponse::Ready { data: () },
+        Err(message) => return CommandResponse::Failed { message },
+    };
+    if let Some(source) = island_source(&widget) {
+        let runtime = app.state::<DashboardRuntime>();
+        let _guard = runtime.0.sources[source as usize].lock().await;
+        DashboardEvent::read(source, &app, false).await.emit(&app);
+    }
+    CommandResponse::Ready { data: () }
+}
+
 #[tauri::command]
 pub(crate) async fn refresh_dashboard(
     app: AppHandle,

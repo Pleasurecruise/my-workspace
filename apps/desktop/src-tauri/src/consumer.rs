@@ -224,8 +224,8 @@ pub(crate) async fn publish_telegram(
     if let Err(message) = authorization.begin_operation().await {
         return CommandResponse::Failed { message };
     }
-    let session_path = match app.path().app_data_dir() {
-        Ok(path) => path.join("telegram.session"),
+    let session_path = match app.path().app_local_data_dir() {
+        Ok(path) => path.join(vesper_database::FILE_NAME),
         Err(error) => {
             authorization.finish_operation().await;
             return CommandResponse::Failed {

@@ -32,25 +32,25 @@ is stable and it has more than one plausible application consumer.
 
 ## Page layout and typography
 
-The application shell owns the shared frame in `components/layout/page.css`. Wide and narrow
-content are horizontally centered within the main area to the right of the sidebar, with equal
-space on both sides. The outer frame is at most 84rem including 2rem side padding; below 768px,
-side padding is 1rem. Wide content fills the frame up to 80rem, while narrow content is at most
-48rem. Both use 100% of the space available below their maximum, without proportional scaling.
-Desktop top padding is 2rem; mobile top padding is 1.5rem.
+The application shell owns one centered frame in `components/layout/page.css` for every page.
+Its maximum width is 84rem including 2rem side padding, leaving up to 80rem for content. Below
+768px side padding is 1rem. Pages fill the available content width; there is no route-specific
+wide/narrow classification. Automatic inline margins keep the frame centered within the main area
+as the sidebar resizes, and headings align with their own page content. Desktop top padding is
+2rem; mobile top padding is 1.5rem.
 
-Dashboard, Moment, Newspaper, and the Music collection use the wide frame. Memos, Knowledge,
-Settings, Inbox, and the Music player use the narrow frame. Newspaper retains its centered 58rem
-paper surface inside the wide frame. Loading, errors, reading, and editing remain
-inside the same frame. Page components fill their allotted slot; internal paper and card proportions
-belong to the existing composition.
+Loading, errors, reading, and editing use the same frame. Newspaper retains its centered 58rem
+paper surface as part of its internal composition; page cards and controls retain their own
+responsive arrangements.
 The shell measures the content slot for the Music list, Knowledge editor fields, and Memos import
 controls to stack at ≤640px, including when the sidebar is resized. Settings form rows already
 respond to their own content container; footers wrap when needed. Other existing page compositions
 retain their own breakpoints. The frame does not establish containment around
 viewport-fixed dialogs.
 Shared headers use `page-header`, with the H1 first, an optional `page-description` below it, and
-wrapping actions. The page frame alone supplies the top inset; loading, ready, and error headers
+wrapping actions aligned to the top. Titles, descriptions and header spacing use the shared rules
+without page-specific overrides. The main scroller reserves its scrollbar gutter to avoid horizontal
+shifts when content overflows. The page frame alone supplies the top inset; loading, ready, and error headers
 start at that same baseline. Paper padding applies only to Newspaper body content and placeholders,
 never to its page header. Tag status stays below the header so background reads cannot shift it.
 
@@ -63,7 +63,10 @@ widget spans, gallery grouping, paper treatment, or article typography. H1–H6 
 
 ## Dashboard layout
 
-Dashboard uses a user-configurable twelve-track widget canvas. Edit mode uses a four-way move
+Dashboard uses a user-configurable twelve-track widget canvas. Compact Edit/Done and Refresh icons
+sit directly beside its title, matching Moment. Restore Default and Add Widget remain at the
+header's trailing edge while editing. Dashboard height follows its content; the shared page frame
+owns bottom spacing without an additional viewport-based minimum height. Edit mode uses a four-way move
 pointer to drag the card itself, with no dedicated handle or card-level component menu. Each card has
 one small upper-right delete action. Dashboard uses compact 0.5rem canvas gaps, generally
 0.75rem card insets, and an 8.5rem minimum for three-track widgets. Compact headings and list
@@ -114,6 +117,31 @@ article masthead and paragraphs. Music uses track rows below its existing header
 placeholders stay hidden from assistive technology, the loading region announces its state, and
 reduced-motion preferences disable animation.
 
+## Dynamic Island
+
+On macOS, a separate transparent native window places the island at the top center of the primary
+screen, in the system menu-bar area. The visual reference is [Atoll](https://github.com/Ebullioscopic/Atoll):
+outward top shoulders, rounded lower corners, a continuous black surface and restrained controls.
+On notched screens, the collapsed icon and status occupy opposite sides of the physical notch;
+there is no extra label strip below it. Screens without a notch use a compact pill.
+
+The expanded frame is up to 560 logical pixels wide, with room below the notch for a compact heading
+and the selected widget. Scoped semantic colors keep content dark independently of the main window's
+theme. Embedded widgets omit their outer card frame; Todo uses circular completion controls and a
+scrollable list while retaining add, delete and detail actions.
+
+Dashboard edit mode selects a saved widget, with Todo selected by default. Unpinning or deleting the
+selected placement disables the island. Hover, click or keyboard activation expands it. Escape,
+Close, or leaving without pointer/focus inside collapses it. Initial display uses AppKit's non-key
+ordering operation. Rust animates subsequent frame changes while preserving the top anchor and
+honors the system Reduce Motion setting. Losing focus must not reactivate the island. App Lock
+closes it; other platforms do not offer the pin control.
+
+The island and Dashboard share WidgetContent rendering but have separate WebView sessions. Todo
+mutations invalidate the other surface's list. Expanded Todo and Calendar refresh once a minute;
+provider widgets read on expansion without activating Dashboard-wide polling. Display changes
+reposition the window on its next expansion or collapse.
+
 ## Memo interaction
 
 Memo composer and inline-editor focus belongs to the containing surface: an accent border and
@@ -126,7 +154,9 @@ with input-method composition.
 
 Automatic pagination that fills a short consumer view remains visually quiet. The shared loading-more
 status appears only when reaching the end through user scrolling, while settled content stays visible.
-The complete tag index sits above search as a horizontally scrollable strip with counts. Selected
+The complete tag index sits above search as a horizontally scrollable strip with counts. Small edge
+arrows appear when tags extend beyond that edge and scroll directly to the start or end. Their
+visibility follows scrolling, tag changes, and resizing; reduced motion disables smooth scrolling. Selected
 tags have separate removal controls, so filters remain removable when a refreshed index no longer
 contains them. Tag loading and retryable errors remain separate from the feed and preserve the last
 successful index. In the unfiltered feed, pinned entries live in a collapsed section ahead of the timeline; filtering exposes
@@ -138,9 +168,10 @@ and briefly highlights the card.
 
 The lower-right Archive and Favorites actions switch the feed between active, archived, and favorite
 memos. Selecting the current filter again returns to the active feed. Each view loads its matching
-server-side projection. Archive and Favorites follow the consumer's compact month-grouped reading
-layout and do not inherit the active feed's tag index, search, or sort controls. Archived entries can
-be restored or permanently deleted from their row; Favorites owns the X/Twitter import field. Memo
+server-side projection. Archive uses the compact month-grouped reading layout without tag, search,
+or sort controls; entries can be restored or permanently deleted. Favorites uses the regular Memo
+cards with inline editing, deletion, favorite, pin, archive, and sharing controls. It retains tag,
+search, and sort controls plus the X/Twitter import field. Memo
 creation, editing, favorite, archive, sharing, and deletion actions report completion through
 non-blocking application toasts while request errors remain visible in the active surface.
 
@@ -149,7 +180,7 @@ immediately after the `public` label in the card header; private cards render no
 
 ## Knowledge interaction
 
-Knowledge uses the narrow frame for its index, article, and editor. Article navigation and editing
+Knowledge uses the shared frame for its index, article, and editor. Article navigation and editing
 actions wrap in the shared header; the collapsible table of contents stays in the content column.
 Article editing uses a rich-text toolbar and an explicit
 Markdown source mode; unsupported rich-text syntax opens in source mode without rewriting content.
@@ -167,9 +198,9 @@ stack. They remain transparent and frame-free so the consumer theme stays visibl
 ## Moment interaction
 
 Moment opens on its original masonry gallery: one column below a 640px window, two below 1024px,
-and three otherwise. Sidebar resizing changes column widths without regrouping photos. Upload is a
-quiet action beside the Moment page title and enters a
-focused upload view; Filter remains a separate header action. The filter panel owns the complete tag
+and three otherwise. Sidebar resizing changes column widths without regrouping photos. Upload and
+Filter are compact icons beside the Moment page title. Upload enters a focused upload view;
+Filter toggles the panel and retains its active state. The filter panel owns the complete tag
 index, Any/All matching, and date order, with active tags summarized as removable chips. Tag reads
 show loading or retryable errors without replacing the gallery or clearing a settled index.
 
@@ -214,12 +245,22 @@ dismissible feedback rather than a persistent application state. The native appl
 an explicit Check for Updates action; a manual check reports when the installed version is current.
 
 The sidebar omits a separate brand header and keeps its navigation visually primary, including
-Settings as a full navigation tab. An editable local profile badge anchors the left side of the footer
+Settings as a full navigation tab. Consumer destinations appear only when their corresponding
+credentials are configured; Newspaper shares Knowledge configuration, Music accepts either provider,
+and Inbox requires ntfy. Dashboard and Settings remain available while configuration loads. The
+sidebar has no separate Connections inventory. Removing the active destination’s configuration
+returns the shell to Dashboard. An editable local profile badge anchors the left side of the footer
 beside its three controls; selecting it exposes a compact floating name and avatar editor above the
 footer. The editor receives focus when opened and collapses when focus leaves the badge and popover. The
 square-cropped avatar and display name persist locally and do not imply an application session. On
 desktop, the sidebar's right edge supports pointer dragging and keyboard resizing within bounded
-widths, and remembers the chosen width. The footer separates destinations from immediate actions
+widths, and remembers the chosen width. Below 160px it hides navigation and profile text; the 64px
+minimum retains navigation icons and only the avatar in the footer. Inbox, App Lock and theme
+controls are hidden until the sidebar expands. Navigation buttons
+keep accessible names and hover titles, and the profile editor opens beside the compact rail.
+Arrow keys resize in 8px steps; Home and End select the minimum and maximum widths. Mobile keeps
+the full-width labeled drawer regardless of the saved desktop width.
+The footer separates destinations from immediate actions
 without a visual divider: Inbox remains a destination and shows a small status dot while unread
 notifications exist, while App Lock and theme are immediate actions.
 When no password exists, the lock control routes to Settings; otherwise it immediately makes the
@@ -231,7 +272,10 @@ creation, replacement, and removal, and describes App Lock as a privacy screen r
 
 Settings uses horizontal categories above a single content column, with consistent card headers,
 field spacing and action footers. Narrow layouts scroll the categories and stack labels above inputs.
-Category switches keep forms mounted to preserve drafts and pending operations.
+Category buttons use compact insets and name each section without repeating a secondary heading.
+Category switches keep forms mounted to preserve drafts and pending operations. Settings and game
+connections share one ConfigurationBadge treatment for configured credentials, environment sources,
+and authorization state.
 
 Each credential form tracks its own saved values and pending operation. Save is enabled only when
 required fields are complete and the form differs from its saved values. Saving one form leaves
@@ -251,10 +295,13 @@ values, and preserves edits during reads and saves. Unchanged forms cannot be su
 
 Game cards span all twelve Dashboard tracks. Daily metrics sit beside pull charts and manual archive
 actions, separated by a quiet divider. miHoYo content areas are 14rem high with independent scrolling;
-narrow cards stack the sections and allow each to scroll above 14rem. Refresh and verification
-controls remain reachable as errors or archive rows grow. Daily metrics use compact typography
-instead of native progress bars. Genshin uses two-column metrics and filled/outlined stars for
-commissions, expeditions, and weekly discounts, with numeric accessible labels and tooltips.
+narrow cards stack the sections. Refresh and verification controls remain reachable as content grows.
+
+Daily metrics use two compact columns. Task progress with up to five steps uses filled and outlined
+stars, with an accessible step count and the original numeric value in its tooltip. Genshin uses
+this treatment for commissions, expeditions and weekly discounts; Star Rail uses it for assignments
+and daily training, where each star represents a 100-point milestone. Power and reserve amounts
+retain numeric values. Dashboard and Dynamic Island render the same task treatment.
 
 Daily refresh is an icon-only action with a tooltip and accessible label. Genshin and Star Rail
 verification windows show loading, submission, and completion states, then direct the user to close

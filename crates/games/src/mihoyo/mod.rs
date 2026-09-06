@@ -469,12 +469,19 @@ pub(crate) async fn notes(
                     value: data.current_reserve_stamina.to_string(),
                 },
                 Task {
-                    progress: None,
+                    // Each star represents a completed 100-point training milestone.
+                    progress: Some(crate::TaskProgress {
+                        current: data.current_train_score / 100,
+                        total: data.max_train_score / 100,
+                    }),
                     label: "Daily training".into(),
                     value: format!("{} / {}", data.current_train_score, data.max_train_score),
                 },
                 Task {
-                    progress: None,
+                    progress: Some(crate::TaskProgress {
+                        current: data.accepted_epedition_num,
+                        total: data.total_expedition_num,
+                    }),
                     label: "Assignments".into(),
                     value: format!(
                         "{} / {}",

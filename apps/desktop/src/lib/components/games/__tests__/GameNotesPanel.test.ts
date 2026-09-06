@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { mount, unmount } from "svelte";
-import type { GameNotesResponse } from "../../../consumer";
+import type { Game, GameNotesResponse } from "../../../consumer";
 import GameNotesPanel from "../GameNotesPanel.svelte";
 
 const commands = vi.hoisted(() => ({ invoke: vi.fn() }));
@@ -101,35 +101,44 @@ it("keeps verification available after the window fails to open", async () => {
 });
 
 it.each([
-	{ label: "Daily commissions", total: 4, current: 0 },
-	{ label: "Daily commissions", total: 4, current: 2 },
-	{ label: "Daily commissions", total: 4, current: 4 },
-	{ label: "Expeditions", total: 5, current: 5 },
-	{ label: "Expeditions", total: 5, current: 2 },
-	{ label: "Weekly discounts remaining", total: 3, current: 3 },
-	{ label: "Weekly discounts remaining", total: 3, current: 0 },
-])("renders $label ($current/$total) as accessible stars", async ({ label, current, total }) => {
-	commands.invoke.mockResolvedValue({
-		status: "ready",
-		data: {
-			account: { game: "genshin", uid: "100", name: "Traveler", region: "cn_gf01", roleId: "100" },
-			sampledAt: 1,
-			meters: [{ label: "Original Resin", current: 80, max: 200, fullAt: null }],
-			tasks: [{ label, value: `${current} / ${total}`, progress: { current, total } }],
-		},
-	});
-	const target = document.createElement("div");
-	view = mount(GameNotesPanel, { target, props: { game: "genshin" } });
-	await vi.waitFor(() => expect(target.querySelector('[role="img"]')).not.toBeNull());
-	const stars = target.querySelector('[role="img"]');
-	expect(stars?.getAttribute("aria-label")).toBe(`${label}: ${current} of ${total}`);
-	expect(stars?.querySelectorAll("svg")).toHaveLength(total);
-	expect(stars?.querySelectorAll('svg[fill="currentColor"]')).toHaveLength(current);
-	expect(stars?.querySelectorAll('svg[fill="none"]')).toHaveLength(total - current);
-	expect(target.textContent).not.toContain(`${current} / ${total}`);
-	expect(target.querySelector("section")?.classList.contains("compact")).toBe(true);
-	expect(commands.invoke).toHaveBeenCalledTimes(1);
-});
+	{ game: "genshin", label: "Daily commissions", total: 4, current: 0 },
+	{ game: "genshin", label: "Daily commissions", total: 4, current: 2 },
+	{ game: "genshin", label: "Daily commissions", total: 4, current: 4 },
+	{ game: "genshin", label: "Expeditions", total: 5, current: 5 },
+	{ game: "genshin", label: "Expeditions", total: 5, current: 2 },
+	{ game: "genshin", label: "Weekly discounts remaining", total: 3, current: 3 },
+	{ game: "genshin", label: "Weekly discounts remaining", total: 3, current: 0 },
+	{ game: "starRail", label: "Assignments", total: 4, current: 0 },
+	{ game: "starRail", label: "Assignments", total: 4, current: 2 },
+	{ game: "starRail", label: "Assignments", total: 4, current: 4 },
+	{ game: "starRail", label: "Daily training", total: 5, current: 0 },
+	{ game: "starRail", label: "Daily training", total: 5, current: 3 },
+	{ game: "starRail", label: "Daily training", total: 5, current: 5 },
+] satisfies Array<{ game: Game; label: string; total: number; current: number }>)(
+	"renders $game $label ($current/$total) as accessible stars",
+	async ({ game, label, current, total }) => {
+		commands.invoke.mockResolvedValue({
+			status: "ready",
+			data: {
+				account: { game, uid: "100", name: "Traveler", region: "cn_gf01", roleId: "100" },
+				sampledAt: 1,
+				meters: [{ game: "genshin", label: "Original Resin", current: 80, max: 200, fullAt: null }],
+				tasks: [{ label, value: `${current} / ${total}`, progress: { current, total } }],
+			},
+		});
+		const target = document.createElement("div");
+		view = mount(GameNotesPanel, { target, props: { game } });
+		await vi.waitFor(() => expect(target.querySelector('[role="img"]')).not.toBeNull());
+		const stars = target.querySelector('[role="img"]');
+		expect(stars?.getAttribute("aria-label")).toBe(`${label}: ${current} of ${total}`);
+		expect(stars?.querySelectorAll("svg")).toHaveLength(total);
+		expect(stars?.querySelectorAll('svg[fill="currentColor"]')).toHaveLength(current);
+		expect(stars?.querySelectorAll('svg[fill="none"]')).toHaveLength(total - current);
+		expect(target.textContent).not.toContain(`${current} / ${total}`);
+		expect(target.querySelector("section")?.classList.contains("compact")).toBe(true);
+		expect(commands.invoke).toHaveBeenCalledTimes(1);
+	},
+);
 
 it("does not claim success when verification returns no authorization", async () => {
 	commands.invoke.mockImplementation((command: string) =>

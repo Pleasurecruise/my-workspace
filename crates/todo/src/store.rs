@@ -1,48 +1,102 @@
-use crate::{Calendar, Details, Error, Item, List, MAX_TEXT_LENGTH, parse_date, validate_date};
+use crate::{Details, Error, Item, List, MAX_TEXT_LENGTH, parse_date, validate_date};
+use diesel::prelude::*;
 use std::collections::BTreeSet;
-use std::fs::OpenOptions;
-use std::path::PathBuf;
-use tokio::sync::Mutex;
+use std::path::{Path, PathBuf};
 
-const APPLICATION_IDENTIFIER: &str = "me.you-find.vesper";
-const FILE_NAME: &str = "todos.json";
-const SCHEDULE_DIRECTORY_NAME: &str = "ics";
+diesel::table! {
+    todo_items (date, id) {
+        date -> Text,
+        id -> Text,
+        position -> Integer,
+        text -> Text,
+        completed -> Bool,
+        calendar -> Nullable<Text>,
+        start_date -> Nullable<Text>,
+        start_time -> Nullable<Text>,
+        end_date -> Nullable<Text>,
+        end_time -> Nullable<Text>,
+        location -> Nullable<Text>,
+        description -> Nullable<Text>,
+    }
+}
+diesel::table! {
+    todo_occurrences (date, key) {
+        date -> Text,
+        key -> Text,
+    }
+}
+#[derive(Queryable, Selectable, Insertable)]
+#[diesel(table_name = todo_items)]
+struct ItemRow {
+    date: String,
+    id: String,
+    position: i32,
+    text: String,
+    completed: bool,
+    calendar: Option<String>,
+    start_date: Option<String>,
+    start_time: Option<String>,
+    end_date: Option<String>,
+    end_time: Option<String>,
+    location: Option<String>,
+    description: Option<String>,
+}
 
 pub struct Store {
     path: PathBuf,
     schedule_directory: PathBuf,
-    operation: Mutex<()>,
+    calendar_read: tokio::sync::Mutex<()>,
 }
 
 impl Store {
     pub fn new(path: PathBuf) -> Self {
-        let schedule_directory = path.with_file_name(SCHEDULE_DIRECTORY_NAME);
         Self {
+            schedule_directory: path.with_file_name("ics"),
             path,
-            schedule_directory,
-            operation: Mutex::new(()),
+            calendar_read: tokio::sync::Mutex::new(()),
         }
     }
 
     pub fn shared() -> Result<Self, Error> {
-        Ok(Self::new(shared_path()?))
+        let mut store = Self::new(vesper_database::shared_path()?);
+        // ICS remains a user-managed input in its original application-data directory.
+        store.schedule_directory = dirs::data_dir()
+            .ok_or(Error::DataDirectoryUnavailable)?
+            .join("me.you-find.vesper")
+            .join("ics");
+        Ok(store)
+    }
+
+    pub fn database_path(&self) -> &Path {
+        &self.path
+    }
+
+    async fn transaction<T: Send + 'static>(
+        &self,
+        operation: impl FnOnce(&mut SqliteConnection) -> Result<T, Error> + Send + 'static,
+    ) -> Result<T, Error> {
+        let path = self.path.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut connection = vesper_database::open(&path)?;
+            connection.immediate_transaction(operation)
+        })
+        .await
+        .map_err(|error| Error::Task(error.to_string()))?
     }
 
     pub async fn list(&self, date: &str) -> Result<List, Error> {
         validate_date(date)?;
-        let operation_guard = self.operation.lock().await;
-        let file_guard = self.lock_file().await?;
-        let calendar = self.load().await?;
-        let list = List {
-            date: date.to_owned(),
-            items: calendar.days.get(date).cloned().unwrap_or_default(),
-        };
-        drop(file_guard);
-        drop(operation_guard);
-        Ok(list)
+        let date = date.to_owned();
+        let path = self.path.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut connection = vesper_database::open(&path)?;
+            connection.transaction(|connection| read_list(connection, &date))
+        })
+        .await
+        .map_err(|error| Error::Task(error.to_string()))?
     }
 
-    pub fn schedule_directory(&self) -> &std::path::Path {
+    pub fn schedule_directory(&self) -> &Path {
         &self.schedule_directory
     }
 
@@ -67,8 +121,7 @@ impl Store {
             })?;
             schedules.push((name, content));
         }
-        let _operation = self.operation.lock().await;
-        let file_guard = self.lock_file().await?;
+        let file_guard = self.calendar_lock().await?;
         let directory = self.schedule_directory.clone();
         let outcome = tokio::task::spawn_blocking(move || {
             // Keep the cross-process lock until installation finishes, even if the caller cancels.
@@ -97,74 +150,178 @@ impl Store {
         }
     }
 
-    pub async fn sync_schedule(&self, date: &str) -> Result<List, Error> {
-        validate_date(date)?;
-        let _operation = self.operation.lock().await;
-        let _file = self.lock_file().await?;
-        let schedules = self.load_schedules().await?;
-        if schedules.is_empty() {
-            let calendar = self.load().await?;
-            return Ok(List {
-                date: date.to_owned(),
-                items: calendar.days.get(date).cloned().unwrap_or_default(),
-            });
-        }
-        let parsed_date = parse_date(date)?;
-        let mut occurrences = Vec::new();
-        for (path, content) in schedules {
-            let source = schedule_name(&path)?;
-            let parsed =
-                crate::schedule::occurrences(&content, parsed_date).map_err(|message| {
-                    Error::ScheduleParse {
-                        path: path.clone(),
-                        message,
-                    }
-                })?;
-            occurrences.extend(parsed.into_iter().map(|mut occurrence| {
-                occurrence.key = format!("{source}:{}", occurrence.key);
-                occurrence.details.calendar = source.clone();
-                occurrence
-            }));
-        }
-        for occurrence in &occurrences {
-            normalized_text(&occurrence.text)?;
-        }
-
-        let mut calendar = self.load().await?;
-        let imported = calendar
-            .imported_occurrences
-            .entry(date.to_owned())
-            .or_default();
-        let items = calendar.days.entry(date.to_owned()).or_default();
-        let mut changed = false;
-        for occurrence in occurrences {
-            let details = Details {
-                calendar: occurrence.details.calendar,
-                start_date: occurrence.details.start_date,
-                start_time: occurrence.details.start_time,
-                end_date: occurrence.details.end_date,
-                end_time: occurrence.details.end_time,
-                location: occurrence.details.location,
-                description: occurrence.details.description,
-            };
-            if imported.insert(occurrence.key) {
-                items.push(Item {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    text: occurrence.text,
-                    completed: false,
-                    details: Some(details),
-                });
-                changed = true;
+    // Coordinates the API read and commit with configuration writes in both Desktop and CLI.
+    async fn calendar_lock(&self) -> Result<std::fs::File, Error> {
+        let path = self.path.with_extension("calendar.lock");
+        tokio::task::spawn_blocking(move || {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(Error::CalendarLock)?;
             }
+            let mut options = std::fs::OpenOptions::new();
+            options.read(true).write(true).create(true).truncate(false);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let lock = options.open(path).map_err(Error::CalendarLock)?;
+            lock.lock().map_err(Error::CalendarLock)?;
+            Ok(lock)
+        })
+        .await
+        .map_err(|error| Error::Task(error.to_string()))?
+    }
+
+    pub async fn configure_notion(
+        &self,
+        configuration: vesper_credentials::NotionCalendar,
+    ) -> Result<(), Error> {
+        let _read = self.calendar_read.lock().await;
+        let _file = self.calendar_lock().await?;
+        vesper_credentials::save_notion_calendar(configuration)?;
+        Ok(())
+    }
+
+    pub async fn sync_calendar(&self, date: &str) -> Result<List, Error> {
+        validate_date(date)?;
+        let _read = self.calendar_read.lock().await;
+        let file_guard = self.calendar_lock().await?;
+        let result: Result<Vec<Item>, Error> = async {
+            let configuration = vesper_credentials::notion_calendar()?;
+            let remote = match &configuration {
+                vesper_credentials::Stored::Ready(configuration) => {
+                    crate::notion::read(configuration, date).await?
+                }
+                vesper_credentials::Stored::Missing => Vec::new(),
+            };
+            let current = vesper_credentials::notion_calendar()?;
+            let unchanged = match (&configuration, &current) {
+                (
+                    vesper_credentials::Stored::Ready(first),
+                    vesper_credentials::Stored::Ready(second),
+                ) => first.view_url == second.view_url,
+                (vesper_credentials::Stored::Missing, vesper_credentials::Stored::Missing) => true,
+                _ => false,
+            };
+            if !unchanged {
+                return Err(Error::Notion(
+                    "configuration changed during the request; refresh again".into(),
+                ));
+            }
+            Ok(remote)
         }
-        let list = List {
-            date: date.to_owned(),
-            items: items.clone(),
+        .await;
+        let mut local = self.sync_schedule(date).await?;
+        let remote = match result {
+            Ok(remote) => remote,
+            Err(error) => {
+                local.sync_error = Some(error.to_string());
+                return Ok(local);
+            }
         };
-        if changed {
-            self.persist(&calendar).await?;
-        }
-        Ok(list)
+        self.replace_notion(date, remote, file_guard).await
+    }
+
+    async fn replace_notion(
+        &self,
+        date: &str,
+        remote: Vec<Item>,
+        file_guard: std::fs::File,
+    ) -> Result<List, Error> {
+        let date = date.to_owned();
+        let path = self.path.clone();
+        tokio::task::spawn_blocking(move || {
+            // Cancellation must not release the calendar lock before this commit finishes.
+            let _file = file_guard;
+            let mut connection = vesper_database::open(&path)?;
+            connection.immediate_transaction(move |connection| {
+                let mut list = read_list(connection, &date)?;
+                let removed: BTreeSet<String> = todo_occurrences::table
+                    .filter(todo_occurrences::date.eq(&date))
+                    .select(todo_occurrences::key)
+                    .load::<String>(connection)?
+                    .into_iter()
+                    .collect();
+                let completed: BTreeSet<String> = list
+                    .items
+                    .iter()
+                    .filter(|item| item.completed)
+                    .map(|item| item.id.clone())
+                    .collect();
+                list.items.retain(|item| !item.id.starts_with("notion:"));
+                for mut item in remote {
+                    if removed.contains(&item.id) {
+                        continue;
+                    }
+                    item.completed = completed.contains(&item.id);
+                    list.items.push(item);
+                }
+                save_items(connection, &list)?;
+                Ok(list)
+            })
+        })
+        .await
+        .map_err(|error| Error::Task(error.to_string()))?
+    }
+
+    pub async fn sync_schedule(&self, date: &str) -> Result<List, Error> {
+        let parsed_date = parse_date(date)?;
+        let date = date.to_owned();
+        let schedules = self.load_schedules().await?;
+        self.transaction(move |connection| {
+            let mut imported: BTreeSet<String> = todo_occurrences::table
+                .filter(todo_occurrences::date.eq(&date))
+                .select(todo_occurrences::key)
+                .load::<String>(connection)?
+                .into_iter()
+                .collect();
+            let mut list = read_list(connection, &date)?;
+            let mut changed = false;
+            for (path, content) in schedules {
+                let name = schedule_name(&path)?;
+                let occurrences =
+                    crate::schedule::occurrences(&content, parsed_date).map_err(|message| {
+                        Error::ScheduleParse {
+                            path: PathBuf::from(&name),
+                            message,
+                        }
+                    })?;
+                for mut occurrence in occurrences {
+                    normalized_text(&occurrence.text)?;
+                    let key = format!("{name}:{}", occurrence.key);
+                    if !imported.insert(key.clone()) {
+                        continue;
+                    }
+                    occurrence.details.calendar = name.clone();
+                    list.items.push(Item {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        text: occurrence.text,
+                        completed: false,
+                        details: Some(Details {
+                            calendar: occurrence.details.calendar,
+                            start_date: occurrence.details.start_date,
+                            start_time: occurrence.details.start_time,
+                            end_date: occurrence.details.end_date,
+                            end_time: occurrence.details.end_time,
+                            location: occurrence.details.location,
+                            description: occurrence.details.description,
+                        }),
+                    });
+                    diesel::insert_into(todo_occurrences::table)
+                        .values((
+                            todo_occurrences::date.eq(&date),
+                            todo_occurrences::key.eq(key),
+                        ))
+                        .execute(connection)?;
+                    changed = true;
+                }
+            }
+            if changed {
+                save_items(connection, &list)?;
+            }
+            Ok(list)
+        })
+        .await
     }
 
     async fn load_schedules(&self) -> Result<Vec<(PathBuf, String)>, Error> {
@@ -195,7 +352,9 @@ impl Store {
                     source,
                 })?
                 .is_file()
-                && has_ics_extension(&path)
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("ics"))
             {
                 paths.push(path);
             }
@@ -225,11 +384,11 @@ impl Store {
     }
 
     pub async fn create(&self, date: &str, text: &str) -> Result<List, Error> {
-        let text = normalized_text(text)?;
-        self.mutate(date, |items| {
+        let text = normalized_text(text)?.to_owned();
+        self.mutate(date, move |items| {
             items.push(Item {
                 id: uuid::Uuid::new_v4().to_string(),
-                text: text.to_owned(),
+                text,
                 completed: false,
                 details: None,
             });
@@ -239,9 +398,10 @@ impl Store {
     }
 
     pub async fn update(&self, date: &str, id: &str, text: &str) -> Result<List, Error> {
-        let text = normalized_text(text)?;
-        self.mutate(date, |items| {
-            find_item(items, id)?.text = text.to_owned();
+        let text = normalized_text(text)?.to_owned();
+        let id = id.to_owned();
+        self.mutate(date, move |items| {
+            find_item(items, &id)?.text = text;
             Ok(())
         })
         .await
@@ -253,21 +413,36 @@ impl Store {
         id: &str,
         completed: bool,
     ) -> Result<List, Error> {
-        self.mutate(date, |items| {
-            find_item(items, id)?.completed = completed;
+        let id = id.to_owned();
+        self.mutate(date, move |items| {
+            find_item(items, &id)?.completed = completed;
             Ok(())
         })
         .await
     }
 
     pub async fn delete(&self, date: &str, id: &str) -> Result<List, Error> {
-        self.mutate(date, |items| {
-            let original_len = items.len();
-            items.retain(|item| item.id != id);
-            if items.len() == original_len {
+        validate_date(date)?;
+        let date = date.to_owned();
+        let id = id.to_owned();
+        self.transaction(move |connection| {
+            let mut list = read_list(connection, &date)?;
+            let original_len = list.items.len();
+            list.items.retain(|item| item.id != id);
+            if list.items.len() == original_len {
                 return Err(Error::MissingItem);
             }
-            Ok(())
+            if id.starts_with("notion:") {
+                diesel::insert_into(todo_occurrences::table)
+                    .values((
+                        todo_occurrences::date.eq(&date),
+                        todo_occurrences::key.eq(id),
+                    ))
+                    .on_conflict_do_nothing()
+                    .execute(connection)?;
+            }
+            save_items(connection, &list)?;
+            Ok(list)
         })
         .await
     }
@@ -275,130 +450,101 @@ impl Store {
     async fn mutate(
         &self,
         date: &str,
-        mutation: impl FnOnce(&mut Vec<Item>) -> Result<(), Error>,
+        mutation: impl FnOnce(&mut Vec<Item>) -> Result<(), Error> + Send + 'static,
     ) -> Result<List, Error> {
         validate_date(date)?;
-        let operation_guard = self.operation.lock().await;
-        let file_guard = self.lock_file().await?;
-        let mut calendar = self.load().await?;
-        let items = calendar.days.entry(date.to_owned()).or_default();
-        mutation(items)?;
-        let list = List {
-            date: date.to_owned(),
-            items: items.clone(),
-        };
-        if items.is_empty() {
-            calendar.days.remove(date);
-        }
-        self.persist(&calendar).await?;
-        drop(file_guard);
-        drop(operation_guard);
-        Ok(list)
-    }
-
-    async fn load(&self) -> Result<Calendar, Error> {
-        let temporary = self.path.with_extension("json.tmp");
-        if !self.path.exists() && temporary.exists() {
-            replace_file(&temporary, &self.path)
-                .await
-                .map_err(|source| Error::Io {
-                    operation: "recover",
-                    path: self.path.clone(),
-                    source,
-                })?;
-        }
-        match tokio::fs::read_to_string(&self.path).await {
-            Ok(content) => serde_json::from_str(&content).map_err(|source| Error::Parse {
-                path: self.path.clone(),
-                source,
-            }),
-            Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(Calendar::default()),
-            Err(source) => Err(Error::Io {
-                operation: "read",
-                path: self.path.clone(),
-                source,
-            }),
-        }
-    }
-
-    async fn lock_file(&self) -> Result<std::fs::File, Error> {
-        let parent = self.path.parent().ok_or(Error::MissingParent)?;
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|source| Error::Io {
-                operation: "create",
-                path: parent.to_path_buf(),
-                source,
-            })?;
-        let lock_path = self.path.with_extension("lock");
-        let outcome = tokio::task::spawn_blocking(move || {
-            let file = OpenOptions::new()
-                .create(true)
-                .truncate(false)
-                .read(true)
-                .write(true)
-                .open(&lock_path)
-                .map_err(|source| Error::Io {
-                    operation: "open",
-                    path: lock_path.clone(),
-                    source,
-                })?;
-            file.lock().map_err(|source| Error::Io {
-                operation: "lock",
-                path: lock_path,
-                source,
-            })?;
-            Ok(file)
+        let date = date.to_owned();
+        self.transaction(move |connection| {
+            let mut list = read_list(connection, &date)?;
+            mutation(&mut list.items)?;
+            save_items(connection, &list)?;
+            Ok(list)
         })
-        .await;
-        match outcome {
-            Ok(result) => result,
-            Err(error) => Err(Error::Task(error.to_string())),
-        }
+        .await
     }
+}
 
-    async fn persist(&self, calendar: &Calendar) -> Result<(), Error> {
-        let parent = self.path.parent().ok_or(Error::MissingParent)?;
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|source| Error::Io {
-                operation: "create",
-                path: parent.to_path_buf(),
-                source,
-            })?;
-        let content = serde_json::to_vec_pretty(calendar)?;
-        let temporary = self.path.with_extension("json.tmp");
-        tokio::fs::write(&temporary, content)
-            .await
-            .map_err(|source| Error::Io {
-                operation: "write",
-                path: temporary.clone(),
-                source,
-            })?;
-        tokio::fs::OpenOptions::new()
-            .read(true)
-            .open(&temporary)
-            .await
-            .map_err(|source| Error::Io {
-                operation: "open",
-                path: temporary.clone(),
-                source,
-            })?
-            .sync_all()
-            .await
-            .map_err(|source| Error::Io {
-                operation: "sync",
-                path: temporary.clone(),
-                source,
-            })?;
-        replace_file(&temporary, &self.path)
-            .await
-            .map_err(|source| Error::Io {
-                operation: "replace",
-                path: self.path.clone(),
-                source,
+fn read_list(connection: &mut SqliteConnection, date: &str) -> Result<List, Error> {
+    let rows = todo_items::table
+        .filter(todo_items::date.eq(date))
+        .order(todo_items::position.asc())
+        .select(ItemRow::as_select())
+        .load(connection)?;
+    let items = rows
+        .into_iter()
+        .map(|row| {
+            let details = match (row.calendar, row.start_date) {
+                (Some(calendar), Some(start_date)) => Some(Details {
+                    calendar,
+                    start_date,
+                    start_time: row.start_time,
+                    end_date: row.end_date,
+                    end_time: row.end_time,
+                    location: row.location,
+                    description: row.description,
+                }),
+                (None, None) => None,
+                _ => return Err(Error::InvalidRecord),
+            };
+            Ok(Item {
+                id: row.id,
+                text: row.text,
+                completed: row.completed,
+                details,
             })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(List {
+        sync_error: None,
+        date: date.to_owned(),
+        items,
+    })
+}
+
+fn save_items(connection: &mut SqliteConnection, list: &List) -> Result<(), Error> {
+    diesel::delete(todo_items::table.filter(todo_items::date.eq(&list.date)))
+        .execute(connection)?;
+    for (position, item) in list.items.iter().enumerate() {
+        let row = ItemRow {
+            date: list.date.clone(),
+            id: item.id.clone(),
+            position: i32::try_from(position).map_err(|_| Error::InvalidRecord)?,
+            text: item.text.clone(),
+            completed: item.completed,
+            calendar: item
+                .details
+                .as_ref()
+                .map(|details| details.calendar.clone()),
+            start_date: item
+                .details
+                .as_ref()
+                .map(|details| details.start_date.clone()),
+            start_time: item
+                .details
+                .as_ref()
+                .and_then(|details| details.start_time.clone()),
+            end_date: item
+                .details
+                .as_ref()
+                .and_then(|details| details.end_date.clone()),
+            end_time: item
+                .details
+                .as_ref()
+                .and_then(|details| details.end_time.clone()),
+            location: item
+                .details
+                .as_ref()
+                .and_then(|details| details.location.clone()),
+            description: item
+                .details
+                .as_ref()
+                .and_then(|details| details.description.clone()),
+        };
+        diesel::insert_into(todo_items::table)
+            .values(row)
+            .execute(connection)?;
     }
+    Ok(())
 }
 
 // Stage complete bytes before replacing a schedule. Temporary files have no .ics extension,
@@ -417,36 +563,15 @@ fn install_schedule(
     Ok(())
 }
 
-#[cfg(not(windows))]
-async fn replace_file(temporary: &std::path::Path, path: &std::path::Path) -> std::io::Result<()> {
-    tokio::fs::rename(temporary, path).await
-}
-
-#[cfg(windows)]
-async fn replace_file(temporary: &std::path::Path, path: &std::path::Path) -> std::io::Result<()> {
-    match tokio::fs::remove_file(path).await {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    tokio::fs::rename(temporary, path).await
-}
-
-pub fn shared_path() -> Result<PathBuf, Error> {
-    dirs::data_dir()
-        .map(|path| path.join(APPLICATION_IDENTIFIER).join(FILE_NAME))
-        .ok_or(Error::DataDirectoryUnavailable)
-}
-
 fn normalized_text(text: &str) -> Result<&str, Error> {
     let text = text.trim();
     if text.is_empty() {
-        Err(Error::EmptyText)
-    } else if text.chars().count() > MAX_TEXT_LENGTH {
-        Err(Error::TextTooLong)
-    } else {
-        Ok(text)
+        return Err(Error::EmptyText);
     }
+    if text.chars().count() > MAX_TEXT_LENGTH {
+        return Err(Error::TextTooLong);
+    }
+    Ok(text)
 }
 
 fn find_item<'a>(items: &'a mut [Item], id: &str) -> Result<&'a mut Item, Error> {
@@ -456,20 +581,17 @@ fn find_item<'a>(items: &'a mut [Item], id: &str) -> Result<&'a mut Item, Error>
         .ok_or(Error::MissingItem)
 }
 
-fn schedule_name(path: &std::path::Path) -> Result<String, Error> {
-    if !has_ics_extension(path) {
-        return Err(Error::InvalidScheduleSource(path.to_path_buf()));
+fn schedule_name(path: &Path) -> Result<String, Error> {
+    if !path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("ics"))
+    {
+        return Err(Error::InvalidScheduleSource(path.to_owned()));
     }
     path.file_name()
         .and_then(|name| name.to_str())
         .map(str::to_owned)
-        .ok_or_else(|| Error::InvalidScheduleSource(path.to_path_buf()))
-}
-
-fn has_ics_extension(path: &std::path::Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("ics"))
+        .ok_or_else(|| Error::InvalidScheduleSource(path.to_owned()))
 }
 
 #[cfg(test)]

@@ -303,8 +303,6 @@
 <style>
 	.music { width: 100%; margin: 0 auto; }
 	.music.player-visible { display: flex; flex: 1; flex-direction: column; }
-	header { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
-	header h1 { margin: 0; }
 	.provider-switch { display: inline-flex; padding: 0.2rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-muted); }
 	.provider-switch button { padding: 0.38rem 0.65rem; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; font: inherit; font-size: 0.68rem; }
 	.provider-switch button.active { background: var(--color-card); color: var(--color-foreground); box-shadow: var(--shadow-sm); }

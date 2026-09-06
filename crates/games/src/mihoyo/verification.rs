@@ -119,7 +119,7 @@ impl Envelope {
 }
 
 // Deliberately excludes account identity, provider messages, cookies and captcha values.
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct Diagnostic {
     game: Game,
     stage: &'static str,
@@ -128,13 +128,38 @@ struct Diagnostic {
     timestamp: i64,
 }
 
+diesel::table! {
+    game_diagnostic (id) {
+        id -> Integer, game -> Text, stage -> Text, retcode -> BigInt,
+        has_trace -> Bool, timestamp -> BigInt,
+    }
+}
+
 impl Diagnostic {
-    async fn save(&self, path: &std::path::Path) -> Result<(), std::io::Error> {
-        let body = serde_json::to_vec(self)?;
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::write(path, body).await
+    async fn save(&self, path: &std::path::Path) -> Result<(), String> {
+        use diesel::prelude::*;
+        let path = path.to_owned();
+        let diagnostic = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut connection = vesper_database::open(&path).map_err(|error| error.to_string())?;
+            let values = (
+                game_diagnostic::game.eq(diagnostic.game.key()),
+                game_diagnostic::stage.eq(diagnostic.stage),
+                game_diagnostic::retcode.eq(diagnostic.retcode),
+                game_diagnostic::has_trace.eq(diagnostic.has_trace),
+                game_diagnostic::timestamp.eq(diagnostic.timestamp),
+            );
+            diesel::insert_into(game_diagnostic::table)
+                .values((game_diagnostic::id.eq(1), values))
+                .on_conflict(game_diagnostic::id)
+                .do_update()
+                .set(values)
+                .execute(&mut connection)
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        })
+        .await
+        .map_err(|error| error.to_string())?
     }
 }
 
@@ -224,15 +249,10 @@ impl Runtime {
             .await
             .get(game.key())
             .cloned();
-        let registration: Registration = request(
-            &record,
-            game,
-            None,
-            trace.as_deref(),
-            &self.archive.with_file_name("mihoyo-verification.json"),
-        )
-        .await
-        .map_err(|error| format!("Could not start verification: {error}"))?;
+        let registration: Registration =
+            request(&record, game, None, trace.as_deref(), &self.archive)
+                .await
+                .map_err(|error| format!("Could not start verification: {error}"))?;
         if !valid_field(&registration.gt) || !valid_field(&registration.challenge) {
             return Err(
                 "miHoYo returned an invalid challenge. Please try again manually later.".into(),
@@ -284,7 +304,7 @@ impl Runtime {
             pending.game,
             Some(&body),
             pending.trace.as_deref(),
-            &self.archive.with_file_name("mihoyo-verification.json"),
+            &self.archive,
         )
         .await
         .map_err(|error| format!("Verification failed: {error}"))?;

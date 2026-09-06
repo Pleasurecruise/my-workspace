@@ -1,3 +1,4 @@
+use crate::cache::Cache;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -8,8 +9,10 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdout, Command};
 
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
+const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
+static CACHE: Cache<Result<CodexUsage, String>> = Cache::new();
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexUsage {
     pub plan_type: Option<String>,
@@ -18,7 +21,7 @@ pub struct CodexUsage {
     pub spark: Option<CodexLimit>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexLimit {
     pub limit_id: Option<String>,
@@ -27,7 +30,7 @@ pub struct CodexLimit {
     pub secondary: Option<RateLimitWindow>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RateLimitWindow {
     pub used_percent: f64,
@@ -52,6 +55,10 @@ struct RateLimits {
 }
 
 pub async fn read() -> Result<CodexUsage, String> {
+    CACHE.read(CACHE_TTL, read_fresh()).await
+}
+
+async fn read_fresh() -> Result<CodexUsage, String> {
     let binary = resolve_codex_binary()?;
     let mut child = Command::new(&binary)
         .args(["app-server", "--stdio"])

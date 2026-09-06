@@ -16,6 +16,7 @@
   --color-overlay: color-mix(in srgb, var(--palette-black) 35%, transparent);
   --color-image-scrim: color-mix(in srgb, var(--palette-black) 78%, transparent);
   --color-on-dark: var(--palette-white);
+  --color-island-background: var(--palette-black);
 
   --font-sans:
     "Geist", "Inter", system-ui, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;

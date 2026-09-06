@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "island",
+  "description": "Local macOS Dynamic Island widget window",
+  "platforms": ["macOS"],
+  "windows": ["island"],
+  "permissions": ["core:default", "opener:default", "core:window:allow-set-theme"]
+}

@@ -2,7 +2,6 @@ use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
-use std::sync::LazyLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
@@ -11,7 +10,7 @@ const TOKEN_URL: &str = "https://open.cherryin.ai/oauth2/token";
 const CLIENT_ID: &str = "2a348c87-bae1-4756-a62f-b2e97200fd6d";
 const QUOTA_PER_UNIT: f64 = 500_000.0;
 const TOKEN_EXPIRY_BUFFER_MS: u64 = 60_000;
-static SESSION_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static SESSION_LOCK: Mutex<()> = Mutex::const_new(());
 
 #[derive(Debug, Serialize)]
 pub struct CherryInBalance {
@@ -89,7 +88,7 @@ pub async fn read() -> Result<CherryInBalance, String> {
         .json()
         .await
         .map_err(|error| format!("CherryIN returned an unsupported balance response: {error}"))?;
-    if !response.success {
+    if !response.success || !response.data.quota.is_finite() {
         return Err("CherryIN OAuth balance request was not successful".to_owned());
     }
     let balance = CherryInBalance {
@@ -119,9 +118,9 @@ fn read_oauth() -> Result<StoredOAuth, String> {
         )
         .map_err(|error| format!("Could not read Cherry Studio OAuth configuration: {error}"))?;
     let value: Value = serde_json::from_str(&auth_config)
-        .map_err(|error| format!("Could not decode Cherry Studio OAuth configuration: {error}"))?;
+        .map_err(|_| "Could not decode Cherry Studio OAuth configuration".to_owned())?;
     let config: OAuthConfig = serde_json::from_value(value.clone())
-        .map_err(|error| format!("Could not decode Cherry Studio OAuth configuration: {error}"))?;
+        .map_err(|_| "Could not decode Cherry Studio OAuth configuration".to_owned())?;
     if config.kind != "oauth" {
         return Err("Cherry Studio is not signed in to CherryIN with OAuth".to_owned());
     }
@@ -176,7 +175,7 @@ async fn valid_access_token(
     let tokens: TokenResponse = response
         .json()
         .await
-        .map_err(|error| format!("CherryIN returned an unsupported token response: {error}"))?;
+        .map_err(|_| "CherryIN returned an unsupported token response".to_owned())?;
     save_tokens(stored, tokens).await
 }
 
@@ -320,6 +319,80 @@ mod tests {
         .expect("valid balance response");
 
         assert_eq!(response.data.quota / QUOTA_PER_UNIT, 75.0);
+    }
+
+    #[tokio::test]
+    async fn rotates_tokens_without_overwriting_a_changed_session() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("cherrystudio.sqlite");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute(
+                "CREATE TABLE user_provider (provider_id TEXT, auth_config TEXT)",
+                [],
+            )
+            .unwrap();
+        let serialized = r#"{"type":"oauth","accessToken":"old","refreshToken":"refresh","expiresAt":1,"scope":"balance"}"#;
+        connection
+            .execute(
+                "INSERT INTO user_provider VALUES ('cherryin', ?1)",
+                [serialized],
+            )
+            .unwrap();
+        let mut stored = StoredOAuth {
+            db_path: path,
+            serialized: serialized.into(),
+            value: serde_json::from_str(serialized).unwrap(),
+            config: serde_json::from_str(serialized).unwrap(),
+        };
+        let access = save_tokens(
+            &mut stored,
+            TokenResponse {
+                access_token: "renewed".into(),
+                refresh_token: Some("rotated".into()),
+                expires_in: Some(3600),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(access, "renewed");
+        let saved: String = connection
+            .query_row("SELECT auth_config FROM user_provider", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let value: Value = serde_json::from_str(&saved).unwrap();
+        assert_eq!(value["scope"], "balance");
+        assert_eq!(value["refreshToken"], "rotated");
+        assert!(!token_needs_refresh(&stored.config).unwrap());
+        assert_eq!(
+            valid_access_token(&reqwest::Client::new(), &mut stored, false)
+                .await
+                .unwrap(),
+            "renewed"
+        );
+
+        connection
+            .execute("UPDATE user_provider SET auth_config = ?1", [serialized])
+            .unwrap();
+        assert!(
+            save_tokens(
+                &mut stored,
+                TokenResponse {
+                    access_token: "stale-result".into(),
+                    refresh_token: None,
+                    expires_in: Some(3600),
+                }
+            )
+            .await
+            .is_err()
+        );
+        let saved: String = connection
+            .query_row("SELECT auth_config FROM user_provider", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(saved, serialized);
     }
 
     #[tokio::test]

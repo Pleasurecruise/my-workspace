@@ -179,16 +179,24 @@
 	<MomentUpload {onupload} onuploaded={() => { uploadOpen = false; }} onclose={() => (uploadOpen = false)} />
 {:else}
 <section data-content-typography aria-label="Moment gallery">
-	<div class="gallery-heading">
+	<header class="page-header">
 		<div class="heading-copy">
 			<div class="title-row">
 				<h1 class="page-title">Moment</h1>
 				<button type="button" class="header-icon" onclick={() => (uploadOpen = true)} aria-label="Upload photos" title="Upload photos"><Upload size={12} /></button>
+				<button
+					type="button"
+					class="header-icon"
+					class:active={filtersOpen}
+					onclick={() => (filtersOpen = !filtersOpen)}
+					aria-label="Toggle filters"
+					aria-pressed={filtersOpen}
+					title="Toggle filters"
+				><SlidersHorizontal size={12} /></button>
 			</div>
-			<span>{filtered.length === photos.length ? `${total} photographs` : `${filtered.length} of ${total} photographs`}</span>
+			<p class="page-description">{filtered.length === photos.length ? `${total} photographs` : `${filtered.length} of ${total} photographs`}</p>
 		</div>
-		<button type="button" class:active={filtersOpen} class="filter-toggle" onclick={() => (filtersOpen = !filtersOpen)} aria-label="Toggle filters" aria-pressed={filtersOpen} title="Toggle filters"><SlidersHorizontal size={16} /></button>
-	</div>
+	</header>
 
 	{@render tagStatus?.()}
 
@@ -308,16 +316,12 @@
 {/if}
 
 <style>
-	.gallery-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
 	.heading-copy { min-width: 0; }
 	.title-row { display: flex; align-items: center; gap: 0.5rem; }
-	.gallery-heading span { margin: 0; }
-	.gallery-heading span { display: block; margin-top: 0.25rem; color: var(--color-muted-foreground); font-size: 0.875rem; }
-	.header-icon, .filter-toggle { display: grid; place-items: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
+	.header-icon { display: grid; place-items: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
 	.header-icon { width: 1.75rem; height: 1.75rem; }
-	.filter-toggle { width: 2rem; height: 2rem; }
-	.header-icon:hover, .filter-toggle:hover { background: var(--color-muted); color: var(--color-foreground); }
-	.filter-toggle.active { background: var(--color-foreground); color: var(--color-background); }
+	.header-icon:hover { background: var(--color-muted); color: var(--color-foreground); }
+	.header-icon.active { background: var(--color-foreground); color: var(--color-background); }
 	.active-filter-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
 	.active-filter-chips > span { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.4rem 0.3rem 0.6rem; border-radius: var(--radius-md); background: var(--color-muted); color: var(--color-foreground); font-size: 0.7rem; }
 	.active-filter-chips button { display: grid; width: 1rem; height: 1rem; place-items: center; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; }

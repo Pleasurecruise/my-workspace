@@ -1,19 +1,27 @@
+use diesel::prelude::*;
 use std::collections::HashSet;
-use std::fs;
-use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-
 use tauri::Manager;
 
 use crate::CommandResponse;
 
-const FILE_NAME: &str = "layout.json";
+diesel::table! {
+    dashboard_widgets (id) {
+        id -> Text,
+        position -> Integer,
+        configuration -> Text,
+    }
+}
+diesel::table! {
+    dashboard_layout (id) {
+        id -> Integer,
+        island_widget_id -> Nullable<Text>,
+    }
+}
 
 #[cfg(test)]
 #[path = "../tests/unit/game_layout.rs"]
 mod game_tests;
-static ACCESS: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
@@ -51,12 +59,6 @@ pub(crate) enum Widget {
     Game {
         game: games::Game,
     },
-    GameNotes {
-        game: games::Game,
-    },
-    GachaAnalysis {
-        game: games::Game,
-    },
     Steam,
 }
 
@@ -71,6 +73,7 @@ pub(crate) struct Placement {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Layout {
     widgets: Vec<Placement>,
+    island_widget_id: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -134,6 +137,18 @@ impl Default for Layout {
                     location: "shanghai".to_owned(),
                 },
             ),
+            (
+                "game-arknights",
+                Widget::Game {
+                    game: games::Game::Arknights,
+                },
+            ),
+            (
+                "game-starRail",
+                Widget::Game {
+                    game: games::Game::StarRail,
+                },
+            ),
             ("github", Widget::Github),
             ("calendar", Widget::Calendar),
             ("todo-list", Widget::TodoList),
@@ -148,12 +163,22 @@ impl Default for Layout {
             widget,
         })
         .collect();
-        Self { widgets }
+        Self {
+            widgets,
+            island_widget_id: Some("todo-list".to_owned()),
+        }
     }
 }
 
 impl Layout {
     fn validate(&self) -> Result<(), String> {
+        if self
+            .island_widget_id
+            .as_ref()
+            .is_some_and(|id| !self.widgets.iter().any(|placement| &placement.id == id))
+        {
+            return Err("Dynamic Island selection must reference a saved widget".to_owned());
+        }
         let mut ids = HashSet::new();
         let mut singletons = HashSet::new();
         for placement in &self.widgets {
@@ -213,8 +238,6 @@ impl Layout {
                 Widget::CherryIn => "cherry-in".to_owned(),
                 Widget::Quotation => "quotation".to_owned(),
                 Widget::Game { game } => format!("game-{}", game.key()),
-                Widget::GameNotes { game } => format!("gameNotes-{}", game.key()),
-                Widget::GachaAnalysis { game } => format!("gachaAnalysis-{}", game.key()),
                 Widget::Steam => "steam".to_owned(),
             };
             if !singletons.insert(key.clone()) {
@@ -253,71 +276,107 @@ fn valid_stock_symbol(symbol: &str) -> bool {
     true
 }
 
+#[cfg(test)]
 fn decode(bytes: &[u8]) -> Result<Layout, String> {
-    let mut layout: Layout = serde_json::from_slice(bytes)
-        .map_err(|error| format!("Dashboard layout is invalid: {error}"))?;
-    if layout.widgets.iter().any(|placement| {
-        matches!(
-            placement.widget,
-            Widget::GameNotes { .. } | Widget::GachaAnalysis { .. }
-        )
-    }) {
-        let mut games = HashSet::new();
-        for placement in &mut layout.widgets {
-            if let Widget::GameNotes { game } | Widget::GachaAnalysis { game } = placement.widget {
-                placement.widget = Widget::Game { game };
-            }
-        }
-        layout.widgets.retain(|placement| match placement.widget {
-            Widget::Game { game } => games.insert(game),
-            _ => true,
-        });
-    }
+    let layout: Layout = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
     layout.validate()?;
     Ok(layout)
 }
 
 fn read(path: &Path) -> Result<Layout, String> {
-    let _access = ACCESS
-        .lock()
-        .map_err(|error| format!("Dashboard layout storage is unavailable: {error}"))?;
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Layout::default()),
-        Err(error) => return Err(format!("Could not read Dashboard layout: {error}")),
-    };
-    decode(&bytes)
+    let mut connection = vesper_database::open(path).map_err(|error| error.to_string())?;
+    connection
+        .transaction::<_, diesel::result::Error, _>(|connection| {
+            let selected = dashboard_layout::table
+                .select(dashboard_layout::island_widget_id)
+                .first::<Option<String>>(connection)
+                .optional()?;
+            let records = dashboard_widgets::table
+                .order(dashboard_widgets::position.asc())
+                .select((dashboard_widgets::id, dashboard_widgets::configuration))
+                .load::<(String, String)>(connection)?;
+            Ok((selected, records))
+        })
+        .map_err(|error| format!("Could not read Dashboard layout: {error}"))
+        .and_then(|(selected, records)| {
+            let Some(island_widget_id) = selected else {
+                if !records.is_empty() {
+                    return Err("Dashboard layout is missing its selection record".to_owned());
+                }
+                return Ok(Layout::default());
+            };
+            let widgets = records
+                .into_iter()
+                .map(|(id, encoded)| {
+                    serde_json::from_str(&encoded)
+                        .map(|widget| Placement { id, widget })
+                        .map_err(|error| {
+                            format!("Dashboard widget configuration is invalid: {error}")
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let layout = Layout {
+                widgets,
+                island_widget_id,
+            };
+            layout.validate()?;
+            Ok(layout)
+        })
 }
 
 fn write(path: &Path, layout: &Layout) -> Result<(), String> {
-    let _access = ACCESS
-        .lock()
-        .map_err(|error| format!("Dashboard layout storage is unavailable: {error}"))?;
     layout.validate()?;
-    let parent = path
-        .parent()
-        .ok_or_else(|| "Dashboard layout path has no parent directory".to_owned())?;
-    fs::create_dir_all(parent)
-        .map_err(|error| format!("Could not create Dashboard layout directory: {error}"))?;
-    let bytes = serde_json::to_vec_pretty(layout)
-        .map_err(|error| format!("Could not encode Dashboard layout: {error}"))?;
-    let mut temporary = tempfile::NamedTempFile::new_in(parent)
-        .map_err(|error| format!("Could not prepare Dashboard layout: {error}"))?;
-    temporary
-        .write_all(&bytes)
-        .and_then(|()| temporary.as_file().sync_all())
-        .map_err(|error| format!("Could not write Dashboard layout: {error}"))?;
-    temporary
-        .persist(path)
-        .map_err(|error| format!("Could not replace Dashboard layout: {}", error.error))?;
-    Ok(())
+    let records = layout
+        .widgets
+        .iter()
+        .enumerate()
+        .map(|(position, placement)| {
+            let position =
+                i32::try_from(position).map_err(|_| "Too many Dashboard widgets".to_owned())?;
+            let configuration =
+                serde_json::to_string(&placement.widget).map_err(|error| error.to_string())?;
+            Ok((&placement.id, position, configuration))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let mut connection = vesper_database::open(path).map_err(|error| error.to_string())?;
+    connection
+        .immediate_transaction::<_, diesel::result::Error, _>(|connection| {
+            diesel::delete(dashboard_layout::table).execute(connection)?;
+            diesel::delete(dashboard_widgets::table).execute(connection)?;
+            for (id, position, configuration) in &records {
+                diesel::insert_into(dashboard_widgets::table)
+                    .values((
+                        dashboard_widgets::id.eq(id),
+                        dashboard_widgets::position.eq(position),
+                        dashboard_widgets::configuration.eq(configuration),
+                    ))
+                    .execute(connection)?;
+            }
+            diesel::insert_into(dashboard_layout::table)
+                .values((
+                    dashboard_layout::id.eq(1),
+                    dashboard_layout::island_widget_id.eq(&layout.island_widget_id),
+                ))
+                .execute(connection)?;
+            Ok(())
+        })
+        .map_err(|error| format!("Could not save Dashboard layout: {error}"))
 }
 
 fn path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
-        .app_data_dir()
-        .map(|directory| directory.join(FILE_NAME))
-        .map_err(|error| format!("Could not resolve Dashboard layout directory: {error}"))
+        .app_local_data_dir()
+        .map(|directory| directory.join(vesper_database::FILE_NAME))
+        .map_err(|error| format!("Could not resolve Dashboard database: {error}"))
+}
+
+pub(crate) fn island_widget(app: &tauri::AppHandle) -> Result<Option<Widget>, String> {
+    let layout = path(app).and_then(|path| read(&path))?;
+    Ok(layout
+        .widgets
+        .into_iter()
+        .find(|placement| Some(&placement.id) == layout.island_widget_id.as_ref())
+        .map(|placement| placement.widget))
 }
 
 pub(crate) fn stock_symbols(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
@@ -424,7 +483,10 @@ pub(crate) fn read_layout(app: tauri::AppHandle) -> CommandResponse<Layout> {
 #[tauri::command]
 pub(crate) fn save_layout(layout: Layout, app: tauri::AppHandle) -> CommandResponse<()> {
     match path(&app).and_then(|path| write(&path, &layout)) {
-        Ok(()) => CommandResponse::Ready { data: () },
+        Ok(()) => {
+            crate::island::sync(&app);
+            CommandResponse::Ready { data: () }
+        }
         Err(message) => CommandResponse::Failed { message },
     }
 }
@@ -433,7 +495,10 @@ pub(crate) fn save_layout(layout: Layout, app: tauri::AppHandle) -> CommandRespo
 pub(crate) fn reset_layout(app: tauri::AppHandle) -> CommandResponse<Layout> {
     let layout = Layout::default();
     match path(&app).and_then(|path| write(&path, &layout)) {
-        Ok(()) => CommandResponse::Ready { data: layout },
+        Ok(()) => {
+            crate::island::sync(&app);
+            CommandResponse::Ready { data: layout }
+        }
         Err(message) => CommandResponse::Failed { message },
     }
 }
@@ -445,29 +510,77 @@ mod tests {
     #[test]
     fn replaces_layout_and_preserves_it_when_validation_fails() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("layout.json");
-        write(&path, &Layout::default()).unwrap();
-        write(&path, &Layout { widgets: vec![] }).unwrap();
-        let saved = fs::read(&path).unwrap();
+        let path = directory.path().join(vesper_database::FILE_NAME);
+        let mut layout = Layout::default();
+        layout.widgets.reverse();
+        write(&path, &layout).unwrap();
+        let saved = serde_json::to_value(read(&path).unwrap()).unwrap();
+        assert_eq!(saved, serde_json::to_value(&layout).unwrap());
+        layout.island_widget_id = Some("absent".to_owned());
+        assert!(write(&path, &layout).is_err());
+        assert_eq!(serde_json::to_value(read(&path).unwrap()).unwrap(), saved);
+        write(
+            &path,
+            &Layout {
+                widgets: vec![],
+                island_widget_id: None,
+            },
+        )
+        .unwrap();
         assert!(read(&path).unwrap().widgets.is_empty());
-        let invalid = Layout {
-            widgets: vec![Placement {
-                id: String::new(),
-                widget: Widget::Cpu,
-            }],
-        };
-        assert!(write(&path, &invalid).is_err());
-        assert_eq!(fs::read(&path).unwrap(), saved);
-        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
     }
 
     #[test]
-    fn reports_corrupt_layout_without_replacing_it() {
+    fn database_failure_rolls_back_the_complete_layout() {
+        use diesel::connection::SimpleConnection;
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("layout.json");
-        fs::write(&path, b"{").unwrap();
+        let path = directory.path().join(vesper_database::FILE_NAME);
+        write(&path, &Layout::default()).unwrap();
+        let saved = serde_json::to_value(read(&path).unwrap()).unwrap();
+        let mut connection = vesper_database::open(&path).unwrap();
+        connection.batch_execute("CREATE TRIGGER reject_layout BEFORE INSERT ON dashboard_layout BEGIN SELECT RAISE(ABORT, 'test write failure'); END;").unwrap();
+        assert!(
+            write(
+                &path,
+                &Layout {
+                    widgets: vec![],
+                    island_widget_id: None
+                }
+            )
+            .is_err()
+        );
+        assert_eq!(serde_json::to_value(read(&path).unwrap()).unwrap(), saved);
+    }
+
+    #[test]
+    fn reports_corrupt_widget_without_replacing_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(vesper_database::FILE_NAME);
+        write(&path, &Layout::default()).unwrap();
+        let mut connection = vesper_database::open(&path).unwrap();
+        diesel::update(dashboard_widgets::table.find("todo-list"))
+            .set(dashboard_widgets::configuration.eq("{"))
+            .execute(&mut connection)
+            .unwrap();
         assert!(read(&path).is_err());
-        assert_eq!(fs::read(&path).unwrap(), b"{");
+        let value: String = dashboard_widgets::table
+            .find("todo-list")
+            .select(dashboard_widgets::configuration)
+            .first(&mut connection)
+            .unwrap();
+        assert_eq!(value, "{");
+    }
+
+    #[test]
+    fn island_selection_must_reference_a_saved_widget() {
+        let mut layout = Layout::default();
+        assert!(layout.widgets.iter().any(|placement| Some(&placement.id)
+            == layout.island_widget_id.as_ref()
+            && matches!(placement.widget, Widget::TodoList)));
+        layout.island_widget_id = Some("absent".to_owned());
+        assert!(layout.validate().is_err());
+        layout.island_widget_id = None;
+        layout.validate().unwrap();
     }
 
     #[test]

@@ -11,6 +11,7 @@
 		onadd,
 		ontoggle,
 		ondelete,
+		embedded = false,
 	}: {
 		todos: TodoList | null;
 		error: string | null;
@@ -19,7 +20,9 @@
 		onadd: (text: string) => Promise<boolean>;
 		ontoggle: (id: string, completed: boolean) => Promise<void>;
 		ondelete: (id: string) => Promise<void>;
+		embedded?: boolean;
 	} = $props();
+	const headingId = $props.id();
 	let draft = $state("");
 	let selectedItemId = $state<string | null>(null);
 	let backButton = $state<HTMLButtonElement | null>(null);
@@ -49,7 +52,7 @@
 	}
 </script>
 
-<section class="todo" aria-labelledby="todo-title">
+<section class="todo" class:embedded aria-labelledby={headingId}>
 	{#if selectedItem !== null}
 		<div class="todo-detail">
 			<header>
@@ -58,7 +61,7 @@
 					<span>Todo details</span>
 					<span class:complete={selectedItem.completed} class="detail-state">{selectedItem.completed ? "Done" : "Open"}</span>
 				</div>
-				<h2 id="todo-title">{selectedItem.text}</h2>
+				<h2 id={headingId}>{selectedItem.text}</h2>
 			</header>
 			<div class="todo-detail-scroll">
 				<dl>
@@ -80,7 +83,7 @@
 	{:else}
 		<div class="todo-list-view">
 			<div class="todo-heading">
-				<div><ListTodo size={15} /><h2 id="todo-title">Todo</h2></div>
+				<div><ListTodo size={15} /><h2 id={headingId}>Todo</h2></div>
 				{#if todos?.date === selectedDate}<span>{todos.items.filter((item) => item.completed).length}/{todos.items.length}</span>{/if}
 			</div>
 
@@ -89,9 +92,10 @@
 				<button type="submit" disabled={loading || !draft.trim()} aria-label="Add Todo"><Plus size={14} /></button>
 			</form>
 
-			{#if error !== null && todos?.date !== selectedDate}
+			{#if error !== null}
 				<p class="todo-message" role="alert">{error}</p>
-			{:else if loading && todos?.date !== selectedDate}
+			{/if}
+			{#if loading && todos?.date !== selectedDate}
 				<p class="todo-message">Loading Todos for {selectedDate}…</p>
 			{:else if todos?.date === selectedDate && todos.items.length > 0}
 				<ul>
@@ -109,9 +113,7 @@
 						</li>
 					{/each}
 				</ul>
-			{:else if error !== null}
-				<p class="todo-message" role="alert">{error}</p>
-			{:else}
+			{:else if error === null}
 				<p class="todo-message">No tasks for this date.</p>
 			{/if}
 		</div>
@@ -121,6 +123,14 @@
 <style>
 	.todo { min-width: 0; height: 16rem; padding: 0.75rem; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-xs); }
 	.todo-list-view, .todo-detail { display: flex; min-height: 0; height: 100%; flex-direction: column; }
+	.todo.embedded { height: 14rem; }
+	.todo.embedded .todo-heading { display: none; }
+	.todo.embedded li { min-height: 2.2rem; }
+	.todo.embedded li > .todo-entry { font-size: 0.8rem; }
+	.todo.embedded li > input { appearance: none; width: 16px; height: 16px; flex: 0 0 16px; margin: 0; border: 1px solid var(--color-muted-foreground); border-radius: var(--radius-full); background: transparent; cursor: pointer; }
+	.todo.embedded li > input:checked { border-color: var(--color-accent); background: var(--color-accent); }
+	.todo.embedded li > input:checked::after { content: ""; display: block; width: 7px; height: 4px; margin: 3px 3px; border-left: 1.5px solid var(--color-accent-foreground); border-bottom: 1.5px solid var(--color-accent-foreground); transform: rotate(-45deg); }
+	.todo.embedded li > input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 	.todo-heading, .todo-heading div, form, li { display: flex; align-items: center; }
 	.todo-heading { justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
 	.todo-heading div { gap: 0.4rem; }

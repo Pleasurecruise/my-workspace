@@ -9,6 +9,7 @@ fn only_remote_telemetry_widgets_enable_ugos() {
         Widget::Network,
     ] {
         let mut layout = Layout {
+            island_widget_id: None,
             widgets: vec![Placement {
                 id: "nas".to_owned(),
                 widget,
@@ -19,6 +20,7 @@ fn only_remote_telemetry_widgets_enable_ugos() {
         assert!(!layout.has_ugos());
     }
     let layout = Layout {
+        island_widget_id: None,
         widgets: [
             Widget::LocalCpu,
             Widget::LocalMemory,

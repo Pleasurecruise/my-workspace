@@ -1,3 +1,8 @@
+export interface IslandGeometry {
+	topInset: number;
+	notchWidth: number;
+}
+
 export type Channel = "memos" | "moment" | "knowledge";
 
 export interface Memo {
@@ -512,6 +517,7 @@ export interface WidgetPlacement {
 
 export interface WidgetLayout {
 	widgets: WidgetPlacement[];
+	islandWidgetId: string | null;
 }
 
 export type DashboardEvent =
@@ -646,6 +652,7 @@ export interface TodoItem {
 }
 
 export interface TodoList {
+	syncError: string | null;
 	date: string;
 	items: TodoItem[];
 }
@@ -663,6 +670,10 @@ export interface R2Configuration {
 export interface ApiConfiguration {
 	service: "memos" | "moment" | "knowledge";
 	apiKey: string;
+}
+
+export interface NotionCalendar {
+	viewUrl: string;
 }
 
 export interface NtfyConfig {
@@ -704,6 +715,7 @@ export interface ConfigurationStatus {
 	};
 	ntfy: StoredConfiguration<NtfyConfig>;
 	ntfyDev: boolean;
+	notionCalendar: StoredConfiguration<NotionCalendar>;
 	appLock: StoredConfiguration<string>;
 	appLockDev: boolean;
 	spotify: StoredConfiguration<string>;

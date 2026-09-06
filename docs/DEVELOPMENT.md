@@ -3,8 +3,9 @@
 ## Prerequisites
 
 - Rust `1.95` or newer
-- pnpm `11.22.0`
+- pnpm `12.3.4` (pinned in `package.json`)
 - the platform dependencies required by Tauri v2
+- macOS 12 or newer for the desktop app; native island geometry uses AppKit's safe-area APIs
 - access to the configured Cloudflare R2 bucket for content-backed views
 - Tailscale with MagicDNS for UGOS Dashboard telemetry
 
@@ -115,8 +116,7 @@ For Telegram, create an application at `my.telegram.org` and configure its numer
 account can post. Call the authorization commands in order: begin with the account phone number,
 complete the verification code, then complete the 2FA password only when requested. The API ID, API
 hash, and channel username form one typed credential record. The resulting
-MTProto session is stored separately as `telegram.session` below the application-data directory with
-owner-only file permissions on Unix. Login codes and 2FA passwords are not persisted.
+MTProto session is stored in the shared local database with owner-only file permissions on Unix. Login codes and 2FA passwords are not persisted.
 
 For X, create the Vesper project application in the X Developer Console, enable OAuth 2.0, and
 register `http://127.0.0.1:8792/callback` exactly as a callback URL. Set its public Client ID as the
@@ -126,30 +126,38 @@ requesting `tweet.read`, `tweet.write`, `users.read`, and `offline.access`. It s
 access and refresh grants through the build-specific credential store and rotates them automatically;
 no Client ID, Client Secret, or manually copied token is accepted by the desktop UI.
 
+## CherryIN balance
+
+Sign in using Cherry Studio. Vesper reuses and refreshes that OAuth session, including one retry
+after a 401 response. Sign in again there if its refresh token is missing or rejected. No Vesper
+callback URL or Settings OAuth configuration is required.
+
+## Notion calendar
+
+Install the official `ntn` CLI and run `ntn login`, then save the calendar
+view link (including `?v=...`; table views need exactly one Date property) in Settings or `vesper todo notion connect <view-url>`. Todo invokes
+`ntn api`; marking a task complete remains local. Clear the link to disconnect. Desktop looks for
+`ntn` on PATH, in `~/.local/bin`, `/opt/homebrew/bin`, and `/usr/local/bin`. Notion login credentials
+belong to the CLI; Vesper retains only the view link.
+
 ## Credential resolution
 
-Debug builds do not compile Vesper's system credential-store backend. Settings writes, App Lock,
-Telegram/X authorization, and UGOS certificate pins use owner-restricted local storage below
-application data. Missing or invalid development data never falls back to Keychain. Release builds
-use the operating-system store and ignore development variables and files. Per-file locks serialize development session reads, temporary-file recovery, and replacement.
+Debug builds do not compile the system credential-store backend. Saved credentials and renewable
+sessions use the `credentials` table in the shared local database. Invalid development data does
+not fall back to Keychain. Release builds use the OS store and ignore the debug credential table.
 
-| Credential                                       | Debug source                                          |
-| ------------------------------------------------ | ----------------------------------------------------- |
-| UGOS login, R2, consumer APIs, ntfy              | Process environment / repository-root `.env`          |
-| App Lock, Telegram configuration                 | Environment first, then `credentials.json`            |
-| X grants, UGOS certificate pins, Settings writes | `credentials.json`                                    |
-| Spotify, QQ Music                                | `spotify.json`, `qq-music.json`                       |
-| miHoYo, Skland                                   | `games-{mihoyo,skland}.json`                          |
-| Steam                                            | `STEAM_API_KEY` + `STEAM_ID`, then `games-steam.json` |
+| Credential                                                                    | Debug source                                           |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------ |
+| UGOS login, R2, consumer APIs, ntfy                                           | Process environment / root `.env`                      |
+| App Lock, Telegram configuration                                              | Environment first, then database                       |
+| X, music, miHoYo, Skland, Notion view link, certificate pins, Settings writes | Database                                               |
+| Steam                                                                         | `STEAM_API_KEY` and `STEAM_ID` together, then database |
+| CherryIN                                                                      | Existing Cherry Studio OAuth session                   |
 
-The shared development file is atomically replaced under a file lock so concurrent desktop and
-CLI writes preserve other entries. Music and Games retain their existing separate session files.
-These files contain credentials and must not be committed or attached to bug reports.
-
-Steam development variables must be set together; empty or invalid values report an error.
-Settings saves to the local session file in debug builds and Keychain in macOS release builds.
-If Steam variables are configured, update `.env` and restart to change the development credentials;
-Settings does not rewrite `.env`.
+Steam environment values must be complete and valid. Settings writes the database and does not
+rewrite `.env`; change environment values and restart when they override a saved account. Secrets
+must not be committed or attached to bug reports. [Persistence](PERSISTENCE.md) owns the storage and
+transaction details.
 
 For environment-backed configuration:
 
@@ -228,14 +236,12 @@ object requires a separate, explicit operation outside the current publisher.
 
 - Vesper-owned credentials belong to `crates/credentials`, using the build-specific resolution
   policy above. The Telegram MTProto authorization key is
-  the narrow exception: it lives in the private application-data session file required by the
-  client. Upstream producer secrets remain outside Vesper.
+  the narrow exception: it lives in the private local database. Upstream producer secrets remain outside Vesper.
 - App Lock verification remains in Rust; its resolved password is returned only to the trusted
   Settings form for editing.
 - Codex reuses the authenticated local CLI session.
-- Provider credentials reuse existing Codex, pi, and Cherry Studio sessions, as documented in
-  [DASHBOARD.md](DASHBOARD.md). A successful CherryIN token refresh may conditionally update the
-  matching Cherry Studio OAuth record.
+- Provider credentials reuse existing Codex and pi sessions, as documented in
+  [DASHBOARD.md](DASHBOARD.md). CherryIN refreshes Cherry Studio's session with conditional token writes.
 - Packaged desktop and CLI code must not embed secrets.
 - Only the typed Settings read command may return stored credentials to Svelte for form prefill.
 - Logs may identify a provider or failed operation but must not include tokens, passwords, response

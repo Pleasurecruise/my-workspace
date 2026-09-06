@@ -21,6 +21,30 @@ struct Report {
 }
 
 pub(super) async fn run(sources: &[String]) -> Result<(), String> {
+    if let [source, arguments @ ..] = sources {
+        match (source.as_str(), arguments) {
+            ("weather", queries) => {
+                return super::print_json(&quotes::weather::read(queries.to_vec()).await?);
+            }
+            ("astronomy", queries) => {
+                return super::print_json(&quotes::astronomy::read(queries.to_vec()).await?);
+            }
+            ("stocks", symbols) if !symbols.is_empty() => {
+                return super::print_json(&quotes::stocks::read(symbols.to_vec()).await?);
+            }
+            ("services", ids) => {
+                return super::print_json(&quotes::status::read(ids.to_vec()).await?);
+            }
+            ("service-catalog", []) => return super::print_json(&quotes::status::catalog()),
+            ("exchange", []) => return super::print_json(&quotes::exchange::read().await?),
+            ("github", []) => return super::print_json(&quotes::github::read().await?),
+            ("github", [repository]) => {
+                return super::print_json(&quotes::github::read_repository(repository).await?);
+            }
+            ("quotation", []) => return super::print_json(&quotes::quotations::read().await?),
+            _ => {}
+        }
+    }
     if let [source] = sources {
         return match source.as_str() {
             "ugos" => super::print_json(

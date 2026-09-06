@@ -7,6 +7,7 @@ import type {
 	ConfigurationStatus,
 	GameConnections,
 	NtfyConfig,
+	NotionCalendar,
 	R2Configuration,
 	UgosConfiguration,
 } from "../../../consumer";
@@ -33,6 +34,7 @@ const initial: ConfigurationStatus = {
 	},
 	ntfy: { status: "ready", data: { token: "ntfy-token", development: false } },
 	ntfyDev: false,
+	notionCalendar: { status: "missing" },
 	appLock: { status: "ready", data: "lock-password" },
 	appLockDev: false,
 	spotify: { status: "missing" },
@@ -52,7 +54,13 @@ async function setup() {
 	const save = vi
 		.fn<
 			(
-				input: ApiConfiguration | NtfyConfig | R2Configuration | UgosConfiguration | string,
+				input:
+					| ApiConfiguration
+					| NtfyConfig
+					| NotionCalendar
+					| R2Configuration
+					| UgosConfiguration
+					| string,
 			) => Promise<CommandResponse<string>>
 		>()
 		.mockResolvedValue({ status: "ready", data: "Saved" });
@@ -68,6 +76,7 @@ async function setup() {
 				onsaveugos: save,
 				onsaver2: save,
 				onsaveapi: save,
+				onsavenotion: save,
 				onsaventfy: save,
 				onsaveapplock: save,
 				onremoveapplock: vi.fn().mockResolvedValue({ status: "ready", data: "Removed" }),
@@ -204,4 +213,30 @@ it("keeps pending saves independent and preserves later edits across configurati
 	await vi.waitFor(() => expect(form.button("moment-api-key").disabled).toBe(false));
 	await form.edit("memos-api-key", "memos-submitted");
 	expect(form.button("memos-api-key").disabled).toBe(true);
+});
+
+it("tracks the submitted Notion link while preserving edits made during saving", async () => {
+	const { save, edit, submit, field, button } = await setup();
+	expect(button("notion-calendar-url").disabled).toBe(true);
+	let finish = (_response: CommandResponse<string>) => {};
+	save.mockReturnValueOnce(
+		new Promise((resolve) => {
+			finish = resolve;
+		}),
+	);
+	const first = "https://notion.so/calendar?v=248104cd477e80fdb757e945d38000bd";
+	const second = "https://notion.so/calendar?v=248104cd477e80fdb757e945d38000be";
+	await edit("notion-calendar-url", first);
+	await submit("notion-calendar-url");
+	await edit("notion-calendar-url", second);
+	finish({ status: "ready", data: "notion-calendar" });
+	await tick();
+	expect(field("notion-calendar-url").value).toBe(second);
+	await vi.waitFor(() => expect(button("notion-calendar-url").disabled).toBe(false));
+	await edit("notion-calendar-url", first);
+	expect(button("notion-calendar-url").disabled).toBe(true);
+	await edit("notion-calendar-url", "");
+	await submit("notion-calendar-url");
+	expect(save).toHaveBeenLastCalledWith({ viewUrl: "" });
+	expect(button("notion-calendar-url").disabled).toBe(true);
 });

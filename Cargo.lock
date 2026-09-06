@@ -1539,6 +1539,16 @@ dependencies = [
 
 [[package]]
 name = "darling"
+version = "0.21.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9cdf337090841a411e2a7f3deb9187445851f91b309c0c0a29e05f74a00a48c0"
+dependencies = [
+ "darling_core 0.21.3",
+ "darling_macro 0.21.3",
+]
+
+[[package]]
+name = "darling"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25ae13da2f202d56bd7f91c25fba009e7717a1e4a1cc98a76d844b65ae912e9d"
@@ -1552,6 +1562,20 @@ name = "darling_core"
 version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d00b9596d185e565c2207a0b01f8bd1a135483d02d9b7b0a54b11da8d53412e"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "strsim",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "darling_core"
+version = "0.21.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1247195ecd7e3c85f83c8d2a366e4210d588e802133e1e355180a9870b517ea4"
 dependencies = [
  "fnv",
  "ident_case",
@@ -1581,6 +1605,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc34b93ccb385b40dc71c6fceac4b2ad23662c7eeb248cf10d529b7e055b6ead"
 dependencies = [
  "darling_core 0.20.11",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.21.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d38308df82d1080de0afee5d069fa14b0326a88c14f15c5ccda35b4a6c414c81"
+dependencies = [
+ "darling_core 0.21.3",
  "quote",
  "syn 2.0.119",
 ]
@@ -1746,6 +1781,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "diesel"
+version = "2.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3b934ddbdcb2abb9f9fc9c30bd47bcc5618b615eea1d334cda5fdf8ff9b072a"
+dependencies = [
+ "diesel_derives",
+ "downcast-rs",
+ "libsqlite3-sys",
+ "sqlite-wasm-rs",
+ "time",
+]
+
+[[package]]
+name = "diesel_derives"
+version = "2.3.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecbd51fb6c020672543641167efa4e6417ff7ad76849ed556ace3595e72de03a"
+dependencies = [
+ "diesel_table_macro_syntax",
+ "dsl_auto_type",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "diesel_table_macro_syntax"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe2444076b48641147115697648dc743c2c00b61adade0f01ce67133c7babe8c"
+dependencies = [
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1867,12 +1937,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
+name = "downcast-rs"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "117240f60069e65410b3ae1bb213295bd828f707b5bec6596a1afc8793ce0cbc"
+
+[[package]]
 name = "dpi"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "dsl_auto_type"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd122633e4bef06db27737f21d3738fb89c8f6d5360d6d9d7635dda142a7757e"
+dependencies = [
+ "darling 0.21.3",
+ "either",
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -2298,6 +2388,7 @@ name = "games"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "diesel",
  "hex",
  "hmac 0.12.1",
  "md-5 0.10.6",
@@ -2305,16 +2396,17 @@ dependencies = [
  "qrcode",
  "rand 0.9.5",
  "reqwest 0.13.4",
- "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "thiserror 2.0.20",
  "time",
  "tokio",
  "tracing",
  "uuid",
  "vesper-credentials",
+ "vesper-database",
 ]
 
 [[package]]
@@ -6443,6 +6535,7 @@ name = "social"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "diesel",
  "grammers-client",
  "grammers-session",
  "pulldown-cmark",
@@ -6450,9 +6543,11 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "thiserror 2.0.20",
  "tokio",
  "uuid",
  "vesper-credentials",
+ "vesper-database",
 ]
 
 [[package]]
@@ -7453,15 +7548,20 @@ checksum = "c7c4ceeeca15c8384bbc3e011dbd8fccb7f068a440b752b7d9b32ceb0ca0e2e8"
 name = "todo"
 version = "0.1.0"
 dependencies = [
+ "diesel",
  "dirs",
  "jiff",
+ "percent-encoding",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
  "time",
  "tokio",
+ "url",
  "uuid",
+ "vesper-credentials",
+ "vesper-database",
 ]
 
 [[package]]
@@ -7995,6 +8095,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "tempfile",
  "time",
  "tokio",
  "tracing",
@@ -8092,10 +8193,14 @@ version = "0.1.6"
 dependencies = [
  "cms-core",
  "consumers",
+ "diesel",
  "futures-util",
  "games",
  "music",
  "my-workspace-logger",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "percent-encoding",
  "quotes",
  "reqwest 0.13.4",
@@ -8115,6 +8220,7 @@ dependencies = [
  "ugos",
  "useage",
  "vesper-credentials",
+ "vesper-database",
  "walkdir",
 ]
 
@@ -8124,7 +8230,9 @@ version = "1.0.0"
 dependencies = [
  "cms-core",
  "consumers",
+ "games",
  "my-workspace-logger",
+ "quotes",
  "serde",
  "serde_json",
  "todo",
@@ -8133,12 +8241,14 @@ dependencies = [
  "useage",
  "uuid",
  "vesper-credentials",
+ "vesper-database",
 ]
 
 [[package]]
 name = "vesper-credentials"
 version = "0.1.0"
 dependencies = [
+ "diesel",
  "dirs",
  "dotenvy",
  "keyring",
@@ -8146,7 +8256,20 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
+ "url",
  "uuid",
+ "vesper-database",
+]
+
+[[package]]
+name = "vesper-database"
+version = "0.1.0"
+dependencies = [
+ "diesel",
+ "dirs",
+ "libsqlite3-sys",
+ "tempfile",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

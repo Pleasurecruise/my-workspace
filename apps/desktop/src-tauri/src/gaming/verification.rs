@@ -94,10 +94,10 @@ pub(super) fn open(app: &AppHandle, game: Game, page: VerificationPage) -> Resul
             match message.method.as_str() {
                 "login" => {
                     window.close().map_err(|_| "Could not close verification")?;
-                    handle.emit_to("main", "game-login-required", game)
+                    super::emit(&handle, "game-login-required", game)
                         .map_err(|_| "Could not open game login")?;
                     if let Some(main) = handle.get_webview_window("main") {
-                        let _ = main.set_focus();
+                        main.set_focus().map_err(|_| "Could not focus the main window")?;
                     }
                 }
                 "closePage" => window.close().map_err(|_| "Could not close verification")?,
@@ -138,13 +138,20 @@ pub(super) fn open(app: &AppHandle, game: Game, page: VerificationPage) -> Resul
             }
             Ok(())
         })();
-        if let Err(message) = result {
-            let _ = handle.emit(
-                "game-verification-error",
-                serde_json::json!({"game":game,"message":message}),
-            );
+        if let Err(message) = result
+            && handle
+                .emit_to(
+                    "main",
+                    "game-verification-error",
+                    serde_json::json!({"game":game,"message":message}),
+                )
+                .is_err()
+        {
+            tracing::warn!("Could not deliver the game verification error");
         }
-        let _ = window.eval("window.__vesperBridgeAck?.();");
+        if window.eval("window.__vesperBridgeAck?.();").is_err() {
+            tracing::warn!("Could not acknowledge the game verification message");
+        }
         false
     })
     .build()
@@ -156,7 +163,9 @@ pub(super) fn open(app: &AppHandle, game: Game, page: VerificationPage) -> Resul
             .secure(true)
             .build();
         if window.set_cookie(cookie).is_err() {
-            let _ = window.close();
+            if window.close().is_err() {
+                tracing::warn!("Could not close the failed game verification window");
+            }
             return Err("Could not prepare the official game-record session".into());
         }
     }
@@ -167,20 +176,23 @@ pub(super) fn open(app: &AppHandle, game: Game, page: VerificationPage) -> Resul
         .as_ref()
         .is_ok_and(|installed| session_installed(&cookies, installed))
     {
-        let _ = window.close();
+        if window.close().is_err() {
+            tracing::warn!("Could not close the failed game verification window");
+        }
         return Err("Could not transfer your login to the official record window. Please reopen verification.".into());
     }
     let handle = app.clone();
     window.on_window_event(move |event| {
-        if matches!(event, WindowEvent::Destroyed) {
-            let app = handle.clone();
-            tauri::async_runtime::spawn(async move {
-                let _ = app.emit("game-verification-closed", game);
-            });
+        if matches!(event, WindowEvent::Destroyed)
+            && super::emit(&handle, "game-verification-closed", game).is_err()
+        {
+            tracing::warn!("Could not notify the main window that verification closed");
         }
     });
     if window.navigate(target).is_err() {
-        let _ = window.close();
+        if window.close().is_err() {
+            tracing::warn!("Could not close the failed game verification window");
+        }
         return Err("Could not load the official game-record page".into());
     }
     Ok(())

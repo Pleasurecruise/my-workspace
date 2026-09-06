@@ -40,5 +40,5 @@
   "simple-git-hooks": {
     "pre-commit": "pnpm run precommit"
   },
-  "packageManager": "pnpm@11.22.0"
+  "packageManager": "pnpm@12.3.4"
 }

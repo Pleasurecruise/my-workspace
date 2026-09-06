@@ -281,6 +281,7 @@ impl Runtime {
         let _guard = self.steam.lock().await;
         steam::read(&transport::session(Provider::Steam)?).await
     }
+
     pub async fn sync(&self, game: Game) -> Result<archive::Summary, String> {
         enum Download {
             Records(Account, Vec<Pull>),

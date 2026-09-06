@@ -5,9 +5,9 @@ import type {
 	CommandResponse,
 	ConfigurationStatus,
 	NtfyConfig,
+	NotionCalendar,
 	R2Configuration,
 	UgosConfiguration,
-	QqQr,
 	QqLoginStatus,
 } from "../../consumer";
 
@@ -71,10 +71,6 @@ export function createSettingsSession(effects: {
 		return response;
 	}
 
-	async function beginQqLogin(): Promise<CommandResponse<QqQr>> {
-		return invoke<CommandResponse<QqQr>>("begin_qq_music_login");
-	}
-
 	async function pollQqLogin(): Promise<CommandResponse<QqLoginStatus>> {
 		const response = await invoke<CommandResponse<QqLoginStatus>>("poll_qq_music_login");
 		if (response.status === "ready" && response.data.status === "complete")
@@ -82,8 +78,14 @@ export function createSettingsSession(effects: {
 		return response;
 	}
 
-	async function cancelQqLogin(): Promise<CommandResponse<null>> {
-		return invoke<CommandResponse<null>>("cancel_qq_music_login");
+	async function saveNotionCalendar(
+		configuration: NotionCalendar,
+	): Promise<CommandResponse<string>> {
+		const response = await invoke<CommandResponse<string>>("save_notion_calendar", {
+			configuration,
+		});
+		if (response.status === "ready") await loadConfiguration();
+		return response;
 	}
 
 	async function saveNtfy(configuration: NtfyConfig): Promise<CommandResponse<string>> {
@@ -121,10 +123,9 @@ export function createSettingsSession(effects: {
 		saveR2Configuration,
 		saveApiConfiguration,
 		connectSpotify,
-		beginQqLogin,
 		pollQqLogin,
-		cancelQqLogin,
 		saveNtfy,
+		saveNotionCalendar,
 		saveAppLock,
 		removeAppLock,
 	};

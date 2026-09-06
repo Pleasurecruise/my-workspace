@@ -24,6 +24,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+diesel.workspace = true
+vesper-database.workspace = true
 cms-core.workspace = true
 consumers.workspace = true
 games.workspace = true
@@ -37,7 +39,7 @@ serde.workspace = true
 serde_json.workspace = true
 social.workspace = true
 sysinfo.workspace = true
-tauri = { version = "2", features = ["devtools", "webview-data-url"] }
+tauri = { version = "2", features = ["devtools", "webview-data-url", "macos-private-api"] }
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 tempfile.workspace = true
@@ -49,3 +51,8 @@ useage.workspace = true
 walkdir.workspace = true
 vesper-credentials.workspace = true
 tauri-plugin-notification = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true

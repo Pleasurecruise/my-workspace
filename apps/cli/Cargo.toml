@@ -9,6 +9,9 @@ name = "vesper"
 path = "src/main.rs"
 
 [dependencies]
+quotes.workspace = true
+games.workspace = true
+vesper-database.workspace = true
 cms-core.workspace = true
 consumers.workspace = true
 my-workspace-logger.workspace = true

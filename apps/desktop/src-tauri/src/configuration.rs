@@ -16,6 +16,7 @@ pub(crate) struct ConfigurationStatus {
     api: ApiConfiguration,
     ntfy: StoredConfiguration<vesper_credentials::NtfyConfig>,
     ntfy_dev: bool,
+    notion_calendar: StoredConfiguration<vesper_credentials::NotionCalendar>,
     app_lock: StoredConfiguration<String>,
     app_lock_dev: bool,
     spotify: StoredConfiguration<String>,
@@ -93,6 +94,17 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
         Ok(configuration) => configuration,
         Err(message) => return CommandResponse::Failed { message },
     };
+    let notion_calendar = match vesper_credentials::notion_calendar() {
+        Ok(vesper_credentials::Stored::Ready(configuration)) => {
+            StoredConfiguration::Ready(configuration)
+        }
+        Ok(vesper_credentials::Stored::Missing) => StoredConfiguration::Missing,
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
     let (ntfy, ntfy_dev) = match vesper_credentials::ntfy() {
         Ok(vesper_credentials::Stored::Ready(configuration)) => {
             let development = configuration.development;
@@ -158,6 +170,7 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
             },
             ntfy,
             ntfy_dev,
+            notion_calendar,
             app_lock,
             app_lock_dev,
             spotify,
@@ -323,6 +336,7 @@ pub(crate) fn remove_app_lock() -> CommandResponse<String> {
 
 #[tauri::command]
 pub(crate) fn unlock_app(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppLockState>,
     password: String,
 ) -> CommandResponse<String> {
@@ -344,6 +358,7 @@ pub(crate) fn unlock_app(
             message: "Incorrect password.".to_owned(),
         };
     }
+    crate::island::sync(&app);
     CommandResponse::Ready {
         data: "app-lock".to_owned(),
     }
@@ -380,6 +395,7 @@ pub(crate) fn lock_app(
     match vesper_credentials::app_lock() {
         Ok(vesper_credentials::Stored::Ready(_)) => {
             state.0.store(true, std::sync::atomic::Ordering::SeqCst);
+            crate::island::sync(&app);
             if let Some(webview) = app.get_webview_window("main") {
                 webview.close_devtools();
             }
@@ -429,5 +445,24 @@ mod tests {
         assert!(passwords_match("correct horse", "correct horse"));
         assert!(!passwords_match("correct horse", "correct"));
         assert!(!passwords_match("correct horse", "correct house"));
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn save_notion_calendar(
+    configuration: vesper_credentials::NotionCalendar,
+    app: tauri::AppHandle,
+) -> CommandResponse<String> {
+    match app
+        .state::<todo_core::Store>()
+        .configure_notion(configuration)
+        .await
+    {
+        Ok(()) => CommandResponse::Ready {
+            data: "notion-calendar".to_owned(),
+        },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
     }
 }

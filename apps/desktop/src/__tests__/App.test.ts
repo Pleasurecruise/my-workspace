@@ -30,12 +30,13 @@ const configuration: ConfigurationStatus = {
 	ugos: { status: "missing" },
 	r2: { status: "missing" },
 	api: {
-		memos: { status: "missing" },
-		moment: { status: "missing" },
-		knowledge: { status: "missing" },
+		memos: { status: "ready", data: "test-memos" },
+		moment: { status: "ready", data: "test-moment" },
+		knowledge: { status: "ready", data: "test-knowledge" },
 	},
-	ntfy: { status: "missing" },
+	ntfy: { status: "ready", data: { token: "test-ntfy", development: false } },
 	ntfyDev: false,
+	notionCalendar: { status: "missing" },
 	appLock: { status: "missing" },
 	appLockDev: false,
 	spotify: { status: "missing" },
@@ -84,6 +85,37 @@ function setupCommands() {
 	});
 }
 
+it("collapses the sidebar and restores its saved width", async () => {
+	setupCommands();
+	const saved = new Map<string, string>();
+	vi.stubGlobal("localStorage", {
+		getItem: (key: string) => saved.get(key) ?? null,
+		setItem: (key: string, value: string) => saved.set(key, value),
+	});
+	const target = document.createElement("div");
+	document.body.append(target);
+	const view = mount(App, { target });
+	await tick();
+	const handle = target.querySelector<HTMLButtonElement>(".sidebar-resizer");
+	if (!handle) throw new Error("Missing resize handle");
+	handle.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+	await tick();
+	expect(target.querySelector("aside")?.classList.contains("compact")).toBe(true);
+	expect(saved.get("vesper.sidebar.width")).toBe("64");
+	expect(button(target, "Dashboard", "nav button").getAttribute("aria-label")).toBe("Dashboard");
+	expect(target.querySelector(".user-profile img")).not.toBeNull();
+	await unmount(view);
+	views.push(mount(App, { target }));
+	await tick();
+	expect(target.querySelector("aside")?.classList.contains("compact")).toBe(true);
+	const restored = target.querySelector<HTMLButtonElement>(".sidebar-resizer");
+	if (!restored) throw new Error("Missing resize handle");
+	restored.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+	await tick();
+	expect(target.querySelector("aside")?.classList.contains("compact")).toBe(false);
+	expect(saved.get("vesper.sidebar.width")).toBe("360");
+});
+
 it("renders ready tags before initialization and the other source finish; failed tags can retry", async () => {
 	setupCommands();
 	const initial = deferred<InitialViews>();
@@ -106,6 +138,7 @@ it("renders ready tags before initialization and the other source finish; failed
 	const target = document.createElement("div");
 	document.body.append(target);
 	views.push(mount(App, { target }));
+	await vi.waitFor(() => expect(button(target, "Memos", "nav button")).toBeTruthy());
 	await tick();
 	await vi.waitFor(() => expect(reads).toBe(1));
 	// Entering the page retries the startup failure; both unrelated requests remain pending.
@@ -152,6 +185,7 @@ it("preserves a completed write after navigation against older tags and startup 
 	const target = document.createElement("div");
 	document.body.append(target);
 	views.push(mount(App, { target }));
+	await vi.waitFor(() => expect(button(target, "Memos", "nav button")).toBeTruthy());
 	await tick();
 	button(target, "Memos", "nav button").click();
 	await vi.waitFor(() => expect(target.querySelector("textarea")).not.toBeNull());
@@ -194,7 +228,7 @@ it("preserves a completed write after navigation against older tags and startup 
 		expect(target.querySelector('[aria-label="Memo tags"]')?.textContent).toContain("new"),
 	);
 	expect(target.querySelector('[aria-label="Memo tags"]')?.textContent).not.toContain("old");
-	expect(target.querySelector('[aria-label="Memos"]')?.textContent).toContain(
+	expect(target.querySelector('main [aria-label="Memos"]')?.textContent).toContain(
 		"Saved across navigation",
 	);
 });
@@ -228,6 +262,7 @@ it.each([false, true])(
 		const target = document.createElement("div");
 		document.body.append(target);
 		views.push(mount(App, { target }));
+		await vi.waitFor(() => expect(button(target, "Memos", "nav button")).toBeTruthy());
 		await tick();
 		button(target, "Moment", "nav button").click();
 		await vi.waitFor(() =>
@@ -289,6 +324,7 @@ it("shows the destination's loading structure while its content request is pendi
 	const target = document.createElement("div");
 	document.body.append(target);
 	views.push(mount(App, { target }));
+	await vi.waitFor(() => expect(button(target, "Memos", "nav button")).toBeTruthy());
 	await tick();
 	for (const [label, shape] of [
 		["Memos", ".composer"],
@@ -313,6 +349,7 @@ it("does not reactivate Dashboard when its listener resolves after navigation", 
 	const target = document.createElement("div");
 	document.body.append(target);
 	views.push(mount(App, { target }));
+	await vi.waitFor(() => expect(button(target, "Memos", "nav button")).toBeTruthy());
 	await tick();
 	button(target, "Memos", "nav button").click();
 	await tick();
@@ -328,6 +365,7 @@ it("subscribes to ntfy only in Inbox and stops on leaving it", async () => {
 	const target = document.createElement("div");
 	document.body.append(target);
 	views.push(mount(App, { target }));
+	await vi.waitFor(() => expect(button(target, "Memos", "nav button")).toBeTruthy());
 	await tick();
 	expect(invoke).not.toHaveBeenCalledWith("set_notifications_active", { active: true });
 	const inbox = target.querySelector<HTMLButtonElement>('[aria-label="Open inbox"]');
@@ -383,4 +421,41 @@ it("starts a fresh Dashboard request after returning while the old Todo read is 
 			before + 1,
 		),
 	);
+});
+
+it("shows only configured destinations after configuration loads", async () => {
+	setupCommands();
+	const pending = deferred<CommandResponse<ConfigurationStatus>>();
+	const normal = invoke.getMockImplementation();
+	if (!normal) throw new Error("Missing command mock");
+	invoke.mockImplementation((command: string) =>
+		command === "read_configuration" ? pending.promise : normal(command),
+	);
+	const target = document.createElement("div");
+	document.body.append(target);
+	views.push(mount(App, { target }));
+	await tick();
+	const labels = () =>
+		Array.from(target.querySelectorAll('nav[aria-label="Consumer views"] button'), (item) =>
+			item.textContent?.trim(),
+		);
+	expect(labels()).toEqual(["Dashboard", "Settings"]);
+	pending.resolve({
+		status: "ready",
+		data: {
+			...configuration,
+			api: {
+				memos: { status: "missing" },
+				moment: { status: "missing" },
+				knowledge: { status: "ready", data: "test-knowledge" },
+			},
+			ntfy: { status: "missing" },
+			qqMusic: { status: "ready", data: "Connected" },
+		},
+	});
+	await vi.waitFor(() =>
+		expect(labels()).toEqual(["Dashboard", "Newspaper", "Music", "Knowledge", "Settings"]),
+	);
+	expect(target.querySelector('[aria-label="Open inbox"]')).toBeNull();
+	expect(target.querySelector("aside")?.textContent).not.toContain("Connections");
 });

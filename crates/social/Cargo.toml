@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+diesel.workspace = true
+thiserror.workspace = true
+vesper-database.workspace = true
 base64.workspace = true
 grammers-client.workspace = true
 grammers-session.workspace = true

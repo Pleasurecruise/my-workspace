@@ -152,9 +152,6 @@ pub fn read(provider: Provider) -> Result<Stored<Session>, CredentialError> {
             )),
         };
     }
-    #[cfg(debug_assertions)]
-    let stored = crate::store::file::read::<Session>(&development_path(provider)?)?;
-    #[cfg(not(debug_assertions))]
     let stored = match crate::store::read(provider.key())? {
         Stored::Missing => Stored::Missing,
         Stored::Ready(encoded) => Stored::Ready(serde_json::from_str::<Session>(&encoded)?),
@@ -173,23 +170,7 @@ pub fn save(session: &Session) -> Result<(), CredentialError> {
     if session.provider() == Provider::Mihoyo {
         return accounts::update(|accounts| accounts.insert(session.clone()));
     }
-    #[cfg(debug_assertions)]
-    return crate::store::file::save(&development_path(session.provider())?, session);
-    #[cfg(not(debug_assertions))]
-    {
-        crate::store::save(session.provider().key(), &serde_json::to_string(session)?)?;
-        Ok(())
-    }
-}
-
-#[cfg(debug_assertions)]
-fn development_path(provider: Provider) -> Result<std::path::PathBuf, CredentialError> {
-    dirs::data_local_dir()
-        .map(|root| {
-            root.join(crate::SERVICE)
-                .join(format!("{}.json", provider.key()))
-        })
-        .ok_or(CredentialError::DevelopmentDataDirectory)
+    crate::store::save(session.provider().key(), &serde_json::to_string(session)?)
 }
 
 #[cfg(test)]

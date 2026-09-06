@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 fn page(captcha: &Captcha) -> Result<reqwest::Url, String> {
     let registration =
@@ -75,7 +75,9 @@ pub(super) fn open(app: &AppHandle, game: Game, captcha: Captcha) -> Result<(), 
                 };
                 if result.is_ok() {
                     let result = games::NotesResponse::from(Err(games::NotesError::RefreshRequired));
-                    let _ = app.emit_to("main", "game-notes-updated", serde_json::json!({"game":game,"result":result}));
+                    if super::emit(&app, "game-notes-updated", super::NotesEvent { game, result }).is_err() {
+                        tracing::warn!("Could not notify the main window of verified game notes");
+                    }
                 }
                 let text = match result {
                     Ok(()) => {
@@ -83,10 +85,15 @@ pub(super) fn open(app: &AppHandle, game: Game, captcha: Captcha) -> Result<(), 
                     }
                     Err(message) => message,
                 };
-                if let Ok(text) = serde_json::to_string(&text) {
-                    let _ = window.eval(format!(
-                        "if (location.protocol === 'data:') window.showVerificationStatus({text});"
-                    ));
+                match serde_json::to_string(&text) {
+                    Ok(text) => {
+                        if window.eval(format!(
+                            "if (location.protocol === 'data:') window.showVerificationStatus({text});"
+                        )).is_err() {
+                            tracing::warn!("Could not display the verification result");
+                        }
+                    }
+                    Err(_) => tracing::warn!("Could not encode the verification result"),
                 }
             });
             false
@@ -101,7 +108,9 @@ pub(super) fn open(app: &AppHandle, game: Game, captcha: Captcha) -> Result<(), 
             let id = id.clone();
             tauri::async_runtime::spawn(async move {
                 app.state::<Runtime>().cancel_verification(&id).await;
-                let _ = app.emit_to("main", "game-verification-closed", game);
+                if super::emit(&app, "game-verification-closed", game).is_err() {
+                    tracing::warn!("Could not notify the main window that verification closed");
+                }
             });
         }
     });

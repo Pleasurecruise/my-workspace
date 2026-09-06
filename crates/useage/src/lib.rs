@@ -1,4 +1,5 @@
 mod auth;
+mod cache;
 
 pub mod cherryin;
 pub mod claude;

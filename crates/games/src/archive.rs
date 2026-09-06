@@ -1,5 +1,5 @@
 use crate::{Account, Game, Pull};
-use rusqlite::{Connection, OptionalExtension, params};
+use diesel::prelude::*;
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -42,39 +42,67 @@ pub struct Summary {
     pub official: Option<crate::StarRailReport>,
 }
 
-fn open(path: &Path) -> Result<Connection, String> {
-    let parent = path.parent().ok_or("Invalid archive directory")?;
-    std::fs::create_dir_all(parent).map_err(|_| "Could not create game archive directory")?;
-    let connection = Connection::open(path)
-        .map_err(|_| "Could not open game archive; existing data has been preserved")?;
-    connection
-        .busy_timeout(std::time::Duration::from_secs(5))
-        .map_err(|_| "Could not configure archive locking")?;
-    let version: i64 = connection
-        .pragma_query_value(None, "user_version", |row| row.get(0))
-        .map_err(|_| "Invalid game archive")?;
-    if version > 2 {
-        return Err("Game archive was created by a newer Vesper version".to_owned());
+diesel::table! {
+    game_accounts (game, uid) {
+        game -> Text, uid -> Text, name -> Text, region -> Text, role_id -> Text, synced_at -> BigInt,
     }
-    connection
-        .execute_batch(
-            "PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;
-        CREATE TABLE IF NOT EXISTS accounts (
-            game TEXT NOT NULL, uid TEXT NOT NULL, name TEXT NOT NULL, region TEXT NOT NULL,
-            role_id TEXT NOT NULL, synced_at INTEGER NOT NULL, PRIMARY KEY(game, uid));
-        CREATE TABLE IF NOT EXISTS pulls (
-            game TEXT NOT NULL, uid TEXT NOT NULL, id TEXT NOT NULL, pool TEXT NOT NULL,
-            pool_name TEXT NOT NULL, item_id TEXT NOT NULL, name TEXT NOT NULL,
-            rarity INTEGER NOT NULL CHECK(rarity BETWEEN 1 AND 6), time TEXT NOT NULL,
-            is_free INTEGER, is_new INTEGER,
-            PRIMARY KEY(game, uid, id), FOREIGN KEY(game, uid) REFERENCES accounts(game, uid));
-        CREATE TABLE IF NOT EXISTS official_reports (
-            game TEXT NOT NULL, uid TEXT NOT NULL, payload TEXT NOT NULL,
-            PRIMARY KEY(game, uid), FOREIGN KEY(game, uid) REFERENCES accounts(game, uid));
-        PRAGMA user_version=2;",
-        )
-        .map_err(|_| "Could not initialize game archive; existing data has been preserved")?;
-    Ok(connection)
+}
+diesel::table! {
+    game_pulls (game, uid, id) {
+        game -> Text, uid -> Text, id -> Text, pool -> Text, pool_name -> Text,
+        item_id -> Nullable<Text>, name -> Text, rarity -> Integer, time -> Text,
+        is_free -> Nullable<Bool>, is_new -> Nullable<Bool>,
+    }
+}
+diesel::table! {
+    game_reports (game, uid) { game -> Text, uid -> Text, payload -> Text, }
+}
+
+#[derive(Debug, thiserror::Error)]
+enum StoreError {
+    #[error("Game archive database operation failed: {0}")]
+    Query(#[from] diesel::result::Error),
+    #[error("{0}")]
+    Invalid(&'static str),
+}
+
+#[derive(Queryable, Selectable, Insertable)]
+#[diesel(table_name = game_pulls)]
+struct PullRow {
+    game: String,
+    uid: String,
+    id: String,
+    pool: String,
+    pool_name: String,
+    item_id: Option<String>,
+    name: String,
+    rarity: i32,
+    time: String,
+    is_free: Option<bool>,
+    is_new: Option<bool>,
+}
+
+fn save_account(
+    connection: &mut SqliteConnection,
+    account: &Account,
+) -> Result<(), diesel::result::Error> {
+    let fields = (
+        game_accounts::name.eq(&account.name),
+        game_accounts::region.eq(&account.region),
+        game_accounts::role_id.eq(&account.role_id),
+        game_accounts::synced_at.eq(crate::transport::now()),
+    );
+    diesel::insert_into(game_accounts::table)
+        .values((
+            game_accounts::game.eq(account.game.key()),
+            game_accounts::uid.eq(&account.uid),
+            fields,
+        ))
+        .on_conflict((game_accounts::game, game_accounts::uid))
+        .do_update()
+        .set(fields)
+        .execute(connection)?;
+    Ok(())
 }
 
 pub(crate) fn save_official(
@@ -97,63 +125,71 @@ pub(crate) fn save_official(
             return Err("Invalid Star Rail report; the previous archive is unchanged.".into());
         }
     }
-    let mut connection = open(path)?;
-    let transaction = connection
-        .transaction()
-        .map_err(|_| "Could not start report transaction")?;
-    let previous: Option<String> = transaction
-        .query_row(
-            "SELECT payload FROM official_reports WHERE game=?1 AND uid=?2",
-            params![account.game.key(), account.uid],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|_| "Could not read previous Star Rail report")?;
-    let previous = previous
-        .map(|body| serde_json::from_str::<crate::StarRailReport>(&body))
-        .transpose()
-        .map_err(|_| "Previous Star Rail report is invalid; it was preserved")?;
-    let mut added = 0;
-    for pool in &mut report.pools {
-        let older = previous
-            .as_ref()
-            .and_then(|report| report.pools.iter().find(|older| older.id == pool.id));
-        let older_ids: HashSet<_> = older
-            .into_iter()
-            .flat_map(|pool| pool.five_stars.iter().map(|star| &star.id))
-            .collect();
-        added += pool
-            .five_stars
-            .iter()
-            .filter(|star| !older_ids.contains(&star.id))
-            .count() as u64;
-        let current: HashSet<_> = pool.five_stars.iter().map(|star| star.id.clone()).collect();
-        if let Some(older) = older {
-            pool.five_stars.extend(
-                older
+    let mut connection = vesper_database::open(path).map_err(|error| error.to_string())?;
+    let added = connection
+        .immediate_transaction::<_, StoreError, _>(|connection| {
+            let previous = game_reports::table
+                .find((account.game.key(), &account.uid))
+                .select(game_reports::payload)
+                .first::<String>(connection)
+                .optional()?;
+            let previous = previous
+                .map(|body| serde_json::from_str::<crate::StarRailReport>(&body))
+                .transpose()
+                .map_err(|_| {
+                    StoreError::Invalid("Previous Star Rail report is invalid; it was preserved")
+                })?;
+            let mut added = 0;
+            for pool in &mut report.pools {
+                let older = previous
+                    .as_ref()
+                    .and_then(|report| report.pools.iter().find(|older| older.id == pool.id));
+                let older_ids: HashSet<_> = older
+                    .into_iter()
+                    .flat_map(|pool| pool.five_stars.iter().map(|star| &star.id))
+                    .collect();
+                added += pool
                     .five_stars
                     .iter()
-                    .filter(|star| !current.contains(&star.id))
-                    .cloned(),
-            );
-        }
-    }
-    if let Some(previous) = previous {
-        let current: HashSet<_> = report.pools.iter().map(|pool| pool.id.clone()).collect();
-        report.pools.extend(
-            previous
-                .pools
-                .into_iter()
-                .filter(|pool| !current.contains(&pool.id)),
-        );
-    }
-    let body = serde_json::to_string(&report).map_err(|_| "Could not encode Star Rail report")?;
-    transaction.execute("INSERT INTO accounts VALUES (?1,?2,?3,?4,?5,?6) ON CONFLICT(game,uid) DO UPDATE SET name=excluded.name,region=excluded.region,role_id=excluded.role_id,synced_at=excluded.synced_at",
-        params![account.game.key(),account.uid,account.name,account.region,account.role_id,crate::transport::now()]).map_err(|_| "Could not save Star Rail account")?;
-    transaction.execute("INSERT INTO official_reports VALUES (?1,?2,?3) ON CONFLICT(game,uid) DO UPDATE SET payload=excluded.payload", params![account.game.key(),account.uid,body]).map_err(|_| "Could not save Star Rail report")?;
-    transaction
-        .commit()
-        .map_err(|_| "Could not commit Star Rail report")?;
+                    .filter(|star| !older_ids.contains(&star.id))
+                    .count() as u64;
+                let current: HashSet<_> =
+                    pool.five_stars.iter().map(|star| star.id.clone()).collect();
+                if let Some(older) = older {
+                    pool.five_stars.extend(
+                        older
+                            .five_stars
+                            .iter()
+                            .filter(|star| !current.contains(&star.id))
+                            .cloned(),
+                    );
+                }
+            }
+            if let Some(previous) = previous {
+                let current: HashSet<_> = report.pools.iter().map(|pool| pool.id.clone()).collect();
+                report.pools.extend(
+                    previous
+                        .pools
+                        .into_iter()
+                        .filter(|pool| !current.contains(&pool.id)),
+                );
+            }
+            let body = serde_json::to_string(&report)
+                .map_err(|_| StoreError::Invalid("Could not encode Star Rail report"))?;
+            save_account(connection, account)?;
+            diesel::insert_into(game_reports::table)
+                .values((
+                    game_reports::game.eq(account.game.key()),
+                    game_reports::uid.eq(&account.uid),
+                    game_reports::payload.eq(&body),
+                ))
+                .on_conflict((game_reports::game, game_reports::uid))
+                .do_update()
+                .set(game_reports::payload.eq(&body))
+                .execute(connection)?;
+            Ok(added)
+        })
+        .map_err(|error| error.to_string())?;
     let mut summary = summary(path, account.game, Some(&account.uid))?;
     summary.added = added;
     Ok(summary)
@@ -193,137 +229,111 @@ pub fn merge(path: &Path, account: &Account, pulls: &[Pull]) -> Result<Summary, 
             return Err("Repeated pull ID in game response; archive was not changed".to_owned());
         }
     }
-    let mut connection = open(path)?;
-    let transaction = connection
-        .transaction()
-        .map_err(|_| "Could not start archive transaction")?;
-    transaction.execute("INSERT INTO accounts VALUES (?1,?2,?3,?4,?5,?6)
-        ON CONFLICT(game,uid) DO UPDATE SET name=excluded.name,region=excluded.region,role_id=excluded.role_id,synced_at=excluded.synced_at",
-        params![account.game.key(), account.uid, account.name, account.region, account.role_id, crate::transport::now()])
-        .map_err(|_| "Could not save archive account")?;
-    let mut added = 0;
-    {
-        let mut insert = transaction.prepare("INSERT INTO pulls VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11) ON CONFLICT(game,uid,id) DO NOTHING").map_err(|_| "Could not prepare archive write")?;
-        let mut existing = transaction.prepare("SELECT pool,NULLIF(item_id,''),rarity,time,is_free,is_new,name FROM pulls WHERE game=?1 AND uid=?2 AND id=?3").map_err(|_| "Could not verify existing archive")?;
-        for pull in pulls {
-            let mut rows = existing
-                .query(params![account.game.key(), account.uid, pull.id])
-                .map_err(|_| "Could not verify archived pull")?;
-            if let Some(row) = rows.next().map_err(|_| "Could not verify archived pull")? {
-                let saved: (
-                    String,
-                    Option<String>,
-                    u8,
-                    String,
-                    Option<bool>,
-                    Option<bool>,
-                    String,
-                ) = (
-                    row.get(0).map_err(|_| "Invalid archived pool")?,
-                    row.get(1).map_err(|_| "Invalid archived item")?,
-                    row.get(2).map_err(|_| "Invalid archived rarity")?,
-                    row.get(3).map_err(|_| "Invalid archived time")?,
-                    row.get(4).map_err(|_| "Invalid archived free-pull flag")?,
-                    row.get(5).map_err(|_| "Invalid archived new-item flag")?,
-                    row.get(6).map_err(|_| "Invalid archived name")?,
-                );
-                let conflict = match (&saved.1, &pull.item_id) {
-                    (Some(saved), Some(incoming)) => saved != incoming,
-                    _ => saved.6 != pull.name,
+    let mut connection = vesper_database::open(path).map_err(|error| error.to_string())?;
+    let added = connection
+        .immediate_transaction::<_, StoreError, _>(|connection| {
+            save_account(connection, account)?;
+            let mut added = 0;
+            for pull in pulls {
+                let key = (account.game.key(), &account.uid, &pull.id);
+                let saved = game_pulls::table
+                    .find(key)
+                    .first::<PullRow>(connection)
+                    .optional()?;
+                if let Some(saved) = saved {
+                    let item_conflict = match (&saved.item_id, &pull.item_id) {
+                        (Some(saved), Some(incoming)) => saved != incoming,
+                        _ => saved.name != pull.name,
+                    };
+                    let record_conflict = saved.pool != pull.pool
+                        || saved.rarity != i32::from(pull.rarity)
+                        || saved.time != pull.time
+                        || saved.is_free != pull.is_free
+                        || saved.is_new != pull.is_new;
+                    if item_conflict || record_conflict {
+                        return Err(StoreError::Invalid(
+                            "Provider history conflicts with an archived pull; archive was not changed",
+                        ));
+                    }
+                    if saved.item_id.is_none() && pull.item_id.is_some() {
+                        diesel::update(game_pulls::table.find(key))
+                            .set(game_pulls::item_id.eq(&pull.item_id))
+                            .execute(connection)?;
+                    }
+                    continue;
+                }
+                let row = PullRow {
+                    game: account.game.key().into(),
+                    uid: account.uid.clone(),
+                    id: pull.id.clone(),
+                    pool: pull.pool.clone(),
+                    pool_name: pull.pool_name.clone(),
+                    item_id: pull.item_id.clone(),
+                    name: pull.name.clone(),
+                    rarity: i32::from(pull.rarity),
+                    time: pull.time.clone(),
+                    is_free: pull.is_free,
+                    is_new: pull.is_new,
                 };
-                let incoming = (
-                    pull.pool.clone(),
-                    saved.1.clone(),
-                    pull.rarity,
-                    pull.time.clone(),
-                    pull.is_free,
-                    pull.is_new,
-                    saved.6.clone(),
-                );
-                if conflict || saved != incoming {
-                    return Err(
-                        "Provider history conflicts with an archived pull; archive was not changed"
-                            .into(),
-                    );
-                }
-                if saved.1.is_none() && pull.item_id.is_some() {
-                    transaction
-                        .execute(
-                            "UPDATE pulls SET item_id=?1 WHERE game=?2 AND uid=?3 AND id=?4",
-                            params![pull.item_id, account.game.key(), account.uid, pull.id],
-                        )
-                        .map_err(|_| "Could not complete archived item ID")?;
-                }
+                added += diesel::insert_into(game_pulls::table)
+                    .values(row)
+                    .execute(connection)? as u64;
             }
-            added += insert
-                .execute(params![
-                    account.game.key(),
-                    account.uid,
-                    pull.id,
-                    pull.pool,
-                    pull.pool_name,
-                    pull.item_id.as_deref().unwrap_or(""),
-                    pull.name,
-                    pull.rarity,
-                    pull.time,
-                    pull.is_free,
-                    pull.is_new
-                ])
-                .map_err(|_| "Could not save pull records; transaction rolled back")?
-                as u64;
-        }
-    }
-    transaction
-        .commit()
-        .map_err(|_| "Could not commit pull archive")?;
+            Ok(added)
+        })
+        .map_err(|error| error.to_string())?;
     let mut result = summary(path, account.game, Some(&account.uid))?;
     result.added = added;
     Ok(result)
 }
 
-fn records(connection: &Connection, game: Game, uid: &str) -> Result<Vec<Pull>, String> {
-    let mut statement = connection.prepare("SELECT id,pool,pool_name,NULLIF(item_id,''),name,rarity,time,is_free,is_new FROM pulls WHERE game=?1 AND uid=?2 ORDER BY time,length(id),id")
+fn records(connection: &mut SqliteConnection, game: Game, uid: &str) -> Result<Vec<Pull>, String> {
+    let rows = game_pulls::table
+        .filter(game_pulls::game.eq(game.key()))
+        .filter(game_pulls::uid.eq(uid))
+        .order((
+            game_pulls::time.asc(),
+            diesel::dsl::sql::<diesel::sql_types::Integer>("length(id)").asc(),
+            game_pulls::id.asc(),
+        ))
+        .load::<PullRow>(connection)
         .map_err(|_| "Could not read pull archive")?;
-    let rows = statement
-        .query_map(params![game.key(), uid], |row| {
+    rows.into_iter()
+        .map(|row| {
+            let rarity = u8::try_from(row.rarity)
+                .ok()
+                .filter(|value| (1..=6).contains(value))
+                .ok_or("Invalid archived rarity")?;
             Ok(Pull {
-                id: row.get(0)?,
-                pool: row.get(1)?,
-                pool_name: row.get(2)?,
-                item_id: row.get(3)?,
-                name: row.get(4)?,
-                rarity: row.get(5)?,
-                time: row.get(6)?,
-                is_free: row.get(7)?,
-                is_new: row.get(8)?,
+                id: row.id,
+                pool: row.pool,
+                pool_name: row.pool_name,
+                item_id: row.item_id,
+                name: row.name,
+                rarity,
+                time: row.time,
+                is_free: row.is_free,
+                is_new: row.is_new,
             })
         })
-        .map_err(|_| "Could not read pull archive")?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|_| "Game archive contains invalid records".to_owned())
+        .collect()
 }
 
 pub fn summary(path: &Path, game: Game, requested_uid: Option<&str>) -> Result<Summary, String> {
-    let connection = open(path)?;
-    let mut statement = connection
-        .prepare(
-            "SELECT uid,name,synced_at FROM accounts WHERE game=?1 ORDER BY synced_at DESC,uid",
-        )
-        .map_err(|_| "Could not read archived accounts")?;
-    let rows = statement
-        .query_map([game.key()], |row| {
-            Ok((
-                ArchivedAccount {
-                    uid: row.get(0)?,
-                    name: row.get(1)?,
-                },
-                row.get::<_, i64>(2)?,
-            ))
-        })
-        .map_err(|_| "Could not read archived accounts")?;
-    let rows = rows
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| "Invalid archived account")?;
+    let mut connection = vesper_database::open(path).map_err(|error| error.to_string())?;
+    let rows = game_accounts::table
+        .filter(game_accounts::game.eq(game.key()))
+        .order((game_accounts::synced_at.desc(), game_accounts::uid.asc()))
+        .select((
+            game_accounts::uid,
+            game_accounts::name,
+            game_accounts::synced_at,
+        ))
+        .load::<(String, String, i64)>(&mut connection)
+        .map_err(|_| "Could not read archived accounts")?
+        .into_iter()
+        .map(|(uid, name, synced)| (ArchivedAccount { uid, name }, synced))
+        .collect::<Vec<_>>();
     let selected = match requested_uid {
         Some(uid) => Some(
             rows.iter()
@@ -333,7 +343,7 @@ pub fn summary(path: &Path, game: Game, requested_uid: Option<&str>) -> Result<S
         None => rows.first(),
     };
     let pulls = match selected {
-        Some((account, _)) => records(&connection, game, &account.uid)?,
+        Some((account, _)) => records(&mut connection, game, &account.uid)?,
         None => Vec::new(),
     };
     let top = match game {
@@ -391,12 +401,10 @@ pub fn summary(path: &Path, game: Game, requested_uid: Option<&str>) -> Result<S
         })
         .collect();
     let official = if let Some((account, _)) = selected {
-        let body: Option<String> = connection
-            .query_row(
-                "SELECT payload FROM official_reports WHERE game=?1 AND uid=?2",
-                params![game.key(), account.uid],
-                |row| row.get(0),
-            )
+        let body = game_reports::table
+            .find((game.key(), &account.uid))
+            .select(game_reports::payload)
+            .first::<String>(&mut connection)
             .optional()
             .map_err(|_| "Could not read official pull report")?;
         body.map(|body| serde_json::from_str(&body))

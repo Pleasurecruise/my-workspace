@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { BellRing, CircleCheck, Cloud, Eye, EyeOff, KeyRound, LoaderCircle, Lock, Music2, QrCode, Send, X } from "@lucide/svelte";
+	import { CalendarDays, BellRing, CircleCheck, Cloud, Eye, EyeOff, KeyRound, LoaderCircle, Lock, Music2, QrCode, Send, X } from "@lucide/svelte";
+	import ConfigurationBadge from "../settings/ConfigurationBadge.svelte";
 	import {
 		Alert,
 		AlertDescription,
@@ -29,6 +30,7 @@
 		CommandResponse,
 		ConfigurationStatus,
 		NtfyConfig,
+		NotionCalendar,
 		QqLoginStatus,
 		QqQr,
 		R2Configuration,
@@ -45,6 +47,7 @@
 		onsaver2,
 		onsaveapi,
 		onsaventfy,
+		onsavenotion,
 		onsaveapplock,
 		onremoveapplock,
 		onconnectspotify,
@@ -59,6 +62,7 @@
 		onsaveugos: (input: UgosConfiguration) => Promise<CommandResponse<string>>;
 		onsaver2: (input: R2Configuration) => Promise<CommandResponse<string>>;
 		onsaveapi: (input: ApiConfiguration) => Promise<CommandResponse<string>>;
+		onsavenotion: (configuration: NotionCalendar) => Promise<CommandResponse<string>>;
 		onsaventfy: (configuration: NtfyConfig) => Promise<CommandResponse<string>>;
 		onsaveapplock: (password: string) => Promise<CommandResponse<string>>;
 		onremoveapplock: () => Promise<CommandResponse<string>>;
@@ -78,6 +82,9 @@
 	let memosApiKey = $state("");
 	let momentApiKey = $state("");
 	let knowledgeApiKey = $state("");
+	let notionViewUrl = $state("");
+	let notionSaving = $state(false);
+	let notionError = $state<string | null>(null);
 	let ntfyToken = $state("");
 	let appLockPassword = $state("");
 	let saving = $state({
@@ -100,6 +107,7 @@
 		api: { memos: "", moment: "", knowledge: "" },
 		ntfy: { token: "", development: false },
 		appLock: "",
+		notion: "",
 	});
 	let initialized = false;
 	let qqQr = $state<QqQr | null>(null);
@@ -139,6 +147,10 @@
 	let telegramAuthorizationChecked = false;
 
 	const canSave = $derived({
+		notion:
+			configuration !== null &&
+			!notionSaving &&
+			notionViewUrl.trim() !== saved.notion,
 		ugos:
 			configuration !== null &&
 			!saving.ugos &&
@@ -213,6 +225,10 @@
 			if (initial.api.knowledge.status === "ready") {
 				knowledgeApiKey = initial.api.knowledge.data;
 				saved.api.knowledge = knowledgeApiKey;
+			}
+			if (initial.notionCalendar.status === "ready") {
+				notionViewUrl = initial.notionCalendar.data.viewUrl;
+				saved.notion = notionViewUrl.trim();
 			}
 			if (initial.ntfy.status === "ready") {
 				ntfyToken = initial.ntfy.data.token;
@@ -300,6 +316,18 @@
 		}
 		saved.appLock = submitted;
 		appLockPasswordVisible = false;
+	}
+
+	async function saveNotion(event: SubmitEvent) {
+		event.preventDefault();
+		if (!canSave.notion) return;
+		notionSaving = true;
+		notionError = null;
+		const submitted = notionViewUrl.trim();
+		const response = await onsavenotion({ viewUrl: submitted });
+		notionSaving = false;
+		if (response.status === "failed") notionError = response.message;
+		else saved.notion = submitted;
 	}
 
 	async function saveNtfy(event: SubmitEvent) {
@@ -430,6 +458,8 @@
 		if (response.status === "failed") formErrors.spotify = response.message;
 	}
 
+
+
 	async function connectQqMusic() {
 		if (saving.qqMusic) return;
 		saving.qqMusic = true;
@@ -499,22 +529,20 @@
 		<nav class="settings-navigation" aria-label="Settings categories">
 			{#each sections as section (section.id)}
 				<button type="button" class:active={selectedSection === section.id} aria-pressed={selectedSection === section.id} aria-controls={`settings-${section.id}`} onclick={() => (selectedSection = section.id)}>
-					<section.icon size={17} /><span>{section.label}</span>
+					<section.icon size={15} /><span>{section.label}</span>
 				</button>
 			{/each}
 		</nav>
 	<div class="settings-content">
-	<section id="settings-games" class="settings-group" hidden={selectedSection !== "games"} aria-labelledby="settings-games-title">
-		<div class="group-heading"><h2 id="settings-games-title">Games</h2><p>Connect your accounts for daily progress and pull history.</p></div>
+	<section id="settings-games" class="settings-group" hidden={selectedSection !== "games"} aria-label="Games">
 		<GameConnections {reconnectMihoyo} />
 	</section>
-	<section id="settings-music" class="settings-group" hidden={selectedSection !== "music"} aria-labelledby="settings-music-title">
-		<div class="group-heading"><h2 id="settings-music-title">Music</h2><p>Your library, recommendations and playback in one place.</p></div>
+	<section id="settings-music" class="settings-group" hidden={selectedSection !== "music"} aria-label="Music">
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="icon"><Music2 size={16} /></span>
 			<div><CardTitle class="settings-card-title">Spotify Music</CardTitle><CardDescription class="settings-card-description">Read Liked Songs and control playback through your Spotify account.</CardDescription></div>
-			{#if configuration?.spotify.status === "ready"}<span class="configured"><CircleCheck size={14} /> Connected</span>{/if}
+			{#if configuration?.spotify.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<CardContent class="settings-card-content">
 			<div class="setting-row">
@@ -529,7 +557,7 @@
 		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="icon"><Music2 size={16} /></span>
 			<div><CardTitle class="settings-card-title">QQ Music</CardTitle><CardDescription class="settings-card-description">Play the personalized Daily 30 recommendation from your QQ Music account.</CardDescription></div>
-			{#if configuration?.qqMusic.status === "ready"}<span class="configured"><CircleCheck size={14} /> Connected</span>{/if}
+			{#if configuration?.qqMusic.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<CardContent class="settings-card-content">
 			<div class="setting-row">
@@ -540,13 +568,12 @@
 	</Card>
 	</section>
 
-	<section id="settings-publishing" class="settings-group" hidden={selectedSection !== "publishing"} aria-labelledby="settings-publishing-title">
-		<div class="group-heading"><h2 id="settings-publishing-title">Publishing</h2><p>Choose where to share your public Memos.</p></div>
+	<section id="settings-publishing" class="settings-group" hidden={selectedSection !== "publishing"} aria-label="Publishing">
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="icon"><Send size={16} /></span>
 			<div><CardTitle class="settings-card-title">Telegram Channel</CardTitle><CardDescription class="settings-card-description">Publish public Memos through an authorized Telegram user account.</CardDescription></div>
-			{#if configuration?.publication.telegram}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
+			{#if configuration?.publication.telegram}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveTelegram}>
 			<CardContent class="settings-card-content">
@@ -570,7 +597,7 @@
 		</form>
 		{#if configuration?.publication.telegram}
 			{#if telegramAuthorization?.status === "ready"}
-				<div class="setting-row telegram-authorization"><div><Label>User authorization</Label><p>The local MTProto session is ready to publish.</p></div><span class="configured"><CircleCheck size={14} /> Authorized</span></div>
+				<div class="setting-row telegram-authorization"><div><Label>User authorization</Label><p>The local MTProto session is ready to publish.</p></div><ConfigurationBadge label="Authorized" /></div>
 			{:else}
 				<form onsubmit={continueTelegramAuth}>
 					<CardContent class="settings-card-content">
@@ -606,7 +633,7 @@
 		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="icon">{@render XLogo()}</span>
 			<div><CardTitle class="settings-card-title">X / Twitter</CardTitle><CardDescription class="settings-card-description">Publish public Memos through the X user-context API.</CardDescription></div>
-			{#if configuration?.publication.x}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
+			{#if configuration?.publication.x}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<CardContent class="settings-card-content">
 			<div class="setting-row">
@@ -617,13 +644,27 @@
 	</Card>
 	</section>
 
-	<section id="settings-general" class="settings-group" hidden={selectedSection !== "general"} aria-labelledby="settings-general-title">
-		<div class="group-heading"><h2 id="settings-general-title">General</h2><p>Keep your workspace private and stay up to date.</p></div>
+	<section id="settings-general" class="settings-group" hidden={selectedSection !== "general"} aria-label="General">
+	<Card>
+		<CardHeader class="settings-card-header settings-card-header-status">
+			<span class="icon"><CalendarDays size={16} /></span>
+			<div><CardTitle class="settings-card-title">Notion calendar</CardTitle><CardDescription class="settings-card-description">Show a Notion calendar view in Todo using the Notion CLI.</CardDescription></div>
+			{#if configuration?.notionCalendar.status === "ready"}<ConfigurationBadge />{/if}
+		</CardHeader>
+		<form onsubmit={saveNotion}>
+			<CardContent class="settings-card-content">
+				<div class="setting-row"><div><Label for="notion-calendar-url">View link</Label><p>Copy a Notion view link with its view ID. Table views need a single Date property.</p></div><Input id="notion-calendar-url" class="settings-input" type="url" bind:value={notionViewUrl} placeholder="https://www.notion.so/…?v=…" /></div>
+				{#if notionError !== null}<p role="alert">{notionError}</p>{/if}
+			</CardContent>
+			<CardFooter class="settings-card-footer"><span class="settings-footer-copy">Run ntn login in Terminal first. Completion stays in Todo. Clear the link to disconnect.</span><Button class="settings-save-button" size="sm" type="submit" disabled={!canSave.notion}>{notionSaving ? "Saving…" : "Save"}</Button></CardFooter>
+		</form>
+	</Card>
+
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="icon"><BellRing size={16} /></span>
 			<div><CardTitle class="settings-card-title">Notifications</CardTitle><CardDescription class="settings-card-description">Subscribe to notifications through ntfy.</CardDescription></div>
-			{#if configuration?.ntfyDev}<span class="configured"><CircleCheck size={14} /> Environment</span>{:else if configuration?.ntfy.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
+			{#if configuration?.ntfyDev}<ConfigurationBadge label="Environment" />{:else if configuration?.ntfy.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveNtfy}>
 			<CardContent class="settings-card-content">
@@ -643,7 +684,7 @@
 		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="icon"><Lock size={16} /></span>
 			<div><CardTitle class="settings-card-title">App Lock</CardTitle><CardDescription class="settings-card-description">Hide Vesper behind a local password while it remains open.</CardDescription></div>
-			{#if configuration?.appLockDev}<span class="configured"><CircleCheck size={14} /> Environment</span>{:else if configuration?.appLock.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
+			{#if configuration?.appLockDev}<ConfigurationBadge label="Environment" />{:else if configuration?.appLock.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveAppLock}>
 			<CardContent class="settings-card-content">
@@ -666,13 +707,12 @@
 	</Card>
 	</section>
 
-	<section id="settings-services" class="settings-group" hidden={selectedSection !== "services"} aria-labelledby="settings-services-title">
-		<div class="group-heading"><h2 id="settings-services-title">Services</h2><p>Connect your NAS, content services and cloud storage.</p></div>
+	<section id="settings-services" class="settings-group" hidden={selectedSection !== "services"} aria-label="Services">
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="icon"><KeyRound size={16} /></span>
 			<div><CardTitle class="settings-card-title">UGOS</CardTitle><CardDescription class="settings-card-description">Connect to Task Manager through ugreen:9443.</CardDescription></div>
-			{#if configuration !== null && configuration.ugos.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
+			{#if configuration !== null && configuration.ugos.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveUgos}>
 			<CardContent class="settings-card-content">
@@ -706,7 +746,7 @@
 						<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (memosKeyVisible = !memosKeyVisible)} aria-label={memosKeyVisible ? "Hide my-memos API key" : "Show my-memos API key"}>{#if memosKeyVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
 					</div>
 					<Button type="button" size="sm" disabled={!canSave.memos} onclick={() => saveApi("memos")}>{saving.memos ? "Saving…" : "Save"}</Button>
-					{#if configuration !== null && configuration.api.memos.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
+					{#if configuration !== null && configuration.api.memos.status === "ready"}<ConfigurationBadge />{/if}
 				</div>
 			</div>
 			<div class="setting-row">
@@ -717,7 +757,7 @@
 						<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (momentKeyVisible = !momentKeyVisible)} aria-label={momentKeyVisible ? "Hide my-moment API key" : "Show my-moment API key"}>{#if momentKeyVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
 					</div>
 					<Button type="button" size="sm" disabled={!canSave.moment} onclick={() => saveApi("moment")}>{saving.moment ? "Saving…" : "Save"}</Button>
-					{#if configuration !== null && configuration.api.moment.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
+					{#if configuration !== null && configuration.api.moment.status === "ready"}<ConfigurationBadge />{/if}
 				</div>
 			</div>
 			<div class="setting-row">
@@ -728,17 +768,19 @@
 						<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (knowledgeKeyVisible = !knowledgeKeyVisible)} aria-label={knowledgeKeyVisible ? "Hide my-knowledge API key" : "Show my-knowledge API key"}>{#if knowledgeKeyVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
 					</div>
 					<Button type="button" size="sm" disabled={!canSave.knowledge} onclick={() => saveApi("knowledge")}>{saving.knowledge ? "Saving…" : "Save"}</Button>
-					{#if configuration !== null && configuration.api.knowledge.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
+					{#if configuration !== null && configuration.api.knowledge.status === "ready"}<ConfigurationBadge />{/if}
 				</div>
 			</div>
 		</div>
 	</Card>
 
+
+
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="icon"><Cloud size={16} /></span>
 			<div><CardTitle class="settings-card-title">Cloudflare R2</CardTitle><CardDescription class="settings-card-description">Read and publish content in cherry-studio.</CardDescription></div>
-			{#if configuration !== null && configuration.r2.status === "ready"}<span class="configured"><CircleCheck size={14} /> Configured</span>{/if}
+			{#if configuration !== null && configuration.r2.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveR2}>
 			<CardContent class="settings-card-content">
@@ -785,7 +827,7 @@
 	.settings { width: 100%; margin: 0 auto; }
 	.settings-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
 	.settings-navigation { display: flex; gap: 0.25rem; padding: 0.25rem; overflow-x: auto; border-bottom: 1px solid var(--color-border); }
-	.settings-navigation button { display: flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.65rem 0.9rem; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font: inherit; font-size: 0.8rem; text-align: left; cursor: pointer; }
+	.settings-navigation button { display: flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.45rem 0.65rem; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--color-muted-foreground); font: inherit; font-size: 0.75rem; text-align: left; cursor: pointer; }
 	.settings-navigation button:hover { background: var(--color-muted); color: var(--color-foreground); }
 	.settings-navigation button.active { border-color: color-mix(in srgb, var(--color-accent) 18%, transparent); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-background)); color: var(--color-accent); }
 	.settings-navigation button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
@@ -793,9 +835,6 @@
 	.settings-content { min-width: 0; container-type: inline-size; }
 	.settings-group { display: grid; gap: 1rem; }
 	.settings-group[hidden] { display: none; }
-	.group-heading { margin-bottom: 0.35rem; }
-	.group-heading h2 { margin: 0; }
-	.group-heading p { margin: 0.35rem 0 0; color: var(--color-muted-foreground); font-size: 0.75rem; line-height: 1.5; }
 	.settings-content :global([data-slot="root"]) { overflow: hidden; box-shadow: none; }
 	:global(.settings-alert) { margin-bottom: 0.75rem; }
 	:global(.settings-alert-copy) { font-size: 0.75rem; }
@@ -812,7 +851,6 @@
 	:global(.settings-save-button) { flex-shrink: 0; min-width: 4.5rem; height: 2rem; padding-inline: 0.85rem; font-size: 0.73rem; font-weight: 500; }
 	.icon { display: grid; width: 2.15rem; height: 2.15rem; place-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-muted); color: var(--color-muted-foreground); }
 	.setting-row p { margin: 0.25rem 0 0; color: var(--color-muted-foreground); font-size: 0.7rem; line-height: 1.5; }
-	.configured { display: inline-flex; width: fit-content; align-items: center; gap: 0.3rem; padding: 0.25rem 0.45rem; border-radius: var(--radius-full); background: color-mix(in srgb, var(--color-success) 8%, transparent); color: var(--color-success); font-size: 0.62rem; white-space: nowrap; }
 	form { border-top: 1px solid var(--color-border); }
 	.setting-row { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: center; gap: 1.5rem; padding: 1rem 1.25rem; }
 	.setting-row > :global(button) { justify-self: end; }
@@ -820,7 +858,7 @@
 	.setting-row :global(label) { font-size: 0.76rem; font-weight: 500; }
 	.api-settings { border-top: 1px solid var(--color-border); }
 	.api-input { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; }
-	.api-input .configured { grid-column: 1 / -1; }
+	.api-input :global(.configuration-badge) { grid-column: 1 / -1; }
 	.lock-actions { display: flex; align-items: center; gap: 0.4rem; }
 	.qq-login-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; box-sizing: border-box; padding: 1rem; background: var(--color-overlay); backdrop-filter: blur(10px); }
 	.qq-login { position: relative; display: grid; width: min(100%, 22rem); justify-items: center; box-sizing: border-box; padding: 1.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-lg); text-align: center; }
@@ -837,7 +875,7 @@
 	@container (max-width: 34rem) {
 		.setting-row { grid-template-columns: 1fr; gap: 0.5rem; }
 		:global(.settings-card-header-status) { grid-template-columns: auto minmax(0, 1fr); }
-		:global(.settings-card-header-status) .configured { grid-column: 2; justify-self: start; }
+		:global(.settings-card-header-status .configuration-badge) { grid-column: 2; justify-self: start; }
 	}
 	@media (max-width: 900px) {
 		.settings-layout { gap: 1.5rem; }

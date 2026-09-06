@@ -36,18 +36,15 @@ fn separate_games() {
 }
 
 #[test]
-fn legacy_format() {
+fn rejects_obsolete_sessions_and_invalid_bindings() {
     let encoded = serde_json::to_string(&session("1", "token")).unwrap();
-    let Saved::Legacy(legacy) = serde_json::from_str(&encoded).unwrap() else {
-        panic!("Expected legacy session");
-    };
+    assert!(serde_json::from_str::<Accounts>(&encoded).is_err());
     let mut accounts = Accounts::default();
-    accounts.insert(legacy).unwrap();
-    assert_eq!(accounts.bindings.len(), 3);
+    accounts.insert(session("1", "token")).unwrap();
     accounts.bindings.insert("genshin".into(), "missing".into());
     assert!(accounts.validate().is_err());
     assert!(
-        serde_json::from_str::<Saved>(r#"{"sessions":{},"bindings":{},"unexpected":true}"#)
+        serde_json::from_str::<Accounts>(r#"{"sessions":{},"bindings":{},"unexpected":true}"#)
             .is_err()
     );
 }

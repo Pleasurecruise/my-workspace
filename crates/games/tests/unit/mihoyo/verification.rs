@@ -2,7 +2,7 @@ use super::super::record::tests::record;
 use super::*;
 
 #[test]
-fn hutao_challenge_requests_preserve_game_scope_and_signed_body() {
+fn signs_challenge() {
     for (game, id, path) in [
         (
             Game::Genshin,
@@ -94,7 +94,7 @@ fn hutao_challenge_requests_preserve_game_scope_and_signed_body() {
 }
 
 #[tokio::test]
-async fn verified_challenge_is_one_use_and_only_for_its_game() {
+async fn consumes_scoped_proof() {
     for game in [Game::Genshin, Game::StarRail] {
         let other_game = if game == Game::Genshin {
             Game::StarRail
@@ -163,7 +163,7 @@ async fn verified_challenge_is_one_use_and_only_for_its_game() {
 }
 
 #[tokio::test]
-async fn cancelled_and_expired_verification_cannot_install_late_results() {
+async fn rejects_stale_proof() {
     let directory = tempfile::tempdir().unwrap();
     let runtime = Runtime::new(directory.path().join("games.sqlite3"));
     let record = record();
@@ -191,7 +191,7 @@ async fn cancelled_and_expired_verification_cannot_install_late_results() {
 }
 
 #[test]
-fn malformed_proof_is_rejected_before_any_request() {
+fn rejects_invalid_proof() {
     for value in ["", "a\r\nb", "a b"] {
         let proof = CaptchaSolution {
             geetest_challenge: "challenge".into(),
@@ -209,7 +209,7 @@ fn malformed_proof_is_rejected_before_any_request() {
 }
 
 #[tokio::test]
-async fn trace_is_scoped_to_the_restricted_game_and_cleared_by_a_new_response() {
+async fn scopes_trace() {
     let record = record();
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-trace-id", "rail-trace".parse().unwrap());
@@ -234,7 +234,7 @@ async fn trace_is_scoped_to_the_restricted_game_and_cleared_by_a_new_response() 
 }
 
 #[test]
-fn rejection_messages_explain_known_failures_without_exposing_codes_or_response_data() {
+fn redacts_rejection_details() {
     for (code, reason) in [
         (-201, "parameters"),
         (-3202, "captcha result"),
@@ -253,11 +253,9 @@ fn rejection_messages_explain_known_failures_without_exposing_codes_or_response_
 }
 
 #[tokio::test]
-async fn diagnostic_file_is_bounded_and_contains_only_safe_failure_metadata() {
+async fn redacts_diagnostics() {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory
-        .path()
-        .join("diagnostics/mihoyo-verification.json");
+    let path = directory.path().join(vesper_database::FILE_NAME);
     for retcode in [0, -999] {
         Diagnostic {
             game: Game::StarRail,
@@ -270,16 +268,32 @@ async fn diagnostic_file_is_bounded_and_contains_only_safe_failure_metadata() {
         .await
         .unwrap();
     }
-    let value: serde_json::Value =
-        serde_json::from_slice(&tokio::fs::read(path).await.unwrap()).unwrap();
+    use diesel::prelude::*;
+    let mut connection = vesper_database::open(&path).unwrap();
+    let rows = game_diagnostic::table
+        .select((
+            game_diagnostic::game,
+            game_diagnostic::stage,
+            game_diagnostic::retcode,
+            game_diagnostic::has_trace,
+            game_diagnostic::timestamp,
+        ))
+        .load::<(String, String, i64, bool, i64)>(&mut connection)
+        .unwrap();
     assert_eq!(
-        value,
-        serde_json::json!({"game":"starRail","stage":"submit","retcode":-999,"has_trace":true,"timestamp":123})
+        rows,
+        vec![(
+            Game::StarRail.key().into(),
+            "submit".into(),
+            -999,
+            true,
+            123
+        )]
     );
 }
 
 #[tokio::test]
-async fn no_captcha_response_does_not_authorize_daily_access() {
+async fn requires_captcha() {
     let response = Envelope {
         retcode: 30001,
         data: None,
@@ -330,7 +344,7 @@ async fn no_captcha_response_does_not_authorize_daily_access() {
 }
 
 #[tokio::test]
-async fn verification_replaces_the_cached_prompt_without_fetching_daily_notes() {
+async fn replaces_cached_prompt() {
     let directory = tempfile::tempdir().unwrap();
     let runtime = Runtime::new(directory.path().join("games.sqlite3"));
     let record = record();
@@ -375,7 +389,7 @@ async fn verification_replaces_the_cached_prompt_without_fetching_daily_notes() 
 }
 
 #[test]
-fn registration_preserves_provider_geetest_flags() {
+fn preserves_geetest_flags() {
     for (flags, expected) in [
         (
             serde_json::json!({"new_captcha":false,"success":0}),

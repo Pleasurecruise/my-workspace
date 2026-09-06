@@ -1,5 +1,6 @@
 use std::process::ExitCode;
 
+mod game;
 mod knowledge;
 mod memo;
 mod moment;
@@ -52,6 +53,7 @@ async fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         }
         [command] if command == "publish" => publish(&repository, false).await,
         [command, sources @ ..] if command == "status" => status::run(sources).await,
+        [command, arguments @ ..] if command == "game" => game::run(arguments).await,
         [command, flag] if command == "publish" && flag == "--live" => {
             publish(&repository, true).await
         }
@@ -164,9 +166,11 @@ fn print_help() {
          moment download <key> <path>   download an image through the R2 SDK\n  \
          moment remove-object <key>     remove an orphaned image object from R2\n  \
          todo --date <YYYY-MM-DD> <action> [...]  operate on another calendar day\n  \
-         todo schedule-path             print the managed ICS schedule directory\n  \
+         todo schedule-path            print the managed ICS schedule directory\n  \
+         todo database-path            print the Todo database path\n  \
+         todo sync-ics                 synchronize local ICS schedules\n  \
          todo import-ics <path>...      validate and install one or more ICS schedules\n  \
-         todo sync-ics                  add today's new ICS occurrences\n  \
+         todo sync                     synchronize ICS and Notion calendars\n  \
          todo list                      list today's Todos as JSON\n  \
          todo get <id>                  read one Todo as JSON\n  \
          todo create <text>             create a Todo\n  \
@@ -175,6 +179,12 @@ fn print_help() {
          todo reopen <id>               mark a Todo incomplete\n  \
          todo delete <id>               delete a Todo\n\n\
          Status sources: ugos, claude, codex, copilot, grok, opencode, deepseek, cherryin\n\n\
+         todo notion status | connect <calendar-view-url> | disconnect\n\
+         game <notes|archive|sync> <genshin|star-rail|zzz|arknights|endfield>\n\
+         game steam\n\
+         status weather [location...] | astronomy [location...] | stocks <symbol...>\n\
+         status exchange | github [owner/repository] | quotation | services [service-id...]\n\
+         status service-catalog\n\
          Content input: replace Markdown or JSON with --file <path> or --stdin for\n\
          memo create/update/page/patch, Knowledge page/create/update/visibility, and\n\
          Moment query/create/update/upload-photo. Examples:\n  \

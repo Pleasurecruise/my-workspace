@@ -7,6 +7,41 @@ pub async fn run(
     arguments: &[String],
     selected_date: Option<&str>,
 ) -> Result<(), String> {
+    if action == "notion" {
+        return match arguments {
+            [operation] if operation == "status" => {
+                match vesper_credentials::notion_calendar().map_err(|error| error.to_string())? {
+                    vesper_credentials::Stored::Missing => {
+                        print_json(&json!({ "configured": false, "viewUrl": null }))
+                    }
+                    vesper_credentials::Stored::Ready(configuration) => print_json(
+                        &json!({ "configured": true, "viewUrl": configuration.view_url }),
+                    ),
+                }
+            }
+            [operation, view_url] if operation == "connect" => {
+                todo_core::Store::shared()
+                    .map_err(|error| error.to_string())?
+                    .configure_notion(vesper_credentials::NotionCalendar {
+                        view_url: view_url.clone(),
+                    })
+                    .await
+                    .map_err(|error| error.to_string())?;
+                print_json(&json!({ "configured": true }))
+            }
+            [operation] if operation == "disconnect" => {
+                todo_core::Store::shared()
+                    .map_err(|error| error.to_string())?
+                    .configure_notion(vesper_credentials::NotionCalendar {
+                        view_url: String::new(),
+                    })
+                    .await
+                    .map_err(|error| error.to_string())?;
+                print_json(&json!({ "configured": false }))
+            }
+            _ => Err("expected todo notion status | connect <view-url> | disconnect".into()),
+        };
+    }
     let store = todo_core::Store::shared().map_err(|error| error.to_string())?;
     let date = match selected_date {
         Some(date) => {
@@ -27,7 +62,7 @@ async fn run_with_store(
     match (action, arguments) {
         ("list", []) => print_json(
             &store
-                .sync_schedule(date)
+                .sync_calendar(date)
                 .await
                 .map_err(|error| error.to_string())?,
         ),
@@ -35,6 +70,13 @@ async fn run_with_store(
         ("sync-ics", []) => print_json(
             &store
                 .sync_schedule(date)
+                .await
+                .map_err(|error| error.to_string())?,
+        ),
+        ("database-path", []) => print_json(&json!({ "database": store.database_path() })),
+        ("sync", []) => print_json(
+            &store
+                .sync_calendar(date)
                 .await
                 .map_err(|error| error.to_string())?,
         ),

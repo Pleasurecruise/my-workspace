@@ -7,6 +7,7 @@ mod configuration;
 mod consumer;
 mod dashboard;
 mod gaming;
+mod island;
 mod music;
 mod notifications;
 mod status;
@@ -173,11 +174,11 @@ pub fn run() {
         .menu(updater::menu)
         .on_menu_event(|app, event| updater::handle_menu_event(app, &event))
         .setup(|app| {
-            app.manage(games::Runtime::new(app.path().app_data_dir()?.join("games.sqlite3")));
-            let todo_path = app.path().app_data_dir()?.join("todos.json");
-            app.manage(todo_core::Store::new(todo_path));
-            let notifications_path = app.path().app_data_dir()?.join("notifications.json");
+            app.manage(games::Runtime::new(app.path().app_local_data_dir()?.join(vesper_database::FILE_NAME)));
+            app.manage(todo_core::Store::shared()?);
+            let notifications_path = app.path().app_local_data_dir()?.join(vesper_database::FILE_NAME);
             app.manage(notifications::NotificationState::new(notifications_path));
+            island::sync(app.handle());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -234,6 +235,9 @@ pub fn run() {
             updater::check_for_update,
             updater::install_update,
             dashboard::refresh_dashboard,
+            dashboard::refresh_island,
+            island::island_available,
+            island::set_island_expanded,
             dashboard::set_dashboard_active,
             status::read_service_status_catalog,
             storage::read_storage,
@@ -256,6 +260,7 @@ pub fn run() {
             telegram::submit_password,
             telegram::cancel_auth,
             configuration::save_ntfy_configuration,
+            configuration::save_notion_calendar,
             notifications::set_notifications_active,
             notifications::read_notifications,
             notifications::mark_notification_read,

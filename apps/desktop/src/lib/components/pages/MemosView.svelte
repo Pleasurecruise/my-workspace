@@ -12,7 +12,7 @@
 </script>
 
 <script lang="ts">
-	import { Archive, Check, CheckCircle2, ChevronRight, Clock3, Globe, Heart, Lock, Pencil, RotateCcw, Send, Share2, Star, Trash2, X, XCircle } from "@lucide/svelte";
+	import { Archive, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Globe, Heart, Lock, Pencil, RotateCcw, Send, Share2, Star, Trash2, X, XCircle } from "@lucide/svelte";
 	import { Alert, AlertDescription, Badge, Button, Input } from "@my-workspace/ui";
 	import { openUrl } from "@tauri-apps/plugin-opener";
 	import type { Snippet } from "svelte";
@@ -72,15 +72,41 @@
 	let publishing = $state<{ memoId: string; provider: "telegram" | "x" } | null>(null);
 	let highlightedId = $state<string | null>(null);
 	let memoList = $state<HTMLDivElement | null>(null);
+	let tagStrip = $state<HTMLDivElement | null>(null);
+	let tagsBefore = $state(false);
+	let tagsAfter = $state(false);
+
+	function measureTags() {
+		if (!tagStrip) return;
+		tagsBefore = tagStrip.scrollLeft > 1;
+		tagsAfter = tagStrip.scrollLeft + tagStrip.clientWidth < tagStrip.scrollWidth - 1;
+	}
+
+	function scrollTags(edge: "start" | "end") {
+		tagStrip?.scrollTo({
+			left: edge === "start" ? 0 : tagStrip.scrollWidth,
+			behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+		});
+	}
+
+	$effect(() => {
+		const strip = tagStrip;
+		if (!strip || tags.length === 0) return;
+		measureTags();
+		const observer = new ResizeObserver(measureTags);
+		observer.observe(strip);
+		return () => observer.disconnect();
+	});
+
 	let focusVersion = 0;
 	let filtersReady = false;
 	let toastSequence = 0;
 	let toasts = $state<Array<{ id: number; kind: "success" | "error"; message: string }>>([]);
 	$effect(() => {
 		const activeDisplay = display;
-		const query = activeDisplay === "active" ? search.trim() : "";
-		const activeTags = activeDisplay === "active" ? selectedTags : [];
-		const updatedOrder = activeDisplay === "active" && sortByUpdated;
+		const query = activeDisplay !== "archived" ? search.trim() : "";
+		const activeTags = activeDisplay !== "archived" ? selectedTags : [];
+		const updatedOrder = activeDisplay !== "archived" && sortByUpdated;
 		if (!filtersReady) {
 			filtersReady = true;
 			return;
@@ -99,7 +125,7 @@
 		return () => window.clearTimeout(timer);
 	});
 
-	let hasFilters = $derived(display === "active" && (search.trim() !== "" || selectedTags.length > 0));
+	let hasFilters = $derived(display !== "archived" && (search.trim() !== "" || selectedTags.length > 0));
 	let visible = $derived(
 		display === "archived"
 			? memos.filter((memo) => memo.archived)
@@ -414,7 +440,7 @@
 		</Alert>
 	{/if}
 
-	{#if display === "active" && selectedTags.length > 0}
+	{#if display !== "archived" && selectedTags.length > 0}
 		<div class="tag-index" aria-label="Selected memo tags">
 			<span>selected</span>
 			{#each selectedTags as tag (tag)}
@@ -423,8 +449,12 @@
 		</div>
 	{/if}
 
-	{#if display === "active" && tags.length > 0}
-		<div class="tag-index" aria-label="Memo tags">
+	{#if display !== "archived" && tags.length > 0}
+		<div class="tag-navigation">
+			{#if tagsBefore}
+				<button class="tag-scroll tag-start" type="button" aria-label="Scroll tags to start" title="Scroll tags to start" onclick={() => scrollTags("start")}><ChevronLeft size={14} /></button>
+			{/if}
+		<div class="tag-index" aria-label="Memo tags" bind:this={tagStrip} onscroll={measureTags}>
 			<span>tags</span>
 			{#each tags as tag (tag.name)}
 				<button
@@ -440,9 +470,13 @@
 				</button>
 			{/each}
 		</div>
+			{#if tagsAfter}
+				<button class="tag-scroll tag-end" type="button" aria-label="Scroll tags to end" title="Scroll tags to end" onclick={() => scrollTags("end")}><ChevronRight size={14} /></button>
+			{/if}
+		</div>
 	{/if}
 
-	{#if display === "active"}
+	{#if display !== "archived"}
 		<div class="search">
 			<span aria-hidden="true">⌕</span>
 			<Input class="h-10 px-10 pr-18 text-sm focus-visible:border-accent focus-visible:ring-0 focus-visible:ring-offset-0" bind:value={search} placeholder="Search memos..." aria-label="Search memos" />
@@ -544,7 +578,7 @@
 			</article>
 		{/snippet}
 
-		{#if display !== "active"}
+		{#if display === "archived"}
 			{#each monthGroups as [month, items] (month)}
 				<section class="collection-group">
 					<header><h2>{monthFormatter.format(new Date(`${month}-01T00:00:00`))}</h2><span></span><small>{items.length} {items.length === 1 ? "entry" : "entries"}</small></header>
@@ -555,19 +589,15 @@
 								<div class="memo-content">{@html memo.html}</div>
 								{#if memo.tags.length > 0}<div class="tags">{#each memo.tags as tag (tag)}<Badge variant="outline" class="border-accent/25 text-accent">#{tag}</Badge>{/each}</div>{/if}
 								<footer>
-									{#if display === "favorites"}
-										<Button variant="outline" size="sm" class="gap-1.5 font-normal text-muted-foreground" disabled={mutatingId === memo.id} onclick={() => toggleFavorite(memo)}><Heart size={12} fill="currentColor" />{mutatingId === memo.id ? "Removing..." : "Unfavorite"}</Button>
-									{:else}
 										<Button variant="outline" size="sm" class="gap-1.5 font-normal text-muted-foreground" disabled={mutatingId === memo.id} onclick={() => toggleArchive(memo)}><RotateCcw size={12} />{mutatingId === memo.id ? "Restoring..." : "Restore"}</Button>
 										<Button variant="destructive" size="sm" class="ml-auto gap-1.5 font-normal" onclick={() => (confirmingDelete = memo.id)}><Trash2 size={12} /> Delete</Button>
-									{/if}
 								</footer>
 							</article>
 						{/each}
 					</div>
 				</section>
 			{/each}
-		{:else if hasFilters}
+		{:else if display === "favorites" || hasFilters}
 			{#each visible as memo (memo.id)}
 				{@render memoCard(memo)}
 			{/each}
@@ -703,6 +733,45 @@
 		position: relative;
 		display: block;
 		margin-bottom: 1.25rem;
+	}
+
+	.tag-navigation {
+		position: relative;
+		margin-bottom: 0.75rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--color-divider);
+	}
+
+	.tag-navigation .tag-index {
+
+		min-width: 0;
+		margin: 0;
+		padding: 0 1.9rem 0 0;
+		border: 0;
+	}
+
+	.tag-start { left: 0; }
+	.tag-end { right: 0; }
+
+	.tag-scroll {
+		position: absolute;
+		top: 0;
+		z-index: 1;
+		display: grid;
+		place-items: center;
+		width: 1.5rem;
+		height: 1.5rem;
+		padding: 0;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-full);
+		background: var(--color-background);
+		color: var(--color-muted-foreground);
+		cursor: pointer;
+	}
+
+	.tag-scroll:hover {
+		background: var(--color-muted);
+		color: var(--color-foreground);
 	}
 
 	.tag-index {

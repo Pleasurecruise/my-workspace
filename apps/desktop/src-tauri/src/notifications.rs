@@ -1,7 +1,7 @@
 use crate::CommandResponse;
+use diesel::prelude::*;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
 use std::path::PathBuf;
 use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
@@ -65,14 +65,39 @@ struct Subscription {
 
 impl NotificationState {
     pub(crate) fn new(path: PathBuf) -> Self {
-        let store = match std::fs::read(&path) {
-            Ok(bytes) => serde_json::from_slice(&bytes)
-                .map_err(|error| format!("could not parse {}: {error}", path.display())),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Ok(NotificationStore::default())
-            }
-            Err(error) => Err(format!("could not read {}: {error}", path.display())),
-        };
+        let store = (|| {
+            let mut connection = vesper_database::open(&path).map_err(|error| error.to_string())?;
+            let last_id = notification_cursor::table
+                .find(1)
+                .select(notification_cursor::last_id)
+                .first::<Option<String>>(&mut connection)
+                .optional()
+                .map_err(|error| error.to_string())?
+                .flatten();
+            let rows = notifications::table
+                .order(notifications::position.asc())
+                .load::<NotificationRow>(&mut connection)
+                .map_err(|error| error.to_string())?;
+            let notifications = rows
+                .into_iter()
+                .map(|row| {
+                    Ok(Notification {
+                        id: row.id,
+                        topic: row.topic,
+                        source: row.source,
+                        title: row.title,
+                        message: row.message,
+                        timestamp: row.timestamp,
+                        tags: serde_json::from_str(&row.tags)
+                            .map_err(|_| "Invalid notification tags".to_owned())?,
+                    })
+                })
+                .collect::<Result<_, String>>()?;
+            Ok(NotificationStore {
+                last_id,
+                notifications,
+            })
+        })();
         Self {
             path,
             store: RwLock::new(store),
@@ -158,24 +183,75 @@ impl NotificationState {
     }
 }
 
+diesel::table! {
+    notifications (id) {
+        id -> Text,
+        position -> Integer,
+        topic -> Text,
+        source -> Text,
+        title -> Nullable<Text>,
+        message -> Text,
+        timestamp -> BigInt,
+        tags -> Text,
+    }
+}
+diesel::table! {
+    notification_cursor (id) { id -> Integer, last_id -> Nullable<Text>, }
+}
+
+#[derive(Queryable, Insertable)]
+#[diesel(table_name = notifications)]
+struct NotificationRow {
+    id: String,
+    position: i32,
+    topic: String,
+    source: String,
+    title: Option<String>,
+    message: String,
+    timestamp: i64,
+    tags: String,
+}
+
 async fn persist(path: &std::path::Path, store: &NotificationStore) -> Result<(), String> {
-    let encoded = serde_json::to_vec(store).map_err(|error| error.to_string())?;
+    let rows = store
+        .notifications
+        .iter()
+        .enumerate()
+        .map(|(position, item)| {
+            Ok(NotificationRow {
+                id: item.id.clone(),
+                position: position as i32,
+                topic: item.topic.clone(),
+                source: item.source.clone(),
+                title: item.title.clone(),
+                message: item.message.clone(),
+                timestamp: item.timestamp,
+                tags: serde_json::to_string(&item.tags).map_err(|error| error.to_string())?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let last_id = store.last_id.clone();
     let path = path.to_owned();
     tokio::task::spawn_blocking(move || {
-        let parent = path
-            .parent()
-            .ok_or("Notification path has no parent directory")?;
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-        let mut temporary =
-            tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
-        temporary
-            .write_all(&encoded)
-            .and_then(|()| temporary.as_file().sync_all())
-            .map_err(|error| error.to_string())?;
-        temporary
-            .persist(&path)
-            .map_err(|error| error.error.to_string())?;
-        Ok(())
+        let mut connection = vesper_database::open(&path).map_err(|error| error.to_string())?;
+        connection
+            .immediate_transaction::<_, diesel::result::Error, _>(|connection| {
+                diesel::delete(notifications::table).execute(connection)?;
+                diesel::insert_into(notifications::table)
+                    .values(&rows)
+                    .execute(connection)?;
+                diesel::insert_into(notification_cursor::table)
+                    .values((
+                        notification_cursor::id.eq(1),
+                        notification_cursor::last_id.eq(&last_id),
+                    ))
+                    .on_conflict(notification_cursor::id)
+                    .do_update()
+                    .set(notification_cursor::last_id.eq(&last_id))
+                    .execute(connection)?;
+                Ok(())
+            })
+            .map_err(|error| error.to_string())
     })
     .await
     .map_err(|error| error.to_string())?

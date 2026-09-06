@@ -5,7 +5,6 @@ const ACCOUNT: &str = "ntfy-notifications";
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct NtfyConfig {
-    #[serde(default)]
     pub token: String,
     pub development: bool,
 }
@@ -34,9 +33,6 @@ pub fn ntfy() -> Result<Stored<NtfyConfig>, CredentialError> {
             Stored::Missing => return Ok(Stored::Missing),
         };
         let mut configuration: NtfyConfig = serde_json::from_str(&encoded)?;
-        if configuration.token.trim().is_empty() {
-            return Ok(Stored::Missing);
-        }
         configuration.development = false;
         validate(&configuration)?;
         Ok(Stored::Ready(configuration))

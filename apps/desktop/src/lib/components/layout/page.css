@@ -13,10 +13,6 @@
   margin-inline: auto;
 }
 
-.page-layout[data-layout="narrow"] > .page-content {
-  max-width: 48rem;
-}
-
 .page-layout :is(h1, h2, h3, h4, h5, h6):not(:where([data-content-typography] *)),
 .page-layout .page-title {
   color: var(--color-foreground);

@@ -5,6 +5,7 @@ mod environment;
 pub mod games;
 mod music;
 mod notifications;
+mod notion;
 mod publication;
 mod store;
 mod ugos;
@@ -17,6 +18,7 @@ pub use music::{
     QqMusicCredentials, SpotifyCredentials, qq_music, save_qq_music, save_spotify, spotify,
 };
 pub use notifications::{NtfyConfig, ntfy, save_ntfy};
+pub use notion::{NotionCalendar, notion_calendar, save_notion_calendar};
 pub use publication::{TelegramCredentials, XCredentials, save_telegram, save_x, telegram, x};
 pub use ugos::{UgosCredentials, save_ugos, save_ugos_certificate, ugos, ugos_certificate};
 
@@ -29,6 +31,10 @@ pub enum Stored<T> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CredentialError {
+    #[error(transparent)]
+    Database(#[from] vesper_database::Error),
+    #[error("credential database operation failed: {0}")]
+    Query(#[from] diesel::result::Error),
     #[error("credential store coordination failed: {0}")]
     StoreIo(#[from] std::io::Error),
     #[error("the operating system did not provide a credential store data directory")]
@@ -57,15 +63,6 @@ pub enum CredentialError {
         path: std::path::PathBuf,
         source: dotenvy::Error,
     },
-    #[cfg(debug_assertions)]
-    #[error("development credential storage failed at {}: {source}", path.display())]
-    DevelopmentStorage {
-        path: std::path::PathBuf,
-        source: std::io::Error,
-    },
-    #[cfg(debug_assertions)]
-    #[error("the operating system did not provide a development data directory")]
-    DevelopmentDataDirectory,
 }
 
 #[cfg(test)]

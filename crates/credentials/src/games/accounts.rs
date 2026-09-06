@@ -10,13 +10,6 @@ pub struct Accounts {
     pub bindings: BTreeMap<String, String>,
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum Saved {
-    Current(Accounts),
-    Legacy(Session),
-}
-
 impl Accounts {
     pub fn insert(&mut self, session: Session) -> Result<(), CredentialError> {
         session.validate()?;
@@ -104,21 +97,9 @@ fn lock() -> Result<File, CredentialError> {
 }
 
 fn load() -> Result<Accounts, CredentialError> {
-    #[cfg(debug_assertions)]
-    let saved = crate::store::file::read::<Saved>(&super::development_path(Provider::Mihoyo)?)?;
-    #[cfg(not(debug_assertions))]
-    let saved = match crate::store::read(Provider::Mihoyo.key())? {
-        Stored::Missing => Stored::Missing,
-        Stored::Ready(encoded) => Stored::Ready(serde_json::from_str::<Saved>(&encoded)?),
-    };
-    let accounts = match saved {
+    let accounts = match crate::store::read(Provider::Mihoyo.key())? {
         Stored::Missing => Accounts::default(),
-        Stored::Ready(Saved::Current(accounts)) => accounts,
-        Stored::Ready(Saved::Legacy(session)) => {
-            let mut accounts = Accounts::default();
-            accounts.insert(session)?;
-            accounts
-        }
+        Stored::Ready(encoded) => serde_json::from_str::<Accounts>(&encoded)?,
     };
     accounts.validate()?;
     Ok(accounts)
@@ -136,9 +117,6 @@ pub fn update(
     let mut accounts = load()?;
     change(&mut accounts)?;
     accounts.validate()?;
-    #[cfg(debug_assertions)]
-    return crate::store::file::save(&super::development_path(Provider::Mihoyo)?, &accounts);
-    #[cfg(not(debug_assertions))]
     crate::store::save(Provider::Mihoyo.key(), &serde_json::to_string(&accounts)?)
 }
 

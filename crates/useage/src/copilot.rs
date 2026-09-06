@@ -1,3 +1,4 @@
+use crate::cache::Cache;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -5,9 +6,11 @@ use std::time::Duration;
 use tokio::process::Command;
 
 const QUERY_TIMEOUT: Duration = Duration::from_secs(15);
+const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const USER_ENDPOINT: &str = "copilot_internal/user";
+static CACHE: Cache<Result<CopilotUsage, String>> = Cache::new();
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all(serialize = "camelCase"))]
 pub struct CopilotUsage {
     pub login: Option<String>,
@@ -17,7 +20,7 @@ pub struct CopilotUsage {
     pub quota_snapshots: CopilotQuotaSnapshots,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all(serialize = "camelCase"))]
 pub struct CopilotQuotaSnapshots {
     pub chat: Option<CopilotQuota>,
@@ -25,7 +28,7 @@ pub struct CopilotQuotaSnapshots {
     pub premium_interactions: Option<CopilotQuota>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all(serialize = "camelCase"))]
 pub struct CopilotQuota {
     pub entitlement: Option<f64>,
@@ -39,6 +42,10 @@ pub struct CopilotQuota {
 }
 
 pub async fn read() -> Result<CopilotUsage, String> {
+    CACHE.read(CACHE_TTL, read_fresh()).await
+}
+
+async fn read_fresh() -> Result<CopilotUsage, String> {
     let binary = resolve_gh_binary()?;
     let mut command = Command::new(binary);
     command

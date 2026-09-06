@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn isolates_corrupt_notification_storage() {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("notifications.json");
+    let path = directory.path().join("notifications.sqlite3");
     std::fs::write(&path, b"{").unwrap();
     let state = NotificationState::new(path.clone());
     assert!(state.store.read().await.is_err());
@@ -14,7 +14,7 @@ async fn isolates_corrupt_notification_storage() {
 #[tokio::test]
 async fn failed_replacement_preserves_notification_state() {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("notifications.json");
+    let path = directory.path().join("notifications.sqlite3");
     let state = NotificationState::new(path.clone());
     state
         .accept(NtfyMessage {
@@ -29,7 +29,7 @@ async fn failed_replacement_preserves_notification_state() {
         .await
         .unwrap();
     let saved = std::fs::read(&path).unwrap();
-    let retained = directory.path().join("retained.json");
+    let retained = directory.path().join("retained.sqlite3");
     std::fs::rename(&path, &retained).unwrap();
     std::fs::create_dir(&path).unwrap();
     assert!(state.mark_read("message-1").await.is_err());
@@ -50,8 +50,10 @@ async fn failed_replacement_preserves_notification_state() {
 
 #[tokio::test]
 async fn deduplicates_messages() {
-    let path =
-        std::env::temp_dir().join(format!("vesper-notifications-{}.json", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "vesper-notifications-{}.sqlite3",
+        std::process::id()
+    ));
     drop(std::fs::remove_file(&path));
     let state = NotificationState::new(path.clone());
     let message = NtfyMessage {
@@ -91,7 +93,7 @@ async fn deduplicates_messages() {
 #[tokio::test]
 async fn removes_read_message() {
     let path = std::env::temp_dir().join(format!(
-        "vesper-read-notifications-{}.json",
+        "vesper-read-notifications-{}.sqlite3",
         std::process::id()
     ));
     let message = NtfyMessage {
@@ -184,7 +186,7 @@ async fn credential_restart_stops_old_stream_before_starting_replacement() {
 #[tokio::test]
 async fn leaving_inbox_waits_for_accepted_message_to_commit() {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("notifications.json");
+    let path = directory.path().join("notifications.sqlite3");
     let state = std::sync::Arc::new(NotificationState::new(path.clone()));
     let guard = state.store.write().await;
     let mut subscription = Subscription::default();
@@ -217,7 +219,9 @@ async fn leaving_inbox_waits_for_accepted_message_to_commit() {
     assert!(futures_util::poll!(&mut stop).is_pending());
     drop(guard);
     stop.await.unwrap();
-    let disk: NotificationStore = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let restored = NotificationState::new(path);
+    let disk = restored.store.read().await;
+    let disk = disk.as_ref().unwrap();
     let memory = state.store.read().await;
     let memory = memory.as_ref().unwrap();
     assert_eq!(disk.notifications.len(), 1);

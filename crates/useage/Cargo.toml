@@ -13,3 +13,6 @@ serde_json.workspace = true
 time.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

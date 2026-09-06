@@ -17,12 +17,12 @@ and archive calculations.
 | [gaming.rs](../apps/desktop/src-tauri/src/gaming.rs)                                      | Typed Tauri commands, settings prefill, and account/daily events                                              |
 | [gaming/](../apps/desktop/src-tauri/src/gaming)                                           | Isolated verification windows and restricted browser bridge                                                   |
 | [crates/games](../crates/games/src/lib.rs)                                                | Runtime, provider operations, daily cache, verification lifecycle, and archive access                         |
-| [credentials/games](../crates/credentials/src/games/mod.rs)                               | Typed provider secrets, account collection, selections, and file/system-store persistence                     |
+| [credentials/games](../crates/credentials/src/games/mod.rs)                               | Typed provider secrets, account collection, selections, and SQLite/system-store persistence                   |
 
 ```text
 Settings -> QR / account binding -> credentials
 Dashboard -> GamePanel -> daily command -> Rust cache -> provider API
-                      -> archive read -> games.sqlite3
+                      -> archive read -> vesper.sqlite3
                       -> manual sync -> provider history -> validated SQLite transaction
 Steam widget -> Steam command -> read-only Steam Web APIs
 ```
@@ -43,13 +43,13 @@ QR flow. Pending QR IDs scope polling/cancellation so superseded completions can
 miHoYo logins are indexed by account ID and each game selects its login independently. Reauthorizing
 an existing account replaces that account's session. Removing a login clears its selections and
 runtime record session while preserving pull history. The account collection has a separate
-read-modify-write lock; see [PERSISTENCE.md](PERSISTENCE.md) for the exact storage and lock paths.
+read-modify-write lock and accepts only the current collection format; see [PERSISTENCE.md](PERSISTENCE.md) for the exact storage and lock paths.
 
 Skland uses its scan-login exchange, then signed API requests and role-specific history tokens.
 The [official login client](https://web.hycdn.cn/user-center/index.fa9aa713.js) defines QR states.
 Polling maps 100 to waiting, 101 to phone confirmation, and 102 to expired. Steam uses an API key
 and SteamID64 entered in Settings (Keychain in macOS release builds). Debug builds prefer
-`STEAM_API_KEY` and `STEAM_ID` from the environment / root `.env`, falling back to `games-steam.json`
+`STEAM_API_KEY` and `STEAM_ID` from the environment / root `.env`, falling back to the development credential table
 only when both variables are absent. Only `read_steam_settings` returns those stored values to the
 trusted form. General connection and activity projections omit secrets.
 
@@ -107,7 +107,7 @@ not used for Genshin or Star Rail. Provider failures remain visible and preserve
 
 Provider operations remain scoped to the selected login. A no-captcha response without a token
 does not confirm access or clear a cached restriction. Verification diagnostics record game, stage,
-numeric result, trace presence, and timing in `mihoyo-verification.json`, excluding secret values.
+numeric result, trace presence, and timing in the single `game_diagnostic` database row, excluding secret values.
 
 ## Pull archive and Steam
 
@@ -128,7 +128,7 @@ The protocol was checked against
 [Axiu-Plugin's Star Rail service](https://github.com/AxiuCN/Axiu-Plugin/blob/master/model/srGacha.js)
 and verified with live badge login, all six pools and a temporary archive.
 
-Rust validates all downloaded records before merging accounts and pulls in one `games.sqlite3`
+Rust validates all downloaded records before merging accounts and pulls in one `vesper.sqlite3`
 transaction. Identity is `(game, uid, record id)`. Sync adds available history without deleting older
 saved records. Missing miHoYo item IDs can be filled later; conflicting identity/content fails the
 transaction. Arknights normalizes rarity, and Endfield skips bonus events as pulls while still

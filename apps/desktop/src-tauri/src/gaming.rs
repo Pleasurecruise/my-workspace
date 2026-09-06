@@ -7,6 +7,18 @@ use tauri::{AppHandle, Emitter, Manager};
 mod captcha;
 mod verification;
 
+// Verification webviews host third-party pages; game state belongs only to our UI windows.
+fn emit<T: serde::Serialize + Clone>(
+    app: &AppHandle,
+    event: &str,
+    payload: T,
+) -> tauri::Result<()> {
+    app.emit_filter(event, payload, |target| {
+        matches!(target,
+        tauri::EventTarget::WebviewWindow { label } if label == "main" || label == "island")
+    })
+}
+
 // Stored values are returned only to the trusted Settings form.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,7 +72,9 @@ pub(crate) async fn select_game_account(
         .await
     {
         Ok(()) => {
-            let _ = app.emit("game-accounts-changed", ());
+            if emit(&app, "game-accounts-changed", ()).is_err() {
+                tracing::warn!("Could not notify the main window of game account changes");
+            }
             CommandResponse::Ready { data: () }
         }
         Err(message) => CommandResponse::Failed { message },
@@ -76,7 +90,9 @@ pub(crate) async fn remove_game_account(id: String, app: AppHandle) -> CommandRe
     }
     match app.state::<Runtime>().remove_account(&id).await {
         Ok(()) => {
-            let _ = app.emit("game-accounts-changed", ());
+            if emit(&app, "game-accounts-changed", ()).is_err() {
+                tracing::warn!("Could not notify the main window of game account changes");
+            }
             CommandResponse::Ready { data: () }
         }
         Err(message) => CommandResponse::Failed { message },
@@ -104,8 +120,10 @@ pub(crate) async fn poll_game_login(
     let runtime = app.state::<Runtime>();
     match runtime.poll_login(provider, &id).await {
         Ok(data) => {
-            if matches!(data, LoginProgress::Complete) {
-                let _ = app.emit("game-accounts-changed", ());
+            if matches!(data, LoginProgress::Complete)
+                && emit(&app, "game-accounts-changed", ()).is_err()
+            {
+                tracing::warn!("Could not notify the main window of game account changes");
             }
             CommandResponse::Ready { data }
         }
@@ -215,21 +233,22 @@ pub(crate) async fn refresh(app: &tauri::AppHandle, force: bool) -> Result<(), S
         let app = app.clone();
         tasks.spawn(async move {
             let result = read_game_notes(game, Some(force), app.clone()).await;
-            app.emit("game-notes-updated", NotesEvent { game, result })
-                .map_err(|_| "Could not publish game notes".to_owned())
+            if emit(&app, "game-notes-updated", NotesEvent { game, result }).is_err() {
+                tracing::warn!("Could not publish game notes");
+            }
         });
     }
     if steam {
         let app = app.clone();
         tasks.spawn(async move {
             let result = read_steam_games(app.clone()).await;
-            app.emit("steam-games-updated", result)
-                .map_err(|_| "Could not publish Steam activity".to_owned())
+            if emit(&app, "steam-games-updated", result).is_err() {
+                tracing::warn!("Could not publish Steam activity");
+            }
         });
     }
     while let Some(result) = tasks.join_next().await {
-        let result = result.map_err(|_| "Game refresh worker failed")?;
-        result?;
+        result.map_err(|_| "Game refresh worker failed")?;
     }
     Ok(())
 }

@@ -16,11 +16,17 @@
 - `crates/cms-core`: Markdown, content builds, static publication, and R2 access.
 - `crates/consumers`: Memos, Moment, and Knowledge APIs, projections, and Moment media processing.
 - `crates/social`: outbound Telegram Channel and X publication.
-- `crates/todo`: local Todo storage and ICS schedule projection.
-- `crates/credentials`: operating-system credential-store boundary.
+- `crates/todo`: local Todo storage and ICS/Notion calendar projection.
+- `crates/credentials`: typed credentials and build-specific storage boundary.
+- `crates/database`: shared Diesel SQLite connection, schema, and database location.
 - `crates/ugos`: read-only UGOS Pro boundary.
-- `crates/useage`: read-only AI subscription and credit providers. The spelling is intentional.
+- `crates/useage`: AI subscription and credit reads; CherryIN may refresh its existing OAuth session.
+  The spelling is intentional.
 - `crates/logger`: shared `tracing` initialization.
+- `crates/music`: Spotify and QQ Music authentication, collections, playback, album art, and lyrics.
+- `crates/games`: Game account authorization, daily notes, Steam activity, and local pull archives.
+- `crates/quotes`: Shared astronomy, exchange, GitHub, quotation, stock, weather, and status read providers.
+- `crates/md-dialect`: Publication and Knowledge Markdown dialect compilation.
 - `packages/ui`: reusable Svelte components and design tokens.
 - `packages/tsconfig`: UI-only TypeScript configuration.
 

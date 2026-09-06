@@ -22,10 +22,10 @@ consumer data, or perform a Memo, Knowledge, or Moment mutation through `vesper`
 
 ## Todo
 
-Todo commands need no credential and use the same date-keyed JSON calendar as the desktop. Commands
-default to today; prefix an action with `todo --date YYYY-MM-DD` to target another desktop-visible
-date. `get` and `schedule-path` are pure reads, while `list` and `sync-ics` may persist unseen
-occurrences from managed schedules.
+Todo uses the same SQLite task records as Desktop. Local tasks and ICS need no credential;
+Notion calendar reads use the view link saved in Settings or through the CLI and the existing `ntn login` session.
+Commands default to today; use `todo --date YYYY-MM-DD` for another date. `list` and `sync` read
+ICS and the configured Notion view and may update local projections. `sync-ics` reads only ICS.
 
 ```sh
 vesper todo list
@@ -35,19 +35,31 @@ vesper todo update <id> <text>
 vesper todo complete <id>
 vesper todo reopen <id>
 vesper todo delete <id>
+vesper todo database-path
 vesper todo schedule-path
 vesper todo import-ics <path>...
 vesper todo sync-ics
+vesper todo sync
+vesper todo notion status
+vesper todo notion connect <calendar-view-url>
+vesper todo notion disconnect
 vesper todo --date 2026-08-26 list
-vesper todo --date 2026-08-26 create <text>
 ```
 
-`schedule-path` reports the managed `ics` directory beside `todos.json`. `import-ics` validates all
-sources before installing them, projects UTC and IANA TZID times into the device time zone, rejects
-unsupported recurrence semantics, and then syncs the selected date. Occurrences are added once per
-source file, UID, and source date; later completion or deletion is stable, and same-text manual Todos
-remain manual. `list` and `get` return nullable `details`: imported items include calendar, timing,
-location, and description, while manual items return `null`.
+`database-path` reports the shared SQLite file. `schedule-path` reports the original managed `ics/`
+directory; existing ICS input files remain active and are not migrated into the database.
+`import-ics` validates every source before replacing any file, then atomically installs each file.
+It projects UTC and IANA TZID times into the local time zone and rejects unsupported recurrence
+semantics. Occurrence keys prevent duplicates and preserve local deletion and completion.
+
+Run `ntn login` before `notion connect`. The calendar view link must include its `v` parameter,
+and the signed-in workspace must have access to the underlying database.
+Completion and deletion stay local and do not modify Notion pages. `syncError` in a successful list
+response reports a failed remote refresh while preserving the local projection. `status` reveals
+configuration presence and the view URL; authentication remains owned by `ntn`.
+
+`list` and `get` return nullable `details`: imported items include calendar, timing, location and
+description, while manual items return `null`. Legacy Todo JSON is not read.
 
 ## Provider status
 

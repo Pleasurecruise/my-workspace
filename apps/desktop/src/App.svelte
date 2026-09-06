@@ -4,13 +4,14 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import { Archive, ArrowLeft, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, Lock, Menu, Moon, Music2, Newspaper as NewspaperIcon, Settings, Sun, X } from "@lucide/svelte";
-	import { onMount, tick } from "svelte";
+	import { onMount, tick, untrack } from "svelte";
 	import MemosView from "./lib/components/pages/MemosView.svelte";
 	import MomentView from "./lib/components/pages/MomentView.svelte";
 	import MusicView from "./lib/components/pages/MusicView.svelte";
 	import KnowledgeView from "./lib/components/pages/KnowledgeView.svelte";
 	import InboxView from "./lib/components/pages/InboxView.svelte";
 	import NewspaperView from "./lib/components/pages/NewspaperView.svelte";
+	import { createLayoutSession } from "./lib/components/dashboard/layout.svelte";
 	import DashboardView from "./lib/components/pages/DashboardView.svelte";
 	import SettingsView from "./lib/components/pages/SettingsView.svelte";
 	import ScrollToTop from "./lib/components/layout/ScrollToTop.svelte";
@@ -18,6 +19,7 @@
 		CommandResponse,
 		Channel,
 		InitialViews,
+		QqQr,
 		UpdateInfo,
 		UpdateProgress,
 	} from "./lib/consumer";
@@ -44,7 +46,7 @@
 	const profileNameKey = "vesper.profile.name";
 	const profileAvatarKey = "vesper.profile.avatar";
 	const sidebarWidthKey = "vesper.sidebar.width";
-	const minimumSidebarWidth = 220;
+	const minimumSidebarWidth = 64;
 	const maximumSidebarWidth = 360;
 
 	let contentWidth = $state(0);
@@ -76,6 +78,7 @@
 	let initializationRequest = 0;
 	let dark = $state(initTheme());
 	let sidebarOpen = $state(false);
+	const layoutSession = createLayoutSession();
 	const dashboardSession = createDashboardSession(() => selected === "dashboard");
 	const inbox = createInboxSession(() => selected === "inbox");
 	const settings = createSettingsSession({
@@ -86,6 +89,22 @@
 		},
 		initializeConsumers,
 		refreshDashboard: dashboardSession.refreshDashboard,
+	});
+	function viewAvailable(view: View): boolean {
+		const configuration = settings.configuration;
+		switch (view) {
+			case "memos": return configuration?.api.memos.status === "ready";
+			case "moment": return configuration?.api.moment.status === "ready";
+			case "knowledge":
+			case "newspaper": return configuration?.api.knowledge.status === "ready";
+			case "music": return configuration?.spotify.status === "ready" || configuration?.qqMusic.status === "ready";
+			case "inbox": return configuration?.ntfy.status === "ready";
+			default: return true;
+		}
+	}
+	const visibleNavigation = $derived(navigation.filter((item) => viewAvailable(item.id)));
+	$effect(() => {
+		if (!viewAvailable(selected)) untrack(() => { void select("dashboard"); });
 	});
 	let updateAvailable = $state<UpdateInfo | null>(null);
 	let updateProgress = $state<UpdateProgress | null>(null);
@@ -198,6 +217,7 @@
 			if (selected === "inbox") view = previousView;
 			else previousView = selected;
 		}
+		if (!viewAvailable(view)) view = "dashboard";
 		activeContent?.leave();
 		musicPlayerVisible = false;
 		selected = view;
@@ -284,10 +304,12 @@
 	}
 
 	function resizeSidebarByKey(event: KeyboardEvent) {
-		if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+		if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
 		event.preventDefault();
 		const delta = event.key === "ArrowLeft" ? -8 : 8;
-		sidebarWidth = Math.min(maximumSidebarWidth, Math.max(minimumSidebarWidth, sidebarWidth + delta));
+		if (event.key === "Home") sidebarWidth = minimumSidebarWidth;
+		else if (event.key === "End") sidebarWidth = maximumSidebarWidth;
+		else sidebarWidth = Math.min(maximumSidebarWidth, Math.max(minimumSidebarWidth, sidebarWidth + delta));
 		localStorage.setItem(sidebarWidthKey, String(sidebarWidth));
 	}
 
@@ -442,7 +464,7 @@
 		aria-label="Close sidebar"
 	></button>
 
-	<aside class:open={sidebarOpen}>
+	<aside class:open={sidebarOpen} class:compact={sidebarWidth < 160}>
 		<div class="sidebar-header">
 			<button type="button" class="close-sidebar" onclick={() => (sidebarOpen = false)} aria-label="Close sidebar">
 				<X size={15} />
@@ -450,31 +472,20 @@
 		</div>
 
 		<nav aria-label="Consumer views">
-			{#each navigation as item}
+			{#each visibleNavigation as item}
 				<button
 					type="button"
 					class:active={selected === item.id}
 					aria-current={selected === item.id ? "page" : "false"}
+					aria-label={item.label}
+					title={item.label}
 					onclick={() => void select(item.id)}
 				>
 					{#if item.id === "dashboard"}<LayoutDashboard size={15} />{:else if item.id === "memos"}<Home size={15} />{:else if item.id === "moment"}<Image size={15} />{:else if item.id === "music"}<Music2 size={15} />{:else if item.id === "newspaper"}<NewspaperIcon size={15} />{:else if item.id === "knowledge"}<BookOpen size={15} />{:else}<Settings size={15} />{/if}
-					{item.label}
+					<span>{item.label}</span>
 				</button>
 			{/each}
 		</nav>
-
-		<div class="sidebar-rule"></div>
-
-		<div class="storage">
-			<p>Connections</p>
-			<div><span class:offline={settings.configuration === null || settings.configuration.api.memos.status === "missing"}></span>my-memos API</div>
-			<div><span class:offline={settings.configuration === null || settings.configuration.api.moment.status === "missing"}></span>my-moment API</div>
-			<div><span class:offline={settings.configuration === null || settings.configuration.api.knowledge.status === "missing"}></span>my-knowledge API</div>
-			<div><span class:offline={settings.configuration === null || settings.configuration.spotify.status === "missing"}></span>Spotify</div>
-			<div><span class:offline={settings.configuration === null || settings.configuration.qqMusic.status === "missing"}></span>QQ Music</div>
-			<div><span class:offline={settings.configuration === null || settings.configuration.r2.status === "missing"}></span>Cloudflare R2</div>
-			{#if settings.configuration === null}<small>Checking credential store</small>{:else}<small>Managed in Settings</small>{/if}
-		</div>
 
 		<div class="sidebar-footer">
 			<div class="profile-popover-anchor" bind:this={profilePopover} onfocusout={closeProfileEditorOnBlur}>
@@ -503,6 +514,7 @@
 				</button>
 			</div>
 			<div class="footer-controls">
+				{#if viewAvailable("inbox")}
 				<div class="footer-navigation">
 					<button
 						class:active={selected === "inbox"}
@@ -519,6 +531,7 @@
 						{#if inbox.notifications.length > 0}<span class="notification-dot" aria-hidden="true"></span>{/if}
 					</button>
 				</div>
+				{/if}
 				<div class="footer-actions">
 					<button type="button" onclick={lockApp} aria-label={settings.configuration?.appLock.status === "ready" ? "Lock Vesper" : "Configure App Lock"} title={settings.configuration?.appLock.status === "ready" ? "Lock Vesper" : "Configure App Lock in Settings"}>
 						<Lock size={15} />
@@ -554,54 +567,28 @@
 			</button>
 			<strong>vesper</strong>
 		</header>
-		<div class="canvas page-layout" data-layout={selected === "dashboard" || selected === "moment" || selected === "newspaper" || (selected === "music" && !musicPlayerVisible) ? "wide" : "narrow"}>
+		<div class="canvas page-layout">
 			<div class="page-content" bind:clientWidth={contentWidth} data-stacked={contentWidth <= 640}>
 				{#if selected === "dashboard"}
-					<DashboardView
-						snapshot={dashboardSession.dashboard.taskManager.data}
-						error={dashboardSession.dashboard.taskManager.error}
-						deviceTelemetry={dashboardSession.dashboard.deviceTelemetry.data}
-						deviceTelemetryError={dashboardSession.dashboard.deviceTelemetry.error}
-						refreshing={dashboardSession.dashboardRefreshing}
-						usage={dashboardSession.dashboard.codex.data}
-						usageError={dashboardSession.dashboard.codex.error}
-						openCodeUsage={dashboardSession.dashboard.openCode.data}
-						openCodeUsageError={dashboardSession.dashboard.openCode.error}
-						claudeUsage={dashboardSession.dashboard.claude.data}
-						claudeUsageError={dashboardSession.dashboard.claude.error}
-						grokUsage={dashboardSession.dashboard.grok.data}
-						grokUsageError={dashboardSession.dashboard.grok.error}
-						copilotUsage={dashboardSession.dashboard.copilot.data}
-						copilotUsageError={dashboardSession.dashboard.copilot.error}
-						deepSeekBalance={dashboardSession.dashboard.deepSeek.data}
-						deepSeekBalanceError={dashboardSession.dashboard.deepSeek.error}
-						cherryInUsage={dashboardSession.dashboard.cherryIn.data}
-						cherryInUsageError={dashboardSession.dashboard.cherryIn.error}
-						weather={dashboardSession.dashboard.weather.data}
-						weatherError={dashboardSession.dashboard.weather.error}
-						stocks={dashboardSession.dashboard.stocks.data}
-						stocksError={dashboardSession.dashboard.stocks.error}
-						exchange={dashboardSession.dashboard.exchange.data}
-						exchangeError={dashboardSession.dashboard.exchange.error}
-						serviceStatus={dashboardSession.dashboard.serviceStatus.data}
-						serviceStatusError={dashboardSession.dashboard.serviceStatus.error}
-						github={dashboardSession.dashboard.github.data}
-						githubError={dashboardSession.dashboard.github.error}
-						quotation={dashboardSession.dashboard.quotation.data}
-						quotationError={dashboardSession.dashboard.quotation.error}
-						todos={dashboardSession.todos.data}
-						todosError={dashboardSession.todos.error}
-						todosLoading={dashboardSession.todos.loading}
-						todayDate={dashboardSession.todayDate}
-						todoDate={dashboardSession.todoDate}
-						onselecttododate={dashboardSession.loadTodos}
-						onaddtodo={dashboardSession.addTodo}
-						ontoggletodo={dashboardSession.toggleTodo}
-						ondeletetodo={dashboardSession.deleteTodo}
-						onrefresh={() => dashboardSession.refreshDashboard(true)}
-					/>
+					<DashboardView session={dashboardSession} {layoutSession} />
 				{:else if selected === "settings"}
-					<SettingsView {reconnectMihoyo} configuration={settings.configuration} error={settings.error} onsaveugos={settings.saveUgosConfiguration} onsaver2={settings.saveR2Configuration} onsaveapi={settings.saveApiConfiguration} onsaventfy={settings.saveNtfy} onsaveapplock={settings.saveAppLock} onremoveapplock={settings.removeAppLock} onconnectspotify={settings.connectSpotify} onbeginqq={settings.beginQqLogin} onpollqq={settings.pollQqLogin} oncancelqq={settings.cancelQqLogin} onconfigurationchanged={settings.loadConfiguration} />
+					<SettingsView
+						{reconnectMihoyo}
+						configuration={settings.configuration}
+						error={settings.error}
+						onsaveugos={settings.saveUgosConfiguration}
+						onsaver2={settings.saveR2Configuration}
+						onsaveapi={settings.saveApiConfiguration}
+						onsaventfy={settings.saveNtfy}
+						onsavenotion={settings.saveNotionCalendar}
+						onsaveapplock={settings.saveAppLock}
+						onremoveapplock={settings.removeAppLock}
+						onconnectspotify={settings.connectSpotify}
+						onbeginqq={() => invoke<CommandResponse<QqQr>>("begin_qq_music_login")}
+						onpollqq={settings.pollQqLogin}
+						oncancelqq={() => invoke<CommandResponse<null>>("cancel_qq_music_login")}
+						onconfigurationchanged={settings.loadConfiguration}
+					/>
 				{:else if selected === "inbox"}
 					<InboxView notifications={inbox.notifications} loadError={inbox.error} onread={inbox.markNotificationRead} />
 				{:else if selected === "music"}
@@ -836,6 +823,7 @@
 		position: relative;
 		display: flex;
 		flex-direction: column;
+		min-width: 0;
 		height: 100vh;
 		box-sizing: border-box;
 		border-right: 1px solid var(--color-border);
@@ -893,6 +881,7 @@
 	nav button {
 		display: flex;
 		align-items: center;
+		min-width: 0;
 		height: 2.25rem;
 		gap: 0.625rem;
 		padding: 0 0.75rem;
@@ -906,56 +895,21 @@
 		text-align: left;
 	}
 
+	nav button span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	nav button :global(svg) {
+		flex-shrink: 0;
+	}
+
 	nav button:hover,
 	nav button.active {
 		border-color: transparent;
 		background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 		color: var(--color-accent);
-	}
-
-	.sidebar-rule {
-		height: 1px;
-		margin: 1rem;
-		background: var(--color-border);
-	}
-
-	.storage {
-		display: grid;
-		gap: 0.45rem;
-		padding: 0 1.25rem;
-		color: var(--color-muted-foreground);
-		font-size: 0.75rem;
-	}
-
-	.storage p {
-		margin: 0 0 0.15rem;
-		font-size: 0.68rem;
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
-
-	.storage div {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		color: var(--color-foreground);
-	}
-
-	.storage div span {
-		width: 0.45rem;
-		height: 0.45rem;
-		border-radius: var(--radius-full);
-		background: var(--color-success);
-	}
-
-	.storage div span.offline {
-		background: var(--color-muted-foreground);
-	}
-
-	.storage small {
-		padding-left: 0.95rem;
-		font-size: 0.68rem;
 	}
 
 	.user-profile {
@@ -1123,6 +1077,7 @@
 		min-width: 0;
 		height: 100vh;
 		overflow-y: auto;
+		scrollbar-gutter: stable;
 	}
 
 	.topbar {
@@ -1269,6 +1224,40 @@
 		color: var(--color-muted-foreground);
 		font-size: 0.75rem;
 		text-align: center;
+	}
+
+	@media (min-width: 768px) {
+		aside.compact nav {
+			padding-right: 0.5rem;
+			padding-left: 0.5rem;
+		}
+
+		aside.compact nav button {
+			justify-content: center;
+			padding: 0;
+		}
+
+		aside.compact nav button span,
+		aside.compact .user-profile span {
+			display: none;
+		}
+
+		aside.compact .footer-controls {
+			display: none;
+		}
+
+		aside.compact .sidebar-footer {
+			justify-content: center;
+		}
+
+		aside.compact .user-profile {
+			justify-content: center;
+		}
+
+		aside.compact .profile-editor {
+			left: calc(100% + 0.75rem);
+			bottom: 0;
+		}
 	}
 
 	@media (max-width: 767px) {

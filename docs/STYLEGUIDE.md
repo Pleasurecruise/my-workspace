@@ -38,8 +38,8 @@ shared module merely to make the caller shorter.
 
 Desktop Svelte files distinguish page composition from supporting components. Under
 `apps/desktop/src/lib/components`, `pages` owns complete navigation views and `layout` owns
-cross-page shell controls, the shared wide/narrow frame, and heading typography. Pages fill their
-assigned content slot. Shared page headings use semantic tokens; existing editorial and widget
+cross-page shell controls, the shared page frame, and heading typography. Pages fill their
+assigned content slot, centered within the main area by the shared frame. Shared page headings use semantic tokens; existing editorial and widget
 compositions retain their internal proportions and typography. Unifying the outer frame must not
 rearrange those compositions.
 Supporting components and view sessions belong to the feature that owns them: `dashboard`, `games`,
@@ -131,9 +131,9 @@ early returns. Do not create a one-call helper merely to avoid ordinary Rust syn
 
 ## Naming
 
-- Name persisted files after the data or provider they own, such as `credentials.json` or
-  `spotify.json`. Do not add a `development-` prefix; build configuration selects the credential
-  backend and does not belong in the persisted filename.
+- Name database tables and credential accounts after the feature they own. The shared database is
+  `vesper.sqlite3`; do not introduce feature JSON files or build-mode filename prefixes. Build
+  configuration selects the credential backend.
 - Functions use verbs: `read`, `refreshDashboard`, `saveR2Configuration`.
 - Values use concrete nouns: `usage`, `subscription`, `snapshot`, `credentials`.
 - Booleans describe predicates or state: `isAvailable`, `unlimitedQuota`, `refreshing`.

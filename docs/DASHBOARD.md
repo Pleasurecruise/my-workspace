@@ -1,18 +1,11 @@
 # Dashboard Integrations
 
-Dashboard is a local aggregation surface that does not mutate provider account data. Protocol code,
-request ordering, and polling live in Rust. Each external source has an independent request lock and result event. CherryIN token refresh is the narrow exception to local read-only credential
-access: a successful refresh may update the existing Cherry Studio OAuth session. Games also
-exchanges authorization and signing tokens within its own credential boundary.
-
-Telegram and X are outbound Memo publication providers, not Dashboard sources. Their configuration,
-authorization, and token refresh paths remain outside the Dashboard runtime so its read-only provider
-contract does not expand.
-
-In macOS release builds, Vesper-owned Keychain configuration uses the shared `credentials` item and Rust cache
-owned by `crates/credentials`; provider polling does not reread separate Keychain items. Existing
-Codex, pi, Claude Code, GitHub CLI, and Cherry Studio credential sources remain independent. Setup
-and authorization behavior are documented in [DEVELOPMENT.md](DEVELOPMENT.md).
+Dashboard aggregates provider reads. Rust owns protocols, credentials, source locks and polling;
+Svelte holds settled projections and renders independent loading and error states. Vesper-owned
+release credentials use the operating-system store, while external CLI sessions retain their own
+storage. CherryIN renews the existing Cherry Studio OAuth session when needed. Telegram and X
+publication remain outside the Dashboard runtime. See
+[Development](DEVELOPMENT.md#credential-resolution) for credential setup.
 
 ## Data flow
 
@@ -59,7 +52,7 @@ action. Weather, stocks, exchange rates, GitHub, and random quotations have no t
 Each game has a combined daily-status and pull-archive card; Steam has a library/activity widget.
 Panels invoke the Rust games runtime directly. Dashboard entry reuses daily cache entries, while
 explicit Dashboard refresh also refreshes daily status. Steam polls every five minutes; archive
-sync remains an explicit action. Existing split daily/archive widget entries merge when layout loads.
+sync remains an explicit action. Removed split daily/archive widget kinds are rejected.
 
 [GAMES.md](GAMES.md) owns account binding, QR authorization, cache ordering, human verification,
 archive transactions, Steam projections, and protocol references. [DESIGN.md](DESIGN.md#game-interaction)
@@ -84,15 +77,20 @@ Upstream producers ──> ntfy.you-find.me/mail-summary ── authenticated SS
 
 ## Widget layout
 
-Dashboard cards occupy a fixed twelve-track canvas. Edit mode supports dragging a card, deleting it
-with its upper-right action, and restoring the Rust-owned default. Within a row, dragging targets
-individual cards; across rows, it inserts at a row boundary. The Add Widget library groups available
-widgets by category and shows a preview. Narrow windows scroll the canvas without changing its order.
+Dashboard cards occupy a fixed twelve-track canvas. Edit mode supports dragging cards, removing
+placements and restoring the Rust-owned default. Within a row, dragging targets individual cards;
+across rows, it inserts at a row boundary. Narrow windows scroll the canvas without changing order.
 
-Rust validates and atomically replaces `layout.json`. Its shape is exactly `{ widgets }`: each
-placement has a unique ID and a current typed configuration. Unknown fields, duplicate widgets,
-and obsolete kinds fail validation. Only a missing file uses the default; invalid data remains an
-error until the user explicitly restores a layout. There is no versioning or migration.
+The default order is AAPL, TSLA, Device CPU, Device Storage, Exchange, GitHub service status,
+Quotation, Ningbo/Nottingham/Shanghai weather, Arknights, Star Rail, GitHub activity, Calendar, Todo,
+Codex, OpenCode Go, DeepSeek and CherryIN. Todo is selected for the Dynamic Island. New layouts and
+Restore Default use this arrangement; existing saved layouts retain their placements.
+
+Rust validates and transactionally replaces `{ widgets, islandWidgetId }` in `vesper.sqlite3`.
+Placements have unique IDs and typed configurations; a non-null island selection references one
+placement. Unknown fields, duplicate widgets, obsolete kinds and dangling selections fail
+validation. An uninitialized layout uses the default. Invalid data remains an error until the user
+restores a layout. Legacy layout files are not imported.
 
 The widget library uses a category rail without a search input. System Status contains both the
 explicitly named UGREEN CPU, UGREEN Memory, UGREEN Storage, and UGREEN Network widgets and the
@@ -100,6 +98,12 @@ Device CPU, Device Memory, Device Storage, and Device Network widgets backed by 
 Quota contains separate Codex, OpenCode Go, Claude, Grok, and Copilot widgets. Balance contains
 separate DeepSeek and Cherry widgets. Existing singleton widgets remain visible and are marked as
 added instead of disappearing from the library.
+
+The macOS Dynamic Island is a separate native window at the top of the primary screen. It shares
+WidgetContent rendering, saved layout and Rust source locks with Dashboard, but owns a separate
+WebView session. Expansion reads only its selected provider without enabling Dashboard polling.
+Todo and Calendar refresh once a minute while expanded. Game events reach both trusted UI windows;
+verification webviews do not receive account data. App Lock closes the island.
 
 ## Current device
 
@@ -209,20 +213,31 @@ Each date read has its own request revision. The view keeps settled data while l
 response only if it still matches the selected date, preventing a slower earlier request from
 replacing a newer selection. Calendar and Todo are stored as separate placements in the dashboard layout.
 
-Rust stores the date-keyed calendar in `todos.json`, shares it with `vesper todo` through a sidecar
-lock, and ignores the former `today-todos.json` format. Reads also sync the optional sibling `ics`
-directory. ICS import validates all sources before installation, then commits each file by writing
-and syncing a same-directory temporary file and replacing its destination. A staging or replacement
-failure preserves the previous destination. The blocking installer retains the storage lock until
-it finishes, including when its caller is cancelled. Import is a sequence of file commits: a later
-failure reports that earlier files may already be installed, without rolling them back.
+Rust stores tasks and occurrence keys through Diesel in the shared database. The existing `ics/`
+directory remains the source for ICS calendars, including files placed there directly. Desktop and
+CLI use the same store constructor and retain the roaming ICS directory on Windows. Imports
+validate all files before installing each through an atomic file replacement. Recurrence keys prevent duplicate tasks across repeated
+reads; deleting an imported occurrence suppresses it. Floating times remain local, while UTC and
+IANA TZID values are projected into the device time zone. Unsupported recurrence semantics are
+reported explicitly. At midnight a view following today advances without deleting history.
 
-Floating DTSTART values remain local, while UTC and IANA TZID-qualified times are converted to the
-device time zone before their date and `HH:MM` prefix are selected. The documented RRULE subset and
-EXDATE are materialized once per source file, UID, and source occurrence date. Invalid structure,
-unknown time zones, and unsupported recurrence fields fail the Todo read rather than silently
-changing meaning. At local midnight a view still showing today advances and syncs the new date
-without deleting history.
+Settings accepts a Notion calendar-view link. Install the official `ntn` CLI and run `ntn login`
+with a workspace that can access the database. Select a Date property for the calendar; formula and
+creation-time properties are not supported. Table and other views are supported when their data
+source contains exactly one Date property; multiple dates require a calendar view to choose one. Rust invokes `ntn api` to retrieve the view, query its saved filters and
+sorting, paginates page references and batch-queries the data source, retaining only pages in the
+view. All-day ranges and zoned dates are projected onto the selected local date. The CLI owns authentication; Vesper stores only the view link and never reads CLI tokens.
+Each process has a timeout and is killed on cancellation. A failed or incomplete query does not
+replace the saved projection; Todo displays the error alongside saved tasks. Configuration
+writes and calendar reads share a cross-process lock so a completed settings save cannot be followed
+by a stale commit from the previous view. Once a database commit is queued, its worker retains the
+lock through the transaction even if the requesting task is cancelled.
+
+Notion page IDs preserve local completion across refreshes. Successful reads update titles and
+remove entries no longer present for that day. Deletion suppresses the local occurrence; completion
+and deletion do not mutate Notion. Clearing the Settings link disconnects the calendar. The CLI
+uses the same configuration and Rust implementation. Native-window Todo mutations notify the other
+surface to reload; requests already in flight finish before the invalidation is processed.
 
 ## UGOS Pro
 
@@ -244,7 +259,7 @@ response types; callers only expose its typed result.
 | `grok.rs`     | Authenticated Grok runtime billing JSON-RPC      | Existing Grok device login; optional `GROK_BINARY` path override     | Current subscription window                          |
 | `opencode.rs` | `https://opencode.ai/zen/go/v1/usage`            | pi auth entry `opencode-go`                                          | Rolling, weekly, and monthly Go-plan windows         |
 | `deepseek.rs` | `https://api.deepseek.com/user/balance`          | pi auth entry `deepseek`                                             | Availability and currency balances                   |
-| `cherryin.rs` | CherryIN OAuth balance endpoint                  | Cherry Studio `cherryin` OAuth session                               | Account balance shown under Cherry                   |
+| `cherryin.rs` | CherryIN OAuth balance endpoint                  | Cherry Studio OAuth session                                          | Account balance shown under Cherry                   |
 
 Claude, Copilot, and Grok are independent Quota widgets and Dashboard sources in addition to their
 CLI status checks. Claude reuses Claude Code's OAuth session and reads the five-hour and seven-day
@@ -255,11 +270,12 @@ reset date. The Dashboard omits unlimited Chat and Completions rows and presents
 Requests quota; a zero row-level reset timestamp falls back to the account reset date. Grok launches
 the authenticated official runtime and reads its private billing snapshot.
 
-Vesper does not create or register an OpenCode provider named `cherry-opencode-go`. OpenCode Go and
-CherryIN are separate integrations. Vesper reads OpenCode Go from pi. It reuses CherryIN's existing
-OAuth session from Cherry Studio and only updates that session when an access-token refresh succeeds.
-Each provider owns its request construction and timeout so one integration cannot change another
-provider's connection policy.
+OpenCode Go and CherryIN are separate integrations. Codex, Grok and Copilot use five-minute
+in-memory caches with request coalescing; both success and failure are cached to avoid repeated
+requests against private interfaces. Cancelled reads release the gate without caching unfinished
+results. External CLI account changes become visible after the cache expires.
+Supported REST reads, including DeepSeek and Steam, request the API on refresh. Each provider owns
+its request construction and timeout.
 
 ### API-key resolution
 
@@ -298,18 +314,19 @@ only the total available account balance without a composition breakdown or char
 
 ### CherryIN
 
-Dashboard follows Cherry Studio's CherryIN integration: it reads the existing `cherryin` OAuth access
-and refresh tokens from Cherry Studio's `Data/cherrystudio.sqlite`, calls `/api/v1/oauth/balance`, and
-converts the returned account `quota` with CherryIN's `500000` quota unit. An access token that is
-expired or within sixty seconds of expiry is refreshed through `/oauth2/token`; a balance request
-that returns `401` forces one refresh and retry. Refreshed tokens are conditionally written back only
-when the stored refresh token still identifies the same session, so a concurrent Cherry Studio
-logout or login is not overwritten. Vesper serializes CherryIN reads so two Dashboard refreshes do
-not rotate the same refresh token concurrently. If the refresh token is absent or rejected, Vesper
-asks the user to sign in again in Cherry Studio. It never uses pi's model token, `/api/usage/token/`,
-or the billing subscription endpoints, so an unlimited model token cannot be mistaken for account
-balance.
-The resulting balance is displayed as US dollars with an explicit `USD` label.
+CherryIN requires an existing Cherry Studio sign-in. Vesper reads the `user_provider` OAuth
+session from `CherryStudio/Data/cherrystudio.sqlite`. It refreshes expired access tokens or tokens
+within sixty seconds of expiry through `/oauth2/token`, using the existing refresh token. A balance
+request returning 401 forces one refresh and retry. Missing or rejected refresh tokens require
+signing in again in Cherry Studio; Settings has no separate CherryIN login flow.
+
+Successful refreshes conditionally replace the existing session only when its saved JSON still
+matches the value read before refresh, preserving unrelated fields and concurrent account changes.
+Vesper serializes its CherryIN reads within the process. It does not create the Cherry Studio
+database. CherryIN has no five-minute result cache, so a manual retry rereads the session immediately.
+
+Balance reads call `GET /api/v1/oauth/balance` and divide account quota by `500000` for USD display.
+Model-token limits are not account balance.
 
 ## Adding a provider
 
@@ -337,38 +354,3 @@ dependencies. All nonessential motion is disabled when the operating system requ
 [open-meteo]: https://open-meteo.com/en/docs
 [open-meteo-geocoding]: https://open-meteo.com/en/docs/geocoding-api
 [openai-status]: https://status.openai.com/api/v2/summary.json
-
-The most recent miHoYo verification response overwrites `mihoyo-verification.json` beside
-`games.sqlite3`. This diagnostic contains only game, register/submit stage, numeric return code,
-trace presence and timestamp. It excludes provider messages, account IDs and all credentials.
-Saving diagnostics never initiates a provider request.
-
-Star Rail uses the dedicated official RPG client's `https://api-takumi.mihoyo.com/event/toolcomsrv/risk/`
-`createGeetest` and `verifyGeetest` endpoints. Registration query and signed proof body both include
-`app_key=hkrpg_game_record`; its record headers include `x-rpc-tool_verison: v4.5.0` and
-`x-rpc-page: v4.5.0_#/rpg`. Genshin retains Hutao's `card/wapi` endpoints without that app key.
-Source: [official RPG client](https://webstatic.mihoyo.com/app/community-game-records/rpg/bundle_4f39d3de405a1031c4af.js).
-
-Manual miHoYo pull sync reuses the current record session and its cached CookieToken role lookup.
-Genshin generates a fresh `webview_gacha` AuthKey using SToken-only cookies, the
-Hutao Gen1/LK2 signing profile, persistent record device and fingerprint, and the app Referer.
-Errors identify role lookup, AuthKey authorization or history download; no stage automatically
-retries, and failed sync leaves the saved archive intact. Daily verification is separate from
-AuthKey authorization, so daily notes can work while pull authorization fails.
-
-Pull downloads preserve the generated AuthKey's `authkey_ver` and `sign_type` and include
-`auth_appid=webview_gacha`, matching Hutao's query composition. Percent-escaped keys are decoded
-once before URL serialization, preserving literal base64 plus signs. Download authorization
-errors refer to the pull key rather than instructing users to reconnect a working daily session.
-
-miHoYo verification return code `30001` means this verification request needs no captcha;
-it does not confirm daily access and supplies no challenge token. Registration/submission surface
-an explanatory failure and preserve the cached restriction. Only a successful response with a valid
-challenge can transition the card to `refreshRequired`; this performs no daily request.
-Both games bind `x-rpc-challenge_path` to the full daily endpoint URL. The official RPG client's
-Axios dispatcher combines its base URL and relative path before exposing the response config.
-
-Completing verification replaces only that game/login's cached verification error with a typed
-`refreshRequired` state. The native window emits the same state to the card immediately. This
-local transition performs no provider I/O, persists across view remounts and cache replays, and
-preserves successful cached notes. Only an explicit refresh reads fresh daily data.

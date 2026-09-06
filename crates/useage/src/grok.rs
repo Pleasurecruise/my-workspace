@@ -1,3 +1,4 @@
+use crate::cache::Cache;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -9,17 +10,19 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::ChildStdout;
 
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
+const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
+static CACHE: Cache<Result<GrokUsage, String>> = Cache::new();
 const WEEKLY_PERIOD: &str = "USAGE_PERIOD_TYPE_WEEKLY";
 const WEEKLY_DURATION_MINS: u64 = 7 * 24 * 60;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GrokUsage {
     pub plan_type: Option<String>,
     pub window: UsageWindow,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageWindow {
     pub used_percent: f64,
@@ -28,6 +31,10 @@ pub struct UsageWindow {
 }
 
 pub async fn read() -> Result<GrokUsage, String> {
+    CACHE.read(CACHE_TTL, read_fresh()).await
+}
+
+async fn read_fresh() -> Result<GrokUsage, String> {
     let binary = resolve_grok_binary()?;
     let mut child = tokio::process::Command::new(&binary)
         .args(["agent", "stdio"])
@@ -241,12 +248,10 @@ fn measured_duration_mins(start: Option<&str>, end: Option<&str>) -> Option<u64>
 }
 
 fn resolve_grok_binary() -> Result<PathBuf, String> {
-    for variable in ["GROK_BINARY", "GROK_PATH"] {
-        if let Some(path) = std::env::var_os(variable).map(PathBuf::from)
-            && path.is_file()
-        {
-            return Ok(path);
-        }
+    if let Some(path) = std::env::var_os("GROK_BINARY").map(PathBuf::from)
+        && path.is_file()
+    {
+        return Ok(path);
     }
     if let Some(path) = std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)

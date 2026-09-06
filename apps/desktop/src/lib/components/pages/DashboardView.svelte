@@ -1,122 +1,25 @@
 <script lang="ts">
-	import { Activity, ArrowLeftRight, ChartNoAxesCombined, Check, ChevronRight, CloudSun, Cpu, Database, Gauge, HardDrive, ListTodo, MemoryStick, Network, Plus, RefreshCw, RotateCcw, Settings2, ShieldCheck, Sparkles, WalletCards, X } from "@lucide/svelte";
-	import { invoke } from "@tauri-apps/api/core";
-	import { onMount } from "svelte";
-	import type { CherryInBalance, ClaudeUsage, CodexUsage, CommandResponse, CopilotUsage, DeepSeekBalance, DeviceTelemetrySnapshot, ExchangeReport, GithubSnapshot, GrokUsage, OpenCodeUsage, Quotation, ServiceStatusCatalogEntry, ServiceStatusReport, StockReport, TaskManagerSnapshot, TodoList, WeatherReport, WidgetLayout, WidgetPlacement } from "../../consumer";
+	import { Activity, ArrowLeftRight, ChartNoAxesCombined, Check, Pin, ChevronRight, CloudSun, Cpu, Gauge, HardDrive, ListTodo, MemoryStick, Network, Plus, RefreshCw, RotateCcw, Settings2, ShieldCheck, Sparkles, WalletCards, X } from "@lucide/svelte";
+	import type { WidgetPlacement, ServiceStatusCatalogEntry } from "../../consumer";
 	import { widgetCategories, widgetCategoryLabel, widgetKey, widgetOptions, widgets } from "../../dashboard";
 	import type { WidgetCategory } from "../../dashboard";
-	import GithubPanel from "../dashboard/GithubPanel.svelte";
-	import ExchangePanel from "../dashboard/ExchangePanel.svelte";
-	import ServiceStatusPanel from "../dashboard/ServiceStatusPanel.svelte";
-	import StocksPanel from "../dashboard/StocksPanel.svelte";
-	import StoragePanel from "../dashboard/StoragePanel.svelte";
-	import Todo from "../dashboard/Todo.svelte";
-	import CalendarPanel from "../dashboard/CalendarPanel.svelte";
-	import QuotationPanel from "../dashboard/QuotationPanel.svelte";
-	import UsagePanel from "../dashboard/UsagePanel.svelte";
-	import WeatherPanel from "../dashboard/WeatherPanel.svelte";
-	import GamePanel from "../games/GamePanel.svelte";
-	import SteamGamesPanel from "../games/SteamGamesPanel.svelte";
-
-	let {
-		snapshot,
-		error,
-		deviceTelemetry,
-		deviceTelemetryError,
-		refreshing,
-		usage,
-		usageError,
-		openCodeUsage,
-		openCodeUsageError,
-		claudeUsage,
-		claudeUsageError,
-		grokUsage,
-		grokUsageError,
-		copilotUsage,
-		copilotUsageError,
-		deepSeekBalance,
-		deepSeekBalanceError,
-		cherryInUsage,
-		cherryInUsageError,
-		weather,
-		weatherError,
-		stocks,
-		stocksError,
-		exchange,
-		exchangeError,
-		serviceStatus,
-		serviceStatusError,
-		github,
-		githubError,
-		quotation,
-		quotationError,
-		todos,
-		todosError,
-		todosLoading,
-		todayDate,
-		todoDate,
-		onaddtodo,
-		ontoggletodo,
-		ondeletetodo,
-		onselecttododate,
-		onrefresh,
-	}: {
-		snapshot: TaskManagerSnapshot | null;
-		error: string | null;
-		deviceTelemetry: DeviceTelemetrySnapshot | null;
-		deviceTelemetryError: string | null;
-		refreshing: boolean;
-		usage: CodexUsage | null;
-		usageError: string | null;
-		openCodeUsage: OpenCodeUsage | null;
-		openCodeUsageError: string | null;
-		claudeUsage: ClaudeUsage | null;
-		claudeUsageError: string | null;
-		grokUsage: GrokUsage | null;
-		grokUsageError: string | null;
-		copilotUsage: CopilotUsage | null;
-		copilotUsageError: string | null;
-		deepSeekBalance: DeepSeekBalance | null;
-		deepSeekBalanceError: string | null;
-		cherryInUsage: CherryInBalance | null;
-		cherryInUsageError: string | null;
-		weather: WeatherReport | null;
-		weatherError: string | null;
-		stocks: StockReport | null;
-		stocksError: string | null;
-		exchange: ExchangeReport | null;
-		exchangeError: string | null;
-		serviceStatus: ServiceStatusReport | null;
-		serviceStatusError: string | null;
-		github: GithubSnapshot | null;
-		githubError: string | null;
-		quotation: Quotation | null;
-		quotationError: string | null;
-		todos: TodoList | null;
-		todosError: string | null;
-		todosLoading: boolean;
-		todayDate: string;
-		todoDate: string;
-		onaddtodo: (text: string) => Promise<boolean>;
-		ontoggletodo: (id: string, completed: boolean) => Promise<void>;
-		ondeletetodo: (id: string) => Promise<void>;
-		onselecttododate: (date: string) => Promise<void>;
-		onrefresh: () => void;
+	import WidgetContent from "../dashboard/WidgetContent.svelte";
+	import type { createDashboardSession } from "../dashboard/session.svelte";
+	import type { createLayoutSession } from "../dashboard/layout.svelte";
+	let { session, layoutSession }: {
+		session: ReturnType<typeof createDashboardSession>;
+		layoutSession: ReturnType<typeof createLayoutSession>;
 	} = $props();
+	const refreshing = $derived(session.dashboardRefreshing);
+	const onrefresh = () => session.refreshDashboard(true);
 
-	const percentFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
-	const rateFormatter = new Intl.NumberFormat("en-US", {
-		maximumFractionDigits: 1,
-		style: "unit",
-		unit: "kilobyte-per-second",
-	});
-	const byteFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 	let layout = $state<WidgetPlacement[]>([]);
-	let serviceCatalog = $state<ServiceStatusCatalogEntry[]>([]);
-	let serviceCatalogError = $state<string | null>(null);
-	let layoutLoading = $state(true);
-	let layoutSaving = $state(false);
-	let layoutError = $state<string | null>(null);
+	const serviceCatalog = $derived(layoutSession.serviceCatalog);
+	const serviceCatalogError = $derived(layoutSession.serviceCatalogError);
+	const layoutLoading = $derived(layoutSession.loading);
+	const layoutSaving = $derived(layoutSession.saving);
+	const layoutError = $derived(layoutSession.error);
+	$effect(() => { if (layoutSession.layout !== null) layout = layoutSession.layout.widgets; });
 	let editing = $state(false);
 	let widgetLibraryOpen = $state(false);
 	let selectedCategory = $state<WidgetCategory>("system");
@@ -141,46 +44,9 @@
 	let selectedWidgetAdded = $derived(selectedWidget !== null && selectedWidget.kind !== "weather" && selectedWidget.kind !== "stock" && selectedWidget.kind !== "serviceStatus" && layout.some((item) => widgetKey(item.widget) === selectedWidget.id));
 	let matchingServices = $derived(availableServices.filter((service) => `${service.name} ${service.keywords}`.toLocaleLowerCase().includes(serviceQuery.trim().toLocaleLowerCase())));
 
-	onMount(() => {
-		void loadLayout();
-		void loadServiceCatalog();
-	});
-
-	async function loadServiceCatalog() {
-		const response = await invoke<CommandResponse<ServiceStatusCatalogEntry[]>>("read_service_status_catalog");
-		if (response.status === "ready") {
-			serviceCatalog = response.data;
-			serviceCatalogError = null;
-		} else {
-			serviceCatalogError = response.message;
-		}
-	}
-
-	async function loadLayout() {
-		const response = await invoke<CommandResponse<WidgetLayout>>("read_layout");
-		layoutLoading = false;
-		if (response.status === "ready") {
-			layout = response.data.widgets;
-			layoutError = null;
-		} else {
-			layoutError = response.message;
-		}
-	}
-
 	async function saveLayout(items: WidgetPlacement[]) {
-		if (layoutSaving) return false;
-		layoutSaving = true;
-		const next: WidgetLayout = { widgets: items };
-		const response = await invoke<CommandResponse<null>>("save_layout", { layout: next });
-		layoutSaving = false;
-		if (response.status === "ready") {
-			layout = items;
-			layoutError = null;
-			return true;
-		} else {
-			layoutError = response.message;
-			return false;
-		}
+		const selected = layoutSession.layout?.islandWidgetId;
+		return layoutSession.save({ widgets: items, islandWidgetId: selected && items.some((item) => item.id === selected) ? selected : null });
 	}
 
 	function openWidgetLibrary() {
@@ -338,47 +204,6 @@
 		if (!(await saveLayout(layout)) && previous !== null) layout = previous;
 	}
 
-	async function resetLayout() {
-		if (layoutSaving) return;
-		layoutSaving = true;
-		const response = await invoke<CommandResponse<WidgetLayout>>("reset_layout");
-		layoutSaving = false;
-		if (response.status === "ready") {
-			layout = response.data.widgets;
-			layoutError = null;
-		} else {
-			layoutError = response.message;
-		}
-	}
-
-	function bytesLabel(bytes: number): string {
-		return `${byteFormatter.format(bytes / 1_000_000_000)} GB`;
-	}
-
-	function chartPoints(values: Array<number | null>, scale: "adaptive" | "zero" = "adaptive"): string {
-		const samples = values.filter((value): value is number => value !== null);
-		if (samples.length === 0) return "";
-		const sampleMinimum = Math.min(...samples);
-		const sampleMaximum = Math.max(...samples);
-		const padding = scale === "zero" ? Math.max((sampleMaximum - sampleMinimum) * 0.15, 2) : Math.max((sampleMaximum - sampleMinimum) * 0.15, 0.02);
-		const minimum = scale === "zero" ? 0 : Math.max(0, sampleMinimum - padding);
-		const minimumRange = scale === "zero" ? 1 : 0.05;
-		const maximum = Math.max(minimum + minimumRange, sampleMaximum + padding);
-		if (samples.length === 1) {
-			return samples
-				.map((value) => {
-					const y = 40 - Math.min(1, Math.max(0, (value - minimum) / (maximum - minimum))) * 34;
-					return `0,${y.toFixed(1)} 160,${y.toFixed(1)}`;
-				})
-				.join("");
-		}
-		const points = samples.map((value, index) => {
-			const x = (index / (samples.length - 1)) * 160;
-			const y = 40 - Math.min(1, Math.max(0, (value - minimum) / (maximum - minimum))) * 34;
-			return `${x.toFixed(1)},${y.toFixed(1)}`;
-		});
-		return points.join(" ");
-	}
 
 </script>
 
@@ -386,22 +211,43 @@
 
 <section data-content-typography class="dashboard" aria-label="Dashboard">
 	<header class="page-header">
-		<div><h1 class="page-title">Dashboard</h1><p class="page-description">System overview</p></div>
-		<div class="header-actions">
-			{#if editing}
-				<button type="button" disabled={layoutSaving} onclick={() => void resetLayout()}><RotateCcw size={14} /> Restore Default</button>
-				<button type="button" class="add-widget-button" disabled={layoutSaving} onclick={openWidgetLibrary}><Plus size={14} /> Add Widget</button>
-			{/if}
-			<button type="button" class:active={editing} disabled={layoutLoading || layoutSaving} onclick={() => { editing = !editing; widgetLibraryOpen = false; }}>
-				{#if editing}<Check size={14} /> Done{:else}<Settings2 size={14} /> Edit{/if}
-			</button>
-			<button type="button" disabled={refreshing} onclick={onrefresh} aria-label="Refresh dashboard" title="Refresh dashboard">
-				<span class={refreshing ? "spinning" : ""}><RefreshCw size={14} /></span>
-			</button>
+		<div>
+			<div class="title-row">
+				<h1 class="page-title">Dashboard</h1>
+				<button
+					type="button"
+					class="header-icon"
+					class:active={editing}
+					disabled={layoutLoading || layoutSaving}
+					onclick={() => { editing = !editing; widgetLibraryOpen = false; }}
+					aria-label={editing ? "Finish editing" : "Edit dashboard"}
+					aria-pressed={editing}
+					title={editing ? "Done" : "Edit dashboard"}
+				>
+					{#if editing}<Check size={12} />{:else}<Settings2 size={12} />{/if}
+				</button>
+				<button
+					type="button"
+					class="header-icon"
+					disabled={refreshing}
+					onclick={onrefresh}
+					aria-label="Refresh dashboard"
+					title="Refresh dashboard"
+				>
+					<span class={refreshing ? "spinning" : ""}><RefreshCw size={12} /></span>
+				</button>
+			</div>
+			<p class="page-description">System overview</p>
 		</div>
+		{#if editing}
+			<div class="header-actions">
+				<button type="button" disabled={layoutSaving} onclick={() => void layoutSession.reset()}><RotateCcw size={14} /> Restore Default</button>
+				<button type="button" class="add-widget-button" disabled={layoutSaving} onclick={openWidgetLibrary}><Plus size={14} /> Add Widget</button>
+			</div>
+		{/if}
 	</header>
 	{#if editing}
-		<div class="edit-hint"><span>Drag widgets to reorder them. Use the upper-right button to remove one.</span></div>
+		<div class="edit-hint"><span>Drag widgets to reorder them. Pin a widget to the Dynamic Island or remove it with the upper-right controls.</span></div>
 	{/if}
 
 	{#if layoutError !== null}
@@ -425,6 +271,7 @@
 					onpointermove={moveDraggedWidget}
 				>
 					{#if editing}
+						{#if layoutSession.islandAvailable}<button type="button" class="widget-pin" class:active={layoutSession.layout?.islandWidgetId === placement.id} disabled={layoutSaving} aria-label={`Pin ${widget.label} to Dynamic Island`} aria-pressed={layoutSession.layout?.islandWidgetId === placement.id} title="Pin to Dynamic Island" onpointerdown={(event) => event.stopPropagation()} onclick={() => void layoutSession.save({ widgets: layout, islandWidgetId: layoutSession.layout?.islandWidgetId === placement.id ? null : placement.id })}><Pin size={11} /></button>{/if}
 						<button
 							type="button"
 							class="widget-delete"
@@ -438,66 +285,7 @@
 							}}
 						><X size={11} /></button>
 					{/if}
-					{#if kind === "cpu"}
-						<article class="metric">
-							<h2><Cpu size={15} /> UGREEN CPU <small>Live</small></h2>
-							{#if error !== null}<p class="metric-message" role="alert">{error}</p>{:else if snapshot?.cpu}<p><strong>{percentFormatter.format(snapshot.cpu.usedPercent)}%</strong><span>{percentFormatter.format(snapshot.cpu.temperature)} °C</span></p><svg class="sparkline cpu-chart" viewBox="0 0 160 44" preserveAspectRatio="none" role="img" aria-label="CPU usage and temperature trends"><polyline points={chartPoints(snapshot.cpuHistory.map((point) => point.usedPercent))}></polyline><polyline class="secondary" points={chartPoints(snapshot.cpuHistory.map((point) => point.temperature))}></polyline></svg>{:else}<p class="metric-message">Connecting to UGOS…</p>{/if}
-						</article>
-					{:else if kind === "memory"}
-						<article class="metric">
-							<h2><MemoryStick size={15} /> UGREEN Memory <small>Live</small></h2>
-							{#if error !== null}<p class="metric-message" role="alert">{error}</p>{:else if snapshot?.memory}<p><strong>{percentFormatter.format(snapshot.memory.usedPercent)}%</strong><span>used</span></p><svg class="sparkline" viewBox="0 0 160 44" preserveAspectRatio="none" role="img" aria-label="Memory usage trend"><polyline points={chartPoints(snapshot.memoryHistory.map((point) => point.usedPercent))}></polyline></svg>{:else}<p class="metric-message">Connecting to UGOS…</p>{/if}
-						</article>
-					{:else if kind === "storage"}
-						<article class="metric">
-							<h2><Database size={15} /> UGREEN Storage <small>Capacity</small></h2>
-							{#if error !== null}<p class="metric-message" role="alert">{error}</p>{:else if snapshot?.storage}<p><strong>{percentFormatter.format(snapshot.storage.usedPercent)}%</strong><span>{percentFormatter.format(100 - snapshot.storage.usedPercent)}% free</span></p><div class="capacity" role="progressbar" aria-label="Storage used capacity" aria-valuenow={snapshot.storage.usedPercent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${snapshot.storage.usedPercent}%`}></span></div><div class="capacity-labels"><span>Used</span><span>Free</span></div>{:else}<p class="metric-message">Connecting to UGOS…</p>{/if}
-						</article>
-					{:else if kind === "network"}
-						<article class="metric">
-							<h2><Network size={15} /> UGREEN Network <small>Live</small></h2>
-							{#if error !== null}<p class="metric-message" role="alert">{error}</p>{:else if snapshot?.network}<p><strong>↓ {rateFormatter.format(snapshot.network.receiveRate / 1000)}</strong><span>↑ {rateFormatter.format(snapshot.network.sendRate / 1000)}</span></p><svg class="sparkline network-chart" viewBox="0 0 160 44" preserveAspectRatio="none" role="img" aria-label="Network receive and send trend"><polyline points={chartPoints(snapshot.networkHistory.map((point) => point.receiveRate), "zero")}></polyline><polyline class="secondary" points={chartPoints(snapshot.networkHistory.map((point) => point.sendRate), "zero")}></polyline></svg>{:else}<p class="metric-message">Connecting to UGOS…</p>{/if}
-						</article>
-					{:else if kind === "localCpu"}
-						<article class="metric">
-							<h2><Cpu size={15} /> Device CPU <small>Live</small></h2>
-							{#if deviceTelemetryError !== null}<p class="metric-message" role="alert">{deviceTelemetryError}</p>{:else if deviceTelemetry !== null}<p><strong>{percentFormatter.format(deviceTelemetry.cpu.usedPercent)}%</strong><span>used</span></p><svg class="sparkline" viewBox="0 0 160 44" preserveAspectRatio="none" role="img" aria-label="Current-device CPU usage trend"><polyline points={chartPoints(deviceTelemetry.cpuHistory.map((point) => point.usedPercent))}></polyline></svg>{:else}<p class="metric-message">Reading current device…</p>{/if}
-						</article>
-					{:else if kind === "localMemory"}
-						<article class="metric">
-							<h2><MemoryStick size={15} /> Device Memory <small>Live</small></h2>
-							{#if deviceTelemetryError !== null}<p class="metric-message" role="alert">{deviceTelemetryError}</p>{:else if deviceTelemetry !== null}<p><strong>{percentFormatter.format(deviceTelemetry.memory.usedPercent)}%</strong><span>{bytesLabel(deviceTelemetry.memory.usedBytes)} / {bytesLabel(deviceTelemetry.memory.totalBytes)}</span></p><svg class="sparkline" viewBox="0 0 160 44" preserveAspectRatio="none" role="img" aria-label="Current-device memory usage trend"><polyline points={chartPoints(deviceTelemetry.memoryHistory.map((point) => point.usedPercent))}></polyline></svg>{:else}<p class="metric-message">Reading current device…</p>{/if}
-						</article>
-					{:else if kind === "localStorage"}
-						<StoragePanel storage={deviceTelemetry === null ? null : deviceTelemetry.storage} error={deviceTelemetryError} />
-					{:else if kind === "localNetwork"}
-						<article class="metric">
-							<h2><Network size={15} /> Device Network <small>Live</small></h2>
-							{#if deviceTelemetryError !== null}<p class="metric-message" role="alert">{deviceTelemetryError}</p>{:else if deviceTelemetry !== null}<p><strong>↓ {rateFormatter.format(deviceTelemetry.network.receiveRate / 1000)}</strong><span>↑ {rateFormatter.format(deviceTelemetry.network.sendRate / 1000)}</span></p><svg class="sparkline network-chart" viewBox="0 0 160 44" preserveAspectRatio="none" role="img" aria-label="Current-device network receive and send trend"><polyline points={chartPoints(deviceTelemetry.networkHistory.map((point) => point.receiveRate), "zero")}></polyline><polyline class="secondary" points={chartPoints(deviceTelemetry.networkHistory.map((point) => point.sendRate), "zero")}></polyline></svg>{:else}<p class="metric-message">Reading current device…</p>{/if}
-						</article>
-					{:else if kind === "weather"}
-						<WeatherPanel {weather} location={placement.widget.location} error={weatherError} />
-					{:else if kind === "stock"}
-						<StocksPanel {stocks} symbol={placement.widget.symbol} error={stocksError} />
-					{:else if kind === "exchange"}
-						<ExchangePanel report={exchange} error={exchangeError} />
-					{:else if kind === "serviceStatus"}
-						<ServiceStatusPanel report={serviceStatus} catalog={serviceCatalog} serviceId={placement.widget.serviceId} error={serviceStatusError} />
-					{:else if kind === "github"}
-						<GithubPanel {github} error={githubError} />
-					{:else if kind === "calendar"}
-						<CalendarPanel {todayDate} selectedDate={todoDate} loading={todosLoading} onselect={onselecttododate} />
-					{:else if kind === "todoList"}
-						<Todo {todos} error={todosError} loading={todosLoading} selectedDate={todoDate} onadd={onaddtodo} ontoggle={ontoggletodo} ondelete={ondeletetodo} />
-					{:else if kind === "codex" || kind === "openCode" || kind === "claude" || kind === "grok" || kind === "copilot" || kind === "deepSeek" || kind === "cherryIn"}
-						<UsagePanel provider={kind} codex={usage} codexError={usageError} openCode={openCodeUsage} openCodeError={openCodeUsageError} claude={claudeUsage} claudeError={claudeUsageError} grok={grokUsage} grokError={grokUsageError} copilot={copilotUsage} copilotError={copilotUsageError} deepSeek={deepSeekBalance} deepSeekError={deepSeekBalanceError} cherryIn={cherryInUsage} cherryInError={cherryInUsageError} />
-					{:else if kind === "quotation"}
-						<QuotationPanel {quotation} error={quotationError} />
-					{:else if placement.widget.kind === "game"}
-						<GamePanel game={placement.widget.game} />
-					{:else if kind === "steam"}
-						<SteamGamesPanel />
-					{/if}
+					<WidgetContent {placement} {session} serviceCatalog={layoutSession.serviceCatalog} />
 				</section>
 			{/each}
 		</div>
@@ -573,24 +361,14 @@
 		display: flex;
 		width: 100%;
 		min-width: 0;
-		min-height: calc(100vh - 9rem);
 		box-sizing: border-box;
 		flex-direction: column;
 		margin: 0 auto;
 	}
 
-	header {
-		display: flex;
-		align-items: flex-end;
-		justify-content: space-between;
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	header p,
-	header h1 { margin: 0; }
-	header h1 { font-family: var(--font-serif); font-size: 2rem; font-weight: 500; }
 	.header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.45rem; }
+
+	.title-row { display: flex; align-items: center; gap: 0.5rem; }
 
 	button {
 		display: inline-flex;
@@ -611,6 +389,24 @@
 	button:disabled { cursor: not-allowed; opacity: 0.5; }
 	button.active { border-color: var(--color-accent); color: var(--color-accent); }
 	button span { display: inline-flex; }
+	button.header-icon {
+		display: grid;
+		width: 1.75rem;
+		height: 1.75rem;
+		flex-shrink: 0;
+		place-items: center;
+		padding: 0;
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		transition: color var(--duration-fast), background var(--duration-fast);
+	}
+	button.header-icon:hover:not(:disabled) {
+		transform: none;
+		background: var(--color-muted);
+		color: var(--color-foreground);
+	}
+
 	.spinning { animation: spin var(--duration-spinner) linear infinite; }
 	.add-widget-button { border-color: var(--color-accent); color: var(--color-accent); }
 
@@ -652,40 +448,7 @@
 	.widget.dragging { z-index: 5; opacity: 0.35; }
 	.widget-grid.editing .widget .widget-delete { position: absolute; z-index: 10; top: 0.35rem; right: 0.35rem; display: grid; width: 1.35rem; height: 1.35rem; place-items: center; padding: 0; border-color: var(--color-border); border-radius: var(--radius-full); background: var(--color-background); box-shadow: var(--shadow-xs); cursor: pointer !important; }
 
-	.metric {
-		width: 100%;
-		overflow: hidden;
-		box-sizing: border-box;
-		padding: 0.75rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-		background: var(--color-background);
-		box-shadow: var(--shadow-xs);
-		transition: transform var(--duration-slow) cubic-bezier(0.16, 1, 0.3, 1), border-color var(--duration-slow) cubic-bezier(0.16, 1, 0.3, 1), box-shadow var(--duration-slow) cubic-bezier(0.16, 1, 0.3, 1);
-	}
-	.metric:hover { transform: translateY(-2px); border-color: var(--color-accent); box-shadow: var(--shadow-sm); }
-	.widget :global(.context-panel),
-	.widget :global(.stocks-panel),
-	.widget :global(.exchange-panel),
-	.widget :global(.service-status-panel),
-	.widget :global(.github-panel),
-	.widget :global(.todo),
-	.widget :global(.calendar-panel),
-	.widget :global(.quotation-panel),
-	.widget :global(.usage-panel) { width: 100%; box-sizing: border-box; margin-top: 0; }
-
-	h2 { display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.65rem; color: var(--color-muted-foreground); font-size: 0.72rem; font-weight: 500; text-transform: uppercase; }
-	h2 small { margin-left: auto; color: var(--color-accent); font-family: var(--font-mono); font-size: 0.5rem; letter-spacing: 0.08em; }
-	.metric p { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; margin: 0.35rem 0; color: var(--color-muted-foreground); font-size: 0.7rem; }
-	.metric p.metric-message { display: flex; min-height: 5rem; align-items: center; justify-content: center; line-height: 1.4; text-align: center; }
-	.metric strong { color: var(--color-foreground); font-family: var(--font-mono); font-size: 1rem; }
-	.sparkline { display: block; width: 100%; height: 2.25rem; margin-top: 0.4rem; overflow: visible; }
-	.sparkline polyline { fill: none; stroke: var(--color-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; transition: points var(--duration-progress) cubic-bezier(0.16, 1, 0.3, 1); }
-	.cpu-chart .secondary,
-	.network-chart .secondary { stroke: var(--color-warning); opacity: 0.75; }
-	.capacity { height: 0.65rem; margin-top: 0.75rem; overflow: hidden; border-radius: var(--radius-full); background: var(--color-muted); }
-	.capacity span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); transition: width var(--duration-progress) cubic-bezier(0.16, 1, 0.3, 1); }
-	.capacity-labels { display: flex; justify-content: space-between; margin-top: 0.45rem; color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 0.5rem; text-transform: uppercase; }
+	.widget-grid.editing .widget .widget-pin { position: absolute; z-index: 10; top: 0.35rem; right: 2rem; display: grid; width: 1.35rem; height: 1.35rem; place-items: center; padding: 0; border-color: var(--color-border); border-radius: var(--radius-full); background: var(--color-background); box-shadow: var(--shadow-xs); cursor: pointer !important; }
 
 	.widget-library-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; box-sizing: border-box; padding: 2rem; background: var(--color-overlay); backdrop-filter: blur(10px); }
 	.widget-library { width: min(52rem, calc(100vw - 4rem)); height: min(38rem, calc(100vh - 4rem)); overflow: hidden; border: 1px solid var(--color-border); border-radius: calc(var(--radius-lg) * 1.5); background: var(--color-background); box-shadow: var(--shadow-lg); }
@@ -739,10 +502,7 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		button,
-		.widget,
-		.sparkline polyline,
-		.capacity span { animation: none; transition: none; }
-		button:hover:not(:disabled),
-		.metric:hover { transform: none; }
+		.widget { animation: none; transition: none; }
+		button:hover:not(:disabled) { transform: none; }
 	}
 </style>

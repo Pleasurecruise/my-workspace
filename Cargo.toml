@@ -5,6 +5,7 @@ members = [
   "crates/cms-core",
   "crates/consumers",
   "crates/credentials",
+  "crates/database",
   "crates/games",
   "crates/logger",
   "crates/md-dialect",
@@ -22,6 +23,7 @@ edition = "2024"
 rust-version = "1.95"
 
 [workspace.dependencies]
+url = "2.5"
 aws-config = { version = "1", default-features = false, features = [
   "default-https-client",
   "rt-tokio",
@@ -36,6 +38,9 @@ base64 = "0.23"
 der = "0.8"
 dotenvy = "0.15"
 dirs = "6"
+diesel = { version = "2.3", default-features = false, features = ["sqlite"] }
+libsqlite3-sys = { version = "0.38", features = ["bundled"] }
+vesper-database = { path = "crates/database" }
 futures-util = "0.3"
 grammers-client = "0.10.0"
 grammers-session = { version = "0.10.0", default-features = false, features = ["serde"] }
@@ -74,6 +79,20 @@ reqwest = { version = "0.13", default-features = false, features = [
   "stream",
 ] }
 rusqlite = { version = "0.40", features = ["bundled"] }
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+  "std",
+  "NSWindow",
+  "NSScreen",
+  "NSResponder",
+  "NSWorkspace",
+  "NSAccessibility",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "NSGeometry",
+  "NSThread",
+] }
 openssl = { version = "0.10", features = ["vendored"] }
 percent-encoding = "2.3"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
@@ -100,7 +119,7 @@ tracing = "0.1.44"
 ugos = { path = "crates/ugos" }
 vesper-credentials = { path = "crates/credentials" }
 time = { version = "0.3", features = ["formatting", "local-offset", "macros", "parsing"] }
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 walkdir = "2.5"
 
 [patch.crates-io]
