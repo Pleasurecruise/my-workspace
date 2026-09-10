@@ -71,6 +71,18 @@ cooldowns live only in the runtime and end when it is replaced or the applicatio
 
 ### Playback and lyrics
 
+Local playback begins with an account preflight: Rust reads `/v1/me` using the playback grant's
+access token and requires an explicit `premium` product before creating a librespot session. This
+checks the account that will stream audio, even when the library grant belongs to another account.
+Free and Open accounts receive a Premium-required error. A missing or unrecognized product,
+rejected request, or malformed response leaves the player uninitialized and returns an error;
+library access remains independent.
+
+The preflight addresses librespot 0.8's process exit for non-Premium accounts at connection time.
+It is an eligibility snapshot, not process isolation: later provider account changes or other fatal
+librespot conditions can still terminate its host. Vesper requires confirmed eligibility rather
+than following Fastpotify's policy of continuing when the product is unknown.
+
 Playback creates the local librespot player on demand. Loads are matched to librespot request IDs
 in command order, so delayed events from an earlier load cannot change the selected song, including
 when the same song is selected twice. Position and seek events preserve pause state; unavailable
@@ -143,17 +155,18 @@ library mirror. See [PERSISTENCE.md](PERSISTENCE.md) for file locks and storage 
 
 ## Repositories and reference provenance
 
-| Source                                                                | Relationship to this implementation                                                                                                                            |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [crmne/fastpotify](https://github.com/crmne/fastpotify)               | Spotify implementation reference, confirmed by the project owner; distinct from the Rust playback dependencies below                                           |
-| [librespot-org/librespot](https://github.com/librespot-org/librespot) | Actual Rust dependency: `librespot-core` and `librespot-playback` 0.8, with the Rodio backend and native-root Rustls transport; owns Spotify playback protocol |
-| [RustAudio/rodio](https://github.com/RustAudio/rodio)                 | Actual audio dependency; directly used by the QQ audio thread and through librespot's selected backend                                                         |
-| Spotify Accounts/Web API                                              | Provider protocol used by `spotify/auth.rs` and `spotify/mod.rs`; not a vendored reference repository                                                          |
-| LRCLIB                                                                | Remote lyric service used by `lyrics.rs`; Vesper does not run or embed its server                                                                              |
+| Source                                                                                              | Relationship to this implementation                                                                                                                              |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [crmne/fastpotify](https://github.com/crmne/fastpotify)                                             | Spotify implementation reference, confirmed by the project owner; distinct from the Rust playback dependencies below                                             |
+| [crmne/librespot](https://github.com/crmne/librespot/tree/8d3932a64aa7aae84e6920ba7356cf7ce7c0283d) | Selected playback dependency: the root Cargo patch uses Fastpotify's 0.8 fork, pinned by Cargo.lock; Rodio audio and native-root Rustls transport remain enabled |
+| [RustAudio/rodio](https://github.com/RustAudio/rodio)                                               | Actual audio dependency; directly used by the QQ audio thread and through librespot's selected backend                                                           |
+| Spotify Accounts/Web API                                                                            | Provider protocol used by `spotify/auth.rs` and `spotify/mod.rs`; not a vendored reference repository                                                            |
+| LRCLIB                                                                                              | Remote lyric service used by `lyrics.rs`; Vesper does not run or embed its server                                                                                |
 
-Fastpotify is the project owner’s confirmed Spotify reference. Librespot and Rodio are runtime
-dependencies declared in [Cargo.toml](../crates/music/Cargo.toml). These are different relationships;
-listing a reference does not claim that every UI or login detail was copied from it.
+Fastpotify is the project owner's confirmed Spotify reference. The music crate declares Librespot
+and Rodio in its [manifest](../crates/music/Cargo.toml); the [root Cargo patch](../Cargo.toml) selects
+Fastpotify's Librespot fork, and Cargo.lock pins its revision. Reference behavior and selected runtime
+dependencies are distinct: Vesper retains its own view, credential, and request lifecycle boundaries.
 
 ## Verification and limits
 
@@ -161,7 +174,9 @@ Rust tests cover provider parsing, callback validation, personal Client ID autho
 credential decoding, cache expiry, session renewal, lyrics, queue behavior, cancellation, worker
 recovery, stale events, runtime release, and media URL restrictions. Local HTTP tests exercise
 Spotify's long cooldowns, bounded retries, concurrent reads, quota errors, retained pagination,
-expired partial refreshes, and responses arriving after shutdown.
+expired partial refreshes, and responses arriving after shutdown. Playback preflight tests reject
+non-Premium, unknown and failed account reads before connecting; a synthetic subprocess test
+reproduces librespot's non-Premium process exit.
 
 Frontend tests cover Settings prefill and Client ID submission, music controls, library retry,
 reconnection cache invalidation, and late responses from a previous account. Run the Music,
@@ -169,6 +184,9 @@ credentials, and desktop Rust tests with `cargo test -p music -p vesper-credenti
 and the frontend suite through `pnpm test:frontend`. The HTTP tests use loopback listeners and
 synthetic credentials.
 
-These checks establish local request and state behavior. Real browser authorization, personal-app
-quota availability, token exchange and rotation, account rights, audio devices, and live QQ protocol
-compatibility require account-level verification. They have not been established by the mock tests.
+These checks establish local request and state behavior, including the known non-Premium exit
+path. The shared playback application's live `/me` response and a complete Premium playback session
+have not been verified. If that application omits `product` or rejects the profile request, playback
+will remain unavailable even for a Premium account. Browser authorization, token exchange and
+rotation, quota availability, audio devices, and live QQ compatibility require account-level
+verification; mock tests do not establish those provider capabilities.

@@ -195,7 +195,9 @@ not migrated automatically; save configuration or reconnect in the release appli
 
 Settings → Music connects the library and local playback through two browser PKCE grants. The
 library uses shared Web API access when Personal Spotify Client ID is empty. Spotify's desktop
-identity authorizes librespot playback independently; local playback requires Spotify Premium.
+identity authorizes librespot playback independently. Before starting librespot, Vesper verifies
+Premium eligibility with that playback grant; a failed or inconclusive check returns an error while
+leaving library access available.
 
 To use a personal Web API application:
 

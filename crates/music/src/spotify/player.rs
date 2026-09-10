@@ -20,6 +20,11 @@ use super::{Playback, PlaybackOrder, Track};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
+#[derive(serde::Deserialize)]
+struct PlaybackAccount {
+    product: Option<String>,
+}
+
 #[derive(Default)]
 struct State {
     track_id: Option<String>,
@@ -68,36 +73,59 @@ pub(crate) struct LocalPlayer {
 }
 
 impl LocalPlayer {
-    pub async fn connect(access_token: String) -> Result<Self> {
+    pub async fn connect(http: &reqwest::Client, api: &str, access_token: String) -> Result<Self> {
+        let response = http
+            .get(format!("{api}/me"))
+            .bearer_auth(&access_token)
+            .send()
+            .await?;
+        let response = super::check(response, "check Spotify playback account")?;
+        let account: PlaybackAccount = response.json().await?;
+        match account.product.as_deref() {
+            Some("premium") => {}
+            Some("free" | "open") => {
+                return Err(Error::Playback(
+                    "Spotify Premium is required for local playback. Your library remains available."
+                        .to_owned(),
+                ));
+            }
+            _ => {
+                return Err(Error::Playback(
+                    "Spotify did not confirm Premium playback eligibility. Local playback was not started."
+                        .to_owned(),
+                ));
+            }
+        }
         let mut session_config = SessionConfig::default();
         let destination = http::Uri::from_static("https://ap.spotify.com");
         if let Some(proxy) = Matcher::from_system().intercept(&destination) {
-            session_config.proxy =
-                Some(
-                    proxy.uri().to_string().parse().map_err(|error| {
-                        Error::Playback(format!("invalid system proxy: {error}"))
-                    })?,
-                );
+            let uri = proxy
+                .uri()
+                .to_string()
+                .parse()
+                .map_err(|error| Error::Playback(format!("invalid system proxy: {error}")))?;
+            session_config.proxy = Some(uri);
             tracing::info!("Spotify playback is using the system proxy");
         }
         let session = Session::new(session_config, None);
-        tokio::time::timeout(
+        let connection = tokio::time::timeout(
             CONNECT_TIMEOUT,
             session.connect(Credentials::with_access_token(access_token), false),
         )
         .await
-        .map_err(|_| Error::Playback("Spotify playback connection timed out".to_owned()))?
-            .map_err(|error| {
-                let message = error.to_string();
-                if message.contains("Travel restriction") {
-                    Error::Playback(
-                        "Spotify rejected the playback region. Configure a system HTTP(S) proxy whose region matches the Spotify account, then try again"
-                            .to_owned(),
-                    )
-                } else {
-                    Error::Playback(message)
-                }
-            })?;
+        .map_err(|_| Error::Playback("Spotify playback connection timed out".to_owned()))?;
+        connection.map_err(|error| {
+            let message = error.to_string();
+            if message.contains("Travel restriction") {
+                Error::Playback(
+                    "Spotify rejected the playback region. Configure a system HTTP(S) proxy \
+                     whose region matches the Spotify account, then try again"
+                        .to_owned(),
+                )
+            } else {
+                Error::Playback(message)
+            }
+        })?;
         let backend = audio_backend::find(None)
             .ok_or_else(|| Error::Playback("no audio output backend is available".to_owned()))?;
         let config = PlayerConfig {

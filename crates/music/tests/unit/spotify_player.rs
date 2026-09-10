@@ -179,3 +179,82 @@ async fn paused_end_does_not_advance() {
     assert!(!state.playing);
     assert!(state.failure.is_none());
 }
+
+#[tokio::test]
+async fn playback_account_rejection_returns_an_error_before_starting_librespot() {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    for (status, body, expected) in [
+        (200, r#"{"product":"free"}"#, "Premium is required"),
+        (200, r#"{"product":"open"}"#, "Premium is required"),
+        (200, r#"{}"#, "did not confirm Premium"),
+        (200, r#"{"product":"unknown"}"#, "did not confirm Premium"),
+        (200, "invalid-json", "request failed"),
+        (401, r#"{"message":"synthetic-private-body"}"#, "401"),
+        (403, r#"{}"#, "403"),
+        (429, r#"{}"#, "429"),
+    ] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut reader = BufReader::new(&mut stream);
+            let mut request = String::new();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).await.unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+                request.push_str(&line);
+            }
+            assert!(request.starts_with("GET /me HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer synthetic-playback-token\r\n")
+            );
+            stream.write_all(format!("HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+        });
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        let result = LocalPlayer::connect(
+            &http,
+            &format!("http://{address}"),
+            "synthetic-playback-token".to_owned(),
+        )
+        .await;
+        let error = match result {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("unverified account started local playback"),
+        };
+        assert!(error.contains(expected), "{error}");
+        assert!(!error.contains("synthetic-private-body"));
+        assert!(!error.contains("synthetic-playback-token"));
+        server.await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn upstream_free_account_terminates_the_process() {
+    const PROBE: &str = "VESPER_TEST_LIBRESPOT_FREE_ACCOUNT";
+    if std::env::var_os(PROBE).is_some() {
+        let session = Session::new(SessionConfig::default(), None);
+        session.set_user_attribute("type", "free");
+        panic!("expected librespot to exit");
+    }
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "spotify::player::tests::upstream_free_account_terminates_the_process",
+        ])
+        .env(PROBE, "1")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert_eq!(status.code(), Some(1));
+}

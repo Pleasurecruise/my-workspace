@@ -492,7 +492,8 @@ impl Spotify {
             *credentials = next_credentials;
         }
         drop(credentials);
-        let connected = Arc::new(LocalPlayer::connect(refreshed.value).await?);
+        let connected =
+            Arc::new(LocalPlayer::connect(&self.http, &self.api, refreshed.value).await?);
         *player = Some(Arc::clone(&connected));
         Ok(connected)
     }
