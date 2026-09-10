@@ -34,20 +34,14 @@ impl TryFrom<&str> for Channel {
 )]
 pub enum ChannelView {
     Memos {
-        connected: bool,
         memos: Vec<MemoView>,
-        tags: Vec<crate::api::memos::TagCount>,
         next_cursor: Option<String>,
     },
     Moment {
-        connected: bool,
         photos: Vec<PhotoItem>,
-        tags: Vec<String>,
         total: usize,
-        next_cursor: Option<String>,
     },
     Knowledge {
-        connected: bool,
         knowledge: Vec<crate::api::knowledge::Document>,
         newspaper: crate::api::knowledge::NewspaperIssues,
         next_cursor: Option<String>,

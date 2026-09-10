@@ -11,9 +11,7 @@ fn lists_current_channels() {
 #[test]
 fn serializes_cursors() {
     let view = ChannelView::Memos {
-        connected: true,
         memos: Vec::new(),
-        tags: Vec::new(),
         next_cursor: Some("second-page".to_owned()),
     };
     let value = serde_json::to_value(view).expect("channel view should serialize");
@@ -25,7 +23,6 @@ fn serializes_cursors() {
 #[test]
 fn serializes_newspaper() {
     let view = ChannelView::Knowledge {
-        connected: true,
         knowledge: Vec::new(),
         newspaper: crate::api::knowledge::NewspaperIssues {
             developer: Some("developer-issue".to_owned()),
@@ -37,4 +34,17 @@ fn serializes_newspaper() {
 
     assert_eq!(value["newspaper"]["developer"], "developer-issue");
     assert!(value["newspaper"]["personal"].is_null());
+}
+
+#[test]
+fn gallery_contract_contains_no_obsolete_pagination_or_connection_fields() {
+    let value = serde_json::to_value(ChannelView::Moment {
+        photos: Vec::new(),
+        total: 0,
+    })
+    .unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({"channel": "moment", "photos": [], "total": 0})
+    );
 }

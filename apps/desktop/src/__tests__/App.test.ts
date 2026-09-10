@@ -45,9 +45,7 @@ const configuration: ConfigurationStatus = {
 };
 const memos: ChannelView = {
 	channel: "memos",
-	connected: true,
 	memos: [],
-	tags: [],
 	nextCursor: null,
 };
 beforeEach(() => {
@@ -247,7 +245,7 @@ it.each([false, true])(
 			if (command === "read_channel")
 				return Promise.resolve({
 					status: "ready",
-					data: { channel: "moment", photos: [], tags: [], total: 0, nextCursor: null },
+					data: { channel: "moment", photos: [], total: 0 },
 				});
 			if (command === "read_moment_tags") {
 				tagReads += 1;

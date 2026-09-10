@@ -59,3 +59,34 @@ async fn navigation_cancels_reads_waiting_for_a_source_lock() {
     assert!(request.await.is_none());
     assert_eq!(reads.load(Ordering::SeqCst), 0);
 }
+
+#[tokio::test]
+async fn absent_widgets_and_invalid_layouts_never_start_provider_io() {
+    let reads = AtomicUsize::new(0);
+    for enabled in [Ok(false), Err("invalid layout".to_owned())] {
+        let response = read_provider(enabled.clone(), async {
+            reads.fetch_add(1, Ordering::SeqCst);
+            Ok(42)
+        })
+        .await;
+        match enabled {
+            Ok(false) => assert!(matches!(response, CommandResponse::Ready { data: None })),
+            Err(_) => assert!(matches!(response, CommandResponse::Failed { .. })),
+            _ => unreachable!(),
+        }
+    }
+    assert_eq!(reads.load(Ordering::SeqCst), 0);
+    assert!(matches!(
+        read_provider(Ok(true), async {
+            reads.fetch_add(1, Ordering::SeqCst);
+            Ok(42)
+        })
+        .await,
+        CommandResponse::Ready { data: Some(42) }
+    ));
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
+    assert!(matches!(
+        read_provider(Ok(true), async { Err::<u8, _>("offline".to_owned()) }).await,
+        CommandResponse::Failed { .. }
+    ));
+}

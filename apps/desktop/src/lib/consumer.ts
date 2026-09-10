@@ -77,22 +77,16 @@ export interface PhotoUpdate {
 export type ChannelView =
 	| {
 			channel: "memos";
-			connected: boolean;
 			memos: MemoView[];
-			tags: MemoTagCount[];
 			nextCursor: string | null;
 	  }
 	| {
 			channel: "moment";
-			connected: boolean;
 			photos: PhotoItem[];
-			tags: string[];
 			total: number;
-			nextCursor: string | null;
 	  }
 	| {
 			channel: "knowledge";
-			connected: boolean;
 			knowledge: KnowledgeDocument[];
 			newspaper: NewspaperIssues;
 			nextCursor: string | null;
@@ -492,6 +486,7 @@ export type WidgetKind =
 	| "github"
 	| "calendar"
 	| "todoList"
+	| "checkIn"
 	| "codex"
 	| "openCode"
 	| "claude"
@@ -507,12 +502,13 @@ export interface WidgetPlacement {
 	id: string;
 	widget:
 		| {
-				kind: Exclude<WidgetKind, "weather" | "stock" | "serviceStatus" | "game">;
+				kind: Exclude<WidgetKind, "weather" | "stock" | "serviceStatus" | "game" | "checkIn">;
 		  }
 		| { kind: "game"; game: Game }
 		| { kind: "weather"; location: WeatherLocation }
 		| { kind: "stock"; symbol: string }
-		| { kind: "serviceStatus"; serviceId: string };
+		| { kind: "serviceStatus"; serviceId: string }
+		| { kind: "checkIn"; name: string };
 }
 
 export interface WidgetLayout {
@@ -524,18 +520,18 @@ export type DashboardEvent =
 	| { source: "games"; result: CommandResponse<null> }
 	| { source: "taskManager"; result: CommandResponse<TaskManagerSnapshot | null> }
 	| { source: "deviceTelemetry"; result: CommandResponse<DeviceTelemetrySnapshot | null> }
-	| { source: "codex"; result: CommandResponse<CodexUsage> }
-	| { source: "openCode"; result: CommandResponse<OpenCodeUsage> }
+	| { source: "codex"; result: CommandResponse<CodexUsage | null> }
+	| { source: "openCode"; result: CommandResponse<OpenCodeUsage | null> }
 	| { source: "claude"; result: CommandResponse<ClaudeUsage | null> }
 	| { source: "grok"; result: CommandResponse<GrokUsage | null> }
 	| { source: "copilot"; result: CommandResponse<CopilotUsage | null> }
-	| { source: "deepSeek"; result: CommandResponse<DeepSeekBalance> }
-	| { source: "cherryIn"; result: CommandResponse<CherryInBalance> }
+	| { source: "deepSeek"; result: CommandResponse<DeepSeekBalance | null> }
+	| { source: "cherryIn"; result: CommandResponse<CherryInBalance | null> }
 	| { source: "weather"; result: CommandResponse<WeatherReport> }
 	| { source: "stocks"; result: CommandResponse<StockReport> }
 	| { source: "exchange"; result: CommandResponse<ExchangeReport | null> }
 	| { source: "serviceStatus"; result: CommandResponse<ServiceStatusReport> }
-	| { source: "github"; result: CommandResponse<GithubSnapshot> }
+	| { source: "github"; result: CommandResponse<GithubSnapshot | null> }
 	| { source: "quotation"; result: CommandResponse<Quotation | null> };
 
 export type Game = "genshin" | "starRail" | "zzz" | "arknights" | "endfield";
@@ -641,11 +637,11 @@ export interface TodoDetails {
 	endDate: string | null;
 	endTime: string | null;
 	location: string | null;
-	description: string | null;
 }
 
 export interface TodoItem {
 	id: string;
+	description: string | null;
 	text: string;
 	completed: boolean;
 	details: TodoDetails | null;
@@ -757,4 +753,12 @@ export interface MusicLyrics {
 	lines: Array<{ startMs: number | null; text: string }>;
 	synced: boolean;
 	instrumental: boolean;
+}
+
+export interface CheckIn {
+	date: string;
+	completed: boolean;
+	streak: number;
+	total: number;
+	days: Array<{ date: string; completed: boolean }>;
 }

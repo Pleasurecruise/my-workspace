@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { onMount, tick } from "svelte";
+import { onMount } from "svelte";
 import type {
 	ChannelView,
 	CommandResponse,
@@ -63,18 +63,16 @@ export function createMomentSession(context: {
 	let content = $state<Extract<ChannelView, { channel: "moment" }> | null>(null);
 	let error = $state<string | null>(null);
 	let loading = $state(false);
-	let loadingMore = $state(false);
 	let request = 0;
 	const tags = createMomentTags();
-	async function load(cursor: string | null, replace: boolean, showPaginationStatus = false) {
+	async function load() {
 		if (loading) return;
 		const version = ++request;
 		loading = true;
-		loadingMore = cursor !== null && showPaginationStatus;
 		const response = await invoke<CommandResponse<ChannelView>>("read_channel", {
 			query: {
 				channel: "moment",
-				cursor,
+				cursor: null,
 				search: null,
 				tags: [],
 				sortByUpdated: false,
@@ -84,7 +82,6 @@ export function createMomentSession(context: {
 		});
 		if (version !== request) return;
 		loading = false;
-		loadingMore = false;
 		if (response.status === "failed") {
 			error = response.message;
 			return;
@@ -93,49 +90,27 @@ export function createMomentSession(context: {
 			error = "The moment command returned the wrong channel.";
 			return;
 		}
-		const page = response.data;
-		if (!replace && content !== null)
-			content = { ...page, photos: [...content.photos, ...page.photos], tags: content.tags };
-		else content = page;
+		content = response.data;
 		error = null;
-		await fillViewport(showPaginationStatus);
-	}
-
-	async function fillViewport(showPaginationStatus = false) {
-		await tick();
-		const element = context.mainElement;
-		if (
-			context.active &&
-			element !== null &&
-			element.scrollHeight - element.scrollTop - element.clientHeight < 600
-		)
-			loadMore(showPaginationStatus);
-	}
-
-	function loadMore(showPaginationStatus = false) {
-		if (!context.active || loading || content === null || content.nextCursor === null) return;
-		void load(content.nextCursor, false, showPaginationStatus);
 	}
 
 	async function enter(force = false) {
 		void tags.refresh();
-		if (content === null || force) await load(null, true);
+		if (content === null || force) await load();
 		else {
 			error = null;
-			await fillViewport();
 		}
 	}
 
 	function leave() {
 		request += 1;
 		loading = false;
-		loadingMore = false;
 	}
 
 	async function refresh() {
 		leave();
 		void tags.refresh();
-		await load(null, true);
+		await load();
 	}
 
 	function reset() {
@@ -180,13 +155,14 @@ export function createMomentSession(context: {
 					"Moment configuration changed during upload. Reload the gallery to check the result.",
 			};
 		if (response.status === "ready") {
+			leave();
 			void tags.refresh(true);
 			if (content !== null) {
-				content = {
-					...content,
-					photos: [response.data, ...content.photos],
-					total: content.total + 1,
-				};
+				const photos = [
+					response.data,
+					...content.photos.filter((photo) => photo.id !== response.data.id),
+				];
+				content = { ...content, photos, total: photos.length };
 			}
 		}
 		return response;
@@ -196,7 +172,10 @@ export function createMomentSession(context: {
 		const session = tags.session;
 		const response = await invoke<CommandResponse<PhotoItem>>("update_photo", { id, input });
 		if (session !== tags.session) return response;
-		if (response.status === "ready") void tags.refresh(true);
+		if (response.status === "ready") {
+			leave();
+			void tags.refresh(true);
+		}
 		if (response.status === "ready" && content !== null) {
 			content = {
 				...content,
@@ -210,13 +189,16 @@ export function createMomentSession(context: {
 		const session = tags.session;
 		const response = await invoke<CommandResponse<string>>("delete_photo", { id });
 		if (session !== tags.session) return response;
-		if (response.status === "ready") void tags.refresh(true);
+		if (response.status === "ready") {
+			leave();
+			void tags.refresh(true);
+		}
 		if (response.status === "ready" && content !== null) {
 			const photos = content.photos.filter((photo) => photo.id !== id);
 			content = {
 				...content,
 				photos,
-				total: content.total - 1,
+				total: photos.length,
 			};
 		}
 		return response;
@@ -228,7 +210,7 @@ export function createMomentSession(context: {
 			if (!context.active) return;
 			void tags.refresh();
 			if (!loading && context.mainElement !== null && context.mainElement.scrollTop < 200)
-				void load(null, true);
+				void load();
 		}, 60_000);
 
 		return () => {
@@ -247,9 +229,6 @@ export function createMomentSession(context: {
 		get loading() {
 			return loading;
 		},
-		get loadingMore() {
-			return loadingMore;
-		},
 		get version() {
 			return request;
 		},
@@ -258,7 +237,6 @@ export function createMomentSession(context: {
 		refresh,
 		reset,
 		initialize,
-		loadMore,
 		tags,
 		createPhoto,
 		updatePhoto,

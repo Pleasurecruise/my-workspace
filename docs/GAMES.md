@@ -121,7 +121,7 @@ paginated five-star records. It does not call `genAuthKey`, read game caches, or
 The activity cookie is confined to that explicit sync and never changes the daily record session.
 
 This API does not expose individual three- and four-star records. Vesper stores a separate typed
-report in `official_reports` (archive schema v2), preserves older five-star records and existing
+report in the shared `game_reports` table, preserves older five-star records and existing
 full pull archives, and displays the coverage explicitly. It never invents filler pulls, dates,
 or rarity distributions. Opening the card reads the saved report only; the refresh icon syncs.
 The protocol was checked against

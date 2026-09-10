@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
@@ -83,6 +84,9 @@ pub struct Spotify {
     tracks: RwLock<HashMap<String, Track>>,
     library: RwLock<LibraryCache>,
     library_refresh: Mutex<()>,
+    closed: AtomicBool,
+    playback_generation: AtomicU64,
+    playback_action: Mutex<()>,
 }
 
 impl Spotify {
@@ -101,7 +105,19 @@ impl Spotify {
             tracks: RwLock::new(HashMap::new()),
             library: RwLock::new(LibraryCache::default()),
             library_refresh: Mutex::new(()),
+            closed: AtomicBool::new(false),
+            playback_generation: AtomicU64::new(0),
+            playback_action: Mutex::new(()),
         })
+    }
+
+    pub async fn shutdown(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+        let mut player = self.player.lock().await;
+        if let Some(player) = player.take() {
+            player.shutdown().await;
+        }
+        let _credentials = self.credentials.lock().await;
     }
 
     pub async fn liked_songs(&self) -> Result<Vec<Track>> {
@@ -177,7 +193,7 @@ impl Spotify {
     pub async fn playback(&self) -> Result<Option<Playback>> {
         let player = self.player.lock().await.clone();
         match player {
-            Some(player) => Ok(Some(player.playback().await)),
+            Some(player) => Ok(Some(player.playback().await?)),
             None => Ok(None),
         }
     }
@@ -186,28 +202,51 @@ impl Spotify {
         if track_id.is_empty() {
             return Err(Error::InvalidData("track id is empty".to_owned()));
         }
-        let track = self
-            .tracks
-            .read()
-            .await
+        let generation = self.playback_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let tracks = self.tracks.read().await;
+        self.check_playback_request(generation)?;
+        let track = tracks
             .get(track_id)
             .cloned()
             .ok_or_else(|| Error::InvalidData("unknown track id".to_owned()))?;
+        drop(tracks);
         let library = self.library.read().await.tracks.clone();
-        self.local_player().await?.play(&track, &library).await
+        self.check_playback_request(generation)?;
+        let player = self.local_player().await?;
+        let _action = self.playback_action.lock().await;
+        self.check_playback_request(generation)?;
+        player.play(&track, &library).await
     }
 
     pub async fn resume(&self) -> Result<()> {
-        self.local_player().await?.resume().await;
+        let generation = self.playback_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let player = self.local_player().await?;
+        let _action = self.playback_action.lock().await;
+        self.check_playback_request(generation)?;
+        player.resume().await
+    }
+
+    fn check_playback_request(&self, generation: u64) -> Result<()> {
+        if self.closed.load(Ordering::SeqCst)
+            || self.playback_generation.load(Ordering::SeqCst) != generation
+        {
+            return Err(Error::Playback(
+                "Spotify playback request was cancelled".to_owned(),
+            ));
+        }
         Ok(())
     }
 
     pub async fn pause(&self) -> Result<()> {
-        self.local_player().await?.pause().await;
+        self.pause_if_playing().await;
         Ok(())
     }
 
     pub async fn pause_if_playing(&self) {
+        // Cancel requests still looking up songs or initializing the player, then
+        // serialize the pause with the final load/resume so it cannot restart afterward.
+        self.playback_generation.fetch_add(1, Ordering::SeqCst);
+        let _action = self.playback_action.lock().await;
         if let Some(player) = self.player.lock().await.clone() {
             player.pause().await;
         }
@@ -300,6 +339,9 @@ impl Spotify {
             return Ok(token.value.clone());
         }
         let mut credentials = self.credentials.lock().await;
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(Error::Playback("Spotify player was closed".to_owned()));
+        }
         let refreshed = auth::refresh(auth::WEB_CLIENT_ID, &credentials.web_refresh_token).await?;
         if let Some(next_refresh_token) = refreshed.refresh_token {
             let mut next_credentials = credentials.clone();
@@ -318,10 +360,16 @@ impl Spotify {
 
     async fn local_player(&self) -> Result<Arc<LocalPlayer>> {
         let mut player = self.player.lock().await;
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(Error::Playback("Spotify player was closed".to_owned()));
+        }
         if let Some(player) = player.as_ref() {
             return Ok(Arc::clone(player));
         }
         let mut credentials = self.credentials.lock().await;
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(Error::Playback("Spotify player was closed".to_owned()));
+        }
         let refreshed = auth::refresh(
             auth::PLAYBACK_CLIENT_ID,
             &credentials.playback_refresh_token,
@@ -405,6 +453,31 @@ struct ImageWire {
 
 #[cfg(test)]
 mod tests {
+    use super::{Error, Spotify};
+
+    #[tokio::test]
+    async fn switching_away_cancels_a_play_waiting_for_track_lookup() {
+        let spotify = Spotify::new(vesper_credentials::SpotifyCredentials {
+            web_refresh_token: "unused-test-token".to_owned(),
+            playback_refresh_token: "unused-test-token".to_owned(),
+        })
+        .unwrap();
+        let mut tracks = spotify.tracks.write().await;
+        tracks.insert("track".to_owned(), track());
+        let play = spotify.play("track");
+        tokio::pin!(play);
+        assert!(futures_util::poll!(&mut play).is_pending());
+        spotify.pause_if_playing().await;
+        drop(tracks);
+        assert!(
+            matches!(play.await, Err(Error::Playback(message)) if message.contains("cancelled"))
+        );
+        assert!(
+            spotify.player.lock().await.is_none(),
+            "cancelled playback must not initialize a player"
+        );
+    }
+
     use std::time::{Duration, Instant};
 
     use super::{

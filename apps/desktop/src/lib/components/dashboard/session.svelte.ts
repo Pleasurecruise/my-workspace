@@ -38,6 +38,8 @@ export function createDashboardSession(
 	let todoDate = $state(initialTodoDate);
 	let todoRequest = 0;
 	let todoInvalidated = false;
+	let todoWriting = false;
+	let todoWriteError: string | null = null;
 	async function refreshDashboard(refreshGames = false) {
 		if (!isActive() || dashboardRefreshing) return;
 		const version = ++dashboardRequest;
@@ -61,10 +63,17 @@ export function createDashboardSession(
 	}
 
 	async function loadTodos(date = todoDate) {
+		if (date !== todoDate) todoWriteError = null;
+		if (todoWriting) {
+			todoDate = date;
+			todoInvalidated = true;
+			todos.loading = true;
+			return;
+		}
 		const version = ++todoRequest;
 		todoDate = date;
 		todos.loading = true;
-		todos.error = null;
+		todos.error = todoWriteError;
 		const response = await invoke<CommandResponse<TodoList>>("read_todos", { date });
 		if (version !== todoRequest) return;
 		todos.loading = false;
@@ -74,33 +83,79 @@ export function createDashboardSession(
 		}
 		if (response.status === "ready") {
 			todos.data = response.data;
-			todos.error = response.data.syncError;
-		} else todos.error = response.message;
+			todos.error = todoWriteError === null ? response.data.syncError : todoWriteError;
+		} else
+			todos.error =
+				todoWriteError === null ? response.message : `${todoWriteError} · ${response.message}`;
 	}
 
-	async function addTodo(text: string): Promise<boolean> {
-		if (todos.loading) return false;
-		const version = ++todoRequest;
-		const date = todoDate;
-		todos.loading = true;
-		todos.error = null;
-		const response = await invoke<CommandResponse<TodoList>>("add_todo", { date, text });
-		if (version !== todoRequest) return false;
+	function finishTodoMutation(
+		version: number,
+		date: string,
+		response: CommandResponse<TodoList>,
+	): boolean {
+		todoWriting = false;
+		if (version !== todoRequest) {
+			if (todoInvalidated) {
+				todoInvalidated = false;
+				void loadTodos();
+			}
+			return false;
+		}
 		todos.loading = false;
+		const sameDate = todoDate === date;
+		if (sameDate) {
+			if (response.status === "ready") {
+				todos.data = response.data;
+				todos.error = response.data.syncError;
+			} else {
+				todoWriteError = response.message;
+				todos.error = response.message;
+			}
+		}
 		if (todoInvalidated) {
 			todoInvalidated = false;
 			void loadTodos();
 		}
-		if (response.status === "failed") {
-			todos.error = response.message;
-			return false;
-		}
-		todos.data = response.data;
-		return true;
+		return sameDate && response.status === "ready";
+	}
+	async function addTodo(text: string, description: string): Promise<boolean> {
+		if (todos.loading || todoWriting) return false;
+		todoWriting = true;
+		todoWriteError = null;
+		const version = ++todoRequest;
+		const date = todoDate;
+		todos.loading = true;
+		todos.error = null;
+		const response = await invoke<CommandResponse<TodoList>>("add_todo", {
+			date,
+			text,
+			description,
+		});
+		return finishTodoMutation(version, date, response);
+	}
+
+	async function editTodo(id: string, text: string, description: string): Promise<boolean> {
+		if (todos.loading || todoWriting) return false;
+		todoWriting = true;
+		todoWriteError = null;
+		const version = ++todoRequest;
+		const date = todoDate;
+		todos.loading = true;
+		todos.error = null;
+		const response = await invoke<CommandResponse<TodoList>>("update_todo", {
+			date,
+			id,
+			text,
+			description,
+		});
+		return finishTodoMutation(version, date, response);
 	}
 
 	async function toggleTodo(id: string, completed: boolean) {
-		if (todos.loading) return;
+		if (todos.loading || todoWriting) return;
+		todoWriting = true;
+		todoWriteError = null;
 		const version = ++todoRequest;
 		const date = todoDate;
 		todos.loading = true;
@@ -110,20 +165,13 @@ export function createDashboardSession(
 			id,
 			completed,
 		});
-		if (version !== todoRequest) return;
-		todos.loading = false;
-		if (todoInvalidated) {
-			todoInvalidated = false;
-			void loadTodos();
-		}
-		if (response.status === "ready") {
-			todos.data = response.data;
-			todos.error = response.data.syncError;
-		} else todos.error = response.message;
+		finishTodoMutation(version, date, response);
 	}
 
 	async function deleteTodo(id: string) {
-		if (todos.loading) return;
+		if (todos.loading || todoWriting) return;
+		todoWriting = true;
+		todoWriteError = null;
 		const version = ++todoRequest;
 		const date = todoDate;
 		todos.loading = true;
@@ -132,16 +180,7 @@ export function createDashboardSession(
 			date,
 			id,
 		});
-		if (version !== todoRequest) return;
-		todos.loading = false;
-		if (todoInvalidated) {
-			todoInvalidated = false;
-			void loadTodos();
-		}
-		if (response.status === "ready") {
-			todos.data = response.data;
-			todos.error = response.data.syncError;
-		} else todos.error = response.message;
+		finishTodoMutation(version, date, response);
 	}
 
 	async function activate(active: boolean) {
@@ -273,10 +312,11 @@ export function createDashboardSession(
 			const followsToday = todoDate === todayDate;
 			todayDate = event.payload.date;
 			if (followsToday) {
+				if (todoDate !== event.payload.date) todoWriteError = null;
 				todoRequest += 1;
 				todoDate = event.payload.date;
 				todos.data = event.payload;
-				todos.error = null;
+				todos.error = todoWriteError;
 				todos.loading = false;
 			}
 		});
@@ -321,6 +361,7 @@ export function createDashboardSession(
 		refreshDashboard,
 		loadTodos,
 		addTodo,
+		editTodo,
 		toggleTodo,
 		deleteTodo,
 	};

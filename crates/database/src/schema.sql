@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS todo_items (
     UNIQUE (date, position),
     CHECK ((calendar IS NOT NULL AND start_date IS NOT NULL) OR
         (calendar IS NULL AND start_date IS NULL AND start_time IS NULL AND end_date IS NULL
-        AND end_time IS NULL AND location IS NULL AND description IS NULL))
+        AND end_time IS NULL AND location IS NULL))
 );
 CREATE TABLE IF NOT EXISTS todo_occurrences (
     date TEXT NOT NULL,
@@ -69,4 +69,10 @@ CREATE TABLE IF NOT EXISTS game_diagnostic (
     id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
     game TEXT NOT NULL, stage TEXT NOT NULL, retcode BIGINT NOT NULL,
     has_trace BOOLEAN NOT NULL, timestamp BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS check_ins (
+    id TEXT NOT NULL,
+    date TEXT NOT NULL,
+    PRIMARY KEY (id, date)
 );

@@ -21,7 +21,7 @@ pub enum Error {
     #[error("Music provider authentication failed: {0}")]
     Authentication(String),
     #[error("Music provider request failed: {0}")]
-    Request(#[from] reqwest::Error),
+    Request(#[source] reqwest::Error),
     #[error("Music provider returned {status} for {operation}")]
     Status {
         operation: &'static str,
@@ -35,4 +35,40 @@ pub enum Error {
     Credentials(#[from] vesper_credentials::CredentialError),
 }
 
+impl From<reqwest::Error> for Error {
+    fn from(error: reqwest::Error) -> Self {
+        // QQ login and media URLs can carry credentials in their query strings.
+        Self::Request(error.without_url())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_errors_omit_login_and_media_credentials() {
+        let request =
+            reqwest::Response::from(http::Response::builder().status(401).body("").unwrap())
+                .error_for_status()
+                .unwrap_err()
+                .with_url(
+                    "https://qqmusic.qq.com/audio?uin=synthetic-user&vkey=synthetic-secret"
+                        .parse()
+                        .unwrap(),
+                );
+        let error = Error::from(request);
+        for message in [
+            error.to_string(),
+            format!("{error:?}"),
+            std::error::Error::source(&error).unwrap().to_string(),
+        ] {
+            assert!(message.contains("401"));
+            assert!(!message.contains("synthetic-user"));
+            assert!(!message.contains("synthetic-secret"));
+            assert!(!message.contains("qqmusic.qq.com"));
+        }
+    }
+}

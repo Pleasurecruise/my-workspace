@@ -48,6 +48,9 @@ pub(crate) enum Widget {
     Github,
     Calendar,
     TodoList,
+    CheckIn {
+        name: String,
+    },
     Codex,
     OpenCode,
     Claude,
@@ -78,6 +81,11 @@ pub(crate) struct Layout {
 
 #[derive(Clone, Copy)]
 pub(crate) enum ProviderWidget {
+    Codex,
+    OpenCode,
+    DeepSeek,
+    CherryIn,
+    Github,
     Claude,
     Grok,
     Copilot,
@@ -192,6 +200,16 @@ impl Layout {
                 Widget::Stock { symbol } if !valid_stock_symbol(symbol) => {
                     return Err("Dashboard stock symbol is invalid".to_owned());
                 }
+                Widget::CheckIn { name } => {
+                    if name.trim() != name || name.chars().any(char::is_control) {
+                        return Err(
+                            "Check-in name must be trimmed and contain no line breaks".to_owned()
+                        );
+                    }
+                    if !(1..=120).contains(&name.chars().count()) {
+                        return Err("Check-in name must contain 1–120 characters".to_owned());
+                    }
+                }
                 Widget::Weather { location } => {
                     let trimmed = location.trim();
                     if trimmed != location {
@@ -229,6 +247,7 @@ impl Layout {
                 Widget::Github => "github".to_owned(),
                 Widget::Calendar => "calendar".to_owned(),
                 Widget::TodoList => "todo-list".to_owned(),
+                Widget::CheckIn { name } => format!("check-in-{}", name.to_lowercase()),
                 Widget::Codex => "codex".to_owned(),
                 Widget::OpenCode => "open-code".to_owned(),
                 Widget::Claude => "claude".to_owned(),
@@ -462,14 +481,25 @@ pub(crate) fn has_provider(
     provider: ProviderWidget,
 ) -> Result<bool, String> {
     let layout = path(app).and_then(|path| read(&path))?;
-    Ok(layout.widgets.iter().any(|placement| {
-        matches!(
-            (provider, &placement.widget),
-            (ProviderWidget::Claude, Widget::Claude)
-                | (ProviderWidget::Grok, Widget::Grok)
-                | (ProviderWidget::Copilot, Widget::Copilot)
-        )
-    }))
+    Ok(layout.has_provider(provider))
+}
+
+impl Layout {
+    fn has_provider(&self, provider: ProviderWidget) -> bool {
+        self.widgets.iter().any(|placement| {
+            matches!(
+                (provider, &placement.widget),
+                (ProviderWidget::Codex, Widget::Codex)
+                    | (ProviderWidget::OpenCode, Widget::OpenCode)
+                    | (ProviderWidget::DeepSeek, Widget::DeepSeek)
+                    | (ProviderWidget::CherryIn, Widget::CherryIn)
+                    | (ProviderWidget::Github, Widget::Github)
+                    | (ProviderWidget::Claude, Widget::Claude)
+                    | (ProviderWidget::Grok, Widget::Grok)
+                    | (ProviderWidget::Copilot, Widget::Copilot)
+            )
+        })
+    }
 }
 
 #[tauri::command]
@@ -506,6 +536,57 @@ pub(crate) fn reset_layout(app: tauri::AppHandle) -> CommandResponse<Layout> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn check_in_layout_persists_names_and_rejects_duplicate_habits() {
+        let mut layout: Layout = serde_json::from_str(r#"{"widgets":[{"id":"check-in-read","widget":{"kind":"checkIn","name":"Read"}},{"id":"check-in-walk","widget":{"kind":"checkIn","name":"Walk"}}],"islandWidgetId":"check-in-read"}"#).unwrap();
+        layout.validate().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(vesper_database::FILE_NAME);
+        write(&path, &layout).unwrap();
+        let restored = read(&path).unwrap();
+        restored.validate().unwrap();
+        assert!(matches!(&restored.widgets[0].widget, Widget::CheckIn { name } if name == "Read"));
+        layout.widgets[1].widget = Widget::CheckIn {
+            name: "READ".to_owned(),
+        };
+        assert!(layout.validate().unwrap_err().contains("duplicate"));
+        for name in ["", "  Read", "Read\nmore"] {
+            layout.widgets[1].widget = Widget::CheckIn {
+                name: name.to_owned(),
+            };
+            assert!(layout.validate().is_err());
+        }
+    }
+
+    #[test]
+    fn every_provider_follows_saved_widget_presence() {
+        for (provider, widget) in [
+            (ProviderWidget::Codex, Widget::Codex),
+            (ProviderWidget::OpenCode, Widget::OpenCode),
+            (ProviderWidget::Claude, Widget::Claude),
+            (ProviderWidget::Grok, Widget::Grok),
+            (ProviderWidget::Copilot, Widget::Copilot),
+            (ProviderWidget::DeepSeek, Widget::DeepSeek),
+            (ProviderWidget::CherryIn, Widget::CherryIn),
+            (ProviderWidget::Github, Widget::Github),
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join(vesper_database::FILE_NAME);
+            let mut layout = Layout {
+                widgets: vec![Placement {
+                    id: "provider".to_owned(),
+                    widget,
+                }],
+                island_widget_id: None,
+            };
+            write(&path, &layout).unwrap();
+            assert!(read(&path).unwrap().has_provider(provider));
+            layout.widgets.clear();
+            write(&path, &layout).unwrap();
+            assert!(!read(&path).unwrap().has_provider(provider));
+        }
+    }
 
     #[test]
     fn replaces_layout_and_preserves_it_when_validation_fails() {

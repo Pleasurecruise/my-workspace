@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ArrowLeft, CalendarDays, Clock, FileText, ListTodo, MapPin, Plus, Trash2 } from "@lucide/svelte";
+	import { ArrowLeft, CalendarDays, Clock, FileText, ListTodo, MapPin, Pencil, Plus, Trash2 } from "@lucide/svelte";
 	import { tick } from "svelte";
 	import type { TodoItem, TodoList } from "../../consumer";
 
@@ -9,6 +9,7 @@
 		loading,
 		selectedDate,
 		onadd,
+		onedit,
 		ontoggle,
 		ondelete,
 		embedded = false,
@@ -17,13 +18,20 @@
 		error: string | null;
 		loading: boolean;
 		selectedDate: string;
-		onadd: (text: string) => Promise<boolean>;
+		onadd: (text: string, description: string) => Promise<boolean>;
+		onedit: (id: string, text: string, description: string) => Promise<boolean>;
 		ontoggle: (id: string, completed: boolean) => Promise<void>;
 		ondelete: (id: string) => Promise<void>;
 		embedded?: boolean;
 	} = $props();
 	const headingId = $props.id();
 	let draft = $state("");
+	let description = $state("");
+	let showDescription = $state(false);
+	let editing = $state(false);
+	let editText = $state("");
+	let editDescription = $state("");
+	let saving = $state(false);
 	let selectedItemId = $state<string | null>(null);
 	let backButton = $state<HTMLButtonElement | null>(null);
 	let selectedItem = $derived.by((): TodoItem | null => {
@@ -33,7 +41,7 @@
 	});
 
 	$effect(() => {
-		if (selectedItemId !== null && selectedItem === null) selectedItemId = null;
+		if (selectedItem === null) { selectedItemId = null; editing = false; }
 	});
 
 	$effect(() => {
@@ -43,8 +51,32 @@
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
-		if (!draft.trim() || loading) return;
-		if (await onadd(draft)) draft = "";
+		if (!draft.trim() || loading || saving) return;
+		const submitted = { text: draft, description, date: selectedDate };
+		saving = true;
+		const saved = await onadd(submitted.text, submitted.description);
+		saving = false;
+		if (saved && selectedDate === submitted.date && draft === submitted.text && description === submitted.description) {
+			draft = ""; description = ""; showDescription = false;
+		}
+	}
+
+	function startEditing() {
+		if (selectedItem === null) return;
+		editText = selectedItem.text;
+		editDescription = selectedItem.description === null ? "" : selectedItem.description;
+		editing = true;
+	}
+
+	async function saveEdit(event: SubmitEvent) {
+		event.preventDefault();
+		if (selectedItem === null || !editText.trim() || loading || saving) return;
+		const id = selectedItem.id;
+		const date = selectedDate;
+		saving = true;
+		const saved = await onedit(id, editText, editDescription);
+		saving = false;
+		if (saved && selectedItemId === id && selectedDate === date) editing = false;
 	}
 
 	function formatDateTime(date: string, time: string | null) {
@@ -53,17 +85,26 @@
 </script>
 
 <section class="todo" class:embedded aria-labelledby={headingId}>
+	{#if error !== null}<p class="todo-message" role="alert">{error}</p>{/if}
 	{#if selectedItem !== null}
 		<div class="todo-detail">
 			<header>
 				<div class="detail-nav">
-					<button bind:this={backButton} type="button" onpointerdown={(event) => event.stopPropagation()} onclick={() => (selectedItemId = null)} aria-label="Back to Todo list"><ArrowLeft size={16} /></button>
+					<button bind:this={backButton} type="button" onpointerdown={(event) => event.stopPropagation()} disabled={saving} onclick={() => { selectedItemId = null; editing = false; }} aria-label="Back to Todo list"><ArrowLeft size={16} /></button>
 					<span>Todo details</span>
 					<span class:complete={selectedItem.completed} class="detail-state">{selectedItem.completed ? "Done" : "Open"}</span>
 				</div>
 				<h2 id={headingId}>{selectedItem.text}</h2>
 			</header>
 			<div class="todo-detail-scroll">
+				{#if editing}
+					<form class="edit-form" onsubmit={saveEdit}>
+						<label>Title<input bind:value={editText} maxlength="120" required disabled={saving} /></label>
+						<label>Description<textarea bind:value={editDescription} maxlength="4000" rows="3" disabled={saving}></textarea></label>
+						<div class="edit-actions"><button type="button" disabled={saving} onclick={() => (editing = false)}>Cancel</button><button type="submit" disabled={loading || saving || !editText.trim()}>{saving ? "Saving…" : "Save changes"}</button></div>
+					</form>
+				{:else}
+					{#if selectedItem.details === null}<button class="edit-button" type="button" disabled={loading || saving} onclick={startEditing}><Pencil size={12} /> Edit Todo</button>{:else}<p class="todo-manual">Edit this task in its source calendar.</p>{/if}
 				<dl>
 					<div><dt><CalendarDays size={13} /> Date</dt><dd>{selectedDate}</dd></div>
 					{#if selectedItem.details !== null}
@@ -73,10 +114,11 @@
 						{#if selectedItem.details.location !== null}<div><dt><MapPin size={13} /> Location</dt><dd>{selectedItem.details.location}</dd></div>{/if}
 					{/if}
 				</dl>
-				{#if selectedItem.details?.description}
-					<section class="todo-description" aria-label="Description"><span>Description</span><p>{selectedItem.details.description}</p></section>
+				{#if selectedItem.description}
+					<section class="todo-description" aria-label="Description"><span>Description</span><p>{selectedItem.description}</p></section>
 				{:else if selectedItem.details === null}
 					<p class="todo-manual">This Todo was added manually.</p>
+				{/if}
 				{/if}
 			</div>
 		</div>
@@ -87,14 +129,14 @@
 				{#if todos?.date === selectedDate}<span>{todos.items.filter((item) => item.completed).length}/{todos.items.length}</span>{/if}
 			</div>
 
-			<form onsubmit={submit}>
-				<input bind:value={draft} maxlength="120" placeholder="Add a task for this date" aria-label={`New Todo for ${selectedDate}`} />
-				<button type="submit" disabled={loading || !draft.trim()} aria-label="Add Todo"><Plus size={14} /></button>
+			<form class="add-form" onsubmit={submit}>
+				<div class="add-row">
+				<input disabled={saving} bind:value={draft} maxlength="120" placeholder="Add a task for this date" aria-label={`New Todo for ${selectedDate}`} />
+				<button type="submit" disabled={loading || saving || !draft.trim()} aria-label="Add Todo"><Plus size={14} /></button>
+				<button type="button" aria-label="Add description" title={showDescription ? "Hide description" : "Add description"} aria-expanded={showDescription} disabled={saving} onclick={() => (showDescription = !showDescription)}><FileText size={14} /></button>
+				</div>
+				{#if showDescription}<textarea bind:value={description} maxlength="4000" rows="2" disabled={saving} placeholder="Add a description (optional)" aria-label="New Todo description"></textarea>{/if}
 			</form>
-
-			{#if error !== null}
-				<p class="todo-message" role="alert">{error}</p>
-			{/if}
 			{#if loading && todos?.date !== selectedDate}
 				<p class="todo-message">Loading Todos for {selectedDate}…</p>
 			{:else if todos?.date === selectedDate && todos.items.length > 0}
@@ -121,8 +163,8 @@
 </section>
 
 <style>
-	.todo { min-width: 0; height: 16rem; padding: 0.75rem; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-xs); }
-	.todo-list-view, .todo-detail { display: flex; min-height: 0; height: 100%; flex-direction: column; }
+	.todo { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; height: 16rem; padding: 0.75rem; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-xs); }
+	.todo-list-view, .todo-detail { flex: 1; display: flex; min-height: 0; height: 100%; flex-direction: column; }
 	.todo.embedded { height: 14rem; }
 	.todo.embedded .todo-heading { display: none; }
 	.todo.embedded li { min-height: 2.2rem; }
@@ -167,4 +209,15 @@
 	.todo-detail dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 	.todo-description { margin-top: 0.8rem; }
 	.todo-description p, .todo-manual { margin: 0.45rem 0 0; color: var(--color-muted-foreground); font-size: 0.68rem; line-height: 1.6; white-space: pre-wrap; }
+
+	.add-form, .edit-form { flex-direction: column; align-items: stretch; }
+	.add-row { display: flex; gap: 0.4rem; }
+	textarea { box-sizing: border-box; width: 100%; resize: vertical; min-height: 3rem; max-height: 8rem; padding: 0.5rem 0.65rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-foreground); font: inherit; font-size: 0.72rem; }
+	textarea:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+	.edit-form { padding-top: 0.5rem; gap: 0.5rem; }
+	.edit-form label { display: flex; flex-direction: column; gap: 0.25rem; color: var(--color-muted-foreground); font-size: 0.68rem; }
+	.edit-form input { flex: auto; }
+	.edit-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+	.edit-actions button, .edit-button { width: auto; padding: 0 0.65rem; gap: 0.4rem; font-size: 0.68rem; }
+	.edit-button { margin-top: 0.5rem; }
 </style>

@@ -60,18 +60,18 @@ impl Source {
 enum DashboardEvent {
     TaskManager(CommandResponse<Option<ugos::TaskManagerSnapshot>>),
     DeviceTelemetry(CommandResponse<Option<telemetry::Snapshot>>),
-    Codex(CommandResponse<useage::codex::CodexUsage>),
-    OpenCode(CommandResponse<useage::opencode::OpenCodeUsage>),
+    Codex(CommandResponse<Option<useage::codex::CodexUsage>>),
+    OpenCode(CommandResponse<Option<useage::opencode::OpenCodeUsage>>),
     Claude(CommandResponse<Option<useage::claude::ClaudeUsage>>),
     Grok(CommandResponse<Option<useage::grok::GrokUsage>>),
     Copilot(CommandResponse<Option<useage::copilot::CopilotUsage>>),
-    DeepSeek(CommandResponse<useage::deepseek::DeepSeekBalance>),
-    CherryIn(CommandResponse<useage::cherryin::CherryInBalance>),
+    DeepSeek(CommandResponse<Option<useage::deepseek::DeepSeekBalance>>),
+    CherryIn(CommandResponse<Option<useage::cherryin::CherryInBalance>>),
     Weather(Box<CommandResponse<weather::WeatherReport>>),
     Stocks(Box<CommandResponse<stocks::StockReport>>),
     Exchange(Box<CommandResponse<Option<exchange::ExchangeReport>>>),
     ServiceStatus(Box<CommandResponse<status::ServiceStatusReport>>),
-    Github(CommandResponse<github::GithubSnapshot>),
+    Github(CommandResponse<Option<github::GithubSnapshot>>),
     Quotation(CommandResponse<Option<quotations::Quotation>>),
     Games(CommandResponse<()>),
 }
@@ -107,67 +107,55 @@ impl DashboardEvent {
                 },
                 Err(message) => Self::DeviceTelemetry(CommandResponse::Failed { message }),
             },
-            Source::Codex => match useage::codex::read().await {
-                Ok(data) => Self::Codex(CommandResponse::Ready { data }),
-                Err(message) => {
-                    tracing::warn!(error = %message, "failed to load Codex usage");
-                    Self::Codex(CommandResponse::Failed { message })
-                }
-            },
-            Source::OpenCode => match useage::opencode::read().await {
-                Ok(data) => Self::OpenCode(CommandResponse::Ready { data }),
-                Err(message) => {
-                    tracing::warn!(error = %message, "failed to load OpenCode Go usage");
-                    Self::OpenCode(CommandResponse::Failed { message })
-                }
-            },
-            Source::Claude => match widgets::has_provider(app, widgets::ProviderWidget::Claude) {
-                Ok(false) => Self::Claude(CommandResponse::Ready { data: None }),
-                Ok(true) => match useage::claude::read().await {
-                    Ok(data) => Self::Claude(CommandResponse::Ready { data: Some(data) }),
-                    Err(message) => {
-                        tracing::warn!(error = %message, "failed to load Claude usage");
-                        Self::Claude(CommandResponse::Failed { message })
-                    }
-                },
-                Err(message) => Self::Claude(CommandResponse::Failed { message }),
-            },
-            Source::Grok => match widgets::has_provider(app, widgets::ProviderWidget::Grok) {
-                Ok(false) => Self::Grok(CommandResponse::Ready { data: None }),
-                Ok(true) => match useage::grok::read().await {
-                    Ok(data) => Self::Grok(CommandResponse::Ready { data: Some(data) }),
-                    Err(message) => {
-                        tracing::warn!(error = %message, "failed to load Grok usage");
-                        Self::Grok(CommandResponse::Failed { message })
-                    }
-                },
-                Err(message) => Self::Grok(CommandResponse::Failed { message }),
-            },
-            Source::Copilot => match widgets::has_provider(app, widgets::ProviderWidget::Copilot) {
-                Ok(false) => Self::Copilot(CommandResponse::Ready { data: None }),
-                Ok(true) => match useage::copilot::read().await {
-                    Ok(data) => Self::Copilot(CommandResponse::Ready { data: Some(data) }),
-                    Err(message) => {
-                        tracing::warn!(error = %message, "failed to load Copilot usage");
-                        Self::Copilot(CommandResponse::Failed { message })
-                    }
-                },
-                Err(message) => Self::Copilot(CommandResponse::Failed { message }),
-            },
-            Source::DeepSeek => match useage::deepseek::read().await {
-                Ok(data) => Self::DeepSeek(CommandResponse::Ready { data }),
-                Err(message) => {
-                    tracing::warn!(error = %message, "failed to load DeepSeek balance");
-                    Self::DeepSeek(CommandResponse::Failed { message })
-                }
-            },
-            Source::CherryIn => match useage::cherryin::read().await {
-                Ok(data) => Self::CherryIn(CommandResponse::Ready { data }),
-                Err(message) => {
-                    tracing::warn!(error = %message, "failed to load CherryIN balance");
-                    Self::CherryIn(CommandResponse::Failed { message })
-                }
-            },
+            Source::Codex => Self::Codex(
+                read_provider(
+                    widgets::has_provider(app, widgets::ProviderWidget::Codex),
+                    useage::codex::read(),
+                )
+                .await,
+            ),
+            Source::OpenCode => Self::OpenCode(
+                read_provider(
+                    widgets::has_provider(app, widgets::ProviderWidget::OpenCode),
+                    useage::opencode::read(),
+                )
+                .await,
+            ),
+            Source::Claude => Self::Claude(
+                read_provider(
+                    widgets::has_provider(app, widgets::ProviderWidget::Claude),
+                    useage::claude::read(),
+                )
+                .await,
+            ),
+            Source::Grok => Self::Grok(
+                read_provider(
+                    widgets::has_provider(app, widgets::ProviderWidget::Grok),
+                    useage::grok::read(),
+                )
+                .await,
+            ),
+            Source::Copilot => Self::Copilot(
+                read_provider(
+                    widgets::has_provider(app, widgets::ProviderWidget::Copilot),
+                    useage::copilot::read(),
+                )
+                .await,
+            ),
+            Source::DeepSeek => Self::DeepSeek(
+                read_provider(
+                    widgets::has_provider(app, widgets::ProviderWidget::DeepSeek),
+                    useage::deepseek::read(),
+                )
+                .await,
+            ),
+            Source::CherryIn => Self::CherryIn(
+                read_provider(
+                    widgets::has_provider(app, widgets::ProviderWidget::CherryIn),
+                    useage::cherryin::read(),
+                )
+                .await,
+            ),
             Source::Weather => match widgets::weather_locations(app) {
                 Ok(locations) => match weather::read(locations).await {
                     Ok(data) => Self::Weather(Box::new(CommandResponse::Ready { data })),
@@ -211,13 +199,13 @@ impl DashboardEvent {
                 },
                 Err(message) => Self::ServiceStatus(Box::new(CommandResponse::Failed { message })),
             },
-            Source::Github => match github::read().await {
-                Ok(data) => Self::Github(CommandResponse::Ready { data }),
-                Err(message) => {
-                    tracing::warn!(error = %message, "failed to load GitHub activity");
-                    Self::Github(CommandResponse::Failed { message })
-                }
-            },
+            Source::Github => Self::Github(
+                read_provider(
+                    widgets::has_provider(app, widgets::ProviderWidget::Github),
+                    github::read(),
+                )
+                .await,
+            ),
             Source::Quotation => match widgets::has_quotation(app) {
                 Ok(false) => Self::Quotation(CommandResponse::Ready { data: None }),
                 Ok(true) => match quotations::read().await {
@@ -242,6 +230,25 @@ impl DashboardEvent {
         };
         if let Err(error) = app.emit(EVENT, payload) {
             tracing::warn!(%error, "failed to emit a Dashboard source event");
+        }
+    }
+}
+
+// A removed widget must not read credentials, start a CLI, or renew an OAuth session.
+async fn read_provider<T>(
+    enabled: Result<bool, String>,
+    read: impl std::future::Future<Output = Result<T, String>>,
+) -> CommandResponse<Option<T>> {
+    let result = match enabled {
+        Ok(false) => return CommandResponse::Ready { data: None },
+        Ok(true) => read.await,
+        Err(message) => return CommandResponse::Failed { message },
+    };
+    match result {
+        Ok(data) => CommandResponse::Ready { data: Some(data) },
+        Err(message) => {
+            tracing::warn!(error = %message, "Dashboard provider unavailable");
+            CommandResponse::Failed { message }
         }
     }
 }
@@ -318,7 +325,11 @@ fn island_source(widget: &widgets::Widget) -> Option<Source> {
         Widget::CherryIn => Source::CherryIn,
         Widget::Quotation => Source::Quotation,
         // Todo is read through its own session; game panels own their initial read.
-        Widget::Calendar | Widget::TodoList | Widget::Game { .. } | Widget::Steam => return None,
+        Widget::Calendar
+        | Widget::CheckIn { .. }
+        | Widget::TodoList
+        | Widget::Game { .. }
+        | Widget::Steam => return None,
     })
 }
 

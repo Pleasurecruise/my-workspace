@@ -93,7 +93,7 @@ pub enum UgosError {
     #[error("UGOS credentials are not configured")]
     MissingCredentials,
     #[error("UGOS HTTP request failed: {0}")]
-    Http(#[from] reqwest::Error),
+    Http(#[source] reqwest::Error),
     #[error("UGOS response from {endpoint} could not be decoded: {message}")]
     Decode { endpoint: String, message: String },
     #[error("UGOS encryption failed: {0}")]
@@ -104,6 +104,13 @@ pub enum UgosError {
         code: i32,
         message: String,
     },
+}
+
+impl From<reqwest::Error> for UgosError {
+    fn from(error: reqwest::Error) -> Self {
+        // UGOS authenticates requests with a token in the URL query.
+        Self::Http(error.without_url())
+    }
 }
 
 pub fn configure(username: String, password: String) -> Result<(), UgosError> {
@@ -245,6 +252,29 @@ fn push_sample<T: Timestamped>(history: &mut VecDeque<T>, sample: T) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redacts_http_error_urls() {
+        let error = reqwest::Client::new()
+            .get("https://nas.example/")
+            .header("x-test", "\n")
+            .build()
+            .unwrap_err()
+            .with_url(
+                "https://nas.example/ugreen/v1/taskmgr/stat/get_all?token=synthetic-session-token"
+                    .parse()
+                    .unwrap(),
+            );
+        let error = UgosError::from(error);
+        assert!(!error.to_string().contains("synthetic-session-token"));
+        assert!(!format!("{error:?}").contains("synthetic-session-token"));
+        assert!(
+            !std::error::Error::source(&error)
+                .unwrap()
+                .to_string()
+                .contains("synthetic-session-token")
+        );
+    }
 
     #[test]
     fn history_orders_samples() {

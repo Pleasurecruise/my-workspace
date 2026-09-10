@@ -107,13 +107,13 @@ async fn run_with_store(
         ),
         ("create", text) if !text.is_empty() => print_json(
             &store
-                .create(date, &text.join(" "))
+                .create(date, &text.join(" "), None)
                 .await
                 .map_err(|error| error.to_string())?,
         ),
         ("update", [id, text @ ..]) if !text.is_empty() => print_json(
             &store
-                .update(date, id, &text.join(" "))
+                .update(date, id, &text.join(" "), None)
                 .await
                 .map_err(|error| error.to_string())?,
         ),

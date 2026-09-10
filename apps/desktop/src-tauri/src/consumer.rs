@@ -52,6 +52,12 @@ pub(crate) async fn read_channel(
             };
         }
     };
+    if channel == consumers::view::Channel::Moment && query.cursor.is_some() {
+        return CommandResponse::Failed {
+            message: "Moment returns one bounded gallery batch; cursors are not supported."
+                .to_owned(),
+        };
+    }
     let response = app
         .state::<CmsState>()
         .channel(ChannelRequest {
@@ -74,11 +80,7 @@ pub(crate) async fn read_channel(
                 consumers::view::ChannelView::Memos {
                     memos, next_cursor, ..
                 } => (memos.len(), next_cursor.is_some()),
-                consumers::view::ChannelView::Moment {
-                    photos,
-                    next_cursor,
-                    ..
-                } => (photos.len(), next_cursor.is_some()),
+                consumers::view::ChannelView::Moment { photos, .. } => (photos.len(), false),
                 consumers::view::ChannelView::Knowledge {
                     knowledge,
                     next_cursor,

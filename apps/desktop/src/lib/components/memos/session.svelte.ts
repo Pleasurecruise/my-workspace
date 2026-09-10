@@ -74,6 +74,7 @@ export function createMemosSession(context: {
 	let memoSearch = "";
 	let memoTags: string[] = [];
 	let memoSortByUpdated = false;
+	let filtersChanged = false;
 	async function load(cursor: string | null, replace: boolean, showPaginationStatus = false) {
 		if (loading) return;
 		const version = ++request;
@@ -102,7 +103,7 @@ export function createMemosSession(context: {
 			return;
 		}
 		const page = response.data;
-		if (replace && content !== null) {
+		if (replace && content !== null && !filtersChanged) {
 			const tail = content.memos.slice(25);
 			const refreshedIds = new Set(page.memos.map((memo) => memo.id));
 			content = {
@@ -111,8 +112,9 @@ export function createMemosSession(context: {
 				nextCursor: tail.length > 0 ? content.nextCursor : page.nextCursor,
 			};
 		} else if (!replace && content !== null) {
-			content = { ...page, memos: [...content.memos, ...page.memos], tags: content.tags };
+			content = { ...page, memos: [...content.memos, ...page.memos] };
 		} else content = page;
+		if (replace) filtersChanged = false;
 		error = null;
 		await fillViewport(showPaginationStatus);
 	}
@@ -129,13 +131,20 @@ export function createMemosSession(context: {
 	}
 
 	function loadMore(showPaginationStatus = false) {
-		if (!context.active || loading || content === null || content.nextCursor === null) return;
+		if (
+			!context.active ||
+			loading ||
+			filtersChanged ||
+			content === null ||
+			content.nextCursor === null
+		)
+			return;
 		void load(content.nextCursor, false, showPaginationStatus);
 	}
 
 	async function enter(force = false) {
 		void tags.refresh();
-		if (content === null || force) await load(null, true);
+		if (content === null || force || filtersChanged) await load(null, true);
 		else {
 			error = null;
 			await fillViewport();
@@ -183,6 +192,8 @@ export function createMemosSession(context: {
 	): Promise<string | null> {
 		const version = ++memoFilterRequest;
 		const requestVersion = ++request;
+		filtersChanged = true;
+		memoDisplay = display;
 		memoSearch = search;
 		memoTags = tags;
 		memoSortByUpdated = sortByUpdated;
@@ -208,6 +219,7 @@ export function createMemosSession(context: {
 		if (response.data.channel !== "memos") return "The memo command returned the wrong channel.";
 		const page = response.data;
 		content = page;
+		filtersChanged = false;
 		error = null;
 		await tick();
 		if (
@@ -222,7 +234,7 @@ export function createMemosSession(context: {
 	}
 
 	async function revealMemo(id: string): Promise<boolean> {
-		if (!context.active || content === null || content.channel !== "memos") return false;
+		if (!context.active || filtersChanged || content === null) return false;
 		if (content.memos.some((memo) => memo.id === id)) return true;
 		if (loading) return false;
 
@@ -236,6 +248,23 @@ export function createMemosSession(context: {
 		return false;
 	}
 
+	function settleWrite() {
+		leave();
+		void tags.refresh(true);
+		// Filter membership and ordering are owned by the API. Never combine a
+		// cursor from the old filter with newly selected query parameters.
+		if (
+			filtersChanged ||
+			memoSearch !== "" ||
+			memoTags.length > 0 ||
+			memoSortByUpdated ||
+			memoDisplay !== "active"
+		) {
+			filtersChanged = true;
+			if (context.active) void load(null, true);
+		}
+	}
+
 	async function createMemo(
 		markdown: string,
 		visibility: "public" | "private",
@@ -246,9 +275,12 @@ export function createMemosSession(context: {
 			visibility,
 		});
 		if (session !== tags.session) return response;
-		if (response.status === "ready") void tags.refresh(true);
-		if (response.status === "ready" && content !== null) {
-			content = { ...content, memos: [response.data, ...content.memos] };
+		if (response.status === "ready") settleWrite();
+		if (response.status === "ready" && content !== null && !filtersChanged) {
+			content = {
+				...content,
+				memos: [response.data, ...content.memos.filter((item) => item.id !== response.data.id)],
+			};
 		}
 		return response;
 	}
@@ -260,9 +292,12 @@ export function createMemosSession(context: {
 		const session = tags.session;
 		const response = await invoke<CommandResponse<MemoView>>("import_x_memo", { url, visibility });
 		if (session !== tags.session) return response;
-		if (response.status === "ready") void tags.refresh(true);
-		if (response.status === "ready" && content !== null) {
-			content = { ...content, memos: [response.data, ...content.memos] };
+		if (response.status === "ready") settleWrite();
+		if (response.status === "ready" && content !== null && !filtersChanged) {
+			content = {
+				...content,
+				memos: [response.data, ...content.memos.filter((item) => item.id !== response.data.id)],
+			};
 		}
 		return response;
 	}
@@ -274,8 +309,8 @@ export function createMemosSession(context: {
 			input,
 		});
 		if (session !== tags.session) return response;
-		if (response.status === "ready") void tags.refresh(true);
-		if (response.status === "ready" && content !== null) {
+		if (response.status === "ready") settleWrite();
+		if (response.status === "ready" && content !== null && !filtersChanged) {
 			content = {
 				...content,
 				memos: content.memos.map((memo) => (memo.id === id ? response.data : memo)),
@@ -288,7 +323,7 @@ export function createMemosSession(context: {
 		const session = tags.session;
 		const response = await invoke<CommandResponse<string>>("delete_memo", { id });
 		if (session !== tags.session) return response;
-		if (response.status === "ready") void tags.refresh(true);
+		if (response.status === "ready") settleWrite();
 		if (response.status === "ready" && content !== null) {
 			content = { ...content, memos: content.memos.filter((memo) => memo.id !== id) };
 		}
@@ -345,6 +380,9 @@ export function createMemosSession(context: {
 			return memoDisplay;
 		},
 		set memoDisplay(value: MemoDisplay) {
+			if (memoDisplay === value) return;
+			leave();
+			filtersChanged = true;
 			memoDisplay = value;
 		},
 		createMemo,

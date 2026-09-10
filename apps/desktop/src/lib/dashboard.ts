@@ -158,6 +158,13 @@ export const widgets: Record<WidgetKind, WidgetDef> = {
 		category: "personal",
 		span: { columns: 4 },
 	},
+	checkIn: {
+		id: "checkIn",
+		label: "Check-in",
+		description: "Build a daily habit with a streak and recent check-ins",
+		category: "personal",
+		span: { columns: 4 },
+	},
 	todoList: {
 		id: "todoList",
 		label: "Todo",
@@ -223,7 +230,9 @@ export const widgets: Record<WidgetKind, WidgetDef> = {
 	},
 };
 
-const singletonKinds: Array<Exclude<WidgetKind, "weather" | "stock" | "serviceStatus" | "game">> = [
+const singletonKinds: Array<
+	Exclude<WidgetKind, "weather" | "stock" | "serviceStatus" | "game" | "checkIn">
+> = [
 	"steam",
 	"cpu",
 	"memory",
@@ -248,6 +257,14 @@ const singletonKinds: Array<Exclude<WidgetKind, "weather" | "stock" | "serviceSt
 ];
 
 export const widgetOptions: WidgetOption[] = [
+	{
+		id: "checkIn",
+		kind: "checkIn",
+		widget: { kind: "checkIn", name: "" },
+		label: widgets.checkIn.label,
+		description: widgets.checkIn.description,
+		category: "personal",
+	},
 	...gameKinds.map((game): WidgetOption => ({
 		id: `game-${game}`,
 		kind: "game",
@@ -291,6 +308,7 @@ export const widgetOptions: WidgetOption[] = [
 ];
 
 export function widgetKey(widget: WidgetPlacement["widget"]): string {
+	if (widget.kind === "checkIn") return `check-in-${widget.name.trim().toLowerCase()}`;
 	if (widget.kind === "game") return `${widget.kind}-${widget.game}`;
 	if (widget.kind === "weather") return `weather-${widget.location.trim().toLocaleLowerCase()}`;
 	if (widget.kind === "stock") return `stock-${widget.symbol.toLocaleLowerCase()}`;

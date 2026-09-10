@@ -10,7 +10,6 @@ mod media;
 pub(super) use media::Error as MediaError;
 
 const ENDPOINT: &str = "https://moment.you-find.me/api/v1";
-const PAGE_SIZE: usize = 100;
 
 #[derive(Clone)]
 struct Client {
@@ -50,7 +49,6 @@ pub struct Photo {
 pub struct Page {
     pub photos: Vec<Photo>,
     pub total: usize,
-    pub next_cursor: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -95,10 +93,27 @@ pub struct Update {
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "patch_value",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub date: Option<Option<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "patch_value",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub geo: Option<Option<Geo>>,
+}
+
+// Missing fields leave data unchanged; an explicit null clears the stored value.
+fn patch_value<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Deserialize)]
@@ -246,7 +261,7 @@ pub async fn get(id: &str) -> Result<Photo, ApiError> {
     Ok(result.photo)
 }
 
-pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
+pub async fn list() -> Result<Page, ApiError> {
     let client = Client::load()?;
     let response = client
         .http
@@ -263,31 +278,9 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
         });
     }
     let result: PhotoList = response.json().await?;
-    let start = match cursor {
-        Some(cursor) => {
-            let position = result.photos.iter().position(|photo| photo.id == cursor);
-            match position {
-                Some(position) => position + 1,
-                None => {
-                    return Err(ApiError::Protocol(format!(
-                        "invalid photo cursor: {cursor}"
-                    )));
-                }
-            }
-        }
-        None => 0,
-    };
-    let total = result.photos.len();
-    let end = total.min(start + PAGE_SIZE);
-    let next_cursor = if end < total {
-        Some(result.photos[end - 1].id.clone())
-    } else {
-        None
-    };
     Ok(Page {
-        photos: result.photos[start..end].to_vec(),
-        total,
-        next_cursor,
+        total: result.photos.len(),
+        photos: result.photos,
     })
 }
 
@@ -490,17 +483,18 @@ mod tests {
     }
 
     #[test]
-    fn preserves_null_updates() {
-        let update = Update {
-            date: Some(None),
-            geo: Some(None),
-            ..Update::default()
-        };
-        let value = serde_json::to_value(update).expect("photo update should serialize");
-
-        assert_eq!(value.get("date"), Some(&serde_json::Value::Null));
-        assert_eq!(value.get("geo"), Some(&serde_json::Value::Null));
-        assert!(value.get("title").is_none());
+    fn preserves_json_patch_presence() {
+        for json in [
+            r#"{}"#,
+            r#"{"date":null,"geo":null}"#,
+            r#"{"date":"2026-09-10","geo":{"lat":1.0,"lng":2.0}}"#,
+        ] {
+            let input: Update = serde_json::from_str(json).unwrap();
+            assert_eq!(
+                serde_json::to_value(input).unwrap(),
+                serde_json::from_str::<serde_json::Value>(json).unwrap()
+            );
+        }
     }
 
     #[test]

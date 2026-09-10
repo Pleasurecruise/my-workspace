@@ -14,6 +14,48 @@ pub(crate) struct MusicState {
     spotify_authorization: OperationGate,
     qq_login_operation: OperationGate,
     qq_login_generation: AtomicU64,
+    playback_actions: PlaybackActions,
+}
+
+// Playback commands can spend time waiting for another provider or runtime initialization.
+// Select the latest command before any of that work, and drop superseded work before
+// the next command pauses the old provider and starts its own audio.
+struct PlaybackActions {
+    generation: tokio::sync::watch::Sender<u64>,
+    action: tokio::sync::Mutex<()>,
+}
+
+impl Default for PlaybackActions {
+    fn default() -> Self {
+        Self {
+            generation: tokio::sync::watch::channel(0).0,
+            action: tokio::sync::Mutex::new(()),
+        }
+    }
+}
+
+impl PlaybackActions {
+    async fn run<T>(
+        &self,
+        action: impl std::future::Future<Output = CommandResponse<T>>,
+    ) -> CommandResponse<T> {
+        let mut generation = self.generation.subscribe();
+        let mut version = 0;
+        self.generation.send_modify(|current| {
+            *current += 1;
+            version = *current;
+        });
+        tokio::select! {
+            biased;
+            _ = generation.wait_for(|current| *current != version) => CommandResponse::Failed {
+                message: "Music playback command was superseded".to_owned(),
+            },
+            response = async {
+                let _action = self.action.lock().await;
+                action.await
+            } => response,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -73,14 +115,6 @@ impl MusicState {
         Ok(qq_music)
     }
 
-    pub(crate) async fn reset_spotify(&self) {
-        *self.spotify.lock().await = None;
-    }
-
-    pub(crate) async fn reset_qq_music(&self) {
-        *self.qq_music.lock().await = None;
-    }
-
     pub(crate) async fn cover(&self, key: &str) -> Result<music::Cover, String> {
         if key.starts_with("spotify/") {
             return self
@@ -101,11 +135,11 @@ impl MusicState {
         Err("Unknown music cover provider".to_owned())
     }
 
-    async fn pause_inactive(&self, provider: music::Provider) {
+    async fn pause_inactive(&self, provider: music::Provider) -> music::Result<()> {
         match provider {
             music::Provider::Spotify => {
                 if let Some(qq_music) = self.qq_music.lock().await.as_ref() {
-                    qq_music.pause_if_playing();
+                    qq_music.pause().await?;
                 }
             }
             music::Provider::QqMusic => {
@@ -115,6 +149,7 @@ impl MusicState {
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -165,21 +200,22 @@ pub(crate) async fn poll_qq_music_login(
                     message: "QQ Music login was cancelled".to_owned(),
                 };
             }
-            if let Some(credentials) = credentials
-                && let Err(error) = vesper_credentials::save_qq_music(credentials)
-            {
-                return CommandResponse::Failed {
-                    message: error.to_string(),
-                };
+            if let Some(credentials) = credentials {
+                let mut runtime = state.qq_music.lock().await;
+                if let Some(previous) = runtime.take() {
+                    previous.shutdown().await;
+                }
+                if let Err(error) = vesper_credentials::save_qq_music(credentials) {
+                    return CommandResponse::Failed {
+                        message: error.to_string(),
+                    };
+                }
             }
             if !matches!(
                 status,
                 music::QqLoginStatus::Complete | music::QqLoginStatus::Expired
             ) {
                 *login = Some(active);
-            } else if matches!(status, music::QqLoginStatus::Complete) {
-                drop(login);
-                state.reset_qq_music().await;
             }
             CommandResponse::Ready { data: status }
         }
@@ -252,12 +288,15 @@ pub(crate) async fn connect_spotify(app: tauri::AppHandle) -> CommandResponse<St
         web_refresh_token: web_token.refresh_token,
         playback_refresh_token: playback_token.refresh_token,
     };
+    let mut runtime = state.spotify.lock().await;
+    if let Some(previous) = runtime.take() {
+        previous.shutdown().await;
+    }
     if let Err(error) = vesper_credentials::save_spotify(credentials) {
         return CommandResponse::Failed {
             message: error.to_string(),
         };
     }
-    state.reset_spotify().await;
     CommandResponse::Ready {
         data: "spotify".to_owned(),
     }
@@ -269,7 +308,20 @@ pub(crate) async fn read_music_tracks(
     app: tauri::AppHandle,
 ) -> CommandResponse<Vec<music::Track>> {
     let state = app.state::<MusicState>();
-    state.pause_inactive(provider).await;
+    let selection = state
+        .playback_actions
+        .run(async {
+            match state.pause_inactive(provider).await {
+                Ok(()) => CommandResponse::Ready { data: () },
+                Err(error) => CommandResponse::Failed {
+                    message: error.to_string(),
+                },
+            }
+        })
+        .await;
+    if let CommandResponse::Failed { message } = selection {
+        return CommandResponse::Failed { message };
+    }
     let result = match provider {
         music::Provider::Spotify => match state.spotify().await {
             Ok(spotify) => spotify.liked_songs().await,
@@ -319,18 +371,27 @@ pub(crate) async fn play_music_track(
     app: tauri::AppHandle,
 ) -> CommandResponse<String> {
     let state = app.state::<MusicState>();
-    state.pause_inactive(provider).await;
-    let result = match provider {
-        music::Provider::Spotify => match state.spotify().await {
-            Ok(spotify) => spotify.play(&track_id).await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-        music::Provider::QqMusic => match state.qq_music().await {
-            Ok(qq_music) => qq_music.play(&track_id).await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-    };
-    action_response(provider, result)
+    state
+        .playback_actions
+        .run(async {
+            if let Err(error) = state.pause_inactive(provider).await {
+                return CommandResponse::Failed {
+                    message: error.to_string(),
+                };
+            }
+            let result = match provider {
+                music::Provider::Spotify => match state.spotify().await {
+                    Ok(spotify) => spotify.play(&track_id).await,
+                    Err(message) => return CommandResponse::Failed { message },
+                },
+                music::Provider::QqMusic => match state.qq_music().await {
+                    Ok(qq_music) => qq_music.play(&track_id).await,
+                    Err(message) => return CommandResponse::Failed { message },
+                },
+            };
+            action_response(provider, result)
+        })
+        .await
 }
 
 #[tauri::command]
@@ -339,18 +400,27 @@ pub(crate) async fn resume_music(
     app: tauri::AppHandle,
 ) -> CommandResponse<String> {
     let state = app.state::<MusicState>();
-    state.pause_inactive(provider).await;
-    let result = match provider {
-        music::Provider::Spotify => match state.spotify().await {
-            Ok(spotify) => spotify.resume().await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-        music::Provider::QqMusic => match state.qq_music().await {
-            Ok(qq_music) => qq_music.resume().await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-    };
-    action_response(provider, result)
+    state
+        .playback_actions
+        .run(async {
+            if let Err(error) = state.pause_inactive(provider).await {
+                return CommandResponse::Failed {
+                    message: error.to_string(),
+                };
+            }
+            let result = match provider {
+                music::Provider::Spotify => match state.spotify().await {
+                    Ok(spotify) => spotify.resume().await,
+                    Err(message) => return CommandResponse::Failed { message },
+                },
+                music::Provider::QqMusic => match state.qq_music().await {
+                    Ok(qq_music) => qq_music.resume().await,
+                    Err(message) => return CommandResponse::Failed { message },
+                },
+            };
+            action_response(provider, result)
+        })
+        .await
 }
 
 #[tauri::command]
@@ -359,17 +429,22 @@ pub(crate) async fn pause_music(
     app: tauri::AppHandle,
 ) -> CommandResponse<String> {
     let state = app.state::<MusicState>();
-    let result = match provider {
-        music::Provider::Spotify => match state.spotify().await {
-            Ok(spotify) => spotify.pause().await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-        music::Provider::QqMusic => match state.qq_music().await {
-            Ok(qq_music) => qq_music.pause().await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-    };
-    action_response(provider, result)
+    state
+        .playback_actions
+        .run(async {
+            let result = match provider {
+                music::Provider::Spotify => match state.spotify().await {
+                    Ok(spotify) => spotify.pause().await,
+                    Err(message) => return CommandResponse::Failed { message },
+                },
+                music::Provider::QqMusic => match state.qq_music().await {
+                    Ok(qq_music) => qq_music.pause().await,
+                    Err(message) => return CommandResponse::Failed { message },
+                },
+            };
+            action_response(provider, result)
+        })
+        .await
 }
 
 #[tauri::command]
@@ -379,17 +454,22 @@ pub(crate) async fn seek_music(
     app: tauri::AppHandle,
 ) -> CommandResponse<String> {
     let state = app.state::<MusicState>();
-    let result = match provider {
-        music::Provider::Spotify => match state.spotify().await {
-            Ok(spotify) => spotify.seek(position_ms).await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-        music::Provider::QqMusic => match state.qq_music().await {
-            Ok(qq_music) => qq_music.seek(position_ms).await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-    };
-    action_response(provider, result)
+    state
+        .playback_actions
+        .run(async {
+            let result = match provider {
+                music::Provider::Spotify => match state.spotify().await {
+                    Ok(spotify) => spotify.seek(position_ms).await,
+                    Err(message) => return CommandResponse::Failed { message },
+                },
+                music::Provider::QqMusic => match state.qq_music().await {
+                    Ok(qq_music) => qq_music.seek(position_ms).await,
+                    Err(message) => return CommandResponse::Failed { message },
+                },
+            };
+            action_response(provider, result)
+        })
+        .await
 }
 
 #[tauri::command]
@@ -454,3 +534,7 @@ fn action_response(
         },
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/music.rs"]
+mod tests;

@@ -156,7 +156,7 @@ fn print_help() {
          moment get <id>                read one photo\n  \
          moment query <json>            filter photos by dates/tags or search\n  \
          moment tags                   list Moment tags\n  \
-         moment list [cursor]          list photos\n  \
+         moment list                   list the latest 100 photos\n  \
          moment search <query>         search photo metadata\n  \
          moment create <json>          register uploaded R2 image keys and metadata\n  \
          moment upload-photo <json> <source>  prepare and upload PNG, JPEG, WebP, AVIF, or HEIC\n  \

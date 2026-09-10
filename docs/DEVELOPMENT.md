@@ -284,6 +284,12 @@ pnpm check
 pnpm test
 ```
 
+`pnpm test:coverage:frontend` runs the same frontend suite with V8 instrumentation and writes
+`coverage/index.html` plus `coverage/coverage-summary.json`. The report includes all Desktop
+TypeScript/Svelte source files and excludes test code. Keep `@vitest/coverage-v8` aligned with the
+Vitest version bundled by Vite Plus. Use per-feature branch gaps to guide tests; an overall frontend
+percentage is not Rust coverage and does not establish live provider or native audio compatibility.
+
 Frontend component tests run through the desktop Vite Plus project in Happy DOM with mocked Tauri
 commands. Use controlled promises and clocks to check
 partial failure and response ordering. For desktop UI changes, also run the desktop production

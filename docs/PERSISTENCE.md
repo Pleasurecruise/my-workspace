@@ -15,23 +15,30 @@ application-data directory on Windows. ORM storage changes do not move or delete
 
 `crates/database` owns connection setup and the schema. Connections enforce foreign keys, a bounded
 SQLite busy timeout, and synchronous commits. Unix database permissions are restricted to the owner.
-A single `schema.sql` defines the tables. Opening the database creates missing tables with
-`CREATE TABLE IF NOT EXISTS`; it does not version, rename, copy or rebuild existing tables. Corrupt
+`schema.sql` is the only schema definition. Opening the database creates missing tables with
+`CREATE TABLE IF NOT EXISTS`; it does not upgrade or reset existing tables. This personal application
+does not maintain versioned migrations. When a constraint or column changes incompatibly, rebuild
+only the affected local tables once using the current schema, outside application startup. Preserve
+records where compatible, and keep the rebuild transactional; never reset the whole shared database
+for a change confined to one feature. Normal reopen must not erase saved data.
+
+Corrupt
 databases are reported without replacing their contents. Legacy JSON files, temporary-file recovery
-and the separate game database are not imported or used as fallback storage. On upgrade, the new
-database therefore starts with empty tasks, archives and Inbox, default layout, and no Telegram
+and the separate game database are not imported or used as fallback storage. When upgrading from the retired file-based storage, the shared
+database starts with empty tasks, archives and Inbox, default layout, and no Telegram
 session or debug credentials. Old files remain on disk; re-saving credentials or syncing provider
 history does not recover records that are no longer available remotely.
 
-| Tables                                        | Feature owner           | Contents                                                |
-| --------------------------------------------- | ----------------------- | ------------------------------------------------------- |
-| `dashboard_widgets`, `dashboard_layout`       | Desktop widgets         | Ordered placements and nullable island selection        |
-| `todo_items`, `todo_occurrences`              | Todo                    | Dated tasks and suppressed/imported occurrence keys     |
-| `notifications`, `notification_cursor`        | Desktop Inbox           | Pending messages and SSE replay cursor                  |
-| `game_accounts`, `game_pulls`, `game_reports` | Games                   | Accounts, deduplicated history and official reports     |
-| `game_diagnostic`                             | Games                   | Latest bounded verification metadata, excluding secrets |
-| `telegram_session`                            | Social                  | MTProto session state                                   |
-| `credentials`                                 | Credentials, debug only | Development credentials and renewable sessions          |
+| Tables                                        | Feature owner           | Contents                                                        |
+| --------------------------------------------- | ----------------------- | --------------------------------------------------------------- |
+| `dashboard_widgets`, `dashboard_layout`       | Desktop widgets         | Ordered placements and nullable island selection                |
+| `todo_items`, `todo_occurrences`              | Todo                    | Dated tasks and suppressed/imported occurrence keys             |
+| `check_ins`                                   | Todo                    | Daily habit records keyed by widget placement ID and local date |
+| `notifications`, `notification_cursor`        | Desktop Inbox           | Pending messages and SSE replay cursor                          |
+| `game_accounts`, `game_pulls`, `game_reports` | Games                   | Accounts, deduplicated history and official reports             |
+| `game_diagnostic`                             | Games                   | Latest bounded verification metadata, excluding secrets         |
+| `telegram_session`                            | Social                  | MTProto session state                                           |
+| `credentials`                                 | Credentials, debug only | Development credentials and renewable sessions                  |
 
 Typed provider unions, report payloads and credential values may use JSON inside a database field.
 Their owning module validates the payload; ordering, identity and transaction boundaries are database
@@ -50,7 +57,8 @@ repeated imports and keep deleted occurrences from reappearing.
 Notion reads the configured calendar view through `ntn api` before replacing that day's Notion
 projection. A failed CLI read leaves the stored projection untouched. Stable page IDs preserve local
 completion, while remote title/date changes and removals are reflected by a successful refresh.
-Todo completion and deletion do not edit the Notion page. A feature lock coordinates configuration changes with reads and commits across Desktop and CLI. See [Dashboard](DASHBOARD.md#calendar-and-todo) for the request lifecycle.
+Todo completion and deletion do not edit the Notion page. Imported titles and descriptions are
+source-owned; manual title edits preserve descriptions when the CLI omits that field. A feature lock coordinates configuration changes with reads and commits across Desktop and CLI. See [Dashboard](DASHBOARD.md#calendar-and-todo) for the request lifecycle.
 
 Inbox commits its messages and replay cursor together before publishing the new in-memory state.
 Game imports validate provider records and reject conflicts with archived identity before committing

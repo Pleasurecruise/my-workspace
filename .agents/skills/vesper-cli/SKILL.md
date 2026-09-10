@@ -58,8 +58,9 @@ Completion and deletion stay local and do not modify Notion pages. `syncError` i
 response reports a failed remote refresh while preserving the local projection. `status` reveals
 configuration presence and the view URL; authentication remains owned by `ntn`.
 
-`list` and `get` return nullable `details`: imported items include calendar, timing, location and
-description, while manual items return `null`. Legacy Todo JSON is not read.
+`list` and `get` return a nullable top-level `description` for both manual and imported items.
+Nullable `details` contains calendar, timing, and location for imported items; manual items return
+`null`. CLI title updates preserve the existing description. Legacy Todo JSON is not read.
 
 ## Provider status
 
@@ -231,7 +232,7 @@ for explicit recovery workflows.
 vesper moment get <id>
 vesper moment query '<json>'
 vesper moment tags
-vesper moment list [cursor]
+vesper moment list
 vesper moment search <query>
 vesper moment upload-photo '<json>' <source-image>
 vesper moment upload <r2-key> <local-path>

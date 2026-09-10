@@ -158,12 +158,16 @@ The remaining Moment commands cover tags, listing, search, metadata updates, dow
 vesper moment get <id>
 vesper moment query <json>
 vesper moment tags
-vesper moment list [cursor]
+vesper moment list
 vesper moment search <query>
 vesper moment update <id> <json>
 vesper moment download <r2-key> <local-path>
 vesper moment delete <id>
 ```
+
+`moment list` returns the latest bounded batch (at most 100 photos), with no cursor. Use `moment
+query` for date/tag filters. In `moment update`, omitting `date` or `geo` leaves it unchanged; an
+explicit JSON `null` clears it.
 
 `moment query` exposes MCP-style metadata browsing through REST: `fromDate` and `toDate` use
 `YYYY-MM-DD`, `tags` filters the photo list, and `limit` is 1–100 (the service defaults to 20).

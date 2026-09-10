@@ -352,6 +352,7 @@ fn project(
     Ok(Some(Item {
         id: format!("notion:{view_id}:{}", page.id),
         text,
+        description: None,
         completed: false,
         details: Some(Details {
             calendar: format!("Notion · {calendar}"),
@@ -360,7 +361,6 @@ fn project(
             end_date: end.as_ref().map(|(date, _)| date.clone()),
             end_time: end.and_then(|(_, time)| time),
             location: None,
-            description: None,
         }),
     }))
 }

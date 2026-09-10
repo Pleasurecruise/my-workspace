@@ -129,11 +129,16 @@ its own read and mutation commands; game panels retain their existing source rea
 ### Content lifecycle
 
 The window appears before content loading finishes. Rust supplies one asynchronous `InitialViews`
-snapshot; each feature accepts only a snapshot that has not been superseded by its own read or reset.
-Each feature retains settled content across navigation and owns its request generations. Leaving a
-page invalidates its pending reads; writes still update their owning feature after navigation.
-Memo and Knowledge drafts live in their feature's editor session and preserve edits made during a
-save. Failed background reads expose an error while preserving settled content. These caches and drafts end with the WebView session.
+snapshot; each feature accepts only a snapshot that has not been superseded by its own read or
+reset. Each feature retains settled content across navigation and owns its request generations.
+Leaving a page invalidates its pending reads; writes still update their owning feature after
+navigation. Successful writes invalidate pending list reads and startup snapshots before applying
+their result, so older responses cannot restore deleted or edited content. If a refresh has already
+observed a successful creation, the write response merges by ID; bounded gallery totals follow the
+merged records rather than incrementing twice. Memo and Knowledge drafts
+live in their feature's editor session and preserve edits made during a save. Failed background
+reads expose an error while preserving settled content. These caches and drafts end with the WebView
+session.
 
 Memos and Moment own independent tag indexes. Startup, page entry, and active-page refresh request
 tags without blocking content or each other. Failures preserve settled tags and offer retry;
@@ -143,14 +148,18 @@ submitting bytes and accepting the upload result.
 
 Active content refreshes every sixty seconds near the top of the scroll surface. Memos retains
 loaded pagination tails during a first-page refresh; its active, archived, and favorite feeds use
-independent API filters. Moment receives the API's complete bounded gallery batch for local display
-filtering. Knowledge and Newspaper share one Rust-classified overview, refreshed on Newspaper entry
-and daily at 09:00 local time. Consumer projections and write boundaries are described below.
+independent API filters. Writes during a filter change or within a filtered/sorted feed revalidate
+the current first page before pagination resumes; cursors and retained tails never cross filter
+changes. Moment receives the API's complete bounded gallery batch for local display filtering.
+Knowledge and Newspaper share one Rust-classified overview, refreshed on Newspaper entry and daily
+at 09:00 local time. Consumer projections and write boundaries are described below.
 
 Rust's desktop `cms.rs` owns the consumer repository and view/image caches; `consumer.rs` adapts
 content commands. Startup may reuse a first page for thirty seconds, while normal reads bypass that
-cache. Consumer writes and credential changes invalidate it. Moment image bytes use the
-main-WebView-only `vesper-asset` protocol, with shared in-flight reads and a cache bounded to 64
+cache. Consumer writes and credential changes invalidate it. Each channel has a cache revision:
+invalidation and newer first-page reads prevent older in-flight reads from repopulating or replacing
+the cache. Failed reads preserve settled entries until their normal expiry. Moment image bytes use
+the main-WebView-only `vesper-asset` protocol, with shared in-flight reads and a cache bounded to 64
 objects / 128 MiB. Clearing it invalidates pending entries. R2 reads have a twenty-second deadline;
 consumer API requests have a thirty-second deadline.
 
@@ -162,8 +171,11 @@ also requires a saved remote telemetry widget. Inbox independently activates the
 only while its route is active. See [DASHBOARD.md](DASHBOARD.md) for scheduling and failure behavior.
 
 Music playback and game accounts continue to live in their Rust runtimes independently of page
-mounts. [MUSIC.md](MUSIC.md), [GAMES.md](GAMES.md), and [UGOS.md](UGOS.md) own their protocols, cache
-rules, media/verification boundaries, and source maps. The desktop `lib.rs` owns setup and command
+mounts. Music runtimes own cancellable playback tasks and audio workers; replacing a music login
+closes the old runtime before saving new credentials. QQ audio snapshots carry the loaded track
+identity, and Spotify events are matched to individual load requests. [MUSIC.md](MUSIC.md),
+[GAMES.md](GAMES.md), and [UGOS.md](UGOS.md) own their protocols, cache rules, media/verification
+boundaries, and source maps. The desktop `lib.rs` owns setup and command
 registration; `telemetry.rs`, `storage.rs`, `todo.rs`, and `gaming.rs` adapt their named capabilities.
 
 App Lock is a Rust-owned in-memory privacy screen with a stored password. Svelte reads its state
@@ -241,18 +253,22 @@ command accepts only an ID, rereads that Memo through its authenticated API, and
 content and visibility to `crates/social`, which independently rejects non-public Memos. Both
 providers receive a bounded plain-text projection followed by the Memo's canonical URL.
 
-Telegram uses a serialized MTProto user session whose authorization key and peer cache use crash-safe
-replacement in an owner-only application-data file. X uses an OAuth 2.0 Authorization Code flow with
-PKCE and a loopback callback. Its access token, rotating refresh token, Client ID, and expiration are
-stored as one operating-system credential record; publishing refreshes an expiring access token
-before calling the user-context posting endpoint. Provider failures expose operation and status only,
-never credentials or response bodies.
+Telegram stores its serialized MTProto authorization key and peer cache in the `telegram_session`
+table of the owner-only shared SQLite database. Each update commits before replacing the in-memory
+session. X uses an OAuth 2.0 Authorization Code flow with PKCE and a loopback callback. Its access
+token, rotating refresh token, Client ID, and expiration are stored as one operating-system
+credential record; publishing refreshes an expiring access token before calling the user-context
+posting endpoint. Provider failures expose operation and status only, never credentials or response
+bodies.
 
 ### Moment
 
 Moment uses `https://moment.you-find.me/api/v1` for photo metadata and authenticated listing, tag,
 edit, and delete operations. Records contain the original and thumbnail R2 keys. The remote list
 endpoint returns at most 100 records without a cursor; desktop pagination covers that returned set.
+The CLI `moment list` and desktop gallery return one bounded batch; they expose no synthetic cursor.
+Channel responses contain content only; tagged command failures represent unavailable connections,
+and Memos/Moment tag indexes use independent reads.
 
 The shared Rust upload path accepts PNG, JPEG, WebP, AVIF, and HEIC, normalizes orientation, and reads
 available EXIF time and coordinates. It produces a PNG original, JPEG thumbnail, and ThumbHash,
@@ -287,19 +303,29 @@ The stored body, API payload, and content-hash conflict contract remain Markdown
 transactions: layout, Todo, Inbox, game archives and Telegram sessions. Debug credentials use the
 same database; release credentials retain the operating-system store boundary. Legacy files are
 neither read nor migrated. Todo reads use a read transaction; mutations retain their immediate
-transactions. Existing-table constraint migration remains deferred.
+transactions. `schema.sql` is the only schema definition; there is no versioned migration layer.
+Incompatible schema changes are handled by a one-time rebuild of the affected local tables.
 [Persistence](PERSISTENCE.md) owns the schema inventory and failure rules.
 
 ### Todo and calendar
 
-`crates/todo` owns dated tasks, ICS parsing, Notion calendar queries and local projection. Notion's
+`crates/todo` owns dated tasks, daily check-ins, ICS parsing, Notion calendar queries and local projection. Notion's
 view link is configured in Settings through `crates/credentials`. Rust runs bounded `ntn api`
 processes; the official CLI owns login and credentials. Vesper never reads or copies its tokens.
 Reads preserve the view's filters and sorting; completion remains local. Svelte owns date selection and
 rendering, with request generations preventing an older response from replacing a later selection.
 Desktop and CLI construct the production Todo store through `Store::shared()`, retaining ICS in
 `dirs::data_dir()/me.you-find.vesper/ics` while the database uses local application data.
+Manual tasks expose one top-level description independently of imported calendar metadata. Editing
+changes only title and description; imported content stays source-owned. Desktop defers Todo reads
+until an in-flight mutation finishes, then reloads the latest selected date.
 Desktop mutations notify the other trusted WebView so the main window and native island refresh.
+The Todo crate also owns the `check_ins` table and daily streak projection. A stable widget placement
+ID identifies one habit; layout reorder/save and application restart retain its records. Removing and
+adding a widget creates a new habit ID; old records are retained without being reassigned by name.
+Rust validates today's local date inside the write transaction, deduplicates each day's check-in,
+and returns totals, an ongoing streak (including yesterday when today is unfinished), and 28 days.
+Check-in views refresh on mount, focus, once per minute and on cross-window events; writes defer reads.
 
 ## CLI consumer surface
 
@@ -349,9 +375,9 @@ local transition performs no provider I/O, persists across view remounts and cac
 preserves successful cached notes. Only an explicit refresh reads fresh daily data.
 
 Star Rail manual pull sync uses `mihoyo/rail_gacha.rs` to exchange the existing record cookies for
-an activity-only badge cookie and read official pool totals and five-star records. Schema v2 adds
-`official_reports`, keyed by game and UID with an account foreign key. An atomic transaction merges
-older five-star entries and replaces statistics without modifying real rows in `pulls`.
+an activity-only badge cookie and read official pool totals and five-star records. The shared
+`game_reports` table is keyed by game and UID with an account foreign key. An atomic transaction
+merges older five-star entries and replaces statistics without modifying real rows in `game_pulls`.
 `archive::Summary.official` is explicitly null for ordinary archives and otherwise carries this
-report. The view labels its partial coverage; it does not infer missing pulls or timestamps.
-The badge cookie is memory-only and scoped to one manual sync. No daily-note cache is changed.
+report. The view labels its partial coverage; it does not infer missing pulls or timestamps. The
+badge cookie is memory-only and scoped to one manual sync. No daily-note cache is changed.

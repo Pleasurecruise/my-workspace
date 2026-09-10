@@ -351,7 +351,6 @@
 	.timeline input { width: 100%; accent-color: var(--color-accent); }
 	@keyframes record-spin { to { transform: rotate(360deg); } }
 	@keyframes subtitle-in { from { opacity: 0; transform: translateY(0.6rem); } to { opacity: 1; transform: translateY(0); } }
-	@keyframes spin { to { transform: rotate(360deg); } }
 	:global(.page-content[data-stacked="true"]) header { align-items: stretch; flex-direction: column; }
 	:global(.page-content[data-stacked="true"]) .record-column,
 	:global(.page-content[data-stacked="true"]) .track-list { width: 100%; box-sizing: border-box; }

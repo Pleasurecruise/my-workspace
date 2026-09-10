@@ -18,7 +18,7 @@ async fn lists_while_writing() {
     use diesel::connection::SimpleConnection;
     let directory = tempfile::tempdir().unwrap();
     let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
-    store.create("2026-09-07", "Committed").await.unwrap();
+    store.create("2026-09-07", "Committed", None).await.unwrap();
     let mut writer = vesper_database::open(store.database_path()).unwrap();
     writer
         .batch_execute("BEGIN IMMEDIATE; UPDATE todo_items SET text = 'Pending';")
@@ -40,13 +40,13 @@ fn test_store() -> (PathBuf, Store) {
 async fn handles_crud() {
     let (directory, store) = test_store();
     let date = "2026-08-23";
-    let created = store.create(date, "  Ship CLI  ").await.unwrap();
+    let created = store.create(date, "  Ship CLI  ", None).await.unwrap();
     let id = created.items[0].id.clone();
     assert_eq!(created.items[0].text, "Ship CLI");
     assert_eq!(store.get(date, &id).await.unwrap().id, id);
     assert_eq!(
         store
-            .update(date, &id, "Ship Todo CLI")
+            .update(date, &id, "Ship Todo CLI", None)
             .await
             .unwrap()
             .items[0]
@@ -61,8 +61,8 @@ async fn handles_crud() {
 #[tokio::test]
 async fn isolates_dates() {
     let (directory, store) = test_store();
-    store.create("2026-08-22", "Yesterday").await.unwrap();
-    store.create("2026-08-23", "Today").await.unwrap();
+    store.create("2026-08-22", "Yesterday", None).await.unwrap();
+    store.create("2026-08-23", "Today", None).await.unwrap();
     assert_eq!(
         store.list("2026-08-22").await.unwrap().items[0].text,
         "Yesterday"
@@ -78,8 +78,8 @@ async fn isolates_dates() {
 async fn reloads_before_mutation() {
     let (directory, first) = test_store();
     let second = Store::new(directory.join(vesper_database::FILE_NAME));
-    first.create("2026-08-23", "First").await.unwrap();
-    second.create("2026-08-23", "Second").await.unwrap();
+    first.create("2026-08-23", "First", None).await.unwrap();
+    second.create("2026-08-23", "Second", None).await.unwrap();
     assert_eq!(first.list("2026-08-23").await.unwrap().items.len(), 2);
     std::fs::remove_dir_all(directory).unwrap();
 }
@@ -88,10 +88,10 @@ async fn reloads_before_mutation() {
 async fn rolls_back_failed_mutation() {
     use diesel::connection::SimpleConnection;
     let (directory, store) = test_store();
-    let original = store.create("2026-08-23", "Keep me").await.unwrap();
+    let original = store.create("2026-08-23", "Keep me", None).await.unwrap();
     let mut connection = vesper_database::open(store.database_path()).unwrap();
     connection.batch_execute("CREATE TRIGGER reject_todo BEFORE INSERT ON todo_items BEGIN SELECT RAISE(ABORT, 'injected failure'); END;").unwrap();
-    assert!(store.create("2026-08-23", "Fail").await.is_err());
+    assert!(store.create("2026-08-23", "Fail", None).await.is_err());
     assert_eq!(store.list("2026-08-23").await.unwrap(), original);
     drop(connection);
     std::fs::remove_dir_all(directory).unwrap();
@@ -102,8 +102,8 @@ async fn serializes_writers() {
     let (directory, first) = test_store();
     let second = Store::new(directory.join(vesper_database::FILE_NAME));
     let (first_result, second_result) = tokio::join!(
-        first.create("2026-08-23", "First"),
-        second.create("2026-08-23", "Second")
+        first.create("2026-08-23", "First", None),
+        second.create("2026-08-23", "Second", None)
     );
     first_result.unwrap();
     second_result.unwrap();
@@ -130,7 +130,7 @@ async fn ignores_old_file() {
 async fn rejects_long_text() {
     let (directory, store) = test_store();
     let error = store
-        .create("2026-08-23", &"x".repeat(MAX_TEXT_LENGTH + 1))
+        .create("2026-08-23", &"x".repeat(MAX_TEXT_LENGTH + 1), None)
         .await
         .unwrap_err();
     assert!(matches!(error, Error::TextTooLong));
@@ -177,7 +177,10 @@ async fn imports_once() {
             .items
             .is_empty()
     );
-    store.create("2026-08-23", "09:30 Standup").await.unwrap();
+    store
+        .create("2026-08-23", "09:30 Standup", None)
+        .await
+        .unwrap();
     let synced = store.sync_schedule("2026-08-23").await.unwrap();
     assert_eq!(synced.items.len(), 1);
     assert!(synced.items[0].details.is_none());
@@ -284,10 +287,11 @@ async fn reads_existing_sources() {
 async fn reconciles_notion() {
     let (directory, store) = test_store();
     let date = "2026-09-07";
-    store.create(date, "Manual").await.unwrap();
+    store.create(date, "Manual", None).await.unwrap();
     let mut remote = Item {
         id: "notion:view:page".into(),
         text: "Remote".into(),
+        description: None,
         completed: false,
         details: Some(Details {
             calendar: "Notion · Work".into(),
@@ -296,7 +300,6 @@ async fn reconciles_notion() {
             end_date: None,
             end_time: None,
             location: None,
-            description: None,
         }),
     };
     store
@@ -307,6 +310,12 @@ async fn reconciles_notion() {
         )
         .await
         .unwrap();
+    assert!(matches!(
+        store
+            .update(date, &remote.id, "Local edit", Some("Local notes"))
+            .await,
+        Err(Error::ImportedItem)
+    ));
     store.set_completed(date, &remote.id, true).await.unwrap();
     remote.text = "Renamed remotely".into();
     let refreshed = store
@@ -398,4 +407,48 @@ fn cancelled_calendar_commit_retains_lock() {
         drop(competing);
         std::fs::remove_dir_all(directory).unwrap();
     });
+}
+
+#[tokio::test]
+async fn descriptions_persist_and_edit_preserves_completion_and_date() {
+    let (directory, store) = test_store();
+    let date = "2026-09-10";
+    let list = store
+        .create(date, "  Read  ", Some("  Chapter one\nTake notes  "))
+        .await
+        .unwrap();
+    let id = &list.items[0].id;
+    assert_eq!(
+        list.items[0].description.as_deref(),
+        Some("Chapter one\nTake notes")
+    );
+    store.set_completed(date, id, true).await.unwrap();
+    let list = store
+        .update(date, id, "Read more", Some("Chapter two"))
+        .await
+        .unwrap();
+    assert!(list.items[0].completed);
+    assert_eq!(list.date, date);
+    assert!(list.items[0].details.is_none());
+    store.update(date, id, "Title only", None).await.unwrap();
+    assert_eq!(
+        store.get(date, id).await.unwrap().description.as_deref(),
+        Some("Chapter two")
+    );
+    assert!(matches!(
+        store.update(date, id, "Bad", Some(&"x".repeat(4001))).await,
+        Err(Error::DescriptionTooLong)
+    ));
+    assert_eq!(store.get(date, id).await.unwrap().text, "Title only");
+    let reopened = Store::new(store.database_path().to_owned());
+    assert_eq!(
+        reopened.get(date, id).await.unwrap().description.as_deref(),
+        Some("Chapter two")
+    );
+    reopened
+        .update(date, id, "Clear", Some("  "))
+        .await
+        .unwrap();
+    assert!(reopened.get(date, id).await.unwrap().description.is_none());
+    std::fs::remove_dir_all(directory).unwrap();
 }

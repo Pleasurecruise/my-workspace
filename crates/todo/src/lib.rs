@@ -1,3 +1,5 @@
+mod checkin;
+pub use checkin::{CheckIn, Day};
 mod date;
 mod model;
 mod notion;

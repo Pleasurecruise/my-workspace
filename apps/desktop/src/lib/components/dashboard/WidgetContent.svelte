@@ -7,6 +7,7 @@
 	import ServiceStatusPanel from "./ServiceStatusPanel.svelte";
 	import StocksPanel from "./StocksPanel.svelte";
 	import StoragePanel from "./StoragePanel.svelte";
+	import CheckInPanel from "./CheckInPanel.svelte";
 	import Todo from "./Todo.svelte";
 	import CalendarPanel from "./CalendarPanel.svelte";
 	import QuotationPanel from "./QuotationPanel.svelte";
@@ -148,8 +149,10 @@
 						<GithubPanel {github} error={githubError} />
 					{:else if kind === "calendar"}
 						<CalendarPanel {todayDate} selectedDate={todoDate} loading={todosLoading} onselect={onselecttododate} />
+					{:else if placement.widget.kind === "checkIn"}
+						<CheckInPanel id={placement.id} name={placement.widget.name} {embedded} />
 					{:else if kind === "todoList"}
-						<Todo {embedded} {todos} error={todosError} loading={todosLoading} selectedDate={todoDate} onadd={onaddtodo} ontoggle={ontoggletodo} ondelete={ondeletetodo} />
+						<Todo {embedded} {todos} error={todosError} loading={todosLoading} selectedDate={todoDate} onadd={onaddtodo} onedit={session.editTodo} ontoggle={ontoggletodo} ondelete={ondeletetodo} />
 					{:else if kind === "codex" || kind === "openCode" || kind === "claude" || kind === "grok" || kind === "copilot" || kind === "deepSeek" || kind === "cherryIn"}
 						<UsagePanel provider={kind} codex={usage} codexError={usageError} openCode={openCodeUsage} openCodeError={openCodeUsageError} claude={claudeUsage} claudeError={claudeUsageError} grok={grokUsage} grokError={grokUsageError} copilot={copilotUsage} copilotError={copilotUsageError} deepSeek={deepSeekBalance} deepSeekError={deepSeekBalanceError} cherryIn={cherryInUsage} cherryInError={cherryInUsageError} />
 					{:else if kind === "quotation"}

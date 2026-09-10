@@ -9,6 +9,7 @@ pub(crate) const MAX_TEXT_LENGTH: usize = 120;
 pub struct Item {
     pub id: String,
     pub text: String,
+    pub description: Option<String>,
     pub completed: bool,
     pub details: Option<Details>,
 }
@@ -22,7 +23,6 @@ pub struct Details {
     pub end_date: Option<String>,
     pub end_time: Option<String>,
     pub location: Option<String>,
-    pub description: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
@@ -53,6 +53,14 @@ pub enum Error {
     TextTooLong,
     #[error("todo item no longer exists")]
     MissingItem,
+    #[error("edit imported tasks in their source calendar")]
+    ImportedItem,
+    #[error("todo description cannot exceed 4000 characters")]
+    DescriptionTooLong,
+    #[error("check-in identifier is invalid")]
+    InvalidCheckIn,
+    #[error("the date has changed; refresh before checking in")]
+    CheckInDateChanged,
     #[error("could not parse Todo schedule {path}: {message}")]
     ScheduleParse { path: PathBuf, message: String },
     #[error("Todo schedule source must be an .ics file: {0}")]

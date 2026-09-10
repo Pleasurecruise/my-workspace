@@ -73,6 +73,9 @@
 		selected === "memos" ? memos : selected === "moment" ? moment
 			: selected === "knowledge" || selected === "newspaper" ? knowledge : null,
 	);
+    const paginatedContent = $derived(
+        selected === "memos" ? memos : selected === "knowledge" || selected === "newspaper" ? knowledge : null,
+    );
 	const content = $derived(activeContent === null ? null : activeContent.content);
 	const contentError = $derived(activeContent === null ? null : activeContent.error);
 	let initializationRequest = 0;
@@ -558,7 +561,7 @@
 			if (
 				mainElement !== null &&
 				mainElement.scrollHeight - mainElement.scrollTop - mainElement.clientHeight < 600
-			) activeContent?.loadMore(true);
+			) paginatedContent?.loadMore(true);
 		}}
 	>
 		<header class="topbar">
@@ -638,7 +641,7 @@
 				{#if contentError && content !== null}
 					<p class="tag-notice" role="alert">{contentError}</p>
 				{/if}
-				{#if activeContent?.loadingMore && content}
+				{#if paginatedContent?.loadingMore && content}
 					<p class="loading-more">Loading more…</p>
 				{/if}
 			</div>

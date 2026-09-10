@@ -71,7 +71,7 @@ impl Store {
         &self.path
     }
 
-    async fn transaction<T: Send + 'static>(
+    pub(crate) async fn transaction<T: Send + 'static>(
         &self,
         operation: impl FnOnce(&mut SqliteConnection) -> Result<T, Error> + Send + 'static,
     ) -> Result<T, Error> {
@@ -296,6 +296,7 @@ impl Store {
                     list.items.push(Item {
                         id: uuid::Uuid::new_v4().to_string(),
                         text: occurrence.text,
+                        description: occurrence.details.description,
                         completed: false,
                         details: Some(Details {
                             calendar: occurrence.details.calendar,
@@ -304,7 +305,6 @@ impl Store {
                             end_date: occurrence.details.end_date,
                             end_time: occurrence.details.end_time,
                             location: occurrence.details.location,
-                            description: occurrence.details.description,
                         }),
                     });
                     diesel::insert_into(todo_occurrences::table)
@@ -383,12 +383,19 @@ impl Store {
             .ok_or(Error::MissingItem)
     }
 
-    pub async fn create(&self, date: &str, text: &str) -> Result<List, Error> {
+    pub async fn create(
+        &self,
+        date: &str,
+        text: &str,
+        description: Option<&str>,
+    ) -> Result<List, Error> {
         let text = normalized_text(text)?.to_owned();
+        let description = normalized_description(description.unwrap_or(""))?;
         self.mutate(date, move |items| {
             items.push(Item {
                 id: uuid::Uuid::new_v4().to_string(),
                 text,
+                description,
                 completed: false,
                 details: None,
             });
@@ -397,11 +404,25 @@ impl Store {
         .await
     }
 
-    pub async fn update(&self, date: &str, id: &str, text: &str) -> Result<List, Error> {
+    pub async fn update(
+        &self,
+        date: &str,
+        id: &str,
+        text: &str,
+        description: Option<&str>,
+    ) -> Result<List, Error> {
         let text = normalized_text(text)?.to_owned();
+        let description = description.map(normalized_description).transpose()?;
         let id = id.to_owned();
         self.mutate(date, move |items| {
-            find_item(items, &id)?.text = text;
+            let item = find_item(items, &id)?;
+            if item.details.is_some() {
+                return Err(Error::ImportedItem);
+            }
+            item.text = text;
+            if let Some(description) = description {
+                item.description = description;
+            }
             Ok(())
         })
         .await
@@ -481,7 +502,6 @@ fn read_list(connection: &mut SqliteConnection, date: &str) -> Result<List, Erro
                     end_date: row.end_date,
                     end_time: row.end_time,
                     location: row.location,
-                    description: row.description,
                 }),
                 (None, None) => None,
                 _ => return Err(Error::InvalidRecord),
@@ -489,6 +509,7 @@ fn read_list(connection: &mut SqliteConnection, date: &str) -> Result<List, Erro
             Ok(Item {
                 id: row.id,
                 text: row.text,
+                description: row.description,
                 completed: row.completed,
                 details,
             })
@@ -535,10 +556,7 @@ fn save_items(connection: &mut SqliteConnection, list: &List) -> Result<(), Erro
                 .details
                 .as_ref()
                 .and_then(|details| details.location.clone()),
-            description: item
-                .details
-                .as_ref()
-                .and_then(|details| details.description.clone()),
+            description: item.description.clone(),
         };
         diesel::insert_into(todo_items::table)
             .values(row)
@@ -597,3 +615,11 @@ fn schedule_name(path: &Path) -> Result<String, Error> {
 #[cfg(test)]
 #[path = "../tests/unit/store.rs"]
 mod tests;
+
+fn normalized_description(value: &str) -> Result<Option<String>, Error> {
+    let value = value.trim();
+    if value.chars().count() > 4000 {
+        return Err(Error::DescriptionTooLong);
+    }
+    Ok((!value.is_empty()).then(|| value.to_owned()))
+}

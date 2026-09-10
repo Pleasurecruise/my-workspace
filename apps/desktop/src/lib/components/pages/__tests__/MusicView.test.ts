@@ -110,6 +110,11 @@ it("ignores stale playback and lyrics, and preserves the playing song when switc
 	await vi.waitFor(() => expect(target.textContent).toContain("Playback rejected"));
 	expect(target.querySelector(".now-playing strong")?.textContent).toBe("Track B");
 	expect(lyricReads).toBe(2);
+	const previous = findElement<HTMLButtonElement>(target, '[aria-label="Previous song"]');
+	expect(previous.disabled).toBe(false);
+	previous.click();
+	await vi.waitFor(() => expect(playRequests).toBe(3));
+	await vi.waitFor(() => expect(previous.disabled).toBe(false));
 	await unmount(view);
 	target.remove();
 	vi.useRealTimers();

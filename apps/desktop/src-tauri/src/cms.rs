@@ -31,40 +31,31 @@ struct CachedView {
 }
 
 #[derive(Default)]
+struct ViewSlot {
+    revision: u64,
+    cached: Option<CachedView>,
+}
+
+#[derive(Default)]
 struct ViewCache {
-    memos: Option<CachedView>,
-    moment: Option<CachedView>,
-    knowledge: Option<CachedView>,
+    memos: ViewSlot,
+    moment: ViewSlot,
+    knowledge: ViewSlot,
 }
 
 impl ViewCache {
-    fn get(&self, channel: consumers::view::Channel) -> Option<consumers::view::ChannelView> {
-        let entry = match channel {
-            consumers::view::Channel::Memos => self.memos.as_ref(),
-            consumers::view::Channel::Moment => self.moment.as_ref(),
-            consumers::view::Channel::Knowledge => self.knowledge.as_ref(),
-        }?;
-        (entry.loaded_at.elapsed() <= VIEW_TTL).then(|| entry.data.clone())
-    }
-
-    fn insert(&mut self, channel: consumers::view::Channel, data: consumers::view::ChannelView) {
-        let entry = Some(CachedView {
-            data,
-            loaded_at: Instant::now(),
-        });
+    fn slot(&mut self, channel: consumers::view::Channel) -> &mut ViewSlot {
         match channel {
-            consumers::view::Channel::Memos => self.memos = entry,
-            consumers::view::Channel::Moment => self.moment = entry,
-            consumers::view::Channel::Knowledge => self.knowledge = entry,
+            consumers::view::Channel::Memos => &mut self.memos,
+            consumers::view::Channel::Moment => &mut self.moment,
+            consumers::view::Channel::Knowledge => &mut self.knowledge,
         }
     }
 
     fn clear(&mut self, channel: consumers::view::Channel) {
-        match channel {
-            consumers::view::Channel::Memos => self.memos = None,
-            consumers::view::Channel::Moment => self.moment = None,
-            consumers::view::Channel::Knowledge => self.knowledge = None,
-        }
+        let slot = self.slot(channel);
+        slot.revision += 1;
+        slot.cached = None;
     }
 }
 
@@ -210,7 +201,14 @@ impl CmsState {
     }
 
     pub(crate) async fn reset_views(&self) {
-        *self.views.lock().await = ViewCache::default();
+        let mut views = self.views.lock().await;
+        for channel in [
+            consumers::view::Channel::Memos,
+            consumers::view::Channel::Moment,
+            consumers::view::Channel::Knowledge,
+        ] {
+            views.clear(channel);
+        }
     }
 
     pub(crate) async fn channel(
@@ -229,60 +227,81 @@ impl CmsState {
             && !filters.sort_by_updated
             && !filters.archived_only
             && !filters.favorites_only;
-        let cached = if read_cached_first_page && cacheable {
-            self.views.lock().await.get(channel)
+        self.load_view(channel, cacheable, read_cached_first_page, async move {
+            match channel {
+                consumers::view::Channel::Memos => {
+                    match consumers::api::memos::list(cursor, &filters).await {
+                        Ok(page) => Ok(consumers::view::ChannelView::Memos {
+                            memos: page.memos,
+                            next_cursor: page.next_cursor,
+                        }),
+                        Err(error) => Err(error.to_string()),
+                    }
+                }
+                consumers::view::Channel::Knowledge => {
+                    let result = match cursor {
+                        Some(cursor) => consumers::api::knowledge::list(Some(cursor)).await,
+                        None => consumers::api::knowledge::overview().await,
+                    };
+                    match result {
+                        Ok(page) => {
+                            let newspaper =
+                                consumers::api::knowledge::latest_newspaper_issues(&page.documents);
+                            Ok(consumers::view::ChannelView::Knowledge {
+                                knowledge: page.documents,
+                                newspaper,
+                                next_cursor: page.cursor,
+                            })
+                        }
+                        Err(error) => Err(error.to_string()),
+                    }
+                }
+                consumers::view::Channel::Moment => match consumers::api::moment::list().await {
+                    Ok(page) => Ok(consumers::view::ChannelView::Moment {
+                        photos: page.photos,
+                        total: page.total,
+                    }),
+                    Err(error) => Err(error.to_string()),
+                },
+            }
+        })
+        .await
+    }
+
+    async fn load_view(
+        &self,
+        channel: consumers::view::Channel,
+        cacheable: bool,
+        read_cached: bool,
+        fetch: impl std::future::Future<Output = Result<consumers::view::ChannelView, String>>,
+    ) -> CommandResponse<consumers::view::ChannelView> {
+        let revision = if cacheable {
+            let mut views = self.views.lock().await;
+            let slot = views.slot(channel);
+            if read_cached
+                && let Some(entry) = &slot.cached
+                && entry.loaded_at.elapsed() <= VIEW_TTL
+            {
+                return CommandResponse::Ready {
+                    data: entry.data.clone(),
+                };
+            }
+            slot.revision += 1;
+            Some(slot.revision)
         } else {
             None
         };
-        if let Some(data) = cached {
-            return CommandResponse::Ready { data };
-        }
-        let result = match channel {
-            consumers::view::Channel::Memos => {
-                match consumers::api::memos::list(cursor, &filters).await {
-                    Ok(page) => Ok(consumers::view::ChannelView::Memos {
-                        connected: true,
-                        memos: page.memos,
-                        tags: Vec::new(),
-                        next_cursor: page.next_cursor,
-                    }),
-                    Err(error) => Err(error.to_string()),
-                }
-            }
-            consumers::view::Channel::Knowledge => {
-                let result = match cursor {
-                    Some(cursor) => consumers::api::knowledge::list(Some(cursor)).await,
-                    None => consumers::api::knowledge::overview().await,
-                };
-                match result {
-                    Ok(page) => {
-                        let newspaper =
-                            consumers::api::knowledge::latest_newspaper_issues(&page.documents);
-                        Ok(consumers::view::ChannelView::Knowledge {
-                            connected: true,
-                            knowledge: page.documents,
-                            newspaper,
-                            next_cursor: page.cursor,
-                        })
-                    }
-                    Err(error) => Err(error.to_string()),
-                }
-            }
-            consumers::view::Channel::Moment => match consumers::api::moment::list(cursor).await {
-                Ok(page) => Ok(consumers::view::ChannelView::Moment {
-                    connected: true,
-                    photos: page.photos,
-                    tags: Vec::new(),
-                    total: page.total,
-                    next_cursor: page.next_cursor,
-                }),
-                Err(error) => Err(error.to_string()),
-            },
-        };
-        match result {
+        match fetch.await {
             Ok(data) => {
-                if cacheable {
-                    self.views.lock().await.insert(channel, data.clone());
+                if let Some(revision) = revision {
+                    let mut views = self.views.lock().await;
+                    let slot = views.slot(channel);
+                    if slot.revision == revision {
+                        slot.cached = Some(CachedView {
+                            data: data.clone(),
+                            loaded_at: Instant::now(),
+                        });
+                    }
                 }
                 CommandResponse::Ready { data }
             }
@@ -295,25 +314,164 @@ impl CmsState {
 mod tests {
     use super::*;
 
-    #[test]
-    fn expires_view_cache() {
-        let mut cache = ViewCache::default();
-        cache.insert(
-            consumers::view::Channel::Moment,
-            consumers::view::ChannelView::Moment {
-                connected: true,
-                photos: Vec::new(),
-                tags: Vec::new(),
-                total: 0,
-                next_cursor: Some("cursor".to_owned()),
-            },
+    fn memo_page(cursor: &str) -> consumers::view::ChannelView {
+        consumers::view::ChannelView::Memos {
+            memos: Vec::new(),
+            next_cursor: Some(cursor.to_owned()),
+        }
+    }
+
+    fn cursor(response: CommandResponse<consumers::view::ChannelView>) -> String {
+        match response {
+            CommandResponse::Ready {
+                data: consumers::view::ChannelView::Memos { next_cursor, .. },
+            } => next_cursor.unwrap(),
+            _ => panic!("expected a memo page"),
+        }
+    }
+
+    #[tokio::test]
+    async fn startup_uses_fresh_cache_but_refresh_and_expiry_fetch() {
+        let state = CmsState::default();
+        let channel = consumers::view::Channel::Memos;
+        assert_eq!(
+            cursor(
+                state
+                    .load_view(channel, true, true, async { Ok(memo_page("first")) })
+                    .await
+            ),
+            "first"
         );
-        assert!(cache.get(consumers::view::Channel::Moment).is_some());
-        cache.moment.as_mut().unwrap().loaded_at =
-            Instant::now() - VIEW_TTL - Duration::from_secs(1);
-        assert!(cache.get(consumers::view::Channel::Moment).is_none());
-        cache.clear(consumers::view::Channel::Moment);
-        assert!(cache.moment.is_none());
+        assert_eq!(
+            cursor(
+                state
+                    .load_view(channel, true, true, async {
+                        panic!("cache hit must not fetch")
+                    })
+                    .await
+            ),
+            "first"
+        );
+        assert_eq!(
+            cursor(
+                state
+                    .load_view(channel, true, false, async { Ok(memo_page("refreshed")) })
+                    .await
+            ),
+            "refreshed"
+        );
+        assert_eq!(
+            cursor(
+                state
+                    .load_view(channel, false, false, async { Ok(memo_page("filtered")) })
+                    .await
+            ),
+            "filtered"
+        );
+        assert_eq!(
+            cursor(
+                state
+                    .load_view(channel, true, true, async {
+                        panic!("filtered page must not replace startup cache")
+                    })
+                    .await
+            ),
+            "refreshed"
+        );
+        state
+            .views
+            .lock()
+            .await
+            .memos
+            .cached
+            .as_mut()
+            .unwrap()
+            .loaded_at = Instant::now() - VIEW_TTL - Duration::from_secs(1);
+        assert_eq!(
+            cursor(
+                state
+                    .load_view(channel, true, true, async { Ok(memo_page("expired")) })
+                    .await
+            ),
+            "expired"
+        );
+    }
+
+    #[tokio::test]
+    async fn invalidation_prevents_pending_reads_from_repopulating_startup_cache() {
+        for reset_all in [false, true] {
+            let state = CmsState::default();
+            let channel = consumers::view::Channel::Memos;
+            let (send, reply) = tokio::sync::oneshot::channel();
+            let pending = state.load_view(channel, true, false, async { reply.await.unwrap() });
+            tokio::pin!(pending);
+            assert!(futures_util::poll!(&mut pending).is_pending());
+            if reset_all {
+                state.reset_views().await;
+            } else {
+                state.invalidate_view(channel).await;
+            }
+            send.send(Ok(memo_page("stale"))).unwrap();
+            pending.await;
+            assert_eq!(
+                cursor(
+                    state
+                        .load_view(channel, true, true, async { Ok(memo_page("current")) })
+                        .await
+                ),
+                "current"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn late_reads_never_replace_newer_cache_entries() {
+        let state = CmsState::default();
+        let channel = consumers::view::Channel::Memos;
+        let (send, reply) = tokio::sync::oneshot::channel();
+        let pending = state.load_view(channel, true, false, async { reply.await.unwrap() });
+        tokio::pin!(pending);
+        assert!(futures_util::poll!(&mut pending).is_pending());
+        state
+            .load_view(channel, true, false, async { Ok(memo_page("newer")) })
+            .await;
+        send.send(Ok(memo_page("older"))).unwrap();
+        pending.await;
+        assert_eq!(
+            cursor(
+                state
+                    .load_view(channel, true, true, async {
+                        panic!("newer cache must survive")
+                    })
+                    .await
+            ),
+            "newer"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_refresh_preserves_settled_cache() {
+        let state = CmsState::default();
+        let channel = consumers::view::Channel::Memos;
+        state
+            .load_view(channel, true, true, async { Ok(memo_page("settled")) })
+            .await;
+        assert!(matches!(
+            state
+                .load_view(channel, true, false, async { Err("offline".to_owned()) })
+                .await,
+            CommandResponse::Failed { .. }
+        ));
+        assert_eq!(
+            cursor(
+                state
+                    .load_view(channel, true, true, async {
+                        panic!("settled cache must survive")
+                    })
+                    .await
+            ),
+            "settled"
+        );
     }
 
     #[test]
@@ -447,71 +605,5 @@ mod tests {
         let cache = state.assets.lock().await;
         assert!(cache.data.is_empty());
         assert!(cache.requests["photo"].ptr_eq(&Arc::downgrade(&replacement)));
-    }
-
-    #[tokio::test]
-    #[cfg(debug_assertions)]
-    #[ignore = "requires live consumer and R2 credentials"]
-    async fn bypasses_page_cache() {
-        vesper_credentials::load_dev_environment().expect("development credentials should load");
-        let state = CmsState::default();
-
-        for channel in [
-            consumers::view::Channel::Memos,
-            consumers::view::Channel::Moment,
-        ] {
-            let channel_name = match channel {
-                consumers::view::Channel::Memos => "memos",
-                consumers::view::Channel::Moment => "moment",
-                consumers::view::Channel::Knowledge => "knowledge",
-            };
-            let first = state
-                .channel(ChannelRequest {
-                    channel,
-                    cursor: None,
-                    filters: consumers::api::memos::ListFilters::default(),
-                    read_cached_first_page: false,
-                })
-                .await;
-            let cursor = match first {
-                CommandResponse::Ready {
-                    data: consumers::view::ChannelView::Memos { next_cursor, .. },
-                }
-                | CommandResponse::Ready {
-                    data: consumers::view::ChannelView::Moment { next_cursor, .. },
-                } => next_cursor.expect("the live first page should have a cursor"),
-                CommandResponse::Ready { .. } => panic!("channel returned the wrong view"),
-                CommandResponse::Failed { message } => {
-                    panic!("{channel_name} first page failed: {message}")
-                }
-            };
-
-            let second = state
-                .channel(ChannelRequest {
-                    channel,
-                    cursor: Some(cursor),
-                    filters: consumers::api::memos::ListFilters::default(),
-                    read_cached_first_page: false,
-                })
-                .await;
-            match second {
-                CommandResponse::Ready {
-                    data: consumers::view::ChannelView::Memos { memos, tags, .. },
-                } => {
-                    assert!(!memos.is_empty());
-                    assert!(tags.is_empty());
-                }
-                CommandResponse::Ready {
-                    data: consumers::view::ChannelView::Moment { photos, tags, .. },
-                } => {
-                    assert!(!photos.is_empty());
-                    assert!(tags.is_empty());
-                }
-                CommandResponse::Ready { .. } => panic!("channel returned the wrong view"),
-                CommandResponse::Failed { message } => {
-                    panic!("{channel_name} second page failed: {message}")
-                }
-            }
-        }
     }
 }

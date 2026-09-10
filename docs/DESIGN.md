@@ -84,7 +84,15 @@ table. Provider-card content is vertically centered in its card.
 Todo titles are buttons that switch the fixed-size card from its list to a detail view. The detail
 view always shows the selected date and status, adds calendar timing, location, and description for
 ICS items, keeps long content in an internal scroll area, and uses a back action to restore the list
-without resizing the dashboard layout.
+without resizing the dashboard layout. Quick add keeps its compact title row and offers an expandable
+optional description. Manual task details include an edit form with title, description, Save and
+Cancel; failed saves keep the draft, and saving disables duplicate submissions. Imported tasks direct
+content edits to the source calendar.
+
+Personal also includes Check-in. Its configured habit name sits above a streak/total row, a 28-day
+history grid, and a full-width Today/Undo action. Completed days use the accent token; the current day
+has an outline and every cell has an accessible date/status label. The compact island rendering
+retains the action and recent history.
 
 NAS CPU, memory, and network cards pair the latest numeric value with a compact in-session SVG trend
 line; NAS storage uses a used/free capacity bar. Device Storage shows startup-disk used, total and

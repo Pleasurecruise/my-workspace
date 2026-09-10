@@ -30,7 +30,6 @@ function page(article: KnowledgeDocument): CommandResponse<ChannelView> {
 		status: "ready",
 		data: {
 			channel: "knowledge",
-			connected: true,
 			knowledge: [article],
 			newspaper: { developer: null, personal: null },
 			nextCursor: null,
@@ -89,4 +88,46 @@ it("keeps the settled overview and exposes a failed refresh", async () => {
 	expect(session.content?.knowledge[0]?.title).toBe("Original");
 	expect(session.error).toBe("Read failed");
 	expect(session.loading).toBe(false);
+});
+
+it("preserves a saved article when an older refresh completes", async () => {
+	const session = createKnowledgeSession({ active: false, mainElement: null });
+	session.initialize(page(document), session.version);
+	const pending = deferred<CommandResponse<ChannelView>>();
+	invoke.mockImplementation((command: string) =>
+		command === "read_channel"
+			? pending.promise
+			: Promise.resolve({ status: "ready", data: { ...document, title: "Saved" } }),
+	);
+	const read = session.refresh();
+	await session.updateKnowledge(document.id, {
+		title: "Saved",
+		summary: "",
+		body: "Body",
+		tags: [],
+		expectedHash: document.contentHash,
+	});
+	expect(session.content?.knowledge[0]?.title).toBe("Saved");
+	pending.resolve(page(document));
+	await read;
+	expect(session.content?.knowledge[0]?.title).toBe("Saved");
+	expect(session.loading).toBe(false);
+});
+
+it("does not duplicate a created document already observed by a refresh", async () => {
+	const session = createKnowledgeSession({ active: false, mainElement: null });
+	const pending = deferred<CommandResponse<KnowledgeDocument>>();
+	invoke.mockImplementation((command: string) =>
+		command === "read_channel" ? Promise.resolve(page(document)) : pending.promise,
+	);
+	const write = session.createKnowledge({
+		title: document.title,
+		summary: "",
+		body: "Body",
+		tags: [],
+	});
+	await session.refresh();
+	pending.resolve({ status: "ready", data: document });
+	await write;
+	expect(session.content?.knowledge).toEqual([document]);
 });

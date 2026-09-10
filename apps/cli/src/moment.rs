@@ -27,13 +27,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             print_json(&json!({ "tags": tags }))
         }
         ("list", []) => {
-            let page = consumers::api::moment::list(None)
-                .await
-                .map_err(|error| error.to_string())?;
-            print_json(&page)
-        }
-        ("list", [cursor]) => {
-            let page = consumers::api::moment::list(Some(cursor.to_owned()))
+            let page = consumers::api::moment::list()
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&page)

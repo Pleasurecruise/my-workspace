@@ -121,8 +121,15 @@ export function createKnowledgeSession(context: {
 			input,
 		});
 		if (version !== session) return response;
+		if (response.status === "ready") leave();
 		if (response.status === "ready" && content !== null) {
-			content = { ...content, knowledge: [response.data, ...content.knowledge] };
+			content = {
+				...content,
+				knowledge: [
+					response.data,
+					...content.knowledge.filter((item) => item.id !== response.data.id),
+				],
+			};
 			if (response.data.newspaperEdition !== null) void refresh();
 		}
 		return response;
@@ -138,6 +145,7 @@ export function createKnowledgeSession(context: {
 			input,
 		});
 		if (version !== session) return response;
+		if (response.status === "ready") leave();
 		if (response.status === "ready" && content !== null) {
 			content = {
 				...content,

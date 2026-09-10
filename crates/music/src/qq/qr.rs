@@ -3,7 +3,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use reqwest::header::{COOKIE, LOCATION, REFERER as REFERER_HEADER, SET_COOKIE};
 
-use super::{API, REFERER, RenewResponse, check, render_cookie};
+use super::{API, QqResponse, REFERER, RenewData, check, render_cookie};
 use crate::{Error, Result};
 
 const QR_API: &str = "https://ssl.ptlogin2.qq.com/ptqrshow";
@@ -243,19 +243,15 @@ impl QqLogin {
             }))
             .send()
             .await?;
-        let response = check(response, "complete QQ Music login")?;
-        let response: RenewResponse = response.json().await?;
-        let block = response.request.ok_or_else(|| {
-            Error::Authentication("QQ Music login response is missing".to_owned())
-        })?;
-        if response.code != 0 || block.code != 0 || block.data.musickey.is_empty() {
+        let data: RenewData = QqResponse::read(response, "complete QQ Music login").await?;
+        if data.musickey.is_empty() {
             return Err(Error::Authentication("QQ Music rejected login".to_owned()));
         }
         let mut fields = HashMap::new();
         if !fallback_uin.is_empty() {
             fields.insert("uin".to_owned(), fallback_uin);
         }
-        block.data.apply(&mut fields, 2);
+        data.apply(&mut fields, 2);
         fields
             .entry("psrf_musickey_createtime".to_owned())
             .or_insert_with(|| {

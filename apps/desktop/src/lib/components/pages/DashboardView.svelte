@@ -26,6 +26,7 @@
 	let selectedWidgetId = $state("cpu");
 	let weatherLocation = $state("");
 	let stockSymbol = $state("");
+	let checkInName = $state("");
 	let serviceQuery = $state("");
 	let selectedServiceId = $state("");
 	let widgetFormError = $state<string | null>(null);
@@ -41,7 +42,7 @@
 		for (const option of categoryWidgets) return option;
 		return null;
 	});
-	let selectedWidgetAdded = $derived(selectedWidget !== null && selectedWidget.kind !== "weather" && selectedWidget.kind !== "stock" && selectedWidget.kind !== "serviceStatus" && layout.some((item) => widgetKey(item.widget) === selectedWidget.id));
+	let selectedWidgetAdded = $derived(selectedWidget !== null && selectedWidget.kind !== "weather" && selectedWidget.kind !== "stock" && selectedWidget.kind !== "serviceStatus" && selectedWidget.kind !== "checkIn" && layout.some((item) => widgetKey(item.widget) === selectedWidget.id));
 	let matchingServices = $derived(availableServices.filter((service) => `${service.name} ${service.keywords}`.toLocaleLowerCase().includes(serviceQuery.trim().toLocaleLowerCase())));
 
 	async function saveLayout(items: WidgetPlacement[]) {
@@ -55,6 +56,7 @@
 		selectedWidgetId = "cpu";
 		weatherLocation = "";
 		stockSymbol = "";
+		checkInName = "";
 		serviceQuery = "";
 		selectedServiceId = "";
 		widgetFormError = null;
@@ -74,9 +76,14 @@
 	}
 
 	async function addSelectedWidget() {
-		if (selectedWidget === null || selectedWidgetAdded) return;
+		if (selectedWidget === null || selectedWidgetAdded || layoutSaving) return;
 		let placement: WidgetPlacement;
-		if (selectedWidget.kind === "stock") {
+		if (selectedWidget.kind === "checkIn") {
+			const name = checkInName.trim();
+			if (!name) { widgetFormError = "Enter something you want to do each day."; return; }
+			if (layout.some((item) => widgetKey(item.widget) === `check-in-${name.toLowerCase()}`)) { widgetFormError = "This check-in is already on the Dashboard."; return; }
+			placement = { id: `check-in-${crypto.randomUUID()}`, widget: { kind: "checkIn", name } };
+		} else if (selectedWidget.kind === "stock") {
 			const symbol = stockSymbol.trim().toLocaleUpperCase();
 			if (!/^[A-Z0-9.-]{1,12}$/.test(symbol)) {
 				widgetFormError = "Enter a valid U.S. stock symbol, such as AAPL or BRK.B.";
@@ -308,7 +315,7 @@
 				<aside>
 					<div class="widget-list">
 						{#each categoryWidgets as option (option.id)}
-							{@const added = option.kind !== "weather" && option.kind !== "stock" && option.kind !== "serviceStatus" && layout.some((item) => widgetKey(item.widget) === option.id)}
+							{@const added = option.kind !== "weather" && option.kind !== "stock" && option.kind !== "serviceStatus" && option.kind !== "checkIn" && layout.some((item) => widgetKey(item.widget) === option.id)}
 							<button type="button" class:selected={selectedWidget !== null && selectedWidget.id === option.id} class:added onclick={() => { selectedWidgetId = option.id; widgetFormError = null; }}>
 								<span class="library-list-icon">{#if option.kind === "cpu" || option.kind === "localCpu"}<Cpu size={16} />{:else if option.kind === "memory" || option.kind === "localMemory"}<MemoryStick size={16} />{:else if option.kind === "storage" || option.kind === "localStorage"}<HardDrive size={16} />{:else if option.kind === "network" || option.kind === "localNetwork"}<Network size={16} />{:else if option.kind === "codex" || option.kind === "openCode" || option.kind === "claude" || option.kind === "grok" || option.kind === "copilot"}<Gauge size={16} />{:else if option.kind === "deepSeek" || option.kind === "cherryIn"}<WalletCards size={16} />{:else if option.kind === "calendar"}<CloudSun size={16} />{:else if option.kind === "todoList"}<ListTodo size={16} />{:else if option.kind === "stock"}<ChartNoAxesCombined size={16} />{:else if option.kind === "exchange"}<ArrowLeftRight size={16} />{:else if option.kind === "weather"}<CloudSun size={16} />{:else if option.kind === "serviceStatus"}<ShieldCheck size={16} />{:else}<Sparkles size={16} />{/if}</span>
 								<span>{option.label}<small>{added ? "Added" : option.description}</small></span>
@@ -328,7 +335,9 @@
 								<div class="preview-lines"><i></i><i></i><i></i></div>
 							</div>
 						</div>
-						{#if selectedWidget.kind === "weather"}
+						{#if selectedWidget.kind === "checkIn"}
+							<label class="widget-config-field"><span>Daily habit</span><input placeholder="For example: Read for 20 minutes" maxlength="120" bind:value={checkInName} oninput={() => (widgetFormError = null)} /></label>
+						{:else if selectedWidget.kind === "weather"}
 							<label class="widget-config-field"><span>Location</span><input placeholder="For example: Hangzhou, Paris, France, or 10001" maxlength="120" bind:value={weatherLocation} oninput={() => (widgetFormError = null)} /></label>
 						{:else if selectedWidget.kind === "stock"}
 							<label class="widget-config-field"><span>U.S. stock symbol</span><input class="stock-symbol-input" placeholder="For example: AAPL, TSLA, or BRK.B" maxlength="12" bind:value={stockSymbol} oninput={() => (widgetFormError = null)} /></label>

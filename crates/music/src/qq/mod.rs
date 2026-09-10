@@ -1,20 +1,21 @@
 use std::collections::HashMap;
-use std::io::Cursor;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock as SyncRwLock, mpsc};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 use futures_util::StreamExt;
 use rand::Rng;
-use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, watch};
 
 use crate::lyrics;
 use crate::spotify::{Cover, Playback, PlaybackOrder, Track};
 use crate::{Error, Lyrics, Result};
 
+mod audio;
 mod qr;
+
+use audio::AudioPlayer;
 
 pub use qr::{QqLogin, QqLoginStatus, QqQr};
 
@@ -36,7 +37,9 @@ pub struct QqMusic {
     library_refresh: Mutex<()>,
     playback: RwLock<PlaybackState>,
     audio: AudioPlayer,
-    generation: AtomicU64,
+    generation: watch::Sender<u64>,
+    playback_operation: Mutex<()>,
+    closed: AtomicBool,
 }
 
 #[derive(Clone)]
@@ -71,34 +74,11 @@ impl Library {
 
 #[derive(Default)]
 struct PlaybackState {
+    failure: Option<String>,
+    // Retain the last loaded identity for a retry after an audio worker is retired.
     track_id: Option<String>,
     duration_ms: u64,
     order: PlaybackOrder,
-}
-
-#[derive(Clone, Copy, Default)]
-struct AudioSnapshot {
-    playing: bool,
-    progress_ms: u64,
-    ended: bool,
-}
-
-struct AudioPlayer {
-    commands: mpsc::Sender<AudioCommand>,
-    snapshot: Arc<SyncRwLock<AudioSnapshot>>,
-}
-
-enum AudioCommand {
-    Load {
-        bytes: Vec<u8>,
-        response: tokio::sync::oneshot::Sender<std::result::Result<(), String>>,
-    },
-    Resume,
-    Pause,
-    Seek {
-        position: Duration,
-        response: tokio::sync::oneshot::Sender<std::result::Result<(), String>>,
-    },
 }
 
 impl QqMusic {
@@ -119,8 +99,10 @@ impl QqMusic {
             library: RwLock::new(Library::default()),
             library_refresh: Mutex::new(()),
             playback: RwLock::new(PlaybackState::default()),
-            audio: AudioPlayer::new()?,
-            generation: AtomicU64::new(0),
+            audio: AudioPlayer::default(),
+            generation: watch::channel(0).0,
+            playback_operation: Mutex::new(()),
+            closed: AtomicBool::new(false),
         })
     }
 
@@ -133,7 +115,7 @@ impl QqMusic {
             return Ok(tracks);
         }
 
-        let session = self.session().await;
+        let session = self.session().await?;
         let auth = &session.auth;
         let response = self
             .http
@@ -150,19 +132,9 @@ impl QqMusic {
             }))
             .send()
             .await?;
-        let response = check(response, "read QQ Music recommendation feed")?;
-        let response: FeedResponse = response.json().await?;
-        let feed = response.feed.ok_or_else(|| {
-            Error::InvalidData("QQ Music recommendation feed is missing".to_owned())
-        })?;
-        if feed.code != 0 {
-            return Err(Error::InvalidData(format!(
-                "QQ Music rejected the recommendation feed with code {}",
-                feed.code
-            )));
-        }
+        let feed: FeedData =
+            QqResponse::read(response, "read QQ Music recommendation feed").await?;
         let playlist_id = feed
-            .data
             .shelves
             .into_iter()
             .flat_map(|shelf| shelf.niches)
@@ -200,18 +172,9 @@ impl QqMusic {
             }))
             .send()
             .await?;
-        let response = check(response, "read QQ Music Daily 30 playlist")?;
-        let response: DailyResponse = response.json().await?;
-        let daily = response.daily.ok_or_else(|| {
-            Error::InvalidData("QQ Music Daily 30 playlist is missing".to_owned())
-        })?;
-        if daily.code != 0 {
-            return Err(Error::InvalidData(format!(
-                "QQ Music rejected the Daily 30 playlist with code {}",
-                daily.code
-            )));
-        }
-        let wires = daily.data.songs;
+        let daily: DailyData =
+            QqResponse::read(response, "read QQ Music Daily 30 playlist").await?;
+        let wires = daily.songs;
 
         let mut mapped = Vec::new();
         for wire in wires.into_iter().take(DAILY_TRACK_LIMIT) {
@@ -268,38 +231,121 @@ impl QqMusic {
     }
 
     pub async fn play(self: &Arc<Self>, track_id: &str) -> Result<()> {
-        self.load_track(track_id).await
+        let generation = self.invalidate_playback();
+        let result = self.load_track(track_id, generation).await;
+        if result.is_err()
+            && *self.generation.borrow() == generation
+            && self.audio.snapshot().is_ok_and(|audio| !audio.ended)
+        {
+            self.spawn_completion_monitor(generation);
+        }
+        result
+    }
+
+    fn invalidate_playback(&self) -> u64 {
+        let mut next = 0;
+        self.generation.send_modify(|generation| {
+            *generation += 1;
+            next = *generation;
+        });
+        next
+    }
+
+    pub async fn shutdown(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+        self.invalidate_playback();
+        self.audio.retire(None);
+        // Complete any old credential write before the replacement login is saved.
+        let _credentials = self.credentials.lock().await;
     }
 
     pub async fn playback(&self) -> Result<Option<Playback>> {
         let state = self.playback.read().await;
-        let Some(track_id) = state.track_id.clone() else {
+        if let Some(failure) = &state.failure {
+            return Err(Error::Playback(failure.clone()));
+        }
+        let audio = self.audio.snapshot()?;
+        let track_id = audio
+            .track
+            .as_ref()
+            .map(|track| track.id.clone())
+            .or_else(|| state.track_id.clone());
+        let Some(track_id) = track_id else {
             return Ok(None);
         };
-        let audio = self.audio.snapshot()?;
         Ok(Some(Playback {
             track_id: Some(track_id),
             playing: audio.playing,
             progress_ms: audio.progress_ms,
-            duration_ms: state.duration_ms,
+            duration_ms: audio
+                .track
+                .as_ref()
+                .map_or(state.duration_ms, |track| track.duration_ms),
             order: state.order,
         }))
     }
 
-    pub async fn resume(&self) -> Result<()> {
-        self.audio.send(AudioCommand::Resume)
+    pub async fn resume(self: &Arc<Self>) -> Result<()> {
+        let audio = self.audio.snapshot()?;
+        let track_id = audio
+            .track
+            .as_ref()
+            .map(|track| track.id.clone())
+            .or(self.playback.read().await.track_id.clone())
+            .ok_or_else(|| Error::Playback("No QQ Music song has been loaded".to_owned()))?;
+        if audio.ended {
+            return self.play(&track_id).await;
+        }
+        let generation = self.invalidate_playback();
+        let _operation = self.playback_operation.lock().await;
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(Error::Playback("QQ Music player was closed".to_owned()));
+        }
+        {
+            let current = self.generation.borrow();
+            if *current != generation {
+                return Err(Error::Playback(
+                    "QQ Music playback was cancelled".to_owned(),
+                ));
+            }
+            self.audio.resume()?;
+        }
+        self.playback.write().await.failure = None;
+        self.spawn_completion_monitor(generation);
+        Ok(())
     }
 
     pub async fn pause(&self) -> Result<()> {
-        self.audio.send(AudioCommand::Pause)
+        let generation = self.invalidate_playback();
+        let current = self.generation.borrow();
+        if *current != generation {
+            return Err(Error::Playback("QQ Music pause was cancelled".to_owned()));
+        }
+        self.audio.pause()
     }
 
-    pub fn pause_if_playing(&self) {
-        let _ = self.audio.send(AudioCommand::Pause);
-    }
-
-    pub async fn seek(&self, position_ms: u64) -> Result<()> {
-        self.audio.seek(Duration::from_millis(position_ms)).await
+    pub async fn seek(self: &Arc<Self>, position_ms: u64) -> Result<()> {
+        let generation = self.invalidate_playback();
+        let mut changes = self.generation.subscribe();
+        let result = tokio::select! {
+            biased;
+            _ = changes.wait_for(|current| *current != generation) => {
+                Err(Error::Playback("QQ Music seek was cancelled".to_owned()))
+            }
+            result = async {
+                let _operation = self.playback_operation.lock().await;
+                if self.closed.load(Ordering::SeqCst) {
+                    return Err(Error::Playback("QQ Music player was closed".to_owned()));
+                }
+                self.audio.seek(Duration::from_millis(position_ms), generation, self.generation.subscribe()).await
+            } => result,
+        };
+        if *self.generation.borrow() == generation
+            && (result.is_ok() || self.audio.snapshot().is_ok_and(|audio| !audio.ended))
+        {
+            self.spawn_completion_monitor(generation);
+        }
+        result
     }
 
     pub async fn set_playback_order(&self, order: PlaybackOrder) -> Result<()> {
@@ -311,7 +357,7 @@ impl QqMusic {
         if !self.tracks.read().await.contains_key(track_id) {
             return Err(Error::InvalidData("unknown QQ Music track id".to_owned()));
         }
-        let session = self.session().await;
+        let session = self.session().await?;
         let response = self
             .http
             .post(API)
@@ -327,9 +373,8 @@ impl QqMusic {
             }))
             .send()
             .await?;
-        let response = check(response, "read QQ Music lyrics")?;
-        let response: LyricResponse = response.json().await?;
-        let Some(encoded) = response.lyric.and_then(|block| block.data.lyric) else {
+        let data: Option<LyricData> = QqResponse::read(response, "read QQ Music lyrics").await?;
+        let Some(encoded) = data.and_then(|data| data.lyric) else {
             return Ok(None);
         };
         let decoded = base64::engine::general_purpose::STANDARD
@@ -362,8 +407,11 @@ impl QqMusic {
             })
     }
 
-    async fn session(&self) -> QqSession {
+    async fn session(&self) -> Result<QqSession> {
         let mut credentials = self.credentials.lock().await;
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(Error::Playback("QQ Music player was closed".to_owned()));
+        }
         let can_retry = credentials
             .renewal_attempt
             .is_none_or(|attempt| attempt.elapsed() >= RENEW_RETRY);
@@ -381,10 +429,10 @@ impl QqMusic {
             }
         }
         let cookie = credentials.value.cookie.clone();
-        QqSession {
+        Ok(QqSession {
             auth: Self::auth(&cookie),
             cookie,
-        }
+        })
     }
 
     async fn renew(&self, cookie: &str) -> Result<String> {
@@ -440,17 +488,13 @@ impl QqMusic {
                 "request": { "module": "music.login.LoginServer", "method": "Login", "param": param }
             }))
             .send().await?;
-        let response = check(response, "renew QQ Music session")?;
-        let response: RenewResponse = response.json().await?;
-        let block = response.request.ok_or_else(|| {
-            Error::Authentication("QQ Music renewal response is missing".to_owned())
-        })?;
-        if response.code != 0 || block.code != 0 || block.data.musickey.is_empty() {
+        let data: RenewData = QqResponse::read(response, "renew QQ Music session").await?;
+        if data.musickey.is_empty() {
             return Err(Error::Authentication(
                 "QQ Music rejected session renewal".to_owned(),
             ));
         }
-        block.data.apply(&mut fields, login_type);
+        data.apply(&mut fields, login_type);
         Ok(render_cookie(fields))
     }
 
@@ -494,63 +538,94 @@ impl QqMusic {
         }
     }
 
-    async fn load_track(self: &Arc<Self>, track_id: &str) -> Result<()> {
-        let track = self
-            .tracks
-            .read()
-            .await
-            .get(track_id)
-            .cloned()
-            .ok_or_else(|| Error::InvalidData("unknown QQ Music track id".to_owned()))?;
-        let session = self.session().await;
-        let url = self.play_url(&track, &session).await?;
-        let response = self
-            .http
-            .get(url)
-            .header(reqwest::header::REFERER, REFERER)
-            .header(reqwest::header::COOKIE, &session.cookie)
-            .send()
-            .await?;
-        let bytes = read_bytes(response, "download QQ Music audio", MAX_MEDIA_BYTES).await?;
-        self.audio.load(bytes).await?;
-        let order = self.playback.read().await.order;
-        *self.playback.write().await = PlaybackState {
-            track_id: Some(track.track.id.clone()),
-            duration_ms: track.track.duration_ms,
-            order,
-        };
-        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        self.spawn_completion_monitor(generation);
-        Ok(())
+    async fn load_track(self: &Arc<Self>, track_id: &str, generation: u64) -> Result<()> {
+        let mut changes = self.generation.subscribe();
+        tokio::select! {
+            biased;
+            _ = changes.wait_for(|current| *current != generation) => {
+                Err(Error::Playback("QQ Music playback was cancelled".to_owned()))
+            }
+            result = async {
+                let _operation = self.playback_operation.lock().await;
+                if self.closed.load(Ordering::SeqCst) {
+                    return Err(Error::Playback("QQ Music player was closed".to_owned()));
+                }
+                let track = self
+                    .tracks
+                    .read()
+                    .await
+                    .get(track_id)
+                    .cloned()
+                    .ok_or_else(|| Error::InvalidData("unknown QQ Music track id".to_owned()))?;
+                let session = self.session().await?;
+                let url = self.play_url(&track, &session).await?;
+                let response = self
+                    .http
+                    .get(url)
+                    .header(reqwest::header::REFERER, REFERER)
+                    .header(reqwest::header::COOKIE, &session.cookie)
+                    .send()
+                    .await?;
+                let bytes = read_bytes(response, "download QQ Music audio", MAX_MEDIA_BYTES).await?;
+                self.audio.load(bytes, track.track.clone(), generation, self.generation.subscribe()).await?;
+                {
+                    let mut state = self.playback.write().await;
+                    let current = self.generation.borrow();
+                    if *current != generation {
+                        return Err(Error::Playback("QQ Music playback was cancelled".to_owned()));
+                    }
+                    *state = PlaybackState {
+                        failure: None,
+                        track_id: Some(track.track.id.clone()),
+                        duration_ms: track.track.duration_ms,
+                        order: state.order,
+                    };
+                };
+                self.spawn_completion_monitor(generation);
+                Ok(())
+            } => result,
+        }
     }
 
     fn spawn_completion_monitor(self: &Arc<Self>, generation: u64) {
-        let music = Arc::clone(self);
+        let weak = Arc::downgrade(self);
+        let mut changes = self.generation.subscribe();
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-                if music.generation.load(Ordering::SeqCst) != generation {
+                tokio::select! {
+                    biased;
+                    _ = changes.wait_for(|current| *current != generation) => return,
+                    _ = tokio::time::sleep(Duration::from_millis(500)) => {}
+                }
+                let Some(music) = weak.upgrade() else {
                     return;
-                }
-                let ended = music
-                    .audio
-                    .snapshot()
-                    .map(|state| state.ended)
-                    .unwrap_or(true);
-                if !ended {
-                    continue;
-                }
-                if let Err(error) = music.advance().await {
+                };
+                let result = match music.audio.snapshot() {
+                    Ok(audio) if !audio.ended => continue,
+                    Ok(_) => music.advance(generation).await,
+                    Err(error) => Err(error),
+                };
+                if let Err(error) = result {
                     tracing::warn!(%error, "could not advance the QQ Music queue");
+                    let mut state = music.playback.write().await;
+                    if *music.generation.borrow() == generation {
+                        state.failure =
+                            Some(format!("Could not play the next QQ Music track: {error}"));
+                    }
                 }
                 return;
             }
         });
     }
 
-    async fn advance(self: &Arc<Self>) -> Result<()> {
+    async fn advance(self: &Arc<Self>, generation: u64) -> Result<()> {
         let state = self.playback.read().await;
-        let current = state.track_id.clone();
+        let current = self
+            .audio
+            .snapshot()?
+            .track
+            .map(|track| track.id)
+            .or_else(|| state.track_id.clone());
         let order = state.order;
         drop(state);
         let tracks = self.library.read().await.tracks.clone();
@@ -567,11 +642,17 @@ impl QqMusic {
                     .iter()
                     .filter(|track| Some(track.id.as_str()) != current.as_deref())
                     .collect();
-                (!choices.is_empty()).then(|| choices[rand::rng().random_range(0..choices.len())])
+                (!choices.is_empty())
+                    .then(|| choices[rand::rng().random_range(0..choices.len())])
+                    .or_else(|| {
+                        tracks
+                            .iter()
+                            .find(|track| Some(track.id.as_str()) == current.as_deref())
+                    })
             }
         };
         if let Some(next) = next {
-            self.load_track(&next.id).await
+            self.load_track(&next.id, generation).await
         } else {
             Ok(())
         }
@@ -628,12 +709,7 @@ impl QqMusic {
             }))
             .send()
             .await?;
-        let response = check(response, "resolve QQ Music playback URL")?;
-        let response: VkeyResponse = response.json().await?;
-        let data = response
-            .request
-            .ok_or_else(|| Error::InvalidData("QQ Music playback response is missing".to_owned()))?
-            .data;
+        let data: VkeyData = QqResponse::read(response, "resolve QQ Music playback URL").await?;
         let path = filenames
             .iter()
             .find_map(|filename| {
@@ -678,116 +754,6 @@ fn trusted_media_url(url: reqwest::Url) -> Result<reqwest::Url> {
         ));
     }
     Ok(url)
-}
-
-impl AudioPlayer {
-    fn new() -> Result<Self> {
-        let (commands, receiver) = mpsc::channel();
-        let snapshot = Arc::new(SyncRwLock::new(AudioSnapshot::default()));
-        let thread_snapshot = Arc::clone(&snapshot);
-        std::thread::Builder::new()
-            .name("vesper-qq-music-audio".to_owned())
-            .spawn(move || run_audio(receiver, thread_snapshot))
-            .map_err(|error| {
-                Error::Playback(format!("QQ Music audio thread could not start: {error}"))
-            })?;
-        Ok(Self { commands, snapshot })
-    }
-
-    async fn load(&self, bytes: Vec<u8>) -> Result<()> {
-        let (response, result) = tokio::sync::oneshot::channel();
-        self.send(AudioCommand::Load { bytes, response })?;
-        result
-            .await
-            .map_err(|_| Error::Playback("QQ Music audio thread stopped".to_owned()))?
-            .map_err(Error::Playback)
-    }
-
-    async fn seek(&self, position: Duration) -> Result<()> {
-        let (response, result) = tokio::sync::oneshot::channel();
-        self.send(AudioCommand::Seek { position, response })?;
-        result
-            .await
-            .map_err(|_| Error::Playback("QQ Music audio thread stopped".to_owned()))?
-            .map_err(Error::Playback)
-    }
-
-    fn send(&self, command: AudioCommand) -> Result<()> {
-        self.commands
-            .send(command)
-            .map_err(|_| Error::Playback("QQ Music audio thread stopped".to_owned()))
-    }
-
-    fn snapshot(&self) -> Result<AudioSnapshot> {
-        self.snapshot
-            .read()
-            .map(|snapshot| *snapshot)
-            .map_err(|_| Error::Playback("QQ Music audio state lock is poisoned".to_owned()))
-    }
-}
-
-fn run_audio(receiver: mpsc::Receiver<AudioCommand>, snapshot: Arc<SyncRwLock<AudioSnapshot>>) {
-    let mut stream: Option<OutputStream> = None;
-    let mut sink: Option<Sink> = None;
-    loop {
-        match receiver.recv_timeout(Duration::from_millis(100)) {
-            Ok(AudioCommand::Load { bytes, response }) => {
-                let result = (|| {
-                    let decoder = Decoder::try_from(Cursor::new(bytes))
-                        .map_err(|error| format!("QQ Music audio could not be decoded: {error}"))?;
-                    if stream.is_none() {
-                        let mut output =
-                            OutputStreamBuilder::open_default_stream().map_err(|error| {
-                                format!("QQ Music audio output is unavailable: {error}")
-                            })?;
-                        output.log_on_drop(false);
-                        stream = Some(output);
-                    }
-                    let Some(output) = stream.as_ref() else {
-                        return Err("QQ Music audio output was not initialized".to_owned());
-                    };
-                    let next = Sink::connect_new(output.mixer());
-                    next.append(decoder);
-                    sink = Some(next);
-                    Ok(())
-                })();
-                let _ = response.send(result);
-            }
-            Ok(AudioCommand::Resume) => {
-                if let Some(active) = sink.as_ref() {
-                    active.play();
-                }
-            }
-            Ok(AudioCommand::Pause) => {
-                if let Some(active) = sink.as_ref() {
-                    active.pause();
-                }
-            }
-            Ok(AudioCommand::Seek { position, response }) => {
-                let result = sink
-                    .as_ref()
-                    .ok_or_else(|| "No QQ Music song has been loaded".to_owned())
-                    .and_then(|active| {
-                        active
-                            .try_seek(position)
-                            .map_err(|error| format!("QQ Music seek failed: {error}"))
-                    });
-                let _ = response.send(result);
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => return,
-        }
-        let next = sink
-            .as_ref()
-            .map_or(AudioSnapshot::default(), |active| AudioSnapshot {
-                playing: !active.is_paused() && !active.empty(),
-                progress_ms: active.get_pos().as_millis() as u64,
-                ended: active.empty(),
-            });
-        if let Ok(mut state) = snapshot.write() {
-            *state = next;
-        }
-    }
 }
 
 async fn read_bytes(
@@ -878,13 +844,6 @@ struct QqAuth {
     login_type: u8,
     #[serde(skip)]
     gtk: u32,
-}
-
-#[derive(serde::Deserialize)]
-struct RenewResponse {
-    #[serde(default)]
-    code: i64,
-    request: Option<ResponseBlock<RenewData>>,
 }
 
 #[derive(Default, serde::Deserialize)]
@@ -984,18 +943,6 @@ impl RenewData {
 }
 
 #[derive(serde::Deserialize)]
-struct ResponseBlock<T> {
-    #[serde(default)]
-    code: i64,
-    data: T,
-}
-
-#[derive(serde::Deserialize)]
-struct FeedResponse {
-    feed: Option<ResponseBlock<FeedData>>,
-}
-
-#[derive(serde::Deserialize)]
 struct FeedData {
     #[serde(default, rename = "v_shelf")]
     shelves: Vec<FeedShelf>,
@@ -1019,11 +966,6 @@ struct FeedCard {
     id: String,
     #[serde(default)]
     title: String,
-}
-
-#[derive(serde::Deserialize)]
-struct DailyResponse {
-    daily: Option<ResponseBlock<DailyData>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -1069,17 +1011,83 @@ struct FileWire {
 }
 
 #[derive(serde::Deserialize)]
-struct VkeyResponse {
-    #[serde(rename = "req_0")]
-    request: Option<ResponseBlock<VkeyData>>,
-}
-
-#[derive(serde::Deserialize)]
 struct VkeyData {
     #[serde(default)]
     sip: Vec<String>,
     #[serde(default, rename = "midurlinfo")]
     urls: Vec<VkeyInfo>,
+}
+
+#[derive(serde::Deserialize)]
+struct QqResponse {
+    #[serde(default)]
+    code: i64,
+    #[serde(alias = "feed", alias = "daily", alias = "lyric", alias = "req_0")]
+    request: Option<QqBlock>,
+}
+
+#[derive(serde::Deserialize)]
+struct QqBlock {
+    #[serde(default)]
+    code: i64,
+    data: Option<serde_json::Value>,
+}
+
+impl QqResponse {
+    async fn read<T: serde::de::DeserializeOwned>(
+        response: reqwest::Response,
+        operation: &'static str,
+    ) -> Result<T> {
+        let response = check(response, operation)?;
+        let bytes = response.bytes().await?;
+        let response: Self = serde_json::from_slice(&bytes).map_err(|error| {
+            // Serde's display message can contain private response values.
+            let reason = match error.classify() {
+                serde_json::error::Category::Data => {
+                    "JSON fields do not match the expected response"
+                }
+                serde_json::error::Category::Syntax => "response is not valid JSON",
+                serde_json::error::Category::Eof => "response is empty or incomplete JSON",
+                serde_json::error::Category::Io => "response could not be read",
+            };
+            Error::InvalidData(format!(
+                "{operation}: {reason} (line {}, column {})",
+                error.line(),
+                error.column()
+            ))
+        })?;
+        if response.code != 0 {
+            return Err(Error::InvalidData(format!(
+                "{operation}: QQ Music returned code {}",
+                response.code
+            )));
+        }
+        let missing = if response.request.is_none() {
+            "response block is missing"
+        } else {
+            "response data is missing"
+        };
+        let data = match response.request {
+            Some(block) => {
+                if block.code != 0 {
+                    return Err(Error::InvalidData(format!(
+                        "{operation}: QQ Music returned code {}",
+                        block.code
+                    )));
+                }
+                block.data
+            }
+            None => None,
+        };
+        // Optional payloads (lyrics) retain the protocol's successful absence semantics.
+        let reason = if data.is_none() {
+            missing
+        } else {
+            "data fields do not match the expected response"
+        };
+        serde_json::from_value(data.unwrap_or(serde_json::Value::Null))
+            .map_err(|_| Error::InvalidData(format!("{operation}: {reason}")))
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -1093,39 +1101,286 @@ struct VkeyInfo {
 }
 
 #[derive(serde::Deserialize)]
-struct LyricResponse {
-    lyric: Option<ResponseBlock<LyricData>>,
-}
-
-#[derive(serde::Deserialize)]
 struct LyricData {
     lyric: Option<String>,
 }
 
 #[cfg(test)]
 mod tests {
+
+    #[tokio::test]
+    async fn media_download_enforces_declared_and_streamed_size_limits() {
+        for declared in [false, true] {
+            let mut response = http::Response::builder().status(200);
+            if declared {
+                response = response.header("content-length", "5");
+            }
+            let body = if declared {
+                reqwest::Body::from("12345")
+            } else {
+                reqwest::Body::wrap_stream(futures_util::stream::iter([
+                    Ok::<_, std::io::Error>("123"),
+                    Ok("45"),
+                ]))
+            };
+            let response = reqwest::Response::from(response.body(body).unwrap());
+            assert_eq!(response.content_length().is_some(), declared);
+            assert!(
+                matches!(super::read_bytes(response, "audio", 4).await, Err(crate::Error::InvalidData(message)) if message.contains("size limit"))
+            );
+        }
+        let response =
+            reqwest::Response::from(http::Response::builder().status(200).body("1234").unwrap());
+        assert_eq!(
+            super::read_bytes(response, "audio", 4).await.unwrap(),
+            b"1234"
+        );
+        let response = reqwest::Response::from(
+            http::Response::builder()
+                .status(403)
+                .body("secret response")
+                .unwrap(),
+        );
+        let error = super::read_bytes(response, "audio", 4).await.unwrap_err();
+        assert!(matches!(error, crate::Error::Status { .. }));
+        assert!(!error.to_string().contains("secret response"));
+    }
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        DailyResponse, FeedResponse, RenewData, parse_cookie, renewal_due, trusted_media_url,
+        DailyData, FeedData, QqResponse, RenewData, VkeyData, parse_cookie, renewal_due,
+        trusted_media_url,
     };
 
-    #[test]
-    fn parses_daily_card_and_playlist() {
-        let response: FeedResponse = serde_json::from_str(
-            r#"{"feed":{"code":0,"data":{"v_shelf":[{"v_niche":[{"v_card":[{"id":"123","title":"每日30首"}]}]}]}}}"#,
-        )
-        .unwrap();
-        assert_eq!(
-            response.feed.unwrap().data.shelves[0].niches[0].cards[0].id,
-            "123"
+    #[tokio::test]
+    async fn dropping_runtime_releases_monitor() {
+        let music = std::sync::Arc::new(
+            super::QqMusic::new(vesper_credentials::QqMusicCredentials {
+                cookie: String::new(),
+            })
+            .unwrap(),
         );
+        let weak = std::sync::Arc::downgrade(&music);
+        music.spawn_completion_monitor(0);
+        drop(music);
+        tokio::task::yield_now().await;
+        assert!(weak.upgrade().is_none());
+    }
 
-        let response: DailyResponse = serde_json::from_str(
-            r#"{"daily":{"code":0,"data":{"songlist":[{"mid":"song-mid","name":"Song","singer":[{"name":"Artist"}],"album":{"mid":"album-mid","name":"Album"},"interval":180,"file":{"media_mid":"media-mid"}}]}}}"#,
-        )
+    #[tokio::test]
+    async fn newer_action_cancels_a_waiting_load() {
+        let music = std::sync::Arc::new(
+            super::QqMusic::new(vesper_credentials::QqMusicCredentials {
+                cookie: String::new(),
+            })
+            .unwrap(),
+        );
+        let operation = music.playback_operation.lock().await;
+        let load = music.load_track("old", 0);
+        tokio::pin!(load);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(20), &mut load)
+                .await
+                .is_err()
+        );
+        music.pause().await.unwrap();
+        let error = tokio::time::timeout(std::time::Duration::from_millis(100), load)
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(error.to_string().contains("cancelled"));
+        drop(operation);
+        assert!(
+            music
+                .play("latest")
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("unknown QQ Music track id")
+        );
+        music.shutdown().await;
+        assert!(
+            music
+                .play("latest")
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("closed")
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_reloads_ended_audio() {
+        let music = std::sync::Arc::new(
+            super::QqMusic::new(vesper_credentials::QqMusicCredentials {
+                cookie: String::new(),
+            })
+            .unwrap(),
+        );
+        music.playback.write().await.track_id = Some("current".to_owned());
+        // No live sink remains: resume must enter the load path, not return a silent success.
+        assert!(
+            music
+                .resume()
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("unknown QQ Music track id")
+        );
+    }
+
+    #[tokio::test]
+    async fn automatic_failure_is_visible() {
+        let music = super::QqMusic::new(vesper_credentials::QqMusicCredentials {
+            cookie: String::new(),
+        })
         .unwrap();
-        assert_eq!(response.daily.unwrap().data.songs[0].mid, "song-mid");
+        music.playback.write().await.track_id = Some("current".to_owned());
+        music.playback.write().await.order = super::PlaybackOrder::RepeatOne;
+        music.library.write().await.tracks.push(super::Track {
+            id: "current".to_owned(),
+            name: "Current".to_owned(),
+            artists: Vec::new(),
+            album: String::new(),
+            duration_ms: 1000,
+            added_at: String::new(),
+            cover_key: None,
+        });
+        // The missing track entry deterministically fails automatic loading before any network I/O.
+        let music = std::sync::Arc::new(music);
+        music.spawn_completion_monitor(0);
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                if let Err(error) = music.playback().await {
+                    assert!(error.to_string().contains("unknown QQ Music track id"));
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("automatic failure must be visible through playback reads");
+    }
+
+    #[tokio::test]
+    async fn rpc_success_aliases_and_optional_lyrics() {
+        for key in ["request", "feed", "daily", "lyric", "req_0"] {
+            let body = serde_json::json!({"code":0, key:{"code":0,"data":{"musickey":"key","musicid":123}}}).to_string();
+            let response = http::Response::new(body);
+            let data: RenewData = QqResponse::read(response.into(), "QQ test").await.unwrap();
+            assert_eq!(data.musickey, "key");
+        }
+        for body in [
+            r#"{"code":0}"#,
+            r#"{"lyric":{"code":0}}"#,
+            r#"{"lyric":{"data":{}}}"#,
+        ] {
+            let data: Option<super::LyricData> =
+                QqResponse::read(http::Response::new(body).into(), "lyrics")
+                    .await
+                    .unwrap();
+            assert!(data.and_then(|data| data.lyric).is_none());
+        }
+        let error = QqResponse::read::<Option<super::LyricData>>(
+            http::Response::new(r#"{"lyric":{"code":2000}}"#).into(),
+            "lyrics",
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(error.to_string().contains("code 2000"));
+    }
+
+    #[tokio::test]
+    async fn playback_rejections() {
+        for body in [
+            r#"{"code":2000}"#,
+            r#"{"code":0,"req_0":{"code":2000}}"#,
+            r#"{"code":0,"req_0":{"code":2000,"data":null}}"#,
+            r#"{"code":0,"req_0":{"code":2000,"data":{"sip":"private-value"}}}"#,
+        ] {
+            let response = http::Response::new(body);
+            let error =
+                QqResponse::read::<VkeyData>(response.into(), "resolve QQ Music playback URL")
+                    .await
+                    .err()
+                    .unwrap()
+                    .to_string();
+            assert!(error.contains("resolve QQ Music playback URL"));
+            assert!(error.contains("code 2000"));
+            assert!(!error.contains("private-value"));
+        }
+    }
+
+    #[tokio::test]
+    async fn playback_response_errors() {
+        for (body, reason) in [
+            ("<html>private-value</html>", "not valid JSON"),
+            ("", "empty or incomplete JSON"),
+            (r#"{"code":"private-value"}"#, "JSON fields do not match"),
+        ] {
+            let response = http::Response::new(body);
+            let error =
+                QqResponse::read::<VkeyData>(response.into(), "resolve QQ Music playback URL")
+                    .await
+                    .err()
+                    .unwrap()
+                    .to_string();
+            assert!(error.contains(reason));
+            assert!(error.contains("resolve QQ Music playback URL"));
+            assert!(!error.contains("private-value"));
+        }
+        let response = http::Response::builder()
+            .status(503)
+            .body("private-value")
+            .unwrap();
+        assert!(matches!(
+            QqResponse::read::<VkeyData>(response.into(), "resolve QQ Music playback URL").await,
+            Err(crate::Error::Status {
+                status: reqwest::StatusCode::SERVICE_UNAVAILABLE,
+                ..
+            })
+        ));
+    }
+
+    #[tokio::test]
+    async fn playback_response_data() {
+        let response = http::Response::new(
+            r#"{"code":0,"req_0":{"code":0,"data":{"sip":["https://ws.stream.qqmusic.qq.com/"],"midurlinfo":[{"filename":"M500song.mp3","purl":"song.mp3"}]}}}"#,
+        );
+        let data = QqResponse::read::<VkeyData>(response.into(), "resolve QQ Music playback URL")
+            .await
+            .unwrap();
+        assert_eq!(data.urls[0].purl, "song.mp3");
+        for body in [
+            r#"{"code":0}"#,
+            r#"{"code":0,"req_0":{"code":0}}"#,
+            r#"{"code":0,"req_0":{"code":0,"data":null}}"#,
+            r#"{"code":0,"req_0":{"code":0,"data":{"sip":"private-value"}}}"#,
+        ] {
+            let response = http::Response::new(body);
+            let error =
+                QqResponse::read::<VkeyData>(response.into(), "resolve QQ Music playback URL")
+                    .await
+                    .err()
+                    .unwrap()
+                    .to_string();
+            assert!(error.contains("resolve QQ Music playback URL"));
+            assert!(!error.contains("private-value"));
+        }
+    }
+
+    #[tokio::test]
+    async fn parses_daily_card_and_playlist() {
+        let response: FeedData = QqResponse::read(http::Response::new(
+            r#"{"feed":{"code":0,"data":{"v_shelf":[{"v_niche":[{"v_card":[{"id":"123","title":"每日30首"}]}]}]}}}"#,
+        ).into(), "QQ Music test").await.unwrap();
+        assert_eq!(response.shelves[0].niches[0].cards[0].id, "123");
+
+        let response: DailyData = QqResponse::read(http::Response::new(
+            r#"{"daily":{"code":0,"data":{"songlist":[{"mid":"song-mid","name":"Song","singer":[{"name":"Artist"}],"album":{"mid":"album-mid","name":"Album"},"interval":180,"file":{"media_mid":"media-mid"}}]}}}"#,
+        ).into(), "QQ Music test").await.unwrap();
+        assert_eq!(response.songs[0].mid, "song-mid");
     }
 
     #[test]

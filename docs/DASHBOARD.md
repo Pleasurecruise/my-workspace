@@ -35,17 +35,21 @@ DashboardView.svelte
 
 The shell passes route activation to the Dashboard view session, which owns source-event listeners,
 refresh feedback, Todo selection, and cleanup. An unavailable credential or failed source does not
-block the other cards. Rust starts unified
-Dashboard reads concurrently and emits each result as it settles. A per-source lock prevents
-overlapping reads; scheduled refreshes skip a source that is still running, while an explicit refresh
-waits for that source and then obtains fresh data. Leaving Dashboard cancels queued and in-flight Dashboard runtime reads, including scheduled UGOS requests. Polling exists only while Dashboard is active and
-retains settled data while refreshing: configured UGREEN NAS telemetry and current-device telemetry
-run every two seconds, while subscription data and configured service status run every sixty
-seconds. Entering Dashboard or using its refresh action reads every source and the selected Todo
-date. Steam activity refreshes every five minutes while Dashboard is active. Game daily notes only
-load once per game and login during the application process; subsequent reads reuse the cache.
-Their panels also read when mounted. Pull archives load locally and sync only on an explicit
-action. Weather, stocks, exchange rates, GitHub, and random quotations have no timer.
+block the other cards. Codex, OpenCode, Claude, Grok, Copilot, DeepSeek, CherryIN and GitHub read
+only when their corresponding widget is saved. An absent widget emits a ready `null` projection
+without reading credentials, launching a CLI or renewing OAuth; an invalid layout fails before
+provider I/O. Rust starts unified Dashboard reads concurrently and emits each result as it settles.
+A per-source lock prevents overlapping reads; scheduled refreshes skip a source that is still
+running, while an explicit refresh waits for that source and then obtains fresh data. Leaving
+Dashboard cancels queued and in-flight Dashboard runtime reads, including scheduled UGOS requests.
+Polling exists only while Dashboard is active and retains settled data while refreshing: configured
+UGREEN NAS telemetry and current-device telemetry run every two seconds, while subscription data and
+configured service status run every sixty seconds. Entering Dashboard or using its refresh action
+reads every source and the selected Todo date. Steam activity refreshes every five minutes while
+Dashboard is active. Game daily notes only load once per game and login during the application
+process; subsequent reads reuse the cache. Their panels also read when mounted. Pull archives load
+locally and sync only on an explicit action. Weather, stocks, exchange rates, GitHub, and random
+quotations have no timer.
 
 ## Games
 
@@ -201,17 +205,38 @@ failure stays within the Notifications section without hiding contributions and 
 GitHub refreshes on Dashboard entry and explicit refresh, without background polling. Neither
 contribution activity nor GitHub notifications are persisted in the local ntfy Inbox.
 
+## Daily check-in
+
+Personal includes a Check-in widget. Enter the daily habit name when adding it; different habits can
+have separate cards. Each card supports today's check-in and undo, shows an ongoing streak, total
+checked-in days, and the last 28 days. Calendar selection does not change the check-in date: Rust uses
+the current local day and rejects a stale day's write after midnight. A streak remains active through
+yesterday until today is checked in; a missed whole day breaks it.
+
+Records are local in `check_ins`, keyed by stable placement ID and date. Layout saves, reordering,
+and restarts preserve history. Removing and re-adding a card starts a new habit rather than merging
+records by name. No credentials or remote providers are involved. Each mounted card refreshes once
+per minute, on window focus, via its refresh button, and after cross-window check-in events. Reads
+wait for pending writes; request revisions discard older responses. A write failure remains visible
+through automatic refreshes until another write or a change of habit/date. The same card can be pinned to
+the Dynamic Island.
+
 ## Calendar and Todo
 
 Calendar and Todo are independent widgets with one selected date. Calendar renders a complete
-Sunday-first month; Todo creates, completes, reopens, and deletes items for the selected day.
+Sunday-first month; Todo creates, edits, completes, reopens, and deletes items for the selected day.
+Quick add accepts a title and an expandable optional description. Manual task details offer an editor
+for title and description, preserving date and completion; imported items link the editing responsibility
+to their source calendar. Titles are limited to 120 characters, manual descriptions to 4,000.
 Selecting a title replaces the list with a fixed-size detail view showing status and date plus the
-calendar, time, location, and description available on imported items. Long details scroll inside
+description plus calendar, time, and location available on imported items. Long details scroll inside
 the card, and Back restores the list without changing the dashboard layout.
 
 Each date read has its own request revision. The view keeps settled data while loading and accepts a
 response only if it still matches the selected date, preventing a slower earlier request from
-replacing a newer selection. Calendar and Todo are stored as separate placements in the dashboard layout.
+replacing a newer selection. Reads requested during a write are coalesced and run after it commits. Write errors survive
+automatic refreshes until the next write attempt or date change.
+Calendar and Todo are stored as separate placements in the dashboard layout.
 
 Rust stores tasks and occurrence keys through Diesel in the shared database. The existing `ics/`
 directory remains the source for ICS calendars, including files placed there directly. Desktop and
@@ -243,8 +268,10 @@ surface to reload; requests already in flight finish before the invalidation is 
 
 Remote NAS reads require both the active Dashboard route and at least one saved UGREEN widget.
 Current Device widgets do not enable NAS requests; startup and credential saves on other routes do
-not poll it. CPU, memory, and network use bounded in-memory histories; storage is a capacity snapshot.
-[UGOS.md](UGOS.md) owns connection, certificate trust, login, metric fields, and failure behavior.
+not poll it. CPU, memory, and network use bounded in-memory histories; storage is a capacity
+snapshot. [UGOS.md](UGOS.md) owns connection, certificate trust, login, metric fields, and failure
+behavior. The UGOS error boundary strips request URLs because their query strings contain session
+tokens; logs and frontend errors retain the error category without the token.
 
 ## AI usage providers
 
