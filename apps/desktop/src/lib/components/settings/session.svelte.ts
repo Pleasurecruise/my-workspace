@@ -18,6 +18,7 @@ export function createSettingsSession(effects: {
 }) {
 	let configuration = $state<ConfigurationStatus | null>(null);
 	let configurationError = $state<string | null>(null);
+	let spotifyRevision = $state(0);
 	async function loadConfiguration() {
 		configurationError = null;
 		const response = await invoke<CommandResponse<ConfigurationStatus>>("read_configuration");
@@ -65,9 +66,12 @@ export function createSettingsSession(effects: {
 		return response;
 	}
 
-	async function connectSpotify(): Promise<CommandResponse<string>> {
-		const response = await invoke<CommandResponse<string>>("connect_spotify");
-		if (response.status === "ready") await loadConfiguration();
+	async function connectSpotify(clientId: string): Promise<CommandResponse<string>> {
+		const response = await invoke<CommandResponse<string>>("connect_spotify", { clientId });
+		if (response.status === "ready") {
+			spotifyRevision += 1;
+			await loadConfiguration();
+		}
 		return response;
 	}
 
@@ -111,6 +115,9 @@ export function createSettingsSession(effects: {
 	return {
 		get configuration() {
 			return configuration;
+		},
+		get spotifyRevision() {
+			return spotifyRevision;
 		},
 		get error() {
 			return configurationError;

@@ -21,7 +21,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct Authorization {
     pub url: String,
-    client_id: &'static str,
+    client_id: String,
     redirect_uri: String,
     verifier: String,
     state: String,
@@ -46,19 +46,21 @@ pub struct GrantToken {
     pub refresh_token: String,
 }
 
-pub async fn web_authorization() -> Result<Authorization> {
-    authorization(WEB_CLIENT_ID, 8989, WEB_SCOPES).await
+pub async fn web_authorization(client_id: Option<&str>) -> Result<Authorization> {
+    let client_id = client_id.unwrap_or(WEB_CLIENT_ID);
+    if client_id.len() != 32 || !client_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(Error::Authentication(
+            "Spotify Client ID must contain 32 hexadecimal characters".to_owned(),
+        ));
+    }
+    authorization(client_id, 8989, WEB_SCOPES).await
 }
 
 pub async fn playback_authorization() -> Result<Authorization> {
     authorization(PLAYBACK_CLIENT_ID, 8898, PLAYBACK_SCOPES).await
 }
 
-async fn authorization(
-    client_id: &'static str,
-    port: u16,
-    scopes: &'static str,
-) -> Result<Authorization> {
+async fn authorization(client_id: &str, port: u16, scopes: &'static str) -> Result<Authorization> {
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
         .await
         .map_err(|error| {
@@ -87,7 +89,7 @@ async fn authorization(
     .map_err(|error| Error::Authentication(error.to_string()))?;
     Ok(Authorization {
         url: url.into(),
-        client_id,
+        client_id: client_id.to_owned(),
         redirect_uri,
         verifier,
         state,
@@ -96,14 +98,14 @@ async fn authorization(
 }
 
 pub async fn authenticate(authorization: Authorization) -> Result<GrantToken> {
-    let client_id = authorization.client_id;
+    let client_id = authorization.client_id.clone();
     let redirect_uri = authorization.redirect_uri.clone();
     let verifier = authorization.verifier.clone();
     let code = wait_for_code(authorization).await?;
     let response = http_client()?
         .post(TOKEN_ENDPOINT)
         .form(&[
-            ("client_id", client_id),
+            ("client_id", client_id.as_str()),
             ("grant_type", "authorization_code"),
             ("code", code.as_str()),
             ("redirect_uri", redirect_uri.as_str()),
@@ -248,6 +250,20 @@ fn callback_url(line: &str) -> Result<reqwest::Url> {
 #[cfg(test)]
 mod tests {
     use super::{WEB_CLIENT_ID, parse_callback};
+
+    #[tokio::test]
+    async fn personal_authorization_uses_the_selected_client_and_rejects_invalid_ids() {
+        assert!(super::web_authorization(Some("invalid")).await.is_err());
+        let client_id = "0123456789abcdef0123456789abcdef";
+        let authorization = super::web_authorization(Some(client_id)).await.unwrap();
+        let url = reqwest::Url::parse(&authorization.url).unwrap();
+        assert!(
+            url.query_pairs()
+                .any(|(key, value)| key == "client_id" && value == client_id)
+        );
+        assert_eq!(authorization.client_id, client_id);
+        assert_eq!(authorization.redirect_uri, "http://127.0.0.1:8989/login");
+    }
 
     #[test]
     fn callback_requires_matching_state() {

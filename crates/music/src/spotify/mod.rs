@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
-use reqwest::Method;
 use tokio::sync::{Mutex, RwLock};
 
 use self::player::LocalPlayer;
@@ -19,6 +18,53 @@ const API: &str = "https://api.spotify.com/v1";
 const LIBRARY_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const MAX_COVER_BYTES: usize = 10 * 1024 * 1024;
 const TOKEN_MARGIN: Duration = Duration::from_secs(60);
+const MAX_RATE_LIMIT_RETRIES: u32 = 3;
+const MAX_RETRY_WAIT: Duration = Duration::from_secs(30);
+const DEFAULT_RETRY_WAIT: Duration = Duration::from_secs(1);
+const LIBRARY_REFRESH_TTL: Duration = Duration::from_secs(15 * 60);
+
+#[derive(Default)]
+struct LibraryRefresh {
+    cooldown: Option<LibraryCooldown>,
+    started_at: Option<Instant>,
+    tracks: Vec<Track>,
+    covers: HashMap<String, String>,
+    offset: u64,
+}
+
+struct LibraryCooldown {
+    started_at: Instant,
+    wait: Duration,
+    quota_exhausted: bool,
+}
+
+impl LibraryCooldown {
+    fn remaining(&self) -> Duration {
+        self.wait.saturating_sub(self.started_at.elapsed())
+    }
+
+    fn error(&self) -> Error {
+        let remaining = self.remaining();
+        let retry_after_secs = remaining
+            .as_secs()
+            .saturating_add(u64::from(remaining.subsec_nanos() > 0));
+        if self.quota_exhausted {
+            Error::SpotifyQuotaExhausted { retry_after_secs }
+        } else {
+            Error::SpotifyRateLimited { retry_after_secs }
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct SpotifyApiFailure {
+    error: SpotifyApiReason,
+}
+
+#[derive(serde::Deserialize)]
+struct SpotifyApiReason {
+    reason: Option<String>,
+}
 
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,13 +123,14 @@ impl LibraryCache {
 
 pub struct Spotify {
     http: reqwest::Client,
+    api: String,
     credentials: Mutex<vesper_credentials::SpotifyCredentials>,
     token: Mutex<Option<Token>>,
     player: Mutex<Option<Arc<LocalPlayer>>>,
     covers: RwLock<HashMap<String, String>>,
     tracks: RwLock<HashMap<String, Track>>,
     library: RwLock<LibraryCache>,
-    library_refresh: Mutex<()>,
+    library_refresh: Mutex<LibraryRefresh>,
     closed: AtomicBool,
     playback_generation: AtomicU64,
     playback_action: Mutex<()>,
@@ -98,13 +145,14 @@ impl Spotify {
             .build()?;
         Ok(Self {
             http,
+            api: API.to_owned(),
             credentials: Mutex::new(credentials),
             token: Mutex::new(None),
             player: Mutex::new(None),
             covers: RwLock::new(HashMap::new()),
             tracks: RwLock::new(HashMap::new()),
             library: RwLock::new(LibraryCache::default()),
-            library_refresh: Mutex::new(()),
+            library_refresh: Mutex::new(LibraryRefresh::default()),
             closed: AtomicBool::new(false),
             playback_generation: AtomicU64::new(0),
             playback_action: Mutex::new(()),
@@ -125,23 +173,81 @@ impl Spotify {
             return Ok(tracks);
         }
 
-        let _refresh = self.library_refresh.lock().await;
+        let mut refresh = self.library_refresh.lock().await;
         if let Some(tracks) = self.library.read().await.fresh_tracks(Instant::now()) {
             return Ok(tracks);
         }
 
-        let mut tracks = Vec::new();
-        let mut covers = HashMap::new();
-        let mut offset = 0_u64;
+        if let Some(cooldown) = &refresh.cooldown
+            && !cooldown.remaining().is_zero()
+        {
+            return Err(cooldown.error());
+        }
+        if refresh
+            .started_at
+            .is_none_or(|started_at| started_at.elapsed() >= LIBRARY_REFRESH_TTL)
+        {
+            refresh.started_at = Some(Instant::now());
+            refresh.tracks.clear();
+            refresh.covers.clear();
+            refresh.offset = 0;
+        }
+        let mut retries = 0;
         loop {
+            if self.closed.load(Ordering::SeqCst) {
+                return Err(Error::Playback("Spotify player was closed".to_owned()));
+            }
+            let offset = refresh.offset;
+            let access_token = self.access_token().await?;
             let response = self
-                .authorized(Method::GET, "/me/tracks")
-                .await?
+                .http
+                .get(format!("{}/me/tracks", self.api))
+                .bearer_auth(access_token)
                 .query(&[("limit", 50_u64), ("offset", offset)])
                 .send()
                 .await?;
+            if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let wait = response
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .map(Duration::from_secs)
+                    .unwrap_or(DEFAULT_RETRY_WAIT)
+                    .max(Duration::from_secs(1));
+                let quota_exhausted =
+                    response
+                        .json::<SpotifyApiFailure>()
+                        .await
+                        .ok()
+                        .is_some_and(|failure| {
+                            failure.error.reason.as_deref() == Some("QUOTA_EXCEEDED")
+                        });
+                let cooldown = LibraryCooldown {
+                    started_at: Instant::now(),
+                    wait,
+                    quota_exhausted,
+                };
+                let error = cooldown.error();
+                refresh.cooldown = Some(cooldown);
+                tracing::warn!(
+                    offset,
+                    retry_after_secs = wait.as_secs(),
+                    quota_exhausted,
+                    "Spotify liked songs rate limited"
+                );
+                if quota_exhausted || wait > MAX_RETRY_WAIT || retries >= MAX_RATE_LIMIT_RETRIES {
+                    return Err(error);
+                }
+                retries += 1;
+                tokio::time::sleep(wait).await;
+                continue;
+            }
             let response = check(response, "read liked songs")?;
             let page: SavedTrackPage = response.json().await?;
+            if self.closed.load(Ordering::SeqCst) {
+                return Err(Error::Playback("Spotify player was closed".to_owned()));
+            }
             let count = page.items.len();
             for saved in page.items {
                 if saved.track.id.is_empty() {
@@ -154,7 +260,9 @@ impl Spotify {
                     .first()
                     .map(|image| image.url.clone());
                 if let Some(url) = cover {
-                    covers.insert(format!("spotify/{}", saved.track.id), url);
+                    refresh
+                        .covers
+                        .insert(format!("spotify/{}", saved.track.id), url);
                 }
                 let track = Track {
                     cover_key: (!saved.track.album.images.is_empty())
@@ -171,14 +279,17 @@ impl Spotify {
                     duration_ms: saved.track.duration_ms,
                     added_at: saved.added_at,
                 };
-                tracks.push(track);
+                refresh.tracks.push(track);
             }
-            offset += count as u64;
-            if count == 0 || offset >= page.total || page.next.is_none() {
+            refresh.offset += count as u64;
+            if count == 0 || refresh.offset >= page.total || page.next.is_none() {
                 break;
             }
         }
-        *self.covers.write().await = covers;
+        let tracks = std::mem::take(&mut refresh.tracks);
+        refresh.started_at = None;
+        refresh.cooldown = None;
+        *self.covers.write().await = std::mem::take(&mut refresh.covers);
         *self.tracks.write().await = tracks
             .iter()
             .map(|track| (track.id.clone(), track.clone()))
@@ -323,14 +434,6 @@ impl Spotify {
         })
     }
 
-    async fn authorized(&self, method: Method, path: &str) -> Result<reqwest::RequestBuilder> {
-        let access_token = self.access_token().await?;
-        Ok(self
-            .http
-            .request(method, format!("{API}{path}"))
-            .bearer_auth(access_token))
-    }
-
     async fn access_token(&self) -> Result<String> {
         let mut token = self.token.lock().await;
         if let Some(token) = token.as_ref()
@@ -342,7 +445,14 @@ impl Spotify {
         if self.closed.load(Ordering::SeqCst) {
             return Err(Error::Playback("Spotify player was closed".to_owned()));
         }
-        let refreshed = auth::refresh(auth::WEB_CLIENT_ID, &credentials.web_refresh_token).await?;
+        let refreshed = auth::refresh(
+            credentials
+                .web_client_id
+                .as_deref()
+                .unwrap_or(auth::WEB_CLIENT_ID),
+            &credentials.web_refresh_token,
+        )
+        .await?;
         if let Some(next_refresh_token) = refreshed.refresh_token {
             let mut next_credentials = credentials.clone();
             next_credentials.web_refresh_token = next_refresh_token;
@@ -455,9 +565,211 @@ struct ImageWire {
 mod tests {
     use super::{Error, Spotify};
 
+    async fn mock_library(
+        responses: Vec<(u16, &'static str, String)>,
+    ) -> (Spotify, tokio::task::JoinHandle<Vec<String>>) {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for (status, headers, body) in responses {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut reader = BufReader::new(&mut stream);
+                let mut line = String::new();
+                reader.read_line(&mut line).await.unwrap();
+                requests.push(line.trim().to_owned());
+                loop {
+                    line.clear();
+                    reader.read_line(&mut line).await.unwrap();
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+                stream.write_all(format!("HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            }
+            requests
+        });
+        let mut spotify = Spotify::new(vesper_credentials::SpotifyCredentials {
+            web_client_id: None,
+            web_refresh_token: "unused-test-token".to_owned(),
+            playback_refresh_token: "unused-test-token".to_owned(),
+        })
+        .unwrap();
+        spotify.api = format!("http://{address}");
+        spotify.http = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        *spotify.token.lock().await = Some(super::Token {
+            value: "synthetic-access-token".to_owned(),
+            expires_at: Instant::now() + Duration::from_secs(3600),
+        });
+        (spotify, server)
+    }
+
+    fn saved_page(id: &str, next: Option<&str>) -> String {
+        serde_json::json!({
+            "items": [{"added_at": "2026-01-01", "track": {
+                "id": id, "name": id, "duration_ms": 180000,
+                "artists": [{"name": "Artist"}], "album": {"name": "Album", "images": []}
+            }}], "next": next, "total": 2
+        })
+        .to_string()
+    }
+
+    #[tokio::test]
+    async fn rate_limit_preserves_pages_and_blocks_concurrent_refreshes_until_cooldown() {
+        let (spotify, server) = mock_library(vec![
+            (200, "", saved_page("first", Some("next"))),
+            (
+                429,
+                "Retry-After: 3600\r\n",
+                "private provider body".to_owned(),
+            ),
+            (200, "", saved_page("second", None)),
+        ])
+        .await;
+        *spotify.library.write().await = LibraryCache {
+            tracks: vec![track()],
+            loaded_at: Some(Instant::now() - LIBRARY_CACHE_TTL),
+        };
+        let (first, concurrent) = tokio::join!(spotify.liked_songs(), spotify.liked_songs());
+        for result in [first, concurrent] {
+            let error = result.unwrap_err();
+            assert!(matches!(
+                error,
+                Error::SpotifyRateLimited {
+                    retry_after_secs: 3600..=3601
+                }
+            ));
+            assert!(!error.to_string().contains("private provider body"));
+        }
+        assert_eq!(spotify.library.read().await.tracks[0].id, "track");
+        assert_eq!(spotify.library_refresh.lock().await.offset, 1);
+        spotify
+            .library_refresh
+            .lock()
+            .await
+            .cooldown
+            .as_mut()
+            .unwrap()
+            .started_at -= Duration::from_secs(3601);
+        let tracks = spotify.liked_songs().await.unwrap();
+        assert_eq!(
+            tracks
+                .iter()
+                .map(|track| track.id.as_str())
+                .collect::<Vec<_>>(),
+            ["first", "second"]
+        );
+        assert_eq!(spotify.liked_songs().await.unwrap().len(), 2);
+        assert_eq!(
+            server.await.unwrap(),
+            [
+                "GET /me/tracks?limit=50&offset=0 HTTP/1.1",
+                "GET /me/tracks?limit=50&offset=1 HTTP/1.1",
+                "GET /me/tracks?limit=50&offset=1 HTTP/1.1",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn shutdown_rejects_an_in_flight_library_response() {
+        let (spotify, server) = mock_library(vec![(200, "", saved_page("old", None))]).await;
+        let token = spotify.token.lock().await;
+        let read = spotify.liked_songs();
+        tokio::pin!(read);
+        assert!(futures_util::poll!(&mut read).is_pending());
+        spotify.shutdown().await;
+        drop(token);
+        assert!(matches!(read.await, Err(Error::Playback(_))));
+        assert!(spotify.library.read().await.loaded_at.is_none());
+        assert_eq!(server.await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn expired_partial_library_restarts_at_the_first_page() {
+        let (spotify, server) = mock_library(vec![(200, "", saved_page("fresh", None))]).await;
+        {
+            let mut refresh = spotify.library_refresh.lock().await;
+            refresh.started_at = Some(Instant::now() - super::LIBRARY_REFRESH_TTL);
+            refresh.tracks.push(track());
+            refresh.offset = 50;
+        }
+        let tracks = spotify.liked_songs().await.unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].id, "fresh");
+        assert_eq!(
+            server.await.unwrap(),
+            ["GET /me/tracks?limit=50&offset=0 HTTP/1.1"]
+        );
+    }
+
+    #[tokio::test]
+    async fn short_cooldowns_retry_only_a_bounded_number_of_times() {
+        let responses = (0..4)
+            .map(|_| (429, "Retry-After: 1\r\n", "{}".to_owned()))
+            .collect();
+        let (spotify, server) = mock_library(responses).await;
+        let started = Instant::now();
+        assert!(matches!(
+            spotify.liked_songs().await,
+            Err(Error::SpotifyRateLimited { .. })
+        ));
+        assert!(started.elapsed() >= Duration::from_secs(3));
+        assert!(matches!(
+            spotify.liked_songs().await,
+            Err(Error::SpotifyRateLimited { .. })
+        ));
+        assert_eq!(server.await.unwrap().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn quota_exhaustion_is_not_automatically_retried() {
+        let (spotify, server) = mock_library(vec![(
+            429,
+            "Retry-After: 1\r\n",
+            r#"{"error":{"reason":"QUOTA_EXCEEDED","message":"synthetic-secret"}}"#.to_owned(),
+        )])
+        .await;
+        let error = spotify.liked_songs().await.unwrap_err();
+        assert!(matches!(error, Error::SpotifyQuotaExhausted { .. }));
+        assert!(!error.to_string().contains("synthetic-secret"));
+        assert_eq!(server.await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn invalid_retry_after_uses_a_cooldown_instead_of_immediate_retries() {
+        for header in [
+            "",
+            "Retry-After: invalid\r\n",
+            "Retry-After: 18446744073709551615\r\n",
+        ] {
+            let count = if header.contains("18446744073709551615") {
+                1
+            } else {
+                4
+            };
+            let (spotify, server) =
+                mock_library((0..count).map(|_| (429, header, "{}".to_owned())).collect()).await;
+            assert!(matches!(
+                spotify.liked_songs().await,
+                Err(Error::SpotifyRateLimited { .. })
+            ));
+            assert!(matches!(
+                spotify.liked_songs().await,
+                Err(Error::SpotifyRateLimited { .. })
+            ));
+            assert_eq!(server.await.unwrap().len(), count);
+        }
+    }
+
     #[tokio::test]
     async fn switching_away_cancels_a_play_waiting_for_track_lookup() {
         let spotify = Spotify::new(vesper_credentials::SpotifyCredentials {
+            web_client_id: None,
             web_refresh_token: "unused-test-token".to_owned(),
             playback_refresh_token: "unused-test-token".to_owned(),
         })

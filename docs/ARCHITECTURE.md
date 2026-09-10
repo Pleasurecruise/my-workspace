@@ -170,12 +170,15 @@ Its Svelte session projects typed source events without clearing other cards whe
 also requires a saved remote telemetry widget. Inbox independently activates the Rust ntfy stream
 only while its route is active. See [DASHBOARD.md](DASHBOARD.md) for scheduling and failure behavior.
 
-Music playback and game accounts continue to live in their Rust runtimes independently of page
-mounts. Music runtimes own cancellable playback tasks and audio workers; replacing a music login
-closes the old runtime before saving new credentials. QQ audio snapshots carry the loaded track
-identity, and Spotify events are matched to individual load requests. [MUSIC.md](MUSIC.md),
-[GAMES.md](GAMES.md), and [UGOS.md](UGOS.md) own their protocols, cache rules, media/verification
-boundaries, and source maps. The desktop `lib.rs` owns setup and command
+Music and game runtimes outlive page mounts. Music owns provider credentials, library refreshes,
+rate-limit cooldowns, cancellable playback tasks, and audio workers. Each Spotify Web API refresh
+grant retains its shared or personal application identity. Replacing a music login closes the old
+runtime before saving new credentials; Spotify reconnection also invalidates the WebView collection.
+QQ audio snapshots carry the loaded track identity, and Spotify events are matched to individual
+load requests.
+
+[MUSIC.md](MUSIC.md), [GAMES.md](GAMES.md), and [UGOS.md](UGOS.md) own their protocols, cache rules,
+media and verification boundaries, and source maps. The desktop `lib.rs` owns setup and command
 registration; `telemetry.rs`, `storage.rs`, `todo.rs`, and `gaming.rs` adapt their named capabilities.
 
 App Lock is a Rust-owned in-memory privacy screen with a stored password. Svelte reads its state

@@ -92,7 +92,7 @@ it("adds descriptions, edits completed tasks, and retains the editor after a fai
 		click("View details for Read");
 		await tick();
 		expect(target.textContent).toContain("Chapter one");
-		target.querySelector<HTMLButtonElement>(".edit-button")?.click();
+		click("Edit Todo");
 		await tick();
 		expect(target.querySelector("input")?.value).toBe("Read");
 		fill("input", "Read more");

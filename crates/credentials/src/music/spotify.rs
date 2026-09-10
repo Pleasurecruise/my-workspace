@@ -5,6 +5,8 @@ const ACCOUNT: &str = "spotify-music";
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
 pub struct SpotifyCredentials {
+    #[serde(default)]
+    pub web_client_id: Option<String>,
     pub web_refresh_token: String,
     pub playback_refresh_token: String,
 }
@@ -46,6 +48,22 @@ fn validate(web_refresh_token: &str, playback_refresh_token: &str) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::validate;
+
+    #[test]
+    fn legacy_spotify_grants_keep_shared_access_and_personal_grants_retain_their_client() {
+        let old: super::SpotifyCredentials = serde_json::from_str(
+            r#"{"web_refresh_token":"web","playback_refresh_token":"playback"}"#,
+        )
+        .unwrap();
+        assert!(old.web_client_id.is_none());
+        let personal = super::SpotifyCredentials {
+            web_client_id: Some("0123456789abcdef0123456789abcdef".to_owned()),
+            ..old
+        };
+        let decoded: super::SpotifyCredentials =
+            serde_json::from_str(&serde_json::to_string(&personal).unwrap()).unwrap();
+        assert_eq!(decoded.web_client_id, personal.web_client_id);
+    }
 
     #[test]
     fn rejects_incomplete_spotify_credentials() {

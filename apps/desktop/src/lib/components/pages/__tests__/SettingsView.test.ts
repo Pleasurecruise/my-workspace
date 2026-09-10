@@ -51,6 +51,9 @@ async function setup() {
 	const target = document.createElement("div");
 	const configuration = writable<ConfigurationStatus | null>(structuredClone(initial));
 	const snapshot = fromStore(configuration);
+	const connectSpotify = vi
+		.fn<(clientId: string) => Promise<CommandResponse<string>>>()
+		.mockResolvedValue({ status: "ready", data: "Connected" });
 	const save = vi
 		.fn<
 			(
@@ -80,7 +83,7 @@ async function setup() {
 				onsaventfy: save,
 				onsaveapplock: save,
 				onremoveapplock: vi.fn().mockResolvedValue({ status: "ready", data: "Removed" }),
-				onconnectspotify: vi.fn().mockResolvedValue({ status: "ready", data: "Connected" }),
+				onconnectspotify: connectSpotify,
 				onbeginqq: vi.fn(),
 				onpollqq: vi.fn(),
 				oncancelqq: vi.fn(),
@@ -118,8 +121,34 @@ async function setup() {
 		else button(id).click();
 		await tick();
 	}
-	return { target, configuration, save, field, button, edit, submit };
+	return { target, configuration, save, connectSpotify, field, button, edit, submit };
 }
+
+it("prefills the Spotify Client ID, preserves edits and submits the chosen app", async () => {
+	const form = await setup();
+	const savedId = "0123456789abcdef0123456789abcdef";
+	form.configuration.set({ ...initial, spotify: { status: "ready", data: savedId } });
+	await tick();
+	expect(form.field("spotify-client-id").value).toBe(savedId);
+	await form.edit("spotify-client-id", "abcdef0123456789abcdef0123456789");
+	form.configuration.set({ ...initial, spotify: { status: "ready", data: savedId } });
+	await tick();
+	expect(form.field("spotify-client-id").value).toBe("abcdef0123456789abcdef0123456789");
+	const button = form.target.querySelector("#settings-music .settings-save-button");
+	if (!(button instanceof HTMLButtonElement)) throw new Error("Missing Spotify connect button");
+	form.connectSpotify.mockResolvedValueOnce({
+		status: "failed",
+		message: "Spotify authorization failed",
+	});
+	button.click();
+	await tick();
+	expect(form.connectSpotify).toHaveBeenLastCalledWith("abcdef0123456789abcdef0123456789");
+	await vi.waitFor(() => expect(form.target.textContent).toContain("Spotify authorization failed"));
+	await form.edit("spotify-client-id", "");
+	button.click();
+	await tick();
+	expect(form.connectSpotify).toHaveBeenLastCalledWith("");
+});
 
 it("preserves unsaved fields when switching settings categories", async () => {
 	const { target, edit, field, button } = await setup();

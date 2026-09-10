@@ -235,14 +235,20 @@ pub(crate) async fn cancel_qq_music_login(app: tauri::AppHandle) -> CommandRespo
 }
 
 #[tauri::command]
-pub(crate) async fn connect_spotify(app: tauri::AppHandle) -> CommandResponse<String> {
+pub(crate) async fn connect_spotify(
+    app: tauri::AppHandle,
+    client_id: Option<String>,
+) -> CommandResponse<String> {
     let state = app.state::<MusicState>();
     let Some(_operation) = state.spotify_authorization.enter() else {
         return CommandResponse::Failed {
             message: "Spotify authorization is already running".to_owned(),
         };
     };
-    let authorization = match music::web_authorization().await {
+    let client_id = client_id
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let authorization = match music::web_authorization(client_id.as_deref()).await {
         Ok(authorization) => authorization,
         Err(error) => {
             return CommandResponse::Failed {
@@ -285,6 +291,7 @@ pub(crate) async fn connect_spotify(app: tauri::AppHandle) -> CommandResponse<St
         }
     };
     let credentials = vesper_credentials::SpotifyCredentials {
+        web_client_id: client_id,
         web_refresh_token: web_token.refresh_token,
         playback_refresh_token: playback_token.refresh_token,
     };

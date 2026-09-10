@@ -595,7 +595,9 @@
 				{:else if selected === "inbox"}
 					<InboxView notifications={inbox.notifications} loadError={inbox.error} onread={inbox.markNotificationRead} />
 				{:else if selected === "music"}
-					<MusicView bind:playerVisible={musicPlayerVisible} bind:playerAvailable={musicPlayerAvailable} onopenplayer={openMusicPlayer} onopensettings={() => void select("settings")} />
+					{#key settings.spotifyRevision}
+						<MusicView spotifyRevision={settings.spotifyRevision} bind:playerVisible={musicPlayerVisible} bind:playerAvailable={musicPlayerAvailable} onopenplayer={openMusicPlayer} onopensettings={() => void select("settings")} />
+					{/key}
 				{:else if contentError && content === null}
 					<section class="consumer-error">
 						<header class="page-header"><div>

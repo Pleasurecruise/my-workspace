@@ -66,7 +66,7 @@
 		onsaventfy: (configuration: NtfyConfig) => Promise<CommandResponse<string>>;
 		onsaveapplock: (password: string) => Promise<CommandResponse<string>>;
 		onremoveapplock: () => Promise<CommandResponse<string>>;
-		onconnectspotify: () => Promise<CommandResponse<string>>;
+		onconnectspotify: (clientId: string) => Promise<CommandResponse<string>>;
 		onbeginqq: () => Promise<CommandResponse<QqQr>>;
 		onpollqq: () => Promise<CommandResponse<QqLoginStatus>>;
 		oncancelqq: () => Promise<CommandResponse<null>>;
@@ -76,6 +76,14 @@
 	$effect(() => { if (reconnectMihoyo) selectedSection = "games"; });
 
 	let username = $state("");
+	let spotifyClientId = $state("");
+	let savedSpotifyClientId = $state<string | null>(null);
+	$effect(() => {
+		if (configuration === null) return;
+		const saved = configuration.spotify.status === "ready" ? configuration.spotify.data : "";
+		if (savedSpotifyClientId === null || spotifyClientId === savedSpotifyClientId) spotifyClientId = saved;
+		savedSpotifyClientId = saved;
+	});
 	let password = $state("");
 	let accessKeyId = $state("");
 	let secretAccessKey = $state("");
@@ -453,7 +461,7 @@
 		if (saving.spotify) return;
 		saving.spotify = true;
 		formErrors.spotify = null;
-		const response = await onconnectspotify();
+		const response = await onconnectspotify(spotifyClientId);
 		saving.spotify = false;
 		if (response.status === "failed") formErrors.spotify = response.message;
 	}
@@ -545,6 +553,10 @@
 			{#if configuration?.spotify.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<CardContent class="settings-card-content">
+			<div class="setting-row">
+				<div><Label for="spotify-client-id">Personal Spotify Client ID</Label><p>Optional. Use your own app to reduce shared quota delays. Leave empty for shared access.</p><p>Create a Web API app in the Spotify developer dashboard with redirect URI <code>http://127.0.0.1:8989/login</code>.</p></div>
+				<Input id="spotify-client-id" bind:value={spotifyClientId} disabled={saving.spotify} placeholder="32-character Client ID" />
+			</div>
 			<div class="setting-row">
 				<div><Label>Spotify account</Label><p>Continue in your browser to connect your library and playback.</p></div>
 				<Button class="settings-save-button" size="sm" type="button" disabled={saving.spotify} onclick={connectSpotify}>{saving.spotify ? "Waiting for Spotify…" : configuration?.spotify.status === "ready" ? "Reconnect" : "Connect"}</Button>

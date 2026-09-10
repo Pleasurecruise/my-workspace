@@ -94,7 +94,10 @@
 					<span>Todo details</span>
 					<span class:complete={selectedItem.completed} class="detail-state">{selectedItem.completed ? "Done" : "Open"}</span>
 				</div>
-				<h2 id={headingId}>{selectedItem.text}</h2>
+				<div class="detail-title">
+					<h2 id={headingId}>{selectedItem.text}</h2>
+					{#if selectedItem.details === null && !editing}<button class="edit-button" type="button" aria-label="Edit Todo" title="Edit Todo" disabled={loading || saving} onpointerdown={(event) => event.stopPropagation()} onclick={startEditing}><Pencil size={14} /></button>{/if}
+				</div>
 			</header>
 			<div class="todo-detail-scroll">
 				{#if editing}
@@ -104,7 +107,7 @@
 						<div class="edit-actions"><button type="button" disabled={saving} onclick={() => (editing = false)}>Cancel</button><button type="submit" disabled={loading || saving || !editText.trim()}>{saving ? "Saving…" : "Save changes"}</button></div>
 					</form>
 				{:else}
-					{#if selectedItem.details === null}<button class="edit-button" type="button" disabled={loading || saving} onclick={startEditing}><Pencil size={12} /> Edit Todo</button>{:else}<p class="todo-manual">Edit this task in its source calendar.</p>{/if}
+					{#if selectedItem.details !== null}<p class="todo-manual">Edit this task in its source calendar.</p>{/if}
 				<dl>
 					<div><dt><CalendarDays size={13} /> Date</dt><dd>{selectedDate}</dd></div>
 					{#if selectedItem.details !== null}
@@ -197,9 +200,10 @@
 	.todo-detail .detail-nav { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; min-width: 0; }
 	.todo-detail header span, .todo-description > span { color: var(--color-accent); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 
-	.todo-detail h2 { display: -webkit-box; margin: 0.55rem 0 0; overflow: hidden; color: var(--color-foreground); font-family: var(--font-serif); font-size: 0.9rem; font-weight: 500; line-height: 1.35; text-transform: none; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+	.detail-title { display: flex; align-items: center; gap: 0.4rem; min-width: 0; margin-top: 0.55rem; }
+	.todo-detail h2 { display: -webkit-box; min-width: 0; margin: 0; overflow: hidden; color: var(--color-foreground); font-family: var(--font-serif); font-size: 0.9rem; font-weight: 500; line-height: 1.35; text-transform: none; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 	.todo-detail header button { width: 1.7rem; height: 1.7rem; border-color: transparent; border-radius: var(--radius-full); }
-	.todo-detail header button:hover { background: var(--color-muted); color: var(--color-foreground); }
+	.todo-detail header button:hover, .todo-detail header button:focus-visible { background: var(--color-muted); color: var(--color-foreground); }
 	.todo-detail .detail-state { display: inline-flex; padding: 0.2rem 0.4rem; border-radius: var(--radius-full); background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); font-size: 0.55rem; letter-spacing: 0; text-transform: none; }
 	.todo-detail .detail-state.complete { background: var(--color-muted); color: var(--color-muted-foreground); }
 	.todo-detail-scroll { min-height: 0; flex: 1; overflow-y: auto; }
@@ -218,6 +222,5 @@
 	.edit-form label { display: flex; flex-direction: column; gap: 0.25rem; color: var(--color-muted-foreground); font-size: 0.68rem; }
 	.edit-form input { flex: auto; }
 	.edit-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
-	.edit-actions button, .edit-button { width: auto; padding: 0 0.65rem; gap: 0.4rem; font-size: 0.68rem; }
-	.edit-button { margin-top: 0.5rem; }
+	.edit-actions button { width: auto; padding: 0 0.65rem; gap: 0.4rem; font-size: 0.68rem; }
 </style>

@@ -130,8 +130,8 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
         }
     };
     let spotify = match vesper_credentials::spotify() {
-        Ok(vesper_credentials::Stored::Ready(_)) => {
-            StoredConfiguration::Ready("shared-web-and-local-playback".to_owned())
+        Ok(vesper_credentials::Stored::Ready(credentials)) => {
+            StoredConfiguration::Ready(credentials.web_client_id.unwrap_or_default())
         }
         Ok(vesper_credentials::Stored::Missing) => StoredConfiguration::Missing,
         Err(error) => {

@@ -193,15 +193,29 @@ not migrated automatically; save configuration or reconnect in the release appli
 
 ## Spotify Music configuration
 
-Choose Connect in Settings to run two PKCE grants in sequence: the shared Web API identity reads
-Liked Songs and Spotify's desktop identity authorizes librespot playback. No user-created Spotify
-application, Client ID, or Client Secret is required. Closing or denying either browser grant fails
-the connection immediately; a successful connection stores both refresh grants together, and later
-token rotations are serialized before the credential record is replaced.
+Settings → Music connects the library and local playback through two browser PKCE grants. The
+library uses shared Web API access when Personal Spotify Client ID is empty. Spotify's desktop
+identity authorizes librespot playback independently; local playback requires Spotify Premium.
 
-Local playback requires Spotify Premium and uses librespot's Rodio backend. Spotify Web requests,
-token exchange, album artwork, and playback have bounded operations and honor the operating-system
-HTTP(S) proxy. Browser-only proxy extensions are not visible to the desktop process.
+To use a personal Web API application:
+
+1. Create a Web API app in the Spotify developer dashboard.
+2. Register `http://127.0.0.1:8989/login` as its redirect URI.
+3. Enter the app's Client ID in Settings → Music and choose Connect or Reconnect.
+4. Complete both browser authorizations.
+
+A Client Secret is not required. The personal app uses its own quota, which can reduce contention
+on the shared app but remains subject to Spotify limits. Clearing the Client ID and reconnecting
+restores shared access.
+
+Closing or denying either browser grant fails the connection. A successful connection stores both
+refresh grants and the selected Web API Client ID together. Subsequent token rotations preserve
+that identity and serialize credential replacement. Existing records without a Client ID continue
+to use shared access.
+
+Spotify Web requests, token exchange, album artwork, and playback have bounded operations and honor
+the operating-system HTTP(S) proxy. Browser-only proxy extensions are not visible to the desktop
+process. For 429 cooldowns, retry behavior, and library state, see [MUSIC.md](MUSIC.md#library-reads-and-rate-limits).
 
 ## QQ Music configuration
 

@@ -119,3 +119,118 @@ it("ignores stale playback and lyrics, and preserves the playing song when switc
 	target.remove();
 	vi.useRealTimers();
 });
+
+it("clears the previous Spotify collection after reconnecting and can retry a limited library", async () => {
+	const tracks: MusicTrack[] = [
+		{
+			id: "old",
+			name: "Previous account song",
+			artists: ["Artist"],
+			album: "Album",
+			durationMs: 100000,
+			addedAt: "2026-09-05",
+			coverKey: null,
+		},
+	];
+	let limited = false;
+	invoke.mockImplementation((command: string) => {
+		if (command === "read_music_tracks")
+			return Promise.resolve(
+				limited
+					? { status: "failed", message: "Spotify returned 429. Retry in 60 seconds." }
+					: { status: "ready", data: tracks },
+			);
+		if (command === "read_music_playback") return Promise.resolve({ status: "ready", data: null });
+		throw new Error(`Unexpected command: ${command}`);
+	});
+	const target = document.createElement("div");
+	document.body.append(target);
+	const first = mount(MusicView, {
+		target,
+		props: { spotifyRevision: 100, onopenplayer: vi.fn(), onopensettings: vi.fn() },
+	});
+	await vi.waitFor(() => expect(target.textContent).toContain("Previous account song"));
+	const spotify = Array.from(target.querySelectorAll(".provider-switch button")).find(
+		(button) => button.textContent === "Spotify",
+	);
+	if (!(spotify instanceof HTMLButtonElement)) throw new Error("Missing Spotify button");
+	spotify.click();
+	await vi.waitFor(() => expect(spotify.getAttribute("aria-pressed")).toBe("true"));
+	await vi.waitFor(() => expect(target.textContent).toContain("Previous account song"));
+	await unmount(first);
+	limited = true;
+	const second = mount(MusicView, {
+		target,
+		props: { spotifyRevision: 101, onopenplayer: vi.fn(), onopensettings: vi.fn() },
+	});
+	await vi.waitFor(() => expect(target.textContent).toContain("Spotify returned 429"));
+	expect(target.textContent).not.toContain("Previous account song");
+	limited = false;
+	const retry = Array.from(target.querySelectorAll("button")).find(
+		(button) => button.textContent === "Retry library",
+	);
+	if (!(retry instanceof HTMLButtonElement)) throw new Error("Missing retry button");
+	retry.click();
+	await vi.waitFor(() => expect(target.textContent).toContain("Previous account song"));
+	await unmount(second);
+	target.remove();
+});
+
+it("rejects a previous account response that arrives after reconnection", async () => {
+	const oldTrack: MusicTrack = {
+		id: "old-account",
+		name: "Old account response",
+		artists: ["Artist"],
+		album: "Album",
+		durationMs: 100000,
+		addedAt: "2026-09-05",
+		coverKey: null,
+	};
+	const currentTrack = { ...oldTrack, id: "current-account", name: "Current account song" };
+	const completions = new EventTarget();
+	const oldRead = new Promise<CommandResponse<MusicTrack[]>>((resolve) => {
+		completions.addEventListener("old", () => resolve({ status: "ready", data: [oldTrack] }), {
+			once: true,
+		});
+	});
+	invoke.mockImplementation((command: string) =>
+		command === "read_music_tracks" ? oldRead : Promise.resolve({ status: "ready", data: null }),
+	);
+	const target = document.createElement("div");
+	document.body.append(target);
+	const first = mount(MusicView, {
+		target,
+		props: { spotifyRevision: 200, onopenplayer: vi.fn(), onopensettings: vi.fn() },
+	});
+	await vi.waitFor(() => expect(target.querySelector(".provider-switch")).not.toBeNull());
+	const spotify = Array.from(target.querySelectorAll(".provider-switch button")).find(
+		(button) => button.textContent === "Spotify",
+	);
+	if (!(spotify instanceof HTMLButtonElement)) throw new Error("Missing Spotify button");
+	spotify.click();
+	await unmount(first);
+	invoke.mockImplementation((command: string) =>
+		Promise.resolve({
+			status: "ready",
+			data: command === "read_music_tracks" ? [currentTrack] : null,
+		}),
+	);
+	const second = mount(MusicView, {
+		target,
+		props: { spotifyRevision: 201, onopenplayer: vi.fn(), onopensettings: vi.fn() },
+	});
+	await vi.waitFor(() => expect(target.textContent).toContain("Current account song"));
+	completions.dispatchEvent(new Event("old"));
+	await oldRead;
+	await unmount(second);
+	invoke.mockResolvedValue({ status: "failed", message: "Spotify returned 429" });
+	const third = mount(MusicView, {
+		target,
+		props: { spotifyRevision: 201, onopenplayer: vi.fn(), onopensettings: vi.fn() },
+	});
+	await vi.waitFor(() => expect(target.textContent).toContain("Spotify returned 429"));
+	expect(target.textContent).toContain("Current account song");
+	expect(target.textContent).not.toContain("Old account response");
+	await unmount(third);
+	target.remove();
+});

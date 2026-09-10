@@ -18,6 +18,14 @@ pub enum Provider {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(
+        "Spotify returned 429 for read liked songs. Retry in {retry_after_secs} seconds. A personal Client ID in Settings can reduce shared quota delays."
+    )]
+    SpotifyRateLimited { retry_after_secs: u64 },
+    #[error(
+        "Spotify Web API quota is exhausted. Retry in {retry_after_secs} seconds or after the quota resets."
+    )]
+    SpotifyQuotaExhausted { retry_after_secs: u64 },
     #[error("Music provider authentication failed: {0}")]
     Authentication(String),
     #[error("Music provider request failed: {0}")]

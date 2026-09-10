@@ -2,6 +2,7 @@
 	import type { MusicProvider, MusicTrack } from "../../consumer";
 
 	let settledProvider: MusicProvider = "qqMusic";
+	let settledSpotifyRevision = 0;
 	let settledTracks: Record<MusicProvider, MusicTrack[] | null> = {
 		spotify: null,
 		qqMusic: null,
@@ -12,15 +13,23 @@
 	import PageSkeleton from "../layout/PageSkeleton.svelte";
 	import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 	import { ListOrdered, Music2, Pause, Play, Repeat1, Shuffle, SkipBack, SkipForward } from "@lucide/svelte";
-	import { onMount } from "svelte";
+	import { onMount, untrack } from "svelte";
 	import type { CommandResponse, MusicLyrics, MusicPlayback } from "../../consumer";
 
 	let {
+		spotifyRevision = 0,
 		onopensettings,
 		onopenplayer,
 		playerVisible = $bindable(false),
 		playerAvailable = $bindable(false),
-	}: { onopensettings: () => void; onopenplayer: () => void; playerVisible?: boolean; playerAvailable?: boolean } = $props();
+	}: { spotifyRevision?: number; onopensettings: () => void; onopenplayer: () => void; playerVisible?: boolean; playerAvailable?: boolean } = $props();
+
+	untrack(() => {
+		if (spotifyRevision !== settledSpotifyRevision) {
+			settledTracks.spotify = null;
+			settledSpotifyRevision = spotifyRevision;
+		}
+	});
 
 	const initialTracks = settledTracks[settledProvider];
 	let provider = $state<MusicProvider>(settledProvider);
@@ -246,7 +255,7 @@
 	</header>
 
 	{#if error !== null}
-		<div class="notice" role="alert"><span>{error}</span>{#if tracks.length === 0}<button type="button" onclick={onopensettings}>Open Settings</button>{/if}</div>
+		<div class="notice" role="alert"><span>{error}</span><button type="button" disabled={loading || acting} onclick={() => loadTracks()}>Retry library</button>{#if tracks.length === 0}<button type="button" onclick={onopensettings}>Open Settings</button>{/if}</div>
 	{/if}
 
 	{#if playbackError !== null}<div class="notice" role="alert">{playbackError}</div>{/if}

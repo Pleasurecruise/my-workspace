@@ -37,23 +37,49 @@ out of the UI and logs.
 
 ## Spotify lifecycle
 
-1. Settings opens two PKCE grants in sequence: a Web API grant for library/account reads, then a
-   playback grant for librespot. Callback state is checked; authorization has a ten-minute deadline.
-2. The two refresh grants are stored as one typed credential record. Access tokens and runtime
-   objects stay in Rust. Refresh runs under credential synchronization with an expiry margin.
-3. Liked Songs reads `/v1/me/tracks` in pages of 50, maps provider objects to tracks, and records
-   artwork URLs behind opaque provider keys. It finishes pagination before replacing the collection.
-4. Playback creates the local librespot player on demand. Loads are matched to librespot request
-   IDs in command order, so delayed events from an earlier load cannot change the selected song,
-   including when the same song is selected twice. Position and seek events preserve pause state;
-   unavailable tracks surface a playback error. End events advance only while playback is enabled,
-   and resuming an ended or failed track reloads it. The event reader holds a weak player reference;
-   closing the runtime stops playback and cancels the reader. Local Spotify playback requires Premium.
-5. Lyrics use LRCLIB's `/api/get` with artist, title, album, and duration. A 404 means unavailable;
-   instrumental, synchronized LRC, and plain text are represented separately.
+### Authorization
 
-Spotify Web API and playback are distinct grants and paths; a successful library request does not
-establish that the account can play audio. Client IDs are application identifiers, not secret keys.
+Settings connects the Web API and local playback through two sequential PKCE grants. The Web API
+uses the shared application by default or the personal Client ID entered in Settings. Playback uses
+its independent application identity and requires Spotify Premium. A successful library read does
+not establish playback eligibility. Each authorization checks callback state and has a ten-minute
+deadline.
+
+The credential record stores both refresh grants and the optional Web API Client ID. Records without
+that ID use shared access. Token refresh uses the application identity belonging to the saved grant,
+runs under credential synchronization, and renews before expiry. Access tokens stay in Rust.
+Configuration steps and proxy behavior are documented in [DEVELOPMENT.md](DEVELOPMENT.md#spotify-music-configuration).
+
+### Library reads and rate limits
+
+Liked Songs reads `/v1/me/tracks` sequentially in pages of 50. Rust maps tracks and artwork URLs to
+provider-owned IDs and cover keys, then replaces the collection only after pagination succeeds.
+A failed read leaves the settled collection intact. Completed pages remain available for retry at
+the failed offset until fifteen minutes after that refresh started; an expired partial refresh
+restarts from the first page.
+
+A refresh mutex serializes pagination and shares the Spotify runtime's cooldown among callers.
+HTTP 429 records the complete integer `Retry-After` duration. Missing, invalid, or zero values use
+one second. A library read can automatically retry at most three times, each after a wait of at
+most thirty seconds. Longer waits return an error with the remaining delay and preserve the full
+cooldown. An explicit `QUOTA_EXCEEDED` response returns a quota error without automatic retry.
+
+The error notice offers Retry library. Requests made during cooldown return the remaining delay
+without contacting Spotify. Rate-limit logs contain the pagination offset, wait duration, and quota
+classification; response bodies and tokens never reach logs or the UI. Library progress and
+cooldowns live only in the runtime and end when it is replaced or the application exits.
+
+### Playback and lyrics
+
+Playback creates the local librespot player on demand. Loads are matched to librespot request IDs
+in command order, so delayed events from an earlier load cannot change the selected song, including
+when the same song is selected twice. Position and seek events preserve pause state; unavailable
+tracks surface a playback error. End events advance only while playback is enabled, and resuming
+an ended or failed track reloads it. The event reader holds a weak player reference; closing the
+runtime stops playback and cancels the reader.
+
+Lyrics use LRCLIB's `/api/get` with artist, title, album, and duration. A 404 means unavailable;
+instrumental, synchronized LRC, and plain text are represented separately.
 
 ## QQ Music lifecycle
 
@@ -106,6 +132,10 @@ before the next command touches either provider. Spotify also invalidates pendin
 requests on pause and serializes the final load/resume with that pause.
 Replacing account credentials holds the runtime lock, closes the old player, and waits for existing
 credential writes before saving the new login. In-flight old runtimes cannot renew over that login.
+A completed Spotify reconnection advances the Settings session revision and remounts any active
+MusicView. The new view clears its settled Spotify collection; unmounting invalidates the old
+view's requests so late responses cannot restore the previous account's tracks. A closed Spotify
+runtime also rejects library responses that arrive after shutdown.
 
 Only credentials persist: debug uses the shared credential table; release uses the system
 store. Track collections, queue/player state, cover lookup maps, and lyrics are not an offline
@@ -127,8 +157,18 @@ listing a reference does not claim that every UI or login detail was copied from
 
 ## Verification and limits
 
-Rust unit tests cover callback state, provider parsing, cache expiry, session renewal, lyric parsing,
-queue behavior, cancellation, worker recovery, stale events, runtime release, and media URL
-restrictions. Frontend MusicView tests cover request/interaction behavior. Run `cargo test -p music` and the MusicView tests through Vite Plus when changing this path.
-Real browser authorization, account rights, audio devices, and live QQ protocol compatibility still
-require explicit manual verification. This document records code behavior, not a fresh account test.
+Rust tests cover provider parsing, callback validation, personal Client ID authorization, legacy
+credential decoding, cache expiry, session renewal, lyrics, queue behavior, cancellation, worker
+recovery, stale events, runtime release, and media URL restrictions. Local HTTP tests exercise
+Spotify's long cooldowns, bounded retries, concurrent reads, quota errors, retained pagination,
+expired partial refreshes, and responses arriving after shutdown.
+
+Frontend tests cover Settings prefill and Client ID submission, music controls, library retry,
+reconnection cache invalidation, and late responses from a previous account. Run the Music,
+credentials, and desktop Rust tests with `cargo test -p music -p vesper-credentials -p vesper --lib`
+and the frontend suite through `pnpm test:frontend`. The HTTP tests use loopback listeners and
+synthetic credentials.
+
+These checks establish local request and state behavior. Real browser authorization, personal-app
+quota availability, token exchange and rotation, account rights, audio devices, and live QQ protocol
+compatibility require account-level verification. They have not been established by the mock tests.
