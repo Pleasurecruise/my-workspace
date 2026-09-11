@@ -33,7 +33,7 @@ const data: ExpenseSnapshot = {
 		date: `2026-09-${String(index + 1).padStart(2, "0")}`,
 		amountPence: index === 10 ? 1234 : index === 11 ? 766 : 0,
 	})),
-	suggestions: ["Dining", "Transport"],
+	suggestions: ["Dining", "Transport", "Other"],
 };
 
 async function input(target: HTMLElement, label: string, value: string) {
@@ -41,7 +41,7 @@ async function input(target: HTMLElement, label: string, value: string) {
 		target.querySelector<HTMLButtonElement>('[role="combobox"]')?.click();
 		await tick();
 		Array.from(target.querySelectorAll<HTMLButtonElement>('[role="option"]'))
-			.find((option) => option.textContent?.includes("Custom category"))
+			.find((option) => option.textContent === "Other")
 			?.click();
 		await tick();
 		label = "Custom expense category";
@@ -219,6 +219,45 @@ it("reloads the month and clears the previous projection when the shared date ch
 			expect(invoke).toHaveBeenLastCalledWith("read_expenses", { date: "2026-10-01" }),
 		);
 		expect(target.querySelector(".month-heading")?.textContent).toContain("October 2026");
+	} finally {
+		await unmount(view);
+	}
+});
+
+it("uses the last Other option to enter a custom category", async () => {
+	invoke.mockResolvedValue({
+		status: "ready",
+		data: { ...data, suggestions: ["Coffee", "Transport", "Other"] },
+	});
+	const target = document.createElement("div");
+	const view = mount(SpendingPanel, {
+		target,
+		props: { selectedDate: data.date, todayDate: data.date, onselect: () => {} },
+	});
+	try {
+		await vi.waitFor(() => expect(target.querySelectorAll("circle")).toHaveLength(2));
+		target.querySelector<HTMLButtonElement>('[role="combobox"]')?.click();
+		await tick();
+		const options = Array.from(target.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+		expect(options.map((option) => option.textContent)).toEqual(["Coffee", "Transport", "Other"]);
+		options.at(-1)?.click();
+		await tick();
+		expect(target.querySelector('[role="combobox"]')?.textContent).toContain("Other");
+		expect(target.querySelector('[aria-label="Custom expense category"]')).not.toBeNull();
+		await input(target, "Expense amount in GBP", "5.00");
+		await tick();
+		expect(target.querySelector<HTMLButtonElement>('[type="submit"]')?.disabled).toBe(true);
+		await input(target, "Custom expense category", "Books");
+		await tick();
+		target.querySelector("form")?.dispatchEvent(new Event("submit", { cancelable: true }));
+		await vi.waitFor(() =>
+			expect(invoke).toHaveBeenCalledWith("create_expense", {
+				date: data.date,
+				amount: "5.00",
+				category: "Books",
+				description: null,
+			}),
+		);
 	} finally {
 		await unmount(view);
 	}

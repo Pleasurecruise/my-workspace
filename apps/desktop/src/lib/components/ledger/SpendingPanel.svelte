@@ -14,7 +14,7 @@
 	let editingId = $state<string | null>(null);
 	let draftDate = "";
 	const snapshot = $derived(ledger.data?.date === selectedDate ? ledger.data : null);
-	const options = $derived([...(snapshot === null ? [] : snapshot.suggestions).map((name) => ({ value: `category:${name}`, label: name })), { value: "custom", label: "Custom category…" }]);
+	const options = $derived((snapshot === null ? [] : snapshot.suggestions).map((name) => ({ value: name === "Other" ? "custom" : `category:${name}`, label: name })));
 	const currency = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" });
 	const monthFormatter = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 	const monthLabel = $derived(monthFormatter.format(new Date(`${selectedDate}T00:00:00Z`)));
@@ -56,7 +56,7 @@
 
 	function edit(entry: ExpenseEntry) {
 		editingId = entry.id;
-		custom = false;
+		custom = entry.category === "Other";
 		amount = (entry.amountPence / 100).toFixed(2);
 		category = entry.category;
 		description = entry.description === null ? "" : entry.description;

@@ -80,7 +80,8 @@ habits on the right inside one border. The sections share 0.75rem insets and 1.7
 Todo and habit titles use 0.7rem regular-weight text and compact icon actions. Fixed-height content
 areas keep scrolling inside lists and details; the Dynamic Island stacks the three sections.
 
-Calendar selection controls both the Todo and habit date, and stays available while tasks load. Todo completion uses checkboxes; titles open a detail
+The Calendar month grid controls the Todo and habit date and stays available while tasks load;
+Today returns to the current date from the header. Todo completion uses checkboxes; titles open a detail
 view with status, date, description, and available calendar metadata. Back restores the list without
 resizing the card. Quick add offers an expandable description, and manual-task details provide an
 editor with Save and Cancel. Failed saves preserve the draft; duplicate submissions are disabled.
@@ -94,10 +95,12 @@ happen automatically and need no separate refresh control.
 
 Spending is a separate full-width card linked to the Calendar date. Its header provides
 previous/next-day navigation and Today. The left column holds the day's total, a compact GBP amount
-and category form, and a scrolling list with edit/delete actions. Categories use the shared Select in its compact size, matching the amount input’s 2rem height,
-font, and padding. Custom category and optional note fields span the next rows; saved notes appear
-below each entry’s category. The shared Select keeps its focused option visible during keyboard
-navigation and handles empty or disabled option lists. There is no second calendar or refresh control.
+and category form, and a scrolling list with edit/delete actions. Categories use the shared compact
+Select, matching the amount input’s 2rem height, font, and padding. Its menu scrolls within 10rem,
+keeps keyboard focus visible, and handles empty or disabled option lists. Dashboard raises the
+widget while its listbox is open. Other is the final suggestion and opens a custom-category input;
+the entered name is saved as the category. Custom category and optional note fields span the next
+rows, and saved notes appear below each entry’s category. There is no second calendar or refresh control.
 
 The right column shows the monthly total and switchable category donut or daily bars in a fixed
 9rem chart region. Chart changes preserve drafts and card height. Read-only bars expose dates and
@@ -203,7 +206,9 @@ immediately after the `public` label in the card header; private cards render no
 ## Knowledge interaction
 
 Knowledge uses the shared frame for its index, article, and editor. Article navigation and editing
-actions wrap in the shared header; the collapsible table of contents stays in the content column.
+actions share the upper-right header: a compact table-of-contents popover, Edit, and Back to articles.
+The directory scrolls within a bounded panel and closes after chapter selection; reduced motion
+uses immediate scrolling.
 Article editing uses a rich-text toolbar and an explicit
 Markdown source mode; unsupported rich-text syntax opens in source mode without rewriting content.
 The selected article, draft fields, and pending save survive switching pages during the session.

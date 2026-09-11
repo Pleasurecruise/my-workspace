@@ -194,3 +194,26 @@ async fn upgrades_existing_expenses_without_reclassifying_them() {
         }
     }
 }
+
+#[tokio::test]
+async fn suggestions_keep_other_last_after_custom_categories() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join("ledger.sqlite3"));
+    let snapshot = store
+        .create("2026-09-11", "1", "Zebra", None)
+        .await
+        .unwrap();
+    assert_eq!(
+        snapshot.suggestions,
+        [
+            "Coffee",
+            "Eating out",
+            "Groceries",
+            "Shopping",
+            "Subscriptions",
+            "Transport",
+            "Zebra",
+            "Other"
+        ]
+    );
+}

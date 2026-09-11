@@ -141,9 +141,7 @@ it("shares Spending day navigation with Planner", async () => {
 		},
 	});
 	try {
-		await vi.waitFor(() =>
-			expect(plannerTarget.querySelector('[aria-label="Selected date"]')).not.toBeNull(),
-		);
+		await vi.waitFor(() => expect(plannerTarget.querySelector(".month-calendar")).not.toBeNull());
 		spendingTarget.querySelector<HTMLButtonElement>('[aria-label="Previous day"]')?.click();
 		await vi.waitFor(() =>
 			expect(

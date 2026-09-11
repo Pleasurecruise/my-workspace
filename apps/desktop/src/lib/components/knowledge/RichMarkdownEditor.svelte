@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { invoke } from "@tauri-apps/api/core";
 	import type { Editor } from "@tiptap/core";
 	import { Bold, Code, FileCode2, Heading2, Italic, Link, List, ListOrdered, Pilcrow, Quote, Redo2, Strikethrough, Undo2, Unlink } from "@lucide/svelte";
 	import { onMount } from "svelte";
@@ -7,7 +8,8 @@
 	let element = $state<HTMLDivElement | null>(null);
 	let editor = $state<Editor | null>(null);
 	let length = $state(value.length);
-	let mode = $state<"rich" | "source">("rich");
+	let mode = $state<"rich" | "source">("source");
+	let modeRequest = 0;
 	let modeError = $state("");
 	let toolbar = $state({
 		heading: false,
@@ -20,10 +22,6 @@
 		codeBlock: false,
 		link: false,
 	});
-
-	function representsSource(markdown: string) {
-		return markdown.replaceAll("\r\n", "\n").trimEnd() === value.replaceAll("\r\n", "\n").trimEnd();
-	}
 
 	function syncToolbar(current: Editor) {
 		toolbar = {
@@ -42,10 +40,11 @@
 	onMount(() => {
 		if (element === null) return;
 		const editorElement = element;
+		const initialRequest = modeRequest;
 		let disposed = false;
 		let instance: Editor | null = null;
 		void Promise.all([import("@tiptap/core"), import("@tiptap/markdown"), import("@tiptap/starter-kit")]).then(
-			([core, markdown, starterKit]) => {
+			async ([core, markdown, starterKit]) => {
 				if (disposed) return;
 				instance = new core.Editor({
 					element: editorElement,
@@ -61,11 +60,9 @@
 					onSelectionUpdate: ({ editor: current }) => syncToolbar(current),
 				});
 				editor = instance;
-				if (!representsSource(instance.getMarkdown())) {
-					mode = "source";
-					modeError = "Rich text mode cannot represent every construct in this Markdown. Source mode is preserving it exactly.";
-				}
-				syncToolbar(instance);
+				mode = "source";
+				if (initialRequest === modeRequest) await enterRichMode();
+				if (!disposed) syncToolbar(instance);
 			},
 			() => {
 				if (disposed) return;
@@ -75,20 +72,33 @@
 		);
 		return () => {
 			disposed = true;
+			modeRequest += 1;
 			if (instance !== null) instance.destroy();
 		};
 	});
 
-	function enterRichMode() {
+	async function enterRichMode() {
 		if (editor === null) return;
-		editor.commands.setContent(value, { contentType: "markdown", emitUpdate: false });
-		if (!representsSource(editor.getMarkdown())) {
-			modeError = "Rich text mode would rewrite or remove part of this Markdown. Keep editing it in source mode.";
+		const current = editor;
+		const request = ++modeRequest;
+		const source = value;
+		current.commands.setContent(source, { contentType: "markdown", emitUpdate: false });
+		let equivalent: boolean;
+		try {
+			equivalent = await invoke<boolean>("markdown_matches", { source, candidate: current.getMarkdown() });
+		} catch {
+			if (!current.isDestroyed && value === source && request === modeRequest) modeError = "Could not verify Markdown compatibility. Source mode remains available.";
+			return;
+		}
+		if (current.isDestroyed || value !== source || request !== modeRequest) return;
+		if (!equivalent) {
+			mode = "source";
+			modeError = "This Markdown contains content the rich text editor cannot preserve. Continue in Markdown mode.";
 			return;
 		}
 		modeError = "";
 		mode = "rich";
-		syncToolbar(editor);
+		syncToolbar(current);
 	}
 
 	function toggleLink() {
@@ -117,7 +127,7 @@
 <div class="rich-editor">
 	<div class="mode-switch" role="group" aria-label="Editor mode">
 		<button type="button" class:active={mode === "rich"} onclick={enterRichMode}><Pilcrow size={14} /> Rich text</button>
-		<button type="button" class:active={mode === "source"} onclick={() => { mode = "source"; modeError = ""; }}><FileCode2 size={14} /> Markdown</button>
+		<button type="button" class:active={mode === "source"} onclick={() => { modeRequest += 1; mode = "source"; modeError = ""; }}><FileCode2 size={14} /> Markdown</button>
 	</div>
 	{#if modeError}<p class="mode-error" role="status">{modeError}</p>{/if}
 	<div class:hidden={mode !== "rich"} class="toolbar" role="toolbar" aria-label="Article formatting">

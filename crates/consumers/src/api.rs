@@ -19,6 +19,10 @@ pub enum ApiError {
         operation: &'static str,
         status: reqwest::StatusCode,
     },
+    Rejected {
+        operation: &'static str,
+        message: String,
+    },
     Protocol(String),
 }
 
@@ -35,6 +39,9 @@ impl Display for ApiError {
             Self::Status { operation, status } => {
                 write!(formatter, "consumer API {operation} returned {status}")
             }
+            Self::Rejected { operation, message } => {
+                write!(formatter, "consumer API {operation} rejected: {message}")
+            }
             Self::Protocol(message) => {
                 write!(formatter, "consumer API returned invalid data: {message}")
             }
@@ -49,7 +56,10 @@ impl Error for ApiError {
             Self::Store(source) => Some(source),
             Self::Request(source) => Some(source),
             Self::Media(source) => Some(source),
-            Self::MissingCredentials(..) | Self::Status { .. } | Self::Protocol(..) => None,
+            Self::MissingCredentials(..)
+            | Self::Status { .. }
+            | Self::Rejected { .. }
+            | Self::Protocol(..) => None,
         }
     }
 }

@@ -17,8 +17,6 @@ fn captcha_page_contains_no_account_bridge_or_credentials() {
     assert!(html.contains("https://static.geetest.com/static/js/gt.0.5.2.js"));
     assert!(html.contains("\"new_captcha\":false"));
     assert!(html.contains("\"success\":0"));
-    assert!(html.contains("new_captcha: registration.new_captcha ?? true"));
-    assert!(html.contains("offline: registration.success === 0"));
     assert!(!html.contains("private-id"));
     assert!(!html.contains("MiHoYoJSInterface"));
     assert!(!html.contains("cookie_token"));

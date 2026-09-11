@@ -9,26 +9,26 @@ Feature implementation details are maintained in [Music](MUSIC.md), [UGOS Pro](U
 
 ## Repository layout
 
-| Path                 | Responsibility                                                                              |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| `apps/desktop`       | Tauri v2 deliverable. Svelte renders views; Rust owns commands and application behavior.    |
-| `apps/cli`           | `vesper` executable for provider status, builds, publication, Todo, and consumer workflows. |
-| `crates/cms-core`    | Generic Markdown, content builds, static publication, and R2 access.                        |
-| `crates/consumers`   | Memos, Moment, and Knowledge APIs, projections, and Moment media processing.                |
-| `crates/database`    | Shared Diesel SQLite connection, schema initialization, and database location.              |
-| `crates/credentials` | Typed credentials in debug SQLite or the operating-system credential store.                 |
-| `crates/ledger`      | Local GBP expense records, exact-pence validation, and monthly category/day projections.    |
-| `crates/logger`      | Shared `tracing` initialization.                                                            |
-| `crates/md-dialect`  | Custom Markdown fence validation, provider data, and rendering.                             |
-| `crates/music`       | Spotify and QQ Music authentication, collections, playback, album art, and lyrics.          |
-| `crates/games`       | Game account authorization, daily notes, Steam activity, and local pull archives.           |
-| `crates/quotes`      | Shared astronomy, exchange, GitHub, quotation, stock, weather, and status read providers.   |
-| `crates/social`      | Outbound Telegram Channel and X publication.                                                |
-| `crates/todo`        | Todo storage, ICS and Notion calendar projection.                                           |
-| `crates/ugos`        | Read-only UGOS Pro authentication, certificate pinning, and Task Manager telemetry.         |
-| `crates/useage`      | AI subscription and account-credit integrations. The spelling is intentional.               |
-| `packages/ui`        | Reusable Svelte primitives and design tokens.                                               |
-| `packages/tsconfig`  | Shared frontend TypeScript configuration.                                                   |
+| Path                 | Responsibility                                                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------------- |
+| `apps/desktop`       | Tauri v2 deliverable. Svelte renders views; Rust owns commands and application behavior.              |
+| `apps/cli`           | `vesper` executable for provider status, builds, publication, Todo, and consumer workflows.           |
+| `crates/cms-core`    | Generic Markdown, content builds, static publication, and R2 access.                                  |
+| `crates/consumers`   | Memos, Moment, and Knowledge APIs, projections, and Moment media processing.                          |
+| `crates/database`    | Shared Diesel SQLite connection, schema initialization, and database location.                        |
+| `crates/credentials` | Typed credentials in debug SQLite or the operating-system credential store.                           |
+| `crates/ledger`      | Local GBP expense records, exact-pence validation, and monthly category/day projections.              |
+| `crates/logger`      | Shared `tracing` initialization.                                                                      |
+| `crates/md-dialect`  | Custom Markdown fence validation, provider data, and rendering.                                       |
+| `crates/music`       | Spotify and QQ Music authentication, collections, playback, album art, and lyrics.                    |
+| `crates/games`       | Game account authorization, daily notes, Steam activity, and local pull archives.                     |
+| `crates/quotes`      | Shared astronomy, exchange, GitHub, Open Graph, quotation, stock, weather, and status read providers. |
+| `crates/social`      | Outbound Telegram Channel and X publication.                                                          |
+| `crates/todo`        | Todo storage, ICS and Notion calendar projection.                                                     |
+| `crates/ugos`        | Read-only UGOS Pro authentication, certificate pinning, and Task Manager telemetry.                   |
+| `crates/useage`      | AI subscription and account-credit integrations. The spelling is intentional.                         |
+| `packages/ui`        | Reusable Svelte primitives and design tokens.                                                         |
+| `packages/tsconfig`  | Shared frontend TypeScript configuration.                                                             |
 
 Create a crate or package only when it owns a stable independent boundary or is genuinely shared.
 Except for the Svelte view layer and its build configuration, new application behavior belongs in

@@ -1,6 +1,7 @@
 mod architecture;
 mod canvas;
 mod github;
+mod link;
 mod stock;
 mod storyboard;
 mod style;
@@ -12,6 +13,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag, TagEnd};
 use std::collections::{HashMap, HashSet};
 
 const GITHUB: &str = "embed:github";
+const LINK: &str = "embed:link";
 const STOCK: &str = "embed:stock";
 const ARCHITECTURE: &str = "embed:architecture";
 const STORYBOARD: &str = "embed:storyboard";
@@ -21,6 +23,7 @@ const DATA_CONCURRENCY: usize = 4;
 #[derive(Default)]
 pub struct Data {
     repositories: HashMap<String, quotes::github::RepositorySnapshot>,
+    links: HashMap<String, quotes::opengraph::Metadata>,
     stocks: HashMap<String, quotes::stocks::StockSeries>,
 }
 
@@ -58,6 +61,7 @@ pub async fn load(source: &str) -> Result<Data, EmbedError> {
     let mut block: Option<(String, String)> = None;
     let mut repositories = HashSet::new();
     let mut stocks = HashSet::new();
+    let mut links = HashSet::new();
     for event in Parser::new(source) {
         match event {
             Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) => {
@@ -83,6 +87,11 @@ pub async fn load(source: &str) -> Result<Data, EmbedError> {
                             return Err(EmbedError::InvalidRepository(repo.to_owned()));
                         }
                         repositories.insert(repo.to_owned());
+                    }
+                    LINK => {
+                        let parsed = fields(&language, &source)?;
+                        let (url, _) = link::parse(parsed)?;
+                        links.insert(url.to_owned());
                     }
                     STOCK => {
                         let mut parsed = fields(&language, &source)?;
@@ -111,6 +120,14 @@ pub async fn load(source: &str) -> Result<Data, EmbedError> {
     for (repo, snapshot) in repository_data {
         data.repositories.insert(repo, snapshot);
     }
+    data.links = stream::iter(links.into_iter().map(|url| async move {
+        let metadata = quotes::opengraph::read(&url).await?;
+        Ok::<_, String>((url, metadata))
+    }))
+    .buffer_unordered(DATA_CONCURRENCY)
+    .try_collect()
+    .await
+    .map_err(EmbedError::Data)?;
     if !stocks.is_empty() {
         let report = quotes::stocks::read(stocks.into_iter().collect())
             .await
@@ -132,6 +149,7 @@ pub fn render(language: &str, source: &str, data: &Data) -> Result<Option<String
     }
     match language {
         GITHUB => github::render(fields(language, source)?, data).map(Some),
+        LINK => link::render(fields(language, source)?, data).map(Some),
         STOCK => stock::render(fields(language, source)?, data).map(Some),
         ARCHITECTURE => architecture::render(source).map(Some),
         STORYBOARD => storyboard::render(source).map(Some),

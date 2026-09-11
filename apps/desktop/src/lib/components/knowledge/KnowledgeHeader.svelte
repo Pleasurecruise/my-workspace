@@ -27,6 +27,7 @@
 
 <style>
 	header { min-width: 0; }
+	header > div { flex: 1; min-width: 0; }
 	h1 { margin: 0; }
 	.stats { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.5rem; color: var(--color-muted-foreground); font-size: 0.75rem; }
 	.stats span { display: inline-flex; align-items: center; gap: 0.25rem; }

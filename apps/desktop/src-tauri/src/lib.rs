@@ -223,6 +223,7 @@ pub fn run() {
             consumer::delete_photo,
             consumer::create_knowledge,
             consumer::update_knowledge,
+            consumer::markdown_matches,
             updater::check_for_update,
             updater::install_update,
             dashboard::refresh_dashboard,

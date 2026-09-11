@@ -67,7 +67,9 @@
 	button:disabled { opacity: 0.5; cursor: default; }
 	button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 	.compact > button { box-sizing: border-box; height: 2rem; min-height: 2rem; padding: 0.45rem 0.55rem; font: 0.72rem var(--font-sans); }
-	.options { position: absolute; z-index: 50; top: calc(100% + 0.35rem); left: 0; right: 0; max-height: 16rem; overflow-y: auto; padding: 0.3rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); box-shadow: var(--shadow-lg); }
+	.options { box-sizing: border-box; position: absolute; z-index: 50; top: calc(100% + 0.35rem); left: 0; right: 0; max-height: 16rem; overflow-y: auto; overscroll-behavior: contain; padding: 0.3rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); box-shadow: var(--shadow-lg); }
+	.compact .options { max-height: 10rem; }
+	.compact .options button { min-height: 2rem; padding: 0.4rem 0.55rem; font: 0.72rem var(--font-sans); }
 	.options button { border: 0; }
 	.options button:hover, .options button.focused { background: var(--color-muted); }
 	svg { flex-shrink: 0; }

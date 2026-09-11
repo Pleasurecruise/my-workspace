@@ -301,7 +301,7 @@ fn normalize_knowledge(event: Event<'_>) -> Event<'_> {
     }
 }
 
-fn knowledge_options() -> Options {
+pub(super) fn knowledge_options() -> Options {
     super::options() | Options::ENABLE_GFM | Options::ENABLE_MATH | Options::ENABLE_WIKILINKS
 }
 

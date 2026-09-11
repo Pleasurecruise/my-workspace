@@ -445,6 +445,7 @@
 	.widget.columns-12 { grid-column: span 12; }
 	.widget-grid.editing .widget { border-radius: var(--radius-lg); outline: 1px dashed var(--color-accent); outline-offset: 3px; cursor: move; touch-action: none; user-select: none; }
 	.widget-grid.editing .widget :global(*) { cursor: move !important; }
+	.widget:has(:global([role="listbox"])) { z-index: 6; }
 	.widget.dragging { z-index: 5; opacity: 0.35; }
 	.widget-grid.editing .widget .widget-delete { position: absolute; z-index: 10; top: 0.35rem; right: 0.35rem; display: grid; width: 1.35rem; height: 1.35rem; place-items: center; padding: 0; border-color: var(--color-border); border-radius: var(--radius-full); background: var(--color-background); box-shadow: var(--shadow-xs); cursor: pointer !important; }
 

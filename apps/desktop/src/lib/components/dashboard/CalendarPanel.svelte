@@ -28,11 +28,7 @@
 </script>
 
 	<section class="calendar-panel" aria-label="Calendar">
-	<header><div><CalendarDays size={15} /><h2>Calendar</h2></div></header>
-	<div class="date-navigation">
-		<input type="date" aria-label="Selected date" value={selectedDate} min="0001-01-01" max="9999-12-31" onchange={(event) => { if (event.currentTarget.value && event.currentTarget.validity.valid) { monthOffset = 0; void onselect(event.currentTarget.value); } }} />
-		<button type="button" disabled={selectedDate === todayDate} onclick={() => { monthOffset = 0; void onselect(todayDate); }}>Today</button>
-	</div>
+	<header><div><CalendarDays size={15} /><h2>Calendar</h2></div><button type="button" disabled={selectedDate === todayDate && monthOffset === 0} onclick={() => { monthOffset = 0; void onselect(todayDate); }}>Today</button></header>
 	<div class="month-heading"><button type="button" disabled={!calendar.canGoBack} onclick={() => (monthOffset -= 1)} aria-label="Previous month"><ChevronLeft size={13} /></button><strong>{calendar.label}</strong><button type="button" disabled={!calendar.canGoForward} onclick={() => (monthOffset += 1)} aria-label="Next month"><ChevronRight size={13} /></button></div>
 	<div class="month-calendar" aria-label={`${calendar.label} calendar`}>
 		{#each weekdays as weekday}<span class="weekday">{weekday}</span>{/each}
@@ -46,6 +42,7 @@
 	header,
 	header div { display: flex; align-items: center; }
 	header { min-height: 1.75rem; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+	header > button { padding: 0 0.3rem; font-size: 0.65rem; }
 	header div { gap: 0.4rem; }
 
 	h2 { margin: 0; color: var(--color-muted-foreground); font-size: 0.72rem; font-weight: 500; text-transform: uppercase; }
@@ -60,8 +57,5 @@
 	.month-calendar button.today { color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
 	.month-calendar button.selected { background: var(--color-accent); color: var(--color-accent-foreground); }
 	button:disabled { cursor: not-allowed; opacity: 0.45; }
-	.date-navigation { display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
-	.date-navigation input { width: 7rem; min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-foreground); padding: 0.3rem; font: 0.65rem var(--font-sans); }
-	.date-navigation button { padding: 0 0.3rem; font-size: 0.65rem; }
-	input:focus-visible, button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+	button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 </style>

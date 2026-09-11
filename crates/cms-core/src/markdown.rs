@@ -8,6 +8,19 @@ pub use article::{
 use linkify::{LinkFinder, LinkKind};
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd, html};
 
+/// Compare parsed content before allowing a rich editor to normalize Markdown syntax.
+/// Raw HTML and custom fence bodies remain part of the comparison.
+pub fn equivalent(source: &str, candidate: &str) -> bool {
+    let source = source.replace("\r\n", "\n");
+    let candidate = candidate.replace("\r\n", "\n");
+    pulldown_cmark::TextMergeStream::new(Parser::new_ext(&source, article::knowledge_options())).eq(
+        pulldown_cmark::TextMergeStream::new(Parser::new_ext(
+            &candidate,
+            article::knowledge_options(),
+        )),
+    )
+}
+
 pub fn render(source: &str) -> String {
     let parser = Parser::new_ext(source, options()).map(|event| normalize(event, false));
     let mut output = String::new();

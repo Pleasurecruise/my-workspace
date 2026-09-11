@@ -383,3 +383,8 @@ pub(crate) async fn update_knowledge(
         },
     }
 }
+
+#[tauri::command]
+pub(crate) fn markdown_matches(source: String, candidate: String) -> bool {
+    cms_core::markdown::equivalent(&source, &candidate)
+}

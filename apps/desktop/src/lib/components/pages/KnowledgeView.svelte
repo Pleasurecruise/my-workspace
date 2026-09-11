@@ -12,7 +12,7 @@
 </script>
 
 <script lang="ts">
-	import { Library, Pencil, Plus } from "@lucide/svelte";
+	import { ArrowLeft, Pencil, Plus } from "@lucide/svelte";
 	import type { CommandResponse, KnowledgeDraft, KnowledgeUpdate } from "../../consumer";
 	import KnowledgeHeader from "../knowledge/KnowledgeHeader.svelte";
 	import KnowledgeToc from "../knowledge/KnowledgeToc.svelte";
@@ -171,12 +171,12 @@
 		<KnowledgeHeader title={selected.title} text={selected.source}>
 			{#snippet actions()}
 		<div class="article-actions" aria-label="Article actions">
-			<button type="button" onclick={() => (selected = null)} aria-label="All knowledge" title="All knowledge"><Library size={16} /></button>
+			{#if selected !== null}<KnowledgeToc entries={selected.toc} />{/if}
 			<button type="button" onclick={() => selected !== null && startEdit(selected)} aria-label="Edit article" title="Edit article"><Pencil size={16} /></button>
+			<button type="button" onclick={() => (selected = null)} aria-label="Back to articles" title="Back to articles"><ArrowLeft size={16} /></button>
 		</div>
 			{/snippet}
 		</KnowledgeHeader>
-		<KnowledgeToc entries={selected.toc} />
 		<article class="prose">{@html selected.html}</article>
 
 	</section>

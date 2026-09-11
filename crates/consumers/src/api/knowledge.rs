@@ -503,10 +503,7 @@ pub async fn create(input: &Create) -> Result<Article, ApiError> {
         .await?;
     let status = response.status();
     if status != StatusCode::CREATED {
-        return Err(ApiError::Status {
-            operation: "create knowledge article",
-            status,
-        });
+        return Err(mutation_error(response, "create knowledge article").await);
     }
     let result: ArticleResponse<Article> = response.json().await?;
     Ok(result.article)
@@ -523,10 +520,7 @@ pub async fn update_draft(id: &str, input: &DraftUpdate) -> Result<Article, ApiE
         .await?;
     let status = response.status();
     if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "update knowledge article",
-            status,
-        });
+        return Err(mutation_error(response, "update knowledge article").await);
     }
     let result: ArticleResponse<Article> = response.json().await?;
     Ok(result.article)
@@ -543,10 +537,7 @@ pub async fn update_documents(id: &str, input: &DocumentUpdate) -> Result<Articl
         .await?;
     let status = response.status();
     if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "update knowledge documents",
-            status,
-        });
+        return Err(mutation_error(response, "update knowledge documents").await);
     }
     let result: ArticleResponse<Article> = response.json().await?;
     Ok(result.article)
@@ -589,6 +580,40 @@ pub async fn delete(id: &str, expected_hash: &str) -> Result<(), ApiError> {
             status: response.status(),
         })
     }
+}
+
+async fn mutation_error(mut response: reqwest::Response, operation: &'static str) -> ApiError {
+    let status = response.status();
+    let fallback = ApiError::Status { operation, status };
+    if status != StatusCode::UNPROCESSABLE_ENTITY {
+        return fallback;
+    }
+    let mut body = Vec::new();
+    while let Ok(Some(chunk)) = response.chunk().await {
+        if body.len() + chunk.len() > 8192 {
+            return fallback;
+        }
+        body.extend_from_slice(&chunk);
+    }
+    #[derive(Deserialize)]
+    struct Rejection {
+        error: String,
+    }
+    let Ok(rejection) = serde_json::from_slice::<Rejection>(&body) else {
+        return fallback;
+    };
+    let message = match rejection.error.as_str() {
+        "Invalid article update" | "Invalid article input" => "Article fields failed server validation. Check title, summary, tags, Markdown length, and version hash.".to_owned(),
+        "Raw HTML is not supported" => "Raw HTML is not supported in Knowledge articles.".to_owned(),
+        "Executable URLs are not supported" => "Executable URLs are not supported in Knowledge articles.".to_owned(),
+        message if message.starts_with("Unsupported embed kind: ") => {
+            let kind = message.trim_start_matches("Unsupported embed kind: ");
+            if kind.len() > 48 || !kind.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b':' | b'-' | b'_')) { return fallback; }
+            format!("The Knowledge server does not support {kind}. Update the server dialect before saving this block.")
+        }
+        _ => "Article content failed server validation. Check tags and structured Markdown blocks.".to_owned(),
+    };
+    ApiError::Rejected { operation, message }
 }
 
 #[cfg(test)]

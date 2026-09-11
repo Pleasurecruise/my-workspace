@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn renders_repository_data_with_lucide_metadata_icons() {
+fn renders_repository_data() {
     let mut data = Data::default();
     data.repositories.insert(
         "canmi21/seam".to_owned(),
@@ -24,7 +24,6 @@ fn renders_repository_data_with_lucide_metadata_icons() {
     assert!(html.contains("content-embed-left"));
     assert!(html.contains(">21</span>"));
     assert!(html.contains(">2</span>"));
-    assert!(html.contains("<circle cx=\"12\" cy=\"12\" r=\"10\"/>"));
 }
 
 #[test]
@@ -66,23 +65,29 @@ fn renders_stock_data_as_a_smooth_month_chart() {
 }
 
 #[test]
-fn renders_storyboard_without_a_frame() {
-    let html = render(
-        STORYBOARD,
-        "title: Publish\nstep: Write | Markdown\nstep: Ship | Website",
-        &Data::default(),
-    )
-    .expect("valid storyboard")
-    .expect("registered embed");
-    assert!(html.contains("class=\"arrow-shadow\""));
-    assert!(html.contains("class=\"arrow\""));
-    assert!(!style::CSS.contains(".svg-canvas-storyboard{border:"));
-}
-
-#[test]
-fn renders_canvases_on_the_consumer_theme() {
-    assert!(style::CSS.contains(".svg-canvas{margin:.75rem auto"));
-    assert!(style::CSS.contains(".svg-canvas-architecture>svg{background:transparent"));
-    assert!(style::CSS.contains(".svg-canvas-storyboard>svg{color:"));
-    assert!(style::CSS.contains("background:transparent"));
+fn renders_link_metadata_as_text_and_keeps_ordinary_links_unhandled() {
+    let mut data = Data::default();
+    data.links.insert(
+        "https://example.com".to_owned(),
+        quotes::opengraph::Metadata {
+            url: "https://example.com/?a=1&b=2".to_owned(),
+            title: "<script>alert(1)</script>".to_owned(),
+            description: "A & B".to_owned(),
+            site_name: "Example".to_owned(),
+            image: None,
+        },
+    );
+    let html = render(LINK, "url: https://example.com\nalign: left", &data)
+        .unwrap()
+        .unwrap();
+    assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+    assert!(html.contains("A &amp; B"));
+    assert!(html.contains("href=\"https://example.com/?a=1&amp;b=2\""));
+    assert!(!html.contains("<img"));
+    assert!(
+        render("text", "https://example.com", &data)
+            .unwrap()
+            .is_none()
+    );
+    assert!(render(LINK, "url: https://example.com\nimage: injected", &data).is_err());
 }

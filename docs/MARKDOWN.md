@@ -33,6 +33,10 @@ used by my-memos. `compile_knowledge_enriched` assigns stable, de-duplicated hea
 of contents and excerpt in the same pass boundary as HTML compilation. Consumers continue to own
 storage and metadata; Vesper does not retain a second Markdown mirror.
 
+The Desktop rich editor compares source and reserialized Markdown through the same Rust parser options used for Knowledge rendering.
+Formatting differences such as bullet markers are allowed; changed text, tables, images, raw HTML,
+and custom fence languages or bodies prevent switching. Source remains authoritative until an edit.
+
 ## What Waku does
 
 [Waku][waku] has two Markdown surfaces with different constraints:

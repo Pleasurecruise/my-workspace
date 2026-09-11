@@ -1,4 +1,4 @@
-use super::{render, render_memo};
+use super::{equivalent, render, render_memo};
 
 #[test]
 fn renders_extensions() {
@@ -49,4 +49,27 @@ fn blocks_unsafe_destinations() {
     assert!(html.contains("<img src=\"\" alt=\"payload\" />"));
     assert!(html.contains("href=\"mailto:me@example.com\""));
     assert!(html.contains("href=\"/memo/1\""));
+}
+
+#[test]
+fn rich_roundtrip() {
+    assert!(equivalent(
+        "* **Hello**\n* World\n",
+        "- __Hello__\n- World\n\n"
+    ));
+    assert!(equivalent("Title\n=====\n", "# Title\n"));
+    for (source, candidate) in [
+        ("$x$", r"\$x\$"),
+        ("[[hello]]", r"\[\[hello\]\]"),
+        ("![cover](https://example.com/a.png)", ""),
+        ("| A | B |\n| - | - |\n| 1 | 2 |", "A B\n1 2"),
+        (
+            "```embed:link\nurl: https://example.com\n```",
+            "```\nurl: https://example.com\n```",
+        ),
+        ("```rust\nlet a = 1;\n```", "```rust\nlet a = 2;\n```"),
+        ("<iframe src=\"https://example.com\"></iframe>", ""),
+    ] {
+        assert!(!equivalent(source, candidate), "{source}");
+    }
 }

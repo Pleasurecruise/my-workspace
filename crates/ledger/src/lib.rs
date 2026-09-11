@@ -319,6 +319,7 @@ fn snapshot(connection: &mut SqliteConnection, date: &str) -> Result<Snapshot, E
         .load::<String>(connection)?;
     let mut suggestions: BTreeSet<String> = used.into_iter().collect();
     suggestions.extend(CATEGORIES.map(str::to_owned));
+    suggestions.remove("Other");
     let mut categories: Vec<_> = categories
         .into_iter()
         .map(|(category, amount_pence)| CategoryTotal {
@@ -345,7 +346,10 @@ fn snapshot(connection: &mut SqliteConnection, date: &str) -> Result<Snapshot, E
             .into_iter()
             .map(|(date, amount_pence)| DayTotal { date, amount_pence })
             .collect(),
-        suggestions: suggestions.into_iter().collect(),
+        suggestions: suggestions
+            .into_iter()
+            .chain(["Other".to_owned()])
+            .collect(),
     })
 }
 

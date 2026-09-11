@@ -5549,12 +5549,14 @@ dependencies = [
 name = "quotes"
 version = "0.1.0"
 dependencies = [
+ "dom_query",
  "futures-util",
  "reqwest 0.13.5",
  "serde",
  "serde_json",
  "time",
  "tokio",
+ "url",
 ]
 
 [[package]]
