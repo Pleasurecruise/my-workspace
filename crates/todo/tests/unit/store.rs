@@ -452,3 +452,66 @@ async fn descriptions_persist_and_edit_preserves_completion_and_date() {
     assert!(reopened.get(date, id).await.unwrap().description.is_none());
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[tokio::test]
+async fn calendar_snapshot_serves_other_dates_without_provider_io() {
+    // This URL cannot reach the provider: a cache miss must fail validation.
+    let configuration = vesper_credentials::NotionCalendar {
+        view_url: "invalid".into(),
+    };
+    let item = Item {
+        id: "notion:view:page".into(),
+        text: "Conference".into(),
+        description: None,
+        completed: false,
+        details: Some(Details {
+            calendar: "Work".into(),
+            start_date: "2026-09-07".into(),
+            end_date: Some("2026-09-09".into()),
+            start_time: None,
+            end_time: None,
+            location: None,
+        }),
+    };
+    let mut cache = Some(CalendarSnapshot {
+        view_url: configuration.view_url.clone(),
+        loaded: std::time::Instant::now(),
+        items: vec![item],
+    });
+    for date in ["2026-09-07", "2026-09-09", "2026-09-08", "2026-09-07"] {
+        assert_eq!(
+            read_notion(&mut cache, &configuration, date, false)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+    assert!(
+        read_notion(&mut cache, &configuration, "2026-09-10", false)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        read_notion(&mut cache, &configuration, "2026-09-07", true)
+            .await
+            .is_err()
+    );
+    assert_eq!(cache.as_ref().unwrap().items.len(), 1);
+    let changed = vesper_credentials::NotionCalendar {
+        view_url: "another-invalid-view".into(),
+    };
+    assert!(
+        read_notion(&mut cache, &changed, "2026-09-07", false)
+            .await
+            .is_err()
+    );
+    cache.as_mut().unwrap().loaded =
+        std::time::Instant::now() - std::time::Duration::from_secs(301);
+    assert!(
+        read_notion(&mut cache, &configuration, "2026-09-07", false)
+            .await
+            .is_err()
+    );
+}

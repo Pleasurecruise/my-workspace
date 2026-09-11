@@ -17,7 +17,7 @@ beforeEach(() => {
 	mounts.length = 0;
 });
 const original: WidgetLayout = {
-	widgets: [{ id: "todo", widget: { kind: "todoList" } }],
+	widgets: [{ id: "todo", widget: { kind: "planner", habits: [] } }],
 	islandWidgetId: "todo",
 };
 const unpinned: WidgetLayout = { ...original, islandWidgetId: null };

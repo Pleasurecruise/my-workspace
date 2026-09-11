@@ -81,33 +81,33 @@ Upstream producers ──> ntfy.you-find.me/mail-summary ── authenticated SS
 
 ## Widget layout
 
-Dashboard cards occupy a fixed twelve-track canvas. Edit mode supports dragging cards, removing
-placements and restoring the Rust-owned default. Within a row, dragging targets individual cards;
-across rows, it inserts at a row boundary. Narrow windows scroll the canvas without changing order.
+Dashboard cards occupy a twelve-track canvas. Edit mode supports dragging, removing, pinning, and
+restoring the Rust-owned default. Dragging within a row targets individual cards; dragging across
+rows inserts at a row boundary. Narrow windows scroll the canvas without changing saved order.
 
 The default order is AAPL, TSLA, Device CPU, Device Storage, Exchange, GitHub service status,
-Quotation, Ningbo/Nottingham/Shanghai weather, Arknights, Star Rail, GitHub activity, Calendar, Todo,
-Codex, OpenCode Go, DeepSeek and CherryIN. Todo is selected for the Dynamic Island. New layouts and
-Restore Default use this arrangement; existing saved layouts retain their placements.
+Quotation, Ningbo/Nottingham/Shanghai weather, Arknights, Star Rail, GitHub activity, Daily Planner,
+Codex, OpenCode Go, DeepSeek, and CherryIN. Daily Planner is the default Dynamic Island selection.
+Existing Calendar, Todo, and Check-in placements combine at their earliest position on read.
+Unrelated placements keep their order, each habit keeps its ID and history, and a pin on a combined
+placement follows the Planner. Saving the layout persists the combined placement.
 
 Rust validates and transactionally replaces `{ widgets, islandWidgetId }` in `vesper.sqlite3`.
 Placements have unique IDs and typed configurations; a non-null island selection references one
-placement. Unknown fields, duplicate widgets, obsolete kinds and dangling selections fail
-validation. An uninitialized layout uses the default. Invalid data remains an error until the user
-restores a layout. Legacy layout files are not imported.
+placement. Habit IDs and names are unique within the Planner. Unknown fields, unsupported kinds,
+duplicate placements, and dangling selections fail validation. An uninitialized layout uses the
+default; invalid stored data remains an error until corrected. Legacy layout files are not imported.
 
-The widget library uses a category rail without a search input. System Status contains both the
-explicitly named UGREEN CPU, UGREEN Memory, UGREEN Storage, and UGREEN Network widgets and the
-Device CPU, Device Memory, Device Storage, and Device Network widgets backed by local telemetry.
-Quota contains separate Codex, OpenCode Go, Claude, Grok, and Copilot widgets. Balance contains
-separate DeepSeek and Cherry widgets. Existing singleton widgets remain visible and are marked as
-added instead of disappearing from the library.
+The widget library uses a category rail without search. System Status contains Daily Planner,
+UGREEN CPU/Memory/Storage/Network, and Device CPU/Memory/Storage/Network. Quota lists Codex,
+OpenCode Go, Claude, Grok, and Copilot; Balance lists DeepSeek and Cherry. The remaining categories
+are Online Services and Games. Existing singleton widgets remain visible with an Added state.
 
-The macOS Dynamic Island is a separate native window at the top of the primary screen. It shares
-WidgetContent rendering, saved layout and Rust source locks with Dashboard, but owns a separate
-WebView session. Expansion reads only its selected provider without enabling Dashboard polling.
-Todo and Calendar refresh once a minute while expanded. Game events reach both trusted UI windows;
-verification webviews do not receive account data. App Lock closes the island.
+The macOS Dynamic Island shares WidgetContent rendering, saved layout, and Rust source locks with
+Dashboard, but has a separate WebView session. Expansion reads only its selected source without
+activating Dashboard polling. Expanded Daily Planner rereads tasks and habits once a minute;
+Notion reads use the shared five-minute snapshot. Game events reach both trusted UI windows,
+while verification webviews receive no account data. App Lock closes the island.
 
 ## Current device
 
@@ -207,62 +207,63 @@ contribution activity nor GitHub notifications are persisted in the local ntfy I
 
 ## Daily check-in
 
-Personal includes a Check-in widget. Enter the daily habit name when adding it; different habits can
-have separate cards. Each card supports today's check-in and undo, shows an ongoing streak, total
-checked-in days, and the last 28 days. Calendar selection does not change the check-in date: Rust uses
-the current local day and rejects a stale day's write after midnight. A streak remains active through
-yesterday until today is checked in; a missed whole day breaks it.
+Daily Planner displays multiple named habits beside Calendar and Todo. Manage accepts names
+separated by commas or newlines and removes individual habits. Each row provides an icon action
+for today's check-in or undo, an ongoing streak, total checked-in days, and 28-day history. The
+habit date always follows the device's local day, independently of calendar selection. Rust
+validates that day inside the write transaction and rejects a request that crosses midnight.
+A streak remains active through yesterday until today is missed.
 
-Records are local in `check_ins`, keyed by stable placement ID and date. Layout saves, reordering,
-and restarts preserve history. Removing and re-adding a card starts a new habit rather than merging
-records by name. No credentials or remote providers are involved. Each mounted card refreshes once
-per minute, on window focus, via its refresh button, and after cross-window check-in events. Reads
-wait for pending writes; request revisions discard older responses. A write failure remains visible
-through automatic refreshes until another write or a change of habit/date. The same card can be pinned to
-the Dynamic Island.
+Records are local in `check_ins`, keyed by habit ID and date. Layout changes and restarts preserve
+history; removing and re-adding a habit creates a new ID. No credentials or providers are involved.
+The panel reads all displayed habits on mount, focus, once per minute, and cross-window updates.
+Each write targets one habit. Pending writes defer reads, request revisions discard stale responses,
+and automatic reads preserve write errors until another write or a change of habit/date.
 
 ## Calendar and Todo
 
-Calendar and Todo are independent widgets with one selected date. Calendar renders a complete
-Sunday-first month; Todo creates, edits, completes, reopens, and deletes items for the selected day.
-Quick add accepts a title and an expandable optional description. Manual task details offer an editor
-for title and description, preserving date and completion; imported items link the editing responsibility
-to their source calendar. Titles are limited to 120 characters, manual descriptions to 4,000.
-Selecting a title replaces the list with a fixed-size detail view showing status and date plus the
-description plus calendar, time, and location available on imported items. Long details scroll inside
-the card, and Back restores the list without changing the dashboard layout.
+Daily Planner has one selected task date. Calendar renders a complete Sunday-first month; Todo
+creates, edits, completes, reopens, and deletes that day's items. Quick add accepts a title and an
+expandable description. Manual-task editing preserves date and completion while changing title
+and description. Imported items retain source-owned content. Titles are limited to 120 characters
+and manual descriptions to 4,000. Selecting a title opens a fixed-size detail view with date,
+status, description, and available calendar/time/location metadata. Long details scroll internally;
+Back restores the list without changing the Planner layout.
 
-Each date read has its own request revision. The view keeps settled data while loading and accepts a
-response only if it still matches the selected date, preventing a slower earlier request from
-replacing a newer selection. Reads requested during a write are coalesced and run after it commits. Write errors survive
-automatic refreshes until the next write attempt or date change.
-Calendar and Todo are stored as separate placements in the dashboard layout.
+Svelte retains settled data during reads and accepts a response only for the current request and
+selected date. Reads requested during a write are coalesced and run after it commits, retaining an
+explicit refresh request. Write errors survive automatic reads until the next write or date change.
+At midnight, a view following today advances without deleting history. Cross-window Todo mutations
+invalidate the other surface's list after its current operation finishes.
 
-Rust stores tasks and occurrence keys through Diesel in the shared database. The existing `ics/`
-directory remains the source for ICS calendars, including files placed there directly. Desktop and
-CLI use the same store constructor and retain the roaming ICS directory on Windows. Imports
-validate all files before installing each through an atomic file replacement. Recurrence keys prevent duplicate tasks across repeated
-reads; deleting an imported occurrence suppresses it. Floating times remain local, while UTC and
-IANA TZID values are projected into the device time zone. Unsupported recurrence semantics are
-reported explicitly. At midnight a view following today advances without deleting history.
+Rust stores tasks and occurrence keys in SQLite. The `ics/` directory remains the source for local
+calendar files. Imports validate all files before installing each through atomic replacement.
+Recurrence keys prevent duplicate tasks; deleting an imported occurrence suppresses it. Floating
+times remain local, and UTC/IANA TZID values are projected into the device time zone. Unsupported
+recurrence semantics produce an explicit error. Desktop and CLI share the store constructor and
+retain the roaming ICS directory on Windows.
 
-Settings accepts a Notion calendar-view link. Install the official `ntn` CLI and run `ntn login`
-with a workspace that can access the database. Select a Date property for the calendar; formula and
-creation-time properties are not supported. Table and other views are supported when their data
-source contains exactly one Date property; multiple dates require a calendar view to choose one. Rust invokes `ntn api` to retrieve the view, query its saved filters and
-sorting, paginates page references and batch-queries the data source, retaining only pages in the
-view. All-day ranges and zoned dates are projected onto the selected local date. The CLI owns authentication; Vesper stores only the view link and never reads CLI tokens.
-Each process has a timeout and is killed on cancellation. A failed or incomplete query does not
-replace the saved projection; Todo displays the error alongside saved tasks. Configuration
-writes and calendar reads share a cross-process lock so a completed settings save cannot be followed
-by a stale commit from the previous view. Once a database commit is queued, its worker retains the
-lock through the transaction even if the requesting task is cancelled.
+Notion integration uses a view link saved in Settings and the official `ntn` CLI, authenticated with
+`ntn login`. Vesper stores only the link and never reads CLI tokens. Calendar views must select a
+Date property; other view types work when their data source has exactly one Date property. Formula
+and creation-time properties are unsupported. Rust retrieves the view, queries its saved filters
+and sorting, paginates page references, and queries data-source pages until all view members are
+found. Empty views need no data-source query. Incomplete membership, pagination errors, or timeouts
+fail the synchronization instead of installing a partial projection.
 
-Notion page IDs preserve local completion across refreshes. Successful reads update titles and
-remove entries no longer present for that day. Deletion suppresses the local occurrence; completion
-and deletion do not mutate Notion. Clearing the Settings link disconnects the calendar. The CLI
-uses the same configuration and Rust implementation. Native-window Todo mutations notify the other
-surface to reload; requests already in flight finish before the invalidation is processed.
+A successful read installs one complete in-memory view snapshot for five minutes. Switching dates,
+reentering Dashboard, and expanding the island reuse that snapshot; all-day ranges and zoned dates
+are projected onto the selected local date. Explicit Dashboard refresh and CLI synchronization
+bypass it. Configuration saves clear the cache, and another view URL cannot reuse its contents.
+The initial read may scan many data-source pages for sparse views and remains subject to the
+90-second query budget. Each CLI process has a twenty-second deadline and is killed on cancellation.
+
+Calendar reads and configuration writes share a cross-process lock. A queued SQLite commit retains
+that lock even if its requester is cancelled, preventing an old view's commit after a completed
+configuration save. Failed reads preserve saved tasks and expose the synchronization error beside
+them. Notion page IDs preserve local completion across refreshes; successful reconciliation updates
+titles and removes entries no longer present for the day. Local completion and deletion never
+mutate Notion. Clearing the view link disconnects the calendar.
 
 ## UGOS Pro
 

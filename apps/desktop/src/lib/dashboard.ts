@@ -21,13 +21,12 @@ export interface WidgetDef {
 	span: WidgetSpan;
 }
 
-export type WidgetCategory = "system" | "quota" | "balance" | "personal" | "online" | "games";
+export type WidgetCategory = "system" | "quota" | "balance" | "online" | "games";
 
 export const widgetCategories: Array<{ id: WidgetCategory; label: string }> = [
 	{ id: "system", label: "System Status" },
 	{ id: "quota", label: "Quota" },
 	{ id: "balance", label: "Balance" },
-	{ id: "personal", label: "Personal" },
 	{ id: "online", label: "Online Services" },
 	{ id: "games", label: "Games" },
 ];
@@ -46,6 +45,13 @@ export interface WidgetOption extends Omit<WidgetDef, "id" | "span"> {
 }
 
 export const widgets: Record<WidgetKind, WidgetDef> = {
+	planner: {
+		id: "planner",
+		label: "Daily Planner",
+		description: "Calendar, tasks and daily habits in one place",
+		category: "system",
+		span: { columns: 12 },
+	},
 	game: {
 		id: "game",
 		label: "Game",
@@ -151,27 +157,6 @@ export const widgets: Record<WidgetKind, WidgetDef> = {
 		category: "online",
 		span: { columns: 12 },
 	},
-	calendar: {
-		id: "calendar",
-		label: "Calendar",
-		description: "Browse months and select the active Todo date",
-		category: "personal",
-		span: { columns: 4 },
-	},
-	checkIn: {
-		id: "checkIn",
-		label: "Check-in",
-		description: "Build a daily habit with a streak and recent check-ins",
-		category: "personal",
-		span: { columns: 4 },
-	},
-	todoList: {
-		id: "todoList",
-		label: "Todo",
-		description: "Manage tasks for the selected date",
-		category: "personal",
-		span: { columns: 4 },
-	},
 	codex: {
 		id: "codex",
 		label: "Codex",
@@ -231,7 +216,7 @@ export const widgets: Record<WidgetKind, WidgetDef> = {
 };
 
 const singletonKinds: Array<
-	Exclude<WidgetKind, "weather" | "stock" | "serviceStatus" | "game" | "checkIn">
+	Exclude<WidgetKind, "weather" | "stock" | "serviceStatus" | "game" | "planner">
 > = [
 	"steam",
 	"cpu",
@@ -244,8 +229,6 @@ const singletonKinds: Array<
 	"localNetwork",
 	"exchange",
 	"github",
-	"calendar",
-	"todoList",
 	"codex",
 	"openCode",
 	"claude",
@@ -258,12 +241,12 @@ const singletonKinds: Array<
 
 export const widgetOptions: WidgetOption[] = [
 	{
-		id: "checkIn",
-		kind: "checkIn",
-		widget: { kind: "checkIn", name: "" },
-		label: widgets.checkIn.label,
-		description: widgets.checkIn.description,
-		category: "personal",
+		id: "planner",
+		kind: "planner",
+		widget: { kind: "planner", habits: [] },
+		label: widgets.planner.label,
+		description: widgets.planner.description,
+		category: "system",
 	},
 	...gameKinds.map((game): WidgetOption => ({
 		id: `game-${game}`,
@@ -308,7 +291,6 @@ export const widgetOptions: WidgetOption[] = [
 ];
 
 export function widgetKey(widget: WidgetPlacement["widget"]): string {
-	if (widget.kind === "checkIn") return `check-in-${widget.name.trim().toLowerCase()}`;
 	if (widget.kind === "game") return `${widget.kind}-${widget.game}`;
 	if (widget.kind === "weather") return `weather-${widget.location.trim().toLocaleLowerCase()}`;
 	if (widget.kind === "stock") return `stock-${widget.symbol.toLocaleLowerCase()}`;

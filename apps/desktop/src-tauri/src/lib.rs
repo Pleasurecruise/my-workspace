@@ -245,6 +245,7 @@ pub fn run() {
             widgets::reset_layout,
             widgets::save_layout,
             todo::read_todos,
+            todo::read_check_ins,
             todo::read_check_in,
             todo::set_check_in,
             todo::add_todo,

@@ -63,36 +63,34 @@ widget spans, gallery grouping, paper treatment, or article typography. H1–H6 
 
 ## Dashboard layout
 
-Dashboard uses a user-configurable twelve-track widget canvas. Compact Edit/Done and Refresh icons
-sit directly beside its title, matching Moment. Restore Default and Add Widget remain at the
-header's trailing edge while editing. Dashboard height follows its content; the shared page frame
-owns bottom spacing without an additional viewport-based minimum height. Edit mode uses a four-way move
-pointer to drag the card itself, with no dedicated handle or card-level component menu. Each card has
-one small upper-right delete action. Dashboard uses compact 0.5rem canvas gaps, generally
-0.75rem card insets, and an 8.5rem minimum for three-track widgets. Compact headings and list
-rows increase visible information while retaining font sizes, saved spans, and Todo’s fixed detail surface. Cross-row movement inserts at row boundaries, preserving each
-row instead of splitting it around a full-width card. The Add Widget action opens a categorized library with a preview;
-weather accepts a user-entered place and stock accepts a ticker symbol. Cards retain their configured
-three-, four-, six-, eight-, or twelve-track spans as the outer frame changes width. Breakpoints do
-not regroup saved rows; drag placement follows those configured spans.
+Dashboard uses a configurable twelve-track canvas with 0.5rem gaps and generally 0.75rem card
+insets. Its height follows its content within the shared page frame. Edit/Done and Refresh icons
+sit beside the page title; Restore Default and Add Widget appear at the trailing edge in edit mode.
+Cards expose removal and pin controls while editing, and the card surface acts as the drag handle.
+Cross-row dragging inserts at row boundaries. Cards retain their configured spans and order as the
+window changes width; compact three-track cards share an 8.5rem minimum height.
 
-Calendar and Todo are separate widgets that share the selected date. The widget library uses a
-category rail without a search field. One System Status category contains UGREEN CPU, UGREEN Memory,
-UGREEN Storage, and UGREEN Network alongside Device CPU, Device Memory, Device Storage, and Device
-Network. Quota and Balance each list one independent widget per provider rather than a provider
-table. Provider-card content is vertically centered in its card.
-Todo titles are buttons that switch the fixed-size card from its list to a detail view. The detail
-view always shows the selected date and status, adds calendar timing, location, and description for
-ICS items, keeps long content in an internal scroll area, and uses a back action to restore the list
-without resizing the dashboard layout. Quick add keeps its compact title row and offers an expandable
-optional description. Manual task details include an edit form with title, description, Save and
-Cancel; failed saves keep the draft, and saving disables duplicate submissions. Imported tasks direct
-content edits to the source calendar.
+Add Widget opens a category rail, widget list, and preview with feature-specific configuration.
+Weather accepts a location and stocks accept a ticker. System Status includes Daily Planner,
+UGREEN telemetry, and current-device telemetry. Quota and Balance present individual provider
+widgets; Online Services and Games contain their respective integrations. Provider-card content
+is vertically centered within its card.
 
-Personal also includes Check-in. Its configured habit name sits above a streak/total row, a 28-day
-history grid, and a full-width Today/Undo action. Completed days use the accent token; the current day
-has an outline and every cell has an accessible date/status label. The compact island rendering
-retains the action and recent history.
+Daily Planner spans all twelve tracks with Calendar on the left, Todo in the middle, and daily
+habits on the right inside one border. The sections share 0.75rem insets and 1.75rem heading rows.
+Todo and habit titles use 0.7rem regular-weight text and compact icon actions. Fixed-height content
+areas keep scrolling inside lists and details; the Dynamic Island stacks the three sections.
+
+Calendar selection controls the Todo date. Todo completion uses checkboxes; titles open a detail
+view with status, date, description, and available calendar metadata. Back restores the list without
+resizing the card. Quick add offers an expandable description, and manual-task details provide an
+editor with Save and Cancel. Failed saves preserve the draft; duplicate submissions are disabled.
+Imported items direct content changes to the source calendar.
+
+Habits always refer to today, shown explicitly beside their ongoing streak, total days, and compact
+28-day history. Each row has its own check-in/undo icon, keeping the action distinct from Todo's
+completion checkbox. Manage opens the habit-name form and individual removal controls. Habit reads
+happen automatically and need no separate refresh control.
 
 NAS CPU, memory, and network cards pair the latest numeric value with a compact in-session SVG trend
 line; NAS storage uses a used/free capacity bar. Device Storage shows startup-disk used, total and
@@ -127,28 +125,26 @@ reduced-motion preferences disable animation.
 
 ## Dynamic Island
 
-On macOS, a separate transparent native window places the island at the top center of the primary
-screen, in the system menu-bar area. The visual reference is [Atoll](https://github.com/Ebullioscopic/Atoll):
-outward top shoulders, rounded lower corners, a continuous black surface and restrained controls.
-On notched screens, the collapsed icon and status occupy opposite sides of the physical notch;
-there is no extra label strip below it. Screens without a notch use a compact pill.
+On macOS, a transparent native window places the island at the top center of the primary screen in
+the menu-bar area. The visual reference is [Atoll](https://github.com/Ebullioscopic/Atoll): outward top
+shoulders, rounded lower corners, a continuous black surface, and restrained controls. Notched
+screens place the collapsed icon and status on opposite sides of the notch; other screens use a
+compact pill. The expanded frame is up to 560 logical pixels wide, with room below the notch for a
+heading and scrollable widget content. Scoped semantic tokens keep it dark independently of the
+main window's theme.
 
-The expanded frame is up to 560 logical pixels wide, with room below the notch for a compact heading
-and the selected widget. Scoped semantic colors keep content dark independently of the main window's
-theme. Embedded widgets omit their outer card frame; Todo uses circular completion controls and a
-scrollable list while retaining add, delete and detail actions.
-
-Dashboard edit mode selects a saved widget, with Todo selected by default. Unpinning or deleting the
-selected placement disables the island. Hover, click or keyboard activation expands it. Escape,
+Dashboard edit mode pins a saved placement; Daily Planner is selected by default. Unpinning or
+removing the placement disables the island. Hover, click, or keyboard activation expands it. Escape,
 Close, or leaving without pointer/focus inside collapses it. Initial display uses AppKit's non-key
-ordering operation. Rust animates subsequent frame changes while preserving the top anchor and
-honors the system Reduce Motion setting. Losing focus must not reactivate the island. App Lock
-closes it; other platforms do not offer the pin control.
+ordering operation. Subsequent frame changes preserve the top anchor and honor Reduce Motion.
+Losing focus does not reactivate the island. App Lock closes it, and other platforms omit pinning.
 
-The island and Dashboard share WidgetContent rendering but have separate WebView sessions. Todo
-mutations invalidate the other surface's list. Expanded Todo and Calendar refresh once a minute;
-provider widgets read on expansion without activating Dashboard-wide polling. Display changes
-reposition the window on its next expansion or collapse.
+The island shares WidgetContent rendering with Dashboard in a separate WebView session. Embedded
+content omits its outer card frame. Daily Planner stacks Calendar, Todo, and habits; Todo retains
+its circular completion controls, add, delete, and detail actions. Task and habit mutations update
+the other surface, and expanded Planner content rereads once a minute. Provider widgets read on
+expansion without enabling Dashboard polling. Display changes reposition the window on its next
+expansion or collapse.
 
 ## Memo interaction
 
@@ -354,6 +350,7 @@ fixed application policy, and producer routes and secrets remain outside Vesper.
 - Progress indicators expose `role="progressbar"`, a provider-specific accessible label, and numeric
   bounds.
 - Errors that require immediate attention use an alert role.
-- Icon-only controls require an accessible label.
+- Compact actions such as Manage, Check in, Undo, Add, and Remove prefer icons over visible text.
+  Each icon button needs a descriptive tooltip and accessible name; toggles expose their active state.
 - Muted text and status colors must remain readable in both themes.
 - Motion should use the shared duration tokens and remain limited to meaningful feedback.

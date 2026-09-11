@@ -95,7 +95,7 @@ struct DateRange {
     time_zone: Option<String>,
 }
 
-pub(crate) async fn read(configuration: &NotionCalendar, date: &str) -> Result<Vec<Item>, Error> {
+pub(crate) async fn read(configuration: &NotionCalendar) -> Result<Vec<Item>, Error> {
     let view_id = configuration.view_id()?;
     let binary = binary()?;
     let view_path = format!("/v1/views/{view_id}");
@@ -171,17 +171,16 @@ pub(crate) async fn read(configuration: &NotionCalendar, date: &str) -> Result<V
             page = request(&binary, "GET", &path[url::Position::BeforePath..], None).await?;
         }
         let ids: BTreeSet<_> = references.iter().cloned().collect();
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut remaining = ids.clone();
         let mut items = BTreeMap::new();
         let mut cursor: Option<String> = None;
         cursors.clear();
-        let next_day = crate::parse_date(date)?
-            .next_day()
-            .ok_or(Error::DateOverflow)?
-            .to_string();
         loop {
             let mut body = serde_json::json!({
                 "page_size": 100,
-                "filter": {"property": property, "date": {"on_or_before": next_day}},
             });
             if let Some(cursor) = &cursor {
                 body["start_cursor"] = serde_json::json!(cursor);
@@ -205,11 +204,12 @@ pub(crate) async fn read(configuration: &NotionCalendar, date: &str) -> Result<V
                     continue;
                 }
                 let id = entry.id.clone();
-                if let Some(item) = project(entry, &view_id, &view.name, &property, date)? {
+                remaining.remove(&id);
+                if let Some(item) = project(entry, &view_id, &view.name, &property)? {
                     items.insert(id, item);
                 }
             }
-            if !batch.has_more {
+            if remaining.is_empty() || !batch.has_more {
                 break;
             }
             cursor = Some(
@@ -218,6 +218,11 @@ pub(crate) async fn read(configuration: &NotionCalendar, date: &str) -> Result<V
                     .filter(|cursor| cursors.insert(cursor.clone()))
                     .ok_or_else(|| Error::Notion("invalid data source pagination cursor".into()))?,
             );
+        }
+        if !remaining.is_empty() {
+            return Err(Error::Notion(
+                "calendar changed during the read; refresh again".into(),
+            ));
         }
         Ok(references
             .into_iter()
@@ -293,7 +298,6 @@ fn project(
     view_id: &str,
     calendar: &str,
     date_property: &str,
-    date: &str,
 ) -> Result<Option<Item>, Error> {
     let range = match page
         .properties
@@ -318,13 +322,6 @@ fn project(
         .as_deref()
         .map(|value| local_date(value, range.time_zone.as_deref()))
         .transpose()?;
-    let end_date = end
-        .as_ref()
-        .map(|(date, _)| date.as_str())
-        .unwrap_or(&start_date);
-    if date < start_date.as_str() || date > end_date {
-        return Ok(None);
-    }
     let title = page
         .properties
         .values()
@@ -442,8 +439,7 @@ printf '%s' '{"results":[],"has_more":false,"next_cursor":null}'
                 serde_json::from_str(page).unwrap(),
                 "view",
                 "Tasks",
-                r"WZ\M",
-                "2026-09-07"
+                r"WZ\M"
             )
             .unwrap()
             .is_some()
@@ -451,33 +447,16 @@ printf '%s' '{"results":[],"has_more":false,"next_cursor":null}'
     }
 
     #[test]
-    fn projects_calendar_range_and_ignores_other_dates() {
+    fn projects_calendar_range() {
         let page = r#"{"id":"page","properties":{"Name":{"id":"title","type":"title","title":[{"plain_text":"Conference"}]},"When":{"id":"date","type":"date","date":{"start":"2026-09-07","end":"2026-09-09"}}}}"#;
-        let item = project(
-            serde_json::from_str(page).unwrap(),
-            "view",
-            "Work",
-            "date",
-            "2026-09-08",
-        )
-        .unwrap()
-        .unwrap();
+        let item = project(serde_json::from_str(page).unwrap(), "view", "Work", "date")
+            .unwrap()
+            .unwrap();
         assert_eq!(item.id, "notion:view:page");
         assert_eq!(item.text, "Conference");
         assert_eq!(
             item.details.unwrap().end_date.as_deref(),
             Some("2026-09-09")
-        );
-        assert!(
-            project(
-                serde_json::from_str(page).unwrap(),
-                "view",
-                "Work",
-                "date",
-                "2026-09-10"
-            )
-            .unwrap()
-            .is_none()
         );
         assert!(local_date("not-a-date", None).is_err());
     }

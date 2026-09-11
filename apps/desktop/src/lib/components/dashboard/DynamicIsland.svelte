@@ -21,7 +21,7 @@
 	let disposed = false;
 	let topInset = $state(0);
 	let notchWidth = $state(0);
-	const isTodo = $derived(placement?.widget.kind === "todoList");
+	const isTodo = $derived(placement?.widget.kind === "planner");
 	const remaining = $derived(session.todos.data?.items.filter((item) => !item.completed).length ?? null);
 	let resizing = Promise.resolve();
 	function resize(expanded: boolean) {
@@ -43,7 +43,7 @@
 
 	$effect(() => {
 		const kind = placement?.widget.kind;
-		if (!expanded || (kind !== "todoList" && kind !== "calendar")) return;
+		if (!expanded || kind !== "planner") return;
 		const timer = window.setInterval(() => { if (!session.todos.loading) void session.loadTodos(); }, 60_000);
 		return () => window.clearInterval(timer);
 	});
@@ -55,7 +55,7 @@
 		const version = ++request;
 		await resize(true);
 		if (disposed || version !== request) return;
-		if (placement.widget.kind === "todoList" || placement.widget.kind === "calendar") {
+		if (placement.widget.kind === "planner") {
 			if (!session.todos.loading) await session.loadTodos();
 			return;
 		}

@@ -325,7 +325,8 @@ fn island_source(widget: &widgets::Widget) -> Option<Source> {
         Widget::CherryIn => Source::CherryIn,
         Widget::Quotation => Source::Quotation,
         // Todo is read through its own session; game panels own their initial read.
-        Widget::Calendar
+        Widget::Planner { .. }
+        | Widget::Calendar
         | Widget::CheckIn { .. }
         | Widget::TodoList
         | Widget::Game { .. }

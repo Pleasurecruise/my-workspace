@@ -121,7 +121,7 @@ The shell creates a Dashboard layout session alongside the data session. Each We
 responses superseded by a newer request and invalidates pending responses when its session is
 destroyed. Dashboard and the macOS native Dynamic Island render the same WidgetContent component.
 The layout uses Diesel models in the shared `vesper.sqlite3` database and stores a nullable
-`islandWidgetId` referencing one placement; defaults select Todo. Rust rejects dangling selections.
+`islandWidgetId` referencing one placement; defaults select Daily Planner. Rust rejects dangling selections.
 Opening the island requests only that widget's source through `refresh_island`, using the same
 per-source request lock as Dashboard. It does not enable Dashboard route polling. Todo retains
 its own read and mutation commands; game panels retain their existing source reads.
@@ -310,25 +310,35 @@ transactions. `schema.sql` is the only schema definition; there is no versioned 
 Incompatible schema changes are handled by a one-time rebuild of the affected local tables.
 [Persistence](PERSISTENCE.md) owns the schema inventory and failure rules.
 
-### Todo and calendar
+### Daily Planner
 
-`crates/todo` owns dated tasks, daily check-ins, ICS parsing, Notion calendar queries and local projection. Notion's
-view link is configured in Settings through `crates/credentials`. Rust runs bounded `ntn api`
-processes; the official CLI owns login and credentials. Vesper never reads or copies its tokens.
-Reads preserve the view's filters and sorting; completion remains local. Svelte owns date selection and
-rendering, with request generations preventing an older response from replacing a later selection.
-Desktop and CLI construct the production Todo store through `Store::shared()`, retaining ICS in
-`dirs::data_dir()/me.you-find.vesper/ics` while the database uses local application data.
-Manual tasks expose one top-level description independently of imported calendar metadata. Editing
-changes only title and description; imported content stays source-owned. Desktop defers Todo reads
-until an in-flight mutation finishes, then reloads the latest selected date.
-Desktop mutations notify the other trusted WebView so the main window and native island refresh.
-The Todo crate also owns the `check_ins` table and daily streak projection. A stable widget placement
-ID identifies one habit; layout reorder/save and application restart retain its records. Removing and
-adding a widget creates a new habit ID; old records are retained without being reassigned by name.
-Rust validates today's local date inside the write transaction, deduplicates each day's check-in,
-and returns totals, an ongoing streak (including yesterday when today is unfinished), and 28 days.
-Check-in views refresh on mount, focus, once per minute and on cross-window events; writes defer reads.
+`crates/todo` owns dated tasks, local habit records, ICS parsing, and Notion calendar projection.
+Svelte renders Calendar, Todo, and daily habits in one Planner placement. The layout stores each
+habit's stable ID and name; existing Calendar, Todo, and Check-in placements are combined on read,
+preserving their relative position, habit IDs, and Dynamic Island selection. The next layout save
+persists that combined representation.
+
+Desktop and CLI construct the production store through `Store::shared()`. Tasks, imported-occurrence
+keys, and `check_ins` records live in the shared local SQLite database. ICS files remain in
+`dirs::data_dir()/me.you-find.vesper/ics`. Imported tasks retain source-owned content and local
+completion/deletion state. Manual edits change title and description without changing date or
+completion. Desktop request generations reject stale date responses and defer reads requested
+during a mutation until the write finishes. Mutations notify the other trusted WebView.
+
+The Notion view link belongs to `crates/credentials`; the official `ntn` CLI owns authentication.
+Rust runs bounded CLI processes and retains one complete view snapshot in memory for five minutes.
+Date selection projects that snapshot into the dated SQLite task list. Explicit synchronization
+bypasses the cache, while configuration saves invalidate it. Calendar reads and configuration
+writes share an in-process gate and cross-process lock, retained through the database commit.
+Failed or incomplete reads preserve the last saved task projection. Provider protocols and refresh
+rules are detailed in [DASHBOARD.md](DASHBOARD.md#calendar-and-todo).
+
+Habit history is keyed by stable habit ID and local date, independently of the selected task date.
+Each write targets one habit and validates today's date inside its transaction. Rust returns the
+completion state, total days, ongoing streak, and last 28 days; yesterday's streak remains active
+until today is missed. Reordering and restarting preserve records. Removing and re-adding a habit
+creates a new ID without deleting or reassigning the old history. The panel reads habits together
+on mount, focus, minute ticks, and cross-window events, deferring reads while a write is pending.
 
 ## CLI consumer surface
 

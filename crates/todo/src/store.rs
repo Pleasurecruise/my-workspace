@@ -42,10 +42,16 @@ struct ItemRow {
     description: Option<String>,
 }
 
+struct CalendarSnapshot {
+    view_url: String,
+    loaded: std::time::Instant,
+    items: Vec<Item>,
+}
+
 pub struct Store {
     path: PathBuf,
     schedule_directory: PathBuf,
-    calendar_read: tokio::sync::Mutex<()>,
+    calendar_read: tokio::sync::Mutex<Option<CalendarSnapshot>>,
 }
 
 impl Store {
@@ -53,7 +59,7 @@ impl Store {
         Self {
             schedule_directory: path.with_file_name("ics"),
             path,
-            calendar_read: tokio::sync::Mutex::new(()),
+            calendar_read: tokio::sync::Mutex::new(None),
         }
     }
 
@@ -176,21 +182,26 @@ impl Store {
         &self,
         configuration: vesper_credentials::NotionCalendar,
     ) -> Result<(), Error> {
-        let _read = self.calendar_read.lock().await;
+        let mut cache = self.calendar_read.lock().await;
         let _file = self.calendar_lock().await?;
         vesper_credentials::save_notion_calendar(configuration)?;
+        *cache = None;
         Ok(())
     }
 
     pub async fn sync_calendar(&self, date: &str) -> Result<List, Error> {
+        self.read_calendar(date, true).await
+    }
+
+    pub async fn read_calendar(&self, date: &str, refresh: bool) -> Result<List, Error> {
         validate_date(date)?;
-        let _read = self.calendar_read.lock().await;
+        let mut cache = self.calendar_read.lock().await;
         let file_guard = self.calendar_lock().await?;
         let result: Result<Vec<Item>, Error> = async {
             let configuration = vesper_credentials::notion_calendar()?;
             let remote = match &configuration {
                 vesper_credentials::Stored::Ready(configuration) => {
-                    crate::notion::read(configuration, date).await?
+                    read_notion(&mut cache, configuration, date, refresh).await?
                 }
                 vesper_credentials::Stored::Missing => Vec::new(),
             };
@@ -483,6 +494,40 @@ impl Store {
         })
         .await
     }
+}
+
+// Own the remote snapshot lifecycle independently of dated SQLite projections.
+async fn read_notion(
+    cache: &mut Option<CalendarSnapshot>,
+    configuration: &vesper_credentials::NotionCalendar,
+    date: &str,
+    refresh: bool,
+) -> Result<Vec<Item>, Error> {
+    let reusable = cache.as_ref().is_some_and(|snapshot| {
+        !refresh
+            && snapshot.view_url == configuration.view_url
+            && snapshot.loaded.elapsed() < std::time::Duration::from_secs(300)
+    });
+    if !reusable {
+        let items = crate::notion::read(configuration).await?;
+        *cache = Some(CalendarSnapshot {
+            view_url: configuration.view_url.clone(),
+            loaded: std::time::Instant::now(),
+            items,
+        });
+    }
+    Ok(cache
+        .as_ref()
+        .into_iter()
+        .flat_map(|snapshot| &snapshot.items)
+        .filter(|item| {
+            item.details.as_ref().is_some_and(|details| {
+                date >= details.start_date.as_str()
+                    && date <= details.end_date.as_deref().unwrap_or(&details.start_date)
+            })
+        })
+        .cloned()
+        .collect())
 }
 
 fn read_list(connection: &mut SqliteConnection, date: &str) -> Result<List, Error> {

@@ -166,7 +166,7 @@
 </section>
 
 <style>
-	.todo { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; height: 16rem; padding: 0.75rem; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-xs); }
+	.todo { box-sizing: border-box; display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; height: 16rem; padding: 0.75rem; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-xs); }
 	.todo-list-view, .todo-detail { flex: 1; display: flex; min-height: 0; height: 100%; flex-direction: column; }
 	.todo.embedded { height: 14rem; }
 	.todo.embedded .todo-heading { display: none; }
@@ -177,7 +177,7 @@
 	.todo.embedded li > input:checked::after { content: ""; display: block; width: 7px; height: 4px; margin: 3px 3px; border-left: 1.5px solid var(--color-accent-foreground); border-bottom: 1.5px solid var(--color-accent-foreground); transform: rotate(-45deg); }
 	.todo.embedded li > input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 	.todo-heading, .todo-heading div, form, li { display: flex; align-items: center; }
-	.todo-heading { justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+	.todo-heading { min-height: 1.75rem; flex: 0 0 auto; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
 	.todo-heading div { gap: 0.4rem; }
 
 	h2 { margin: 0; color: var(--color-muted-foreground); font-size: 0.72rem; font-weight: 500; text-transform: uppercase; }

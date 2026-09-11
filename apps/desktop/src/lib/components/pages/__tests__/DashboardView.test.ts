@@ -16,11 +16,8 @@ vi.mock("svelte", async (original) => ({
 vi.mock("../../dashboard/WidgetContent.svelte", () => ({ default: () => {} }));
 beforeEach(() => invoke.mockReset());
 
-it("adds named check-ins from Personal, rejects duplicates, and retains the form after a failed save", async () => {
-	const initial: WidgetLayout = {
-		widgets: [{ id: "check-in-read", widget: { kind: "checkIn", name: "Read" } }],
-		islandWidgetId: "check-in-read",
-	};
+it("offers one planner in System Status without a Personal category", async () => {
+	const initial: WidgetLayout = { widgets: [], islandWidgetId: null };
 	invoke.mockResolvedValueOnce({ status: "ready", data: initial });
 	const layoutSession = createLayoutSession();
 	await layoutSession.load();
@@ -28,57 +25,26 @@ it("adds named check-ins from Personal, rejects duplicates, and retains the form
 	const target = document.createElement("div");
 	document.body.append(target);
 	const view = mount(DashboardView, { target, props: { session, layoutSession } });
-	function click(selector: string) {
-		const button = target.querySelector<HTMLButtonElement>(selector);
-		if (button === null) throw new Error(`Missing ${selector}`);
-		button.click();
-	}
 	try {
 		await tick();
-		click('button[aria-label="Edit dashboard"]');
+		target.querySelector<HTMLButtonElement>('button[aria-label="Edit dashboard"]')?.click();
 		await tick();
-		click(".add-widget-button");
+		target.querySelector<HTMLButtonElement>(".add-widget-button")?.click();
 		await tick();
-		const personal = Array.from(target.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Personal",
-		);
-		if (personal === undefined) throw new Error("Personal category is missing");
-		personal.click();
+		expect(target.querySelector(".category-list")?.textContent).not.toContain("Personal");
+		const planner = Array.from(
+			target.querySelectorAll<HTMLButtonElement>(".widget-list button"),
+		).find((button) => button.textContent?.includes("Daily Planner"));
+		if (!planner) throw new Error("Planner is missing");
+		planner.click();
 		await tick();
-		expect(target.textContent).toContain("Check-in");
-		const input = target.querySelector<HTMLInputElement>(
-			'input[placeholder="For example: Read for 20 minutes"]',
-		);
-		if (input === null) throw new Error("Check-in name input is missing");
-		click(".library-footer .primary-button");
-		await tick();
-		expect(target.textContent).toContain("Enter something you want to do each day");
-		input.value = "read";
-		input.dispatchEvent(new Event("input", { bubbles: true }));
-		click(".library-footer .primary-button");
-		await tick();
-		expect(target.textContent).toContain("This check-in is already on the Dashboard");
-		expect(invoke).toHaveBeenCalledTimes(1);
-		input.value = "  Walk  ";
-		input.dispatchEvent(new Event("input", { bubbles: true }));
-		invoke.mockResolvedValueOnce({ status: "failed", message: "Storage unavailable" });
-		click(".library-footer .primary-button");
-		await tick();
-		await tick();
-		expect(input.value).toBe("  Walk  ");
-		expect(target.textContent).toContain("Storage unavailable");
-		expect(layoutSession.layout?.widgets).toHaveLength(1);
 		invoke.mockResolvedValueOnce({ status: "ready", data: null });
-		click(".library-footer .primary-button");
+		target.querySelector<HTMLButtonElement>(".library-footer .primary-button")?.click();
 		await tick();
 		await tick();
-		expect(layoutSession.layout?.islandWidgetId).toBe("check-in-read");
-		expect(layoutSession.layout?.widgets).toHaveLength(2);
-		expect(layoutSession.layout?.widgets[1]).toEqual({
-			id: expect.stringMatching(/^check-in-/),
-			widget: { kind: "checkIn", name: "Walk" },
-		});
-		await vi.waitFor(() => expect(target.querySelector(".library-footer")).toBeNull());
+		expect(layoutSession.layout?.widgets).toEqual([
+			{ id: "planner", widget: { kind: "planner", habits: [] } },
+		]);
 	} finally {
 		await unmount(view);
 		target.remove();

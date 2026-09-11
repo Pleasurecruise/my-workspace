@@ -133,8 +133,8 @@ importers:
   apps/desktop:
     dependencies:
       '@lucide/svelte':
-        specifier: 1.43.0
-        version: 1.43.0(svelte@5.57.0)
+        specifier: 1.44.0
+        version: 1.44.0(svelte@5.57.0)
       '@my-workspace/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -173,8 +173,8 @@ importers:
         specifier: 2.11.4
         version: 2.11.4
       happy-dom:
-        specifier: 20.14.0
-        version: 20.14.0
+        specifier: 20.14.3
+        version: 20.14.3
       svelte:
         specifier: 5.57.0
         version: 5.57.0
@@ -259,8 +259,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@lucide/svelte@1.43.0':
-    resolution: {integrity: sha512-IfxS4hVxojnafzFKkQGzndoM6yUODmGc07I0h6R/1SlwDoZwd/5gl90zHz+fTaBVLZo7uE5sPDySFGiK4iMQKw==}
+  '@lucide/svelte@1.44.0':
+    resolution: {integrity: sha512-67510ne/YowceSyN9BECQaWfp5Ed446X6xpUE5C0e4rRV0e1jRj1KzIlKJCXcGc21hgr/VBDkqQXY7v4VQDeBw==}
     peerDependencies:
       svelte: ^5
 
@@ -1546,6 +1546,10 @@ packages:
     resolution: {integrity: sha512-4bRh1KzRvKDnFNTlLhzT1RZTpkKhQbQDl9j+7GXszWsvuspYdo29k6OHRf4PwiM6oLb8r/pMWeYiJjkfod5AvQ==}
     engines: {node: '>=20.0.0'}
 
+  happy-dom@20.14.3:
+    resolution: {integrity: sha512-0KMb/Eh8rsd+aMNkOk5h8LkAjo9Na1aksnEGmsuZf+GXl6UkAdIi0VbUHU7d59lXhNmawODgwwuCMiZpCxwwCw==}
+    engines: {node: '>=20.0.0'}
+
   has-flag@4.0.0:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
@@ -2162,7 +2166,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@lucide/svelte@1.43.0(svelte@5.57.0)':
+  '@lucide/svelte@1.44.0(svelte@5.57.0)':
     dependencies:
       svelte: 5.57.0
 
@@ -3024,6 +3028,20 @@ snapshots:
   graceful-fs@4.2.11: {}
 
   happy-dom@20.14.0:
+    dependencies:
+      '@types/node': 26.4.1
+      '@types/whatwg-mimetype': 3.0.2
+      '@types/ws': 8.18.1
+      buffer-image-size: 0.6.4
+      entities: 7.0.1
+      whatwg-mimetype: 3.0.0
+      ws: 8.21.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+    optional: true
+
+  happy-dom@20.14.3:
     dependencies:
       '@types/node': 26.4.1
       '@types/whatwg-mimetype': 3.0.2

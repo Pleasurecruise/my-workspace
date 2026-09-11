@@ -22,7 +22,10 @@ beforeEach(() => {
 		if (command === "read_layout")
 			return {
 				status: "ready",
-				data: { widgets: [{ id: "todo", widget: { kind: "todoList" } }], islandWidgetId: "todo" },
+				data: {
+					widgets: [{ id: "todo", widget: { kind: "planner", habits: [] } }],
+					islandWidgetId: "todo",
+				},
 			};
 		if (command === "island_available") return true;
 		if (command === "set_island_expanded")

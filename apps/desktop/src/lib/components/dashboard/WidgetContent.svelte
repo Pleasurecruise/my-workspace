@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { Cpu, Database, MemoryStick, Network } from "@lucide/svelte";
-	import type { WidgetPlacement, ServiceStatusCatalogEntry } from "../../consumer";
+	import type { Habit, WidgetPlacement, ServiceStatusCatalogEntry } from "../../consumer";
 	import type { createDashboardSession } from "./session.svelte";
 	import GithubPanel from "./GithubPanel.svelte";
 	import ExchangePanel from "./ExchangePanel.svelte";
 	import ServiceStatusPanel from "./ServiceStatusPanel.svelte";
 	import StocksPanel from "./StocksPanel.svelte";
 	import StoragePanel from "./StoragePanel.svelte";
-	import CheckInPanel from "./CheckInPanel.svelte";
+	import HabitsPanel from "./HabitsPanel.svelte";
 	import Todo from "./Todo.svelte";
 	import CalendarPanel from "./CalendarPanel.svelte";
 	import QuotationPanel from "./QuotationPanel.svelte";
@@ -15,11 +15,12 @@
 	import WeatherPanel from "./WeatherPanel.svelte";
 	import GamePanel from "../games/GamePanel.svelte";
 	import SteamGamesPanel from "../games/SteamGamesPanel.svelte";
-	let { placement, session, serviceCatalog, embedded = false }: {
+	let { placement, session, serviceCatalog, embedded = false, onhabitschange = null }: {
 		placement: WidgetPlacement;
 		session: ReturnType<typeof createDashboardSession>;
 		serviceCatalog: ServiceStatusCatalogEntry[];
 		embedded?: boolean;
+		onhabitschange?: ((habits: Habit[]) => Promise<boolean>) | null;
 	} = $props();
 	const kind = $derived(placement.widget.kind);
 	const snapshot = $derived(session.dashboard.taskManager.data);
@@ -147,12 +148,12 @@
 						<ServiceStatusPanel report={serviceStatus} catalog={serviceCatalog} serviceId={placement.widget.serviceId} error={serviceStatusError} />
 					{:else if kind === "github"}
 						<GithubPanel {github} error={githubError} />
-					{:else if kind === "calendar"}
-						<CalendarPanel {todayDate} selectedDate={todoDate} loading={todosLoading} onselect={onselecttododate} />
-					{:else if placement.widget.kind === "checkIn"}
-						<CheckInPanel id={placement.id} name={placement.widget.name} {embedded} />
-					{:else if kind === "todoList"}
-						<Todo {embedded} {todos} error={todosError} loading={todosLoading} selectedDate={todoDate} onadd={onaddtodo} onedit={session.editTodo} ontoggle={ontoggletodo} ondelete={ondeletetodo} />
+					{:else if placement.widget.kind === "planner"}
+						<section class="planner" class:compact={embedded} aria-label="Daily Planner">
+							<div class="planner-calendar"><CalendarPanel {todayDate} selectedDate={todoDate} loading={todosLoading} onselect={onselecttododate} /></div>
+							<div class="planner-todos"><Todo {embedded} {todos} error={todosError} loading={todosLoading} selectedDate={todoDate} onadd={onaddtodo} onedit={session.editTodo} ontoggle={ontoggletodo} ondelete={ondeletetodo} /></div>
+							<HabitsPanel habits={placement.widget.habits} onchange={onhabitschange} />
+						</section>
 					{:else if kind === "codex" || kind === "openCode" || kind === "claude" || kind === "grok" || kind === "copilot" || kind === "deepSeek" || kind === "cherryIn"}
 						<UsagePanel provider={kind} codex={usage} codexError={usageError} openCode={openCodeUsage} openCodeError={openCodeUsageError} claude={claudeUsage} claudeError={claudeUsageError} grok={grokUsage} grokError={grokUsageError} copilot={copilotUsage} copilotError={copilotUsageError} deepSeek={deepSeekBalance} deepSeekError={deepSeekBalanceError} cherryIn={cherryInUsage} cherryInError={cherryInUsageError} />
 					{:else if kind === "quotation"}
@@ -164,6 +165,12 @@
 					{/if}
 </div>
 <style>
+	.planner { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr) minmax(0, 1.2fr); overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-xs); }
+	.planner > div { min-width: 0; border-right: 1px solid var(--color-border); }
+	.planner > div > :global(section) { border: 0; box-shadow: none; border-radius: 0; margin: 0; }
+	.planner.compact { grid-template-columns: 1fr; max-height: 32rem; overflow-y: auto; }
+	.planner.compact > div { border-right: 0; border-bottom: 1px solid var(--color-border); }
+
 	.widget-content { display: flex; width: 100%; min-width: 0; }
 	.widget-content.embedded > :global(section), .widget-content.embedded > :global(article) { border: 0; padding: 0; background: transparent; box-shadow: none; }
 	.widget-content > :global(section), .widget-content > :global(article) { width: 100%; box-sizing: border-box; margin-top: 0; }

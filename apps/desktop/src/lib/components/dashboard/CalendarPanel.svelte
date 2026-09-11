@@ -27,7 +27,7 @@
 	.calendar-panel { width: 100%; min-width: 0; box-sizing: border-box; padding: 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-xs); }
 	header,
 	header div { display: flex; align-items: center; }
-	header { justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+	header { min-height: 1.75rem; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
 	header div { gap: 0.4rem; }
 
 	h2 { margin: 0; color: var(--color-muted-foreground); font-size: 0.72rem; font-weight: 500; text-transform: uppercase; }

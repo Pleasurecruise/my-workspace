@@ -124,7 +124,7 @@ it("passes Todo descriptions and ignores an edit response after date navigation"
 	expect(session.todos.error).toBe("Database unavailable");
 });
 
-it("defers same-date refreshes until an edit commits", async () => {
+it("retains an explicit Notion refresh requested during an edit", async () => {
 	const session = createDashboardSession(() => false, "island");
 	const before: TodoList = {
 		date: "2026-09-10",
@@ -151,13 +151,14 @@ it("defers same-date refreshes until an edit commits", async () => {
 		.mockReturnValueOnce(pending.promise)
 		.mockResolvedValueOnce({ status: "ready", data: after });
 	const edit = session.editTodo("read", "Read more", "Chapter two");
-	await session.loadTodos(before.date);
+	await session.loadTodos(before.date, true);
 	await session.loadTodos(before.date);
 	expect(invoke).toHaveBeenCalledTimes(2);
 	pending.resolve({ status: "ready", data: after });
 	expect(await edit).toBe(true);
 	await Promise.resolve();
 	expect(invoke).toHaveBeenCalledTimes(3);
+	expect(invoke).toHaveBeenLastCalledWith("read_todos", { date: before.date, refresh: true });
 	expect(session.todos.data?.items[0]?.description).toBe("Chapter two");
 	expect(session.todos.data?.items[0]?.completed).toBe(true);
 });

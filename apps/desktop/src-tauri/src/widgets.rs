@@ -24,6 +24,13 @@ diesel::table! {
 mod game_tests;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Habit {
+    id: String,
+    name: String,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) enum Widget {
     Cpu,
@@ -46,6 +53,9 @@ pub(crate) enum Widget {
         service_id: String,
     },
     Github,
+    Planner {
+        habits: Vec<Habit>,
+    },
     Calendar,
     TodoList,
     CheckIn {
@@ -158,8 +168,7 @@ impl Default for Layout {
                 },
             ),
             ("github", Widget::Github),
-            ("calendar", Widget::Calendar),
-            ("todo-list", Widget::TodoList),
+            ("todo-list", Widget::Planner { habits: Vec::new() }),
             ("codex", Widget::Codex),
             ("open-code", Widget::OpenCode),
             ("deep-seek", Widget::DeepSeek),
@@ -179,6 +188,54 @@ impl Default for Layout {
 }
 
 impl Layout {
+    fn merge_planner(&mut self) {
+        let Some(first) = self.widgets.iter().position(|p| {
+            matches!(
+                p.widget,
+                Widget::Planner { .. }
+                    | Widget::Calendar
+                    | Widget::TodoList
+                    | Widget::CheckIn { .. }
+            )
+        }) else {
+            return;
+        };
+        let id = self.widgets[first].id.clone();
+        let mut habits = Vec::new();
+        let mut selected = false;
+        self.widgets.retain(|p| {
+            let merged = matches!(
+                p.widget,
+                Widget::Planner { .. }
+                    | Widget::Calendar
+                    | Widget::TodoList
+                    | Widget::CheckIn { .. }
+            );
+            if merged {
+                selected |= self.island_widget_id.as_ref() == Some(&p.id);
+                match &p.widget {
+                    Widget::Planner { habits: saved } => habits.extend(saved.clone()),
+                    Widget::CheckIn { name } => habits.push(Habit {
+                        id: p.id.clone(),
+                        name: name.clone(),
+                    }),
+                    _ => {}
+                }
+            }
+            !merged
+        });
+        if selected {
+            self.island_widget_id = Some(id.clone());
+        }
+        self.widgets.insert(
+            first,
+            Placement {
+                id,
+                widget: Widget::Planner { habits },
+            },
+        );
+    }
+
     fn validate(&self) -> Result<(), String> {
         if self
             .island_widget_id
@@ -199,6 +256,21 @@ impl Layout {
             match &placement.widget {
                 Widget::Stock { symbol } if !valid_stock_symbol(symbol) => {
                     return Err("Dashboard stock symbol is invalid".to_owned());
+                }
+                Widget::Planner { habits } => {
+                    let mut names = HashSet::new();
+                    let mut habit_ids = HashSet::new();
+                    for habit in habits {
+                        if !valid_widget_id(&habit.id)
+                            || !habit_ids.insert(&habit.id)
+                            || habit.name.trim() != habit.name
+                            || habit.name.chars().any(char::is_control)
+                            || !(1..=120).contains(&habit.name.chars().count())
+                            || !names.insert(habit.name.to_lowercase())
+                        {
+                            return Err("Habit names and IDs must be valid and unique".into());
+                        }
+                    }
                 }
                 Widget::CheckIn { name } => {
                     if name.trim() != name || name.chars().any(char::is_control) {
@@ -245,6 +317,7 @@ impl Layout {
                 Widget::Exchange => "exchange".to_owned(),
                 Widget::ServiceStatus { service_id } => format!("service-status-{service_id}"),
                 Widget::Github => "github".to_owned(),
+                Widget::Planner { .. } => "planner".to_owned(),
                 Widget::Calendar => "calendar".to_owned(),
                 Widget::TodoList => "todo-list".to_owned(),
                 Widget::CheckIn { name } => format!("check-in-{}", name.to_lowercase()),
@@ -334,10 +407,12 @@ fn read(path: &Path) -> Result<Layout, String> {
                         })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let layout = Layout {
+            let mut layout = Layout {
                 widgets,
                 island_widget_id,
             };
+            layout.validate()?;
+            layout.merge_planner();
             layout.validate()?;
             Ok(layout)
         })
@@ -546,7 +621,10 @@ mod tests {
         write(&path, &layout).unwrap();
         let restored = read(&path).unwrap();
         restored.validate().unwrap();
-        assert!(matches!(&restored.widgets[0].widget, Widget::CheckIn { name } if name == "Read"));
+        assert!(
+            matches!(&restored.widgets[0].widget, Widget::Planner { habits } if habits.len() == 2 && habits[0].id == "check-in-read" && habits[1].id == "check-in-walk")
+        );
+        assert_eq!(restored.island_widget_id.as_deref(), Some("check-in-read"));
         layout.widgets[1].widget = Widget::CheckIn {
             name: "READ".to_owned(),
         };
@@ -557,6 +635,39 @@ mod tests {
             };
             assert!(layout.validate().is_err());
         }
+    }
+
+    #[tokio::test]
+    async fn planner_migration_preserves_order_pin_and_habit_history() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(vesper_database::FILE_NAME);
+        let layout: Layout = serde_json::from_str(r#"{"widgets":[{"id":"cpu","widget":{"kind":"localCpu"}},{"id":"calendar","widget":{"kind":"calendar"}},{"id":"github","widget":{"kind":"github"}},{"id":"read","widget":{"kind":"checkIn","name":"Read"}},{"id":"todo","widget":{"kind":"todoList"}}],"islandWidgetId":"read"}"#).unwrap();
+        let store = todo_core::Store::new(path.clone());
+        store
+            .set_check_in("read", &todo_core::current_date().unwrap(), true)
+            .await
+            .unwrap();
+        write(&path, &layout).unwrap();
+        let migrated = read(&path).unwrap();
+        assert_eq!(
+            migrated
+                .widgets
+                .iter()
+                .map(|p| p.id.as_str())
+                .collect::<Vec<_>>(),
+            ["cpu", "calendar", "github"]
+        );
+        assert_eq!(migrated.island_widget_id.as_deref(), Some("calendar"));
+        let Widget::Planner { habits } = &migrated.widgets[1].widget else {
+            panic!("Expected Planner")
+        };
+        assert_eq!(habits[0].id, "read");
+        assert_eq!(store.read_check_in(&habits[0].id).await.unwrap().total, 1);
+        write(&path, &migrated).unwrap();
+        assert_eq!(
+            serde_json::to_value(read(&path).unwrap()).unwrap(),
+            serde_json::to_value(migrated).unwrap()
+        );
     }
 
     #[test]
@@ -657,7 +768,7 @@ mod tests {
         let mut layout = Layout::default();
         assert!(layout.widgets.iter().any(|placement| Some(&placement.id)
             == layout.island_widget_id.as_ref()
-            && matches!(placement.widget, Widget::TodoList)));
+            && matches!(placement.widget, Widget::Planner { .. })));
         layout.island_widget_id = Some("absent".to_owned());
         assert!(layout.validate().is_err());
         layout.island_widget_id = None;

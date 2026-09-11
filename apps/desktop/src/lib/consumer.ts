@@ -484,9 +484,7 @@ export type WidgetKind =
 	| "exchange"
 	| "serviceStatus"
 	| "github"
-	| "calendar"
-	| "todoList"
-	| "checkIn"
+	| "planner"
 	| "codex"
 	| "openCode"
 	| "claude"
@@ -502,13 +500,13 @@ export interface WidgetPlacement {
 	id: string;
 	widget:
 		| {
-				kind: Exclude<WidgetKind, "weather" | "stock" | "serviceStatus" | "game" | "checkIn">;
+				kind: Exclude<WidgetKind, "weather" | "stock" | "serviceStatus" | "game" | "planner">;
 		  }
 		| { kind: "game"; game: Game }
 		| { kind: "weather"; location: WeatherLocation }
 		| { kind: "stock"; symbol: string }
 		| { kind: "serviceStatus"; serviceId: string }
-		| { kind: "checkIn"; name: string };
+		| { kind: "planner"; habits: Habit[] };
 }
 
 export interface WidgetLayout {
@@ -761,4 +759,9 @@ export interface CheckIn {
 	streak: number;
 	total: number;
 	days: Array<{ date: string; completed: boolean }>;
+}
+
+export interface Habit {
+	id: string;
+	name: string;
 }

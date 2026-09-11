@@ -28,6 +28,17 @@ pub struct Day {
 }
 
 impl Store {
+    pub async fn read_check_ins(&self, ids: Vec<String>) -> Result<Vec<CheckIn>, Error> {
+        for id in &ids {
+            validate_id(id)?;
+        }
+        self.transaction(move |connection| {
+            let date = crate::current_date()?;
+            ids.iter().map(|id| read(connection, id, &date)).collect()
+        })
+        .await
+    }
+
     pub async fn read_check_in(&self, id: &str) -> Result<CheckIn, Error> {
         validate_id(id)?;
         let id = id.to_owned();

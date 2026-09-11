@@ -4,9 +4,14 @@ use tauri::{Emitter, Manager};
 #[tauri::command]
 pub(crate) async fn read_todos(
     date: String,
+    refresh: Option<bool>,
     app: tauri::AppHandle,
 ) -> CommandResponse<todo_core::List> {
-    match app.state::<todo_core::Store>().sync_calendar(&date).await {
+    match app
+        .state::<todo_core::Store>()
+        .read_calendar(&date, refresh.unwrap_or(false))
+        .await
+    {
         Ok(data) => CommandResponse::Ready { data },
         Err(error) => CommandResponse::Failed {
             message: error.to_string(),
@@ -143,6 +148,19 @@ pub(crate) async fn set_check_in(
             let _ = app.emit("check-in-updated", &id);
             CommandResponse::Ready { data }
         }
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn read_check_ins(
+    ids: Vec<String>,
+    app: tauri::AppHandle,
+) -> CommandResponse<Vec<todo_core::CheckIn>> {
+    match app.state::<todo_core::Store>().read_check_ins(ids).await {
+        Ok(data) => CommandResponse::Ready { data },
         Err(error) => CommandResponse::Failed {
             message: error.to_string(),
         },

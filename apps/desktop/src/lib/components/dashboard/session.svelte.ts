@@ -38,6 +38,7 @@ export function createDashboardSession(
 	let todoDate = $state(initialTodoDate);
 	let todoRequest = 0;
 	let todoInvalidated = false;
+	let todoRefreshRequested = false;
 	let todoWriting = false;
 	let todoWriteError: string | null = null;
 	async function refreshDashboard(refreshGames = false) {
@@ -50,7 +51,7 @@ export function createDashboardSession(
 		}
 		const [response] = await Promise.all([
 			invoke<CommandResponse<null>>("refresh_dashboard", { refreshGames }),
-			loadTodos(todoDate),
+			loadTodos(todoDate, refreshGames),
 		]);
 		if (version !== dashboardRequest) return;
 		if (response.status === "failed") {
@@ -62,7 +63,8 @@ export function createDashboardSession(
 		dashboardRefreshing = false;
 	}
 
-	async function loadTodos(date = todoDate) {
+	async function loadTodos(date = todoDate, refresh = false) {
+		todoRefreshRequested ||= refresh;
 		if (date !== todoDate) todoWriteError = null;
 		if (todoWriting) {
 			todoDate = date;
@@ -74,7 +76,12 @@ export function createDashboardSession(
 		todoDate = date;
 		todos.loading = true;
 		todos.error = todoWriteError;
-		const response = await invoke<CommandResponse<TodoList>>("read_todos", { date });
+		const forceRefresh = todoRefreshRequested;
+		todoRefreshRequested = false;
+		const response = await invoke<CommandResponse<TodoList>>(
+			"read_todos",
+			forceRefresh ? { date, refresh: true } : { date },
+		);
 		if (version !== todoRequest) return;
 		todos.loading = false;
 		if (todoInvalidated) {
