@@ -70,7 +70,7 @@ pub enum BuildError {
     },
     Markdown {
         path: PathBuf,
-        source: md_dialect::PublicationError,
+        source: crate::markdown::PublicationError,
     },
     Serialize(serde_json::Error),
 }
@@ -231,7 +231,7 @@ async fn compile_directory(
         }
         if markdown {
             let source = io(&path, fs::read_to_string(&path))?;
-            let html = md_dialect::render_publication_enriched(&source)
+            let html = crate::markdown::render_publication_enriched(&source)
                 .await
                 .map_err(|source| BuildError::Markdown {
                     path: path.clone(),

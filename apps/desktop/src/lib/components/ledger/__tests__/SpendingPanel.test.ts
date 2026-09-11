@@ -14,7 +14,15 @@ beforeEach(() => {
 const data: ExpenseSnapshot = {
 	date: "2026-09-11",
 	month: "2026-09",
-	entries: [{ id: "lunch", date: "2026-09-11", amountPence: 1234, category: "Dining" }],
+	entries: [
+		{
+			id: "lunch",
+			date: "2026-09-11",
+			amountPence: 1234,
+			category: "Dining",
+			description: "Lunch with friends",
+		},
+	],
 	dayTotalPence: 1234,
 	monthTotalPence: 2000,
 	categories: [
@@ -94,7 +102,7 @@ it("renders monthly charts without a native picker or refresh button", async () 
 	}
 });
 
-it("submits only amount and category for the selected day and preserves edits made during save", async () => {
+it("submits an optional note and preserves note edits made during save", async () => {
 	let finish: (value: CommandResponse<ExpenseSnapshot>) => void = () => {
 		throw new Error("Not initialized");
 	};
@@ -113,6 +121,7 @@ it("submits only amount and category for the selected day and preserves edits ma
 		await vi.waitFor(() => expect(target.querySelectorAll("circle")).toHaveLength(2));
 		await input(target, "Expense amount in GBP", "4.56");
 		await input(target, "Expense category", "Coffee");
+		await input(target, "Expense note", "Oat latte");
 		await tick();
 		target.querySelector("form")?.dispatchEvent(new Event("submit", { cancelable: true }));
 		await vi.waitFor(() =>
@@ -120,15 +129,16 @@ it("submits only amount and category for the selected day and preserves edits ma
 				date: data.date,
 				amount: "4.56",
 				category: "Coffee",
+				description: "Oat latte",
 			}),
 		);
 		expect(target.querySelector<HTMLButtonElement>('[type="submit"]')?.disabled).toBe(true);
-		const field = await input(target, "Expense amount in GBP", "9.99");
+		const field = await input(target, "Expense note", "Next coffee");
 		finish({ status: "ready", data });
 		await vi.waitFor(() =>
 			expect(target.querySelector<HTMLButtonElement>('[type="submit"]')?.disabled).toBe(false),
 		);
-		expect(field.value).toBe("9.99");
+		expect(field.value).toBe("Next coffee");
 	} finally {
 		finish({ status: "ready", data });
 		await unmount(view);
@@ -171,6 +181,7 @@ it("edits and deletes entries, updates the chart, and reports failed saves", asy
 			id: "lunch",
 			amount: "12.345",
 			category: "Dining",
+			description: "Lunch with friends",
 		});
 		target.querySelector<HTMLButtonElement>('[title="Delete expense"]')?.click();
 		await vi.waitFor(() => expect(target.textContent).toContain("No spending this month"));

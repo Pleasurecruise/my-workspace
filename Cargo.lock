@@ -1198,9 +1198,12 @@ dependencies = [
  "futures-util",
  "linkify",
  "md-dialect",
+ "mermaid-svg",
  "pulldown-cmark",
  "serde",
  "serde_json",
+ "syntect",
+ "thiserror 2.0.20",
  "tokio",
  "vesper-credentials",
 ]
@@ -1246,7 +1249,6 @@ dependencies = [
  "hex",
  "image",
  "kamadak-exif",
- "md-dialect",
  "reqwest 0.13.5",
  "serde",
  "serde_json",
@@ -4144,12 +4146,9 @@ name = "md-dialect"
 version = "0.1.0"
 dependencies = [
  "futures-util",
- "mermaid-svg",
  "pulldown-cmark",
  "quotes",
- "serde",
  "svg-hush",
- "syntect",
  "thiserror 2.0.20",
 ]
 

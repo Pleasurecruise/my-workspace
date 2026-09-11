@@ -94,8 +94,10 @@ happen automatically and need no separate refresh control.
 
 Spending is a separate full-width card linked to the Calendar date. Its header provides
 previous/next-day navigation and Today. The left column holds the day's total, a compact GBP amount
-and category form, and a scrolling list with edit/delete actions. Categories use the shared Select;
-Custom category reveals a text input. There is no second calendar or refresh control.
+and category form, and a scrolling list with edit/delete actions. Categories use the shared Select in its compact size, matching the amount input’s 2rem height,
+font, and padding. Custom category and optional note fields span the next rows; saved notes appear
+below each entry’s category. The shared Select keeps its focused option visible during keyboard
+navigation and handles empty or disabled option lists. There is no second calendar or refresh control.
 
 The right column shows the monthly total and switchable category donut or daily bars in a fixed
 9rem chart region. Chart changes preserve drafts and card height. Read-only bars expose dates and
@@ -280,6 +282,9 @@ controls are hidden until the sidebar expands. Navigation buttons
 keep accessible names and hover titles, and the profile editor opens beside the compact rail.
 Arrow keys resize in 8px steps; Home and End select the minimum and maximum widths. Mobile keeps
 the full-width labeled drawer regardless of the saved desktop width.
+Profile editing and updater presentation each own their complete interaction state in layout
+components; the shell owns sidebar sizing, navigation and modal exclusion.
+
 The footer separates destinations from immediate actions
 without a visual divider: Inbox remains a destination and shows a small status dot while unread
 notifications exist, while App Lock and theme are immediate actions.
@@ -296,6 +301,10 @@ Category buttons use compact insets and name each section without repeating a se
 Category switches keep forms mounted to preserve drafts and pending operations. Settings and game
 connections share one ConfigurationBadge treatment for configured credentials, environment sources,
 and authorization state.
+
+QQ Music connection owns its QR dialog and pending login lifecycle. Closing or leaving Settings
+invalidates pending QR responses and clears its timer; a late result cannot dismiss a newer dialog.
+Settings accepts only the latest configuration read.
 
 Each credential form tracks its own saved values and pending operation. Save is enabled only when
 required fields are complete and the form differs from its saved values. Saving one form leaves

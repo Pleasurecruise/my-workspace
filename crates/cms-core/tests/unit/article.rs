@@ -1,11 +1,11 @@
 use super::*;
 
 fn render_publication(source: &str) -> Result<String, PublicationError> {
-    render_publication_with(source, &embed::Data::default())
+    render_publication_with(source, &EmbedData::default())
 }
 
 fn compile_knowledge(source: &str) -> Result<CompiledKnowledge, EmbedError> {
-    compile_knowledge_with(source, &embed::Data::default())
+    compile_knowledge_with(source, &EmbedData::default())
 }
 
 #[test]

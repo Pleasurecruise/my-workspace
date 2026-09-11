@@ -8,7 +8,7 @@ async fn dated_expenses() {
         &store,
         "2024-02-29",
         "create",
-        &["12.34".into(), "Coffee shop".into()],
+        &["12.34".into(), "Coffee shop".into(), "Oat latte".into()],
     )
     .await
     .unwrap();
@@ -26,6 +26,16 @@ async fn dated_expenses() {
     .await
     .unwrap();
     assert_eq!(edited.entries[0].category, "Dining");
+    assert_eq!(edited.entries[0].description.as_deref(), Some("Oat latte"));
+    let cleared = execute(
+        &store,
+        "2024-02-29",
+        "update",
+        &[id.clone(), "2.01".into(), "Dining".into(), "".into()],
+    )
+    .await
+    .unwrap();
+    assert_eq!(cleared.entries[0].description, None);
     let month = execute(&store, "2024-02-01", "list", &[]).await.unwrap();
     assert!(month.entries.is_empty());
     assert_eq!(month.month_total_pence, 201);

@@ -775,6 +775,7 @@ export interface Habit {
 }
 
 export interface ExpenseEntry {
+	description: string | null;
 	id: string;
 	date: string;
 	amountPence: number;

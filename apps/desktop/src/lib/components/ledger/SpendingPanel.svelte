@@ -10,6 +10,7 @@
 	let chart = $state<"categories" | "daily">("categories");
 	let amount = $state("");
 	let category = $state("");
+	let description = $state("");
 	let editingId = $state<string | null>(null);
 	let draftDate = "";
 	const snapshot = $derived(ledger.data?.date === selectedDate ? ledger.data : null);
@@ -32,7 +33,7 @@
 	$effect(() => {
 		const date = selectedDate;
 		untrack(() => {
-			if (draftDate !== date) { draftDate = date; amount = ""; category = ""; editingId = null; custom = false; }
+			if (draftDate !== date) { draftDate = date; amount = ""; category = ""; description = ""; editingId = null; custom = false; }
 			void ledger.load(date);
 		});
 	});
@@ -40,10 +41,10 @@
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
 		if (!amount.trim() || !category.trim() || ledger.loading) return;
-		const submitted = { date: selectedDate, id: editingId, amount, category };
-		const saved = await ledger.save(submitted.id, submitted.amount, submitted.category);
-		if (saved && selectedDate === submitted.date && editingId === submitted.id && amount === submitted.amount && category === submitted.category) {
-			amount = ""; category = ""; editingId = null; custom = false;
+		const submitted = { date: selectedDate, id: editingId, amount, category, description };
+		const saved = await ledger.save(submitted.id, submitted.amount, submitted.category, submitted.description || null);
+		if (saved && selectedDate === submitted.date && editingId === submitted.id && amount === submitted.amount && category === submitted.category && description === submitted.description) {
+			amount = ""; category = ""; description = ""; editingId = null; custom = false;
 		}
 	}
 
@@ -58,6 +59,7 @@
 		custom = false;
 		amount = (entry.amountPence / 100).toFixed(2);
 		category = entry.category;
+		description = entry.description === null ? "" : entry.description;
 	}
 </script>
 
@@ -73,16 +75,18 @@
 			<div class="daily-total"><span>Selected day</span><strong>{snapshot === null ? "—" : currency.format(snapshot.dayTotalPence / 100)}</strong></div>
 			<form onsubmit={save} aria-label={editingId === null ? "New expense" : "Edit expense"}>
 				<label>Amount (£)<input aria-label="Expense amount in GBP" type="text" inputmode="decimal" placeholder="0.00" pattern={"[0-9]+(\\.[0-9]{1,2})?"} maxlength="16" required bind:value={amount} /></label>
-				<div class="category-field"><span>Category</span><Select label="Expense category" value={custom ? "custom" : category ? `category:${category}` : ""} {options} onchange={(value: string) => { custom = value === "custom"; category = custom ? "" : value.slice(9); }} />{#if custom}<input aria-label="Custom expense category" placeholder="Category name" maxlength="40" required bind:value={category} />{/if}</div>
+				<div class="category-field"><span>Category</span><Select size="compact" label="Expense category" value={custom ? "custom" : category ? `category:${category}` : ""} {options} onchange={(value: string) => { custom = value === "custom"; category = custom ? "" : value.slice(9); }} /></div>
 				<div class="form-actions">
-					{#if editingId !== null}<button type="button" disabled={ledger.writing} onclick={() => { editingId = null; custom = false; amount = ""; category = ""; }}><X size={14} />Cancel</button>{/if}
+					{#if editingId !== null}<button type="button" disabled={ledger.writing} onclick={() => { editingId = null; custom = false; amount = ""; category = ""; description = ""; }}><X size={14} />Cancel</button>{/if}
 					<button class="primary" aria-label={editingId === null ? "Add expense" : "Save expense"} title={editingId === null ? "Add expense" : "Save expense"} type="submit" disabled={ledger.loading || !amount.trim() || !category.trim()}>{#if editingId === null}<Plus size={14} />{:else}<Check size={14} />{/if}</button>
 				</div>
+				{#if custom}<label class="full-field">Custom category<input aria-label="Custom expense category" placeholder="Category name" maxlength="40" required bind:value={category} /></label>{/if}
+				<label class="full-field">Note (optional)<input aria-label="Expense note" placeholder="What was this for?" maxlength="500" bind:value={description} /></label>
 			</form>
 			<div class="entries" aria-label={`Expenses for ${selectedDate}`}>
 				{#if snapshot === null}<p>{ledger.loading ? "Loading expenses…" : "Expenses are unavailable."}</p>
 				{:else if snapshot.entries.length === 0}<p>No expenses for this date.</p>
-				{:else}<ul>{#each snapshot.entries as entry (entry.id)}<li><div><span>{entry.category}</span><strong>{currency.format(entry.amountPence / 100)}</strong></div><button class="icon" type="button" aria-label={`Edit ${entry.category} expense ${currency.format(entry.amountPence / 100)}`} title="Edit expense" disabled={ledger.loading} onclick={() => edit(entry)}><Pencil size={13} /></button><button class="icon" type="button" aria-label={`Delete ${entry.category} expense ${currency.format(entry.amountPence / 100)}`} title="Delete expense" disabled={ledger.loading} onclick={async () => { if (await ledger.remove(entry.id) && editingId === entry.id) { editingId = null; custom = false; amount = ""; category = ""; } }}><Trash2 size={13} /></button></li>{/each}</ul>{/if}
+				{:else}<ul>{#each snapshot.entries as entry (entry.id)}<li><div><div class="entry-detail"><span>{entry.category}</span>{#if entry.description !== null}<p>{entry.description}</p>{/if}</div><strong>{currency.format(entry.amountPence / 100)}</strong></div><button class="icon" type="button" aria-label={`Edit ${entry.category} expense ${currency.format(entry.amountPence / 100)}`} title="Edit expense" disabled={ledger.loading} onclick={() => edit(entry)}><Pencil size={13} /></button><button class="icon" type="button" aria-label={`Delete ${entry.category} expense ${currency.format(entry.amountPence / 100)}`} title="Delete expense" disabled={ledger.loading} onclick={async () => { if (await ledger.remove(entry.id) && editingId === entry.id) { editingId = null; custom = false; amount = ""; category = ""; description = ""; } }}><Trash2 size={13} /></button></li>{/each}</ul>{/if}
 			</div>
 		</div>
 		<div class="analytics" aria-label={`${monthLabel} spending statistics`}>
@@ -127,8 +131,9 @@
 	.daily-total span, .month-heading span, label, .daily-heading span, .category-field > span { font-size: 0.68rem; color: var(--color-muted-foreground); }
 	.daily-total strong, .month-heading > strong { font: 1.1rem var(--font-mono); }
 	form { display: grid; grid-template-columns: minmax(4.5rem, 0.65fr) minmax(0, 1.35fr) auto; align-items: end; gap: 0.4rem; }
+	.full-field { grid-column: 1 / -1; }
 	form label, .category-field { display: grid; gap: 0.3rem; }
-	input { box-sizing: border-box; width: 100%; min-width: 0; background: var(--color-background); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-foreground); padding: 0.45rem 0.55rem; font: 0.72rem var(--font-sans); }
+	input { box-sizing: border-box; width: 100%; min-width: 0; background: var(--color-background); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-foreground); height: 2rem; padding: 0.45rem 0.55rem; font: 0.72rem var(--font-sans); }
 	input:focus-visible, button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 	button { display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.4rem 0.6rem; background: transparent; color: var(--color-foreground); font: 0.68rem var(--font-sans); cursor: pointer; }
 	button:hover:not(:disabled) { background: var(--color-muted); }
@@ -137,13 +142,14 @@
 	button.primary:hover:not(:disabled) { opacity: 0.85; }
 	.icon { flex: 0 0 auto; border-color: transparent; padding: 0.3rem; width: 1.75rem; height: 1.75rem; color: var(--color-muted-foreground); }
 	.form-actions { justify-content: flex-end; }
-	.form-actions .primary { width: 1.9rem; height: 1.9rem; padding: 0; }
+	.form-actions .primary { width: 2rem; height: 2rem; padding: 0; }
 	.entries { height: 7.5rem; overflow-y: auto; margin-top: 0.5rem; }
 	.entries p { font-size: 0.68rem; color: var(--color-muted-foreground); line-height: 1.5; }
 	ul { list-style: none; padding: 0; margin: 0; }
 	.entries li { display: flex; align-items: center; gap: 0.2rem; padding: 0.3rem 0; border-bottom: 1px solid var(--color-border); }
 	.entries li > div { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.7rem; overflow-wrap: anywhere; }
-	.entries strong { font: 0.68rem var(--font-mono); }
+	.entry-detail { min-width: 0; }
+	.entries strong { white-space: nowrap; font: 0.68rem var(--font-mono); }
 	.analytics { min-width: 0; }
 	h3 { font: 1rem var(--font-serif); margin-top: 0.2rem; }
 	h4 { font-size: 0.68rem; font-weight: 500; }

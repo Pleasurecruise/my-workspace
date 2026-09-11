@@ -1,6 +1,8 @@
 use super::ApiError;
+use cms_core::markdown::{
+    TocEntry, compile_knowledge_enriched, compile_knowledge_plain, knowledge_body,
+};
 use futures_util::stream::{self, StreamExt, TryStreamExt};
-use md_dialect::{TocEntry, compile_knowledge_enriched, compile_knowledge_plain, knowledge_body};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

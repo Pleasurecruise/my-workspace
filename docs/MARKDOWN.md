@@ -10,10 +10,23 @@ frontend parsers from producing different output for the same Markdown source.
 API or local Markdown
   -> cms-core::markdown
   -> pulldown-cmark events
-  -> HTML + table of contents + excerpt
+  -> md-dialect for custom embed:* fences
+  -> HTML (plus table of contents and excerpt for Knowledge)
   -> typed Tauri response
   -> Svelte presentation
 ```
+
+`cms-core::markdown` owns document parsing, HTML assembly, raw-HTML/link policy, and article
+metadata. Its article module implements publication and Knowledge compilation. `md-dialect` owns
+only custom `embed:*` syntax: field validation, provider snapshot resolution, SVG sanitization,
+rendered embeds, and their styles. It returns `None` for ordinary code languages so the caller can
+handle them. Consumers access compilation through `cms-core::markdown`.
+
+The existing output profiles remain distinct: publication highlights code with Syntect and renders
+Mermaid to SVG; Knowledge preserves ordinary code and Mermaid fences as code, and adds heading IDs,
+a table of contents, and an excerpt. Both enriched article paths render custom embeds. Knowledge's
+plain fallback preserves all embed fences as code when enrichment fails. Knowledge strips a leading
+front matter block without interpreting it as metadata; publication does not apply that stripping.
 
 `render_memo` converts soft line breaks into hard line breaks to preserve the compact writing style
 used by my-memos. `compile_knowledge_enriched` assigns stable, de-duplicated heading IDs and produces the table

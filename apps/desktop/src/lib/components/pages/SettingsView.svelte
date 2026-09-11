@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { CalendarDays, BellRing, CircleCheck, Cloud, Eye, EyeOff, KeyRound, LoaderCircle, Lock, Music2, QrCode, Send, X } from "@lucide/svelte";
+	import "../settings/settings.css";
+	import { CalendarDays, BellRing, CircleCheck, Cloud, Eye, EyeOff, KeyRound, Lock, Music2, QrCode, Send } from "@lucide/svelte";
+	import QqMusicConnection from "../settings/QqMusicConnection.svelte";
 	import ConfigurationBadge from "../settings/ConfigurationBadge.svelte";
 	import {
 		Alert,
@@ -15,7 +17,7 @@
 		Label,
 	} from "@my-workspace/ui";
 	import { invoke } from "@tauri-apps/api/core";
-	import { onDestroy, tick, untrack } from "svelte";
+	import { untrack } from "svelte";
 	import GameConnections from "../games/GameConnections.svelte";
 	let selectedSection = $state("general");
 	const sections = [
@@ -31,8 +33,6 @@
 		ConfigurationStatus,
 		NtfyConfig,
 		NotionCalendar,
-		QqLoginStatus,
-		QqQr,
 		R2Configuration,
 		TelegramAuthorizationStatus,
 		TelegramCredentials,
@@ -51,9 +51,6 @@
 		onsaveapplock,
 		onremoveapplock,
 		onconnectspotify,
-		onbeginqq,
-		onpollqq,
-		oncancelqq,
 		onconfigurationchanged,
 	}: {
 		reconnectMihoyo: boolean;
@@ -67,9 +64,6 @@
 		onsaveapplock: (password: string) => Promise<CommandResponse<string>>;
 		onremoveapplock: () => Promise<CommandResponse<string>>;
 		onconnectspotify: (clientId: string) => Promise<CommandResponse<string>>;
-		onbeginqq: () => Promise<CommandResponse<QqQr>>;
-		onpollqq: () => Promise<CommandResponse<QqLoginStatus>>;
-		oncancelqq: () => Promise<CommandResponse<null>>;
 		onconfigurationchanged: () => Promise<void>;
 	} = $props();
 
@@ -104,7 +98,6 @@
 		knowledge: false,
 		ntfy: false,
 		spotify: false,
-		qqMusic: false,
 		telegram: false,
 		"telegram-auth": false,
 		x: false,
@@ -118,10 +111,6 @@
 		notion: "",
 	});
 	let initialized = false;
-	let qqQr = $state<QqQr | null>(null);
-	let qqDialog = $state<HTMLDivElement | null>(null);
-	let qqStatus = $state<"waiting" | "scanned" | "expired">("waiting");
-	let qqLoginGeneration = 0;
 	let formErrors = $state<Record<keyof typeof saving, string | null>>({
 		"app-lock": null,
 		ugos: null,
@@ -131,7 +120,6 @@
 		knowledge: null,
 		ntfy: null,
 		spotify: null,
-		qqMusic: null,
 		telegram: null,
 		"telegram-auth": null,
 		x: null,
@@ -468,58 +456,8 @@
 
 
 
-	async function connectQqMusic() {
-		if (saving.qqMusic) return;
-		saving.qqMusic = true;
-		formErrors.qqMusic = null;
-		const response = await onbeginqq();
-		saving.qqMusic = false;
-		if (response.status === "failed") {
-			formErrors.qqMusic = response.message;
-			return;
-		}
-		qqQr = response.data;
-		qqStatus = "waiting";
-		const generation = ++qqLoginGeneration;
-		await tick();
-		qqDialog?.focus();
-		void pollQqMusic(generation);
-	}
-
-	async function pollQqMusic(generation: number) {
-		while (qqQr !== null && generation === qqLoginGeneration) {
-			await new Promise((resolve) => window.setTimeout(resolve, 1_500));
-			if (qqQr === null || generation !== qqLoginGeneration) return;
-			const response = await onpollqq();
-			if (response.status === "failed") {
-				formErrors.qqMusic = response.message;
-				qqQr = null;
-				return;
-			}
-			if (response.data.status === "complete") {
-				qqQr = null;
-				return;
-			}
-			qqStatus = response.data.status;
-			if (response.data.status === "expired") return;
-		}
-	}
-
-	function closeQqLogin() {
-		qqLoginGeneration += 1;
-		qqQr = null;
-		void oncancelqq();
-	}
-
-	onDestroy(() => {
-		if (qqQr === null) return;
-		qqLoginGeneration += 1;
-		qqQr = null;
-		void oncancelqq();
-	});
 </script>
 
-<svelte:window onkeydown={(event) => { if (event.key === "Escape" && qqQr !== null) closeQqLogin(); }} />
 
 <section class="settings" aria-label="Vesper configuration">
 	<header class="page-header">
@@ -548,16 +486,16 @@
 	<section id="settings-music" class="settings-group" hidden={selectedSection !== "music"} aria-label="Music">
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
-			<span class="icon"><Music2 size={16} /></span>
+			<span class="settings-icon"><Music2 size={16} /></span>
 			<div><CardTitle class="settings-card-title">Spotify Music</CardTitle><CardDescription class="settings-card-description">Read Liked Songs and control playback through your Spotify account.</CardDescription></div>
 			{#if configuration?.spotify.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<CardContent class="settings-card-content">
-			<div class="setting-row">
+			<div class="settings-row">
 				<div><Label for="spotify-client-id">Personal Spotify Client ID</Label><p>Optional. Use your own app to reduce shared quota delays. Leave empty for shared access.</p><p>Create a Web API app in the Spotify developer dashboard with redirect URI <code>http://127.0.0.1:8989/login</code>.</p></div>
 				<Input id="spotify-client-id" bind:value={spotifyClientId} disabled={saving.spotify} placeholder="32-character Client ID" />
 			</div>
-			<div class="setting-row">
+			<div class="settings-row">
 				<div><Label>Spotify account</Label><p>Continue in your browser to connect your library and playback.</p></div>
 				<Button class="settings-save-button" size="sm" type="button" disabled={saving.spotify} onclick={connectSpotify}>{saving.spotify ? "Waiting for Spotify…" : configuration?.spotify.status === "ready" ? "Reconnect" : "Connect"}</Button>
 			</div>
@@ -565,42 +503,30 @@
 		<CardFooter class="settings-card-footer"><span class="settings-footer-copy">Spotify Premium is required for local playback.</span></CardFooter>
 	</Card>
 
-	<Card>
-		<CardHeader class="settings-card-header settings-card-header-status">
-			<span class="icon"><Music2 size={16} /></span>
-			<div><CardTitle class="settings-card-title">QQ Music</CardTitle><CardDescription class="settings-card-description">Play the personalized Daily 30 recommendation from your QQ Music account.</CardDescription></div>
-			{#if configuration?.qqMusic.status === "ready"}<ConfigurationBadge />{/if}
-		</CardHeader>
-		<CardContent class="settings-card-content">
-			<div class="setting-row">
-				<div><Label>QR authorization</Label><p>Scan with the QQ mobile app. Vesper stores the resulting renewable session automatically.</p></div>
-				<Button class="settings-save-button" size="sm" type="button" disabled={saving.qqMusic} onclick={connectQqMusic}>{saving.qqMusic ? "Creating QR code…" : configuration?.qqMusic.status === "ready" ? "Reconnect" : "Connect"}</Button>
-			</div>
-		</CardContent>
-	</Card>
+	<QqMusicConnection connected={configuration?.qqMusic.status === "ready"} onconnected={onconfigurationchanged} />
 	</section>
 
 	<section id="settings-publishing" class="settings-group" hidden={selectedSection !== "publishing"} aria-label="Publishing">
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
-			<span class="icon"><Send size={16} /></span>
+			<span class="settings-icon"><Send size={16} /></span>
 			<div><CardTitle class="settings-card-title">Telegram Channel</CardTitle><CardDescription class="settings-card-description">Publish public Memos through an authorized Telegram user account.</CardDescription></div>
 			{#if configuration?.publication.telegram}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveTelegram}>
 			<CardContent class="settings-card-content">
-				<div class="setting-row">
+				<div class="settings-row">
 					<div><Label for="telegram-api-id">API ID</Label><p>Numeric application ID from my.telegram.org.</p></div>
 					<Input id="telegram-api-id" class="settings-input" bind:value={telegramApiId} inputmode="numeric" autocomplete="off" required />
 				</div>
-				<div class="setting-row">
+				<div class="settings-row">
 					<div><Label for="telegram-api-hash">API Hash</Label><p>The 32-character application hash.</p></div>
 					<div class="secret-field">
 						<Input id="telegram-api-hash" class="settings-input settings-secret-input" type={telegramApiHashVisible ? "text" : "password"} bind:value={telegramApiHash} autocomplete="off" autocapitalize="none" spellcheck="false" minlength={32} maxlength={32} required />
 						<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (telegramApiHashVisible = !telegramApiHashVisible)} aria-label={telegramApiHashVisible ? "Hide Telegram API hash" : "Show Telegram API hash"}>{#if telegramApiHashVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
 					</div>
 				</div>
-				<div class="setting-row">
+				<div class="settings-row">
 					<div><Label for="telegram-channel">Channel username</Label><p>Public channel username; the signed-in account must be allowed to post.</p></div>
 					<Input id="telegram-channel" class="settings-input" bind:value={telegramChannel} autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="channel_username" required />
 				</div>
@@ -609,11 +535,11 @@
 		</form>
 		{#if configuration?.publication.telegram}
 			{#if telegramAuthorization?.status === "ready"}
-				<div class="setting-row telegram-authorization"><div><Label>User authorization</Label><p>The local MTProto session is ready to publish.</p></div><ConfigurationBadge label="Authorized" /></div>
+				<div class="settings-row telegram-authorization"><div><Label>User authorization</Label><p>The local MTProto session is ready to publish.</p></div><ConfigurationBadge label="Authorized" /></div>
 			{:else}
 				<form onsubmit={continueTelegramAuth}>
 					<CardContent class="settings-card-content">
-						<div class="setting-row telegram-authorization">
+						<div class="settings-row telegram-authorization">
 							{#if telegramAuthorization?.status === "codeRequired"}
 								<div><Label for="telegram-code">Verification code</Label><p>Enter the code sent by Telegram.</p></div>
 								<Input id="telegram-code" class="settings-input" bind:value={telegramCode} inputmode="numeric" autocomplete="one-time-code" required />
@@ -643,12 +569,12 @@
 
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
-			<span class="icon">{@render XLogo()}</span>
+			<span class="settings-icon">{@render XLogo()}</span>
 			<div><CardTitle class="settings-card-title">X / Twitter</CardTitle><CardDescription class="settings-card-description">Publish public Memos through the X user-context API.</CardDescription></div>
 			{#if configuration?.publication.x}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<CardContent class="settings-card-content">
-			<div class="setting-row">
+			<div class="settings-row">
 				<div><Label>Browser authorization</Label><p>Vesper opens X and requests permission to publish from your account.</p></div>
 				<Button class="settings-save-button" size="sm" type="button" disabled={saving.x} onclick={connectX}>{saving.x ? "Waiting for X…" : configuration?.publication.x ? "Reconnect" : "Connect"}</Button>
 			</div>
@@ -659,13 +585,13 @@
 	<section id="settings-general" class="settings-group" hidden={selectedSection !== "general"} aria-label="General">
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
-			<span class="icon"><CalendarDays size={16} /></span>
+			<span class="settings-icon"><CalendarDays size={16} /></span>
 			<div><CardTitle class="settings-card-title">Notion calendar</CardTitle><CardDescription class="settings-card-description">Show a Notion calendar view in Todo using the Notion CLI.</CardDescription></div>
 			{#if configuration?.notionCalendar.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveNotion}>
 			<CardContent class="settings-card-content">
-				<div class="setting-row"><div><Label for="notion-calendar-url">View link</Label><p>Copy a Notion view link with its view ID. Table views need a single Date property.</p></div><Input id="notion-calendar-url" class="settings-input" type="url" bind:value={notionViewUrl} placeholder="https://www.notion.so/…?v=…" /></div>
+				<div class="settings-row"><div><Label for="notion-calendar-url">View link</Label><p>Copy a Notion view link with its view ID. Table views need a single Date property.</p></div><Input id="notion-calendar-url" class="settings-input" type="url" bind:value={notionViewUrl} placeholder="https://www.notion.so/…?v=…" /></div>
 				{#if notionError !== null}<p role="alert">{notionError}</p>{/if}
 			</CardContent>
 			<CardFooter class="settings-card-footer"><span class="settings-footer-copy">Run ntn login in Terminal first. Completion stays in Todo. Clear the link to disconnect.</span><Button class="settings-save-button" size="sm" type="submit" disabled={!canSave.notion}>{notionSaving ? "Saving…" : "Save"}</Button></CardFooter>
@@ -674,13 +600,13 @@
 
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
-			<span class="icon"><BellRing size={16} /></span>
+			<span class="settings-icon"><BellRing size={16} /></span>
 			<div><CardTitle class="settings-card-title">Notifications</CardTitle><CardDescription class="settings-card-description">Subscribe to notifications through ntfy.</CardDescription></div>
 			{#if configuration?.ntfyDev}<ConfigurationBadge label="Environment" />{:else if configuration?.ntfy.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveNtfy}>
 			<CardContent class="settings-card-content">
-				<div class="setting-row">
+				<div class="settings-row">
 					<div><Label for="ntfy-token">Token</Label><p>Use the access token for the Vesper ntfy subscription.</p></div>
 					<div class="secret-field">
 						<Input id="ntfy-token" class="settings-input settings-secret-input" type={ntfyTokenVisible ? "text" : "password"} bind:value={ntfyToken} autocomplete="off" autocapitalize="none" spellcheck="false" required />
@@ -694,13 +620,13 @@
 
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
-			<span class="icon"><Lock size={16} /></span>
+			<span class="settings-icon"><Lock size={16} /></span>
 			<div><CardTitle class="settings-card-title">App Lock</CardTitle><CardDescription class="settings-card-description">Hide Vesper behind a local password while it remains open.</CardDescription></div>
 			{#if configuration?.appLockDev}<ConfigurationBadge label="Environment" />{:else if configuration?.appLock.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveAppLock}>
 			<CardContent class="settings-card-content">
-			<div class="setting-row">
+			<div class="settings-row">
 				<div><Label for="app-lock-password">Password</Label><p>Use at least four characters.</p></div>
 				<div class="secret-field">
 					<Input id="app-lock-password" class="settings-input settings-secret-input" type={appLockPasswordVisible ? "text" : "password"} bind:value={appLockPassword} autocomplete="new-password" autocapitalize="none" spellcheck="false" minlength={4} required />
@@ -722,17 +648,17 @@
 	<section id="settings-services" class="settings-group" hidden={selectedSection !== "services"} aria-label="Services">
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
-			<span class="icon"><KeyRound size={16} /></span>
+			<span class="settings-icon"><KeyRound size={16} /></span>
 			<div><CardTitle class="settings-card-title">UGOS</CardTitle><CardDescription class="settings-card-description">Connect to Task Manager through ugreen:9443.</CardDescription></div>
 			{#if configuration !== null && configuration.ugos.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveUgos}>
 			<CardContent class="settings-card-content">
-			<div class="setting-row">
+			<div class="settings-row">
 				<div><Label for="ugos-username">Username</Label><p>Your UGOS administrator account.</p></div>
 				<Input id="ugos-username" class="settings-input" bind:value={username} autocomplete="username" required />
 			</div>
-			<div class="setting-row">
+			<div class="settings-row">
 				<div><Label for="ugos-password">Password</Label><p>The password for your NAS account.</p></div>
 				<div class="secret-field">
 					<Input id="ugos-password" class="settings-input settings-secret-input" type={passwordVisible ? "text" : "password"} bind:value={password} autocomplete="current-password" autocapitalize="none" spellcheck="false" required />
@@ -746,11 +672,11 @@
 
 	<Card>
 		<CardHeader class="settings-card-header">
-			<span class="icon"><KeyRound size={16} /></span>
+			<span class="settings-icon"><KeyRound size={16} /></span>
 			<div><CardTitle class="settings-card-title">Content services</CardTitle><CardDescription class="settings-card-description">Connect your Memos, Moment and Knowledge collections.</CardDescription></div>
 		</CardHeader>
 		<div class="api-settings">
-			<div class="setting-row">
+			<div class="settings-row">
 				<div><Label for="memos-api-key">my-memos API key</Label><p>Bearer key generated by the my-memos REST API settings.</p></div>
 				<div class="api-input">
 					<div class="secret-field">
@@ -761,7 +687,7 @@
 					{#if configuration !== null && configuration.api.memos.status === "ready"}<ConfigurationBadge />{/if}
 				</div>
 			</div>
-			<div class="setting-row">
+			<div class="settings-row">
 				<div><Label for="moment-api-key">my-moment API key</Label><p>Bearer key generated by the my-moment API settings.</p></div>
 				<div class="api-input">
 					<div class="secret-field">
@@ -772,7 +698,7 @@
 					{#if configuration !== null && configuration.api.moment.status === "ready"}<ConfigurationBadge />{/if}
 				</div>
 			</div>
-			<div class="setting-row">
+			<div class="settings-row">
 				<div><Label for="knowledge-api-key">my-knowledge API key</Label><p>Bearer key generated by the my-knowledge API settings.</p></div>
 				<div class="api-input">
 					<div class="secret-field">
@@ -790,17 +716,17 @@
 
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
-			<span class="icon"><Cloud size={16} /></span>
+			<span class="settings-icon"><Cloud size={16} /></span>
 			<div><CardTitle class="settings-card-title">Cloudflare R2</CardTitle><CardDescription class="settings-card-description">Read and publish content in cherry-studio.</CardDescription></div>
 			{#if configuration !== null && configuration.r2.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveR2}>
 			<CardContent class="settings-card-content">
-			<div class="setting-row">
+			<div class="settings-row">
 				<div><Label for="r2-access-key">Access Key ID</Label><p>S3-compatible access key for this bucket.</p></div>
 				<Input id="r2-access-key" class="settings-input" bind:value={accessKeyId} autocomplete="off" spellcheck="false" required />
 			</div>
-			<div class="setting-row">
+			<div class="settings-row">
 				<div><Label for="r2-secret-key">Secret Access Key</Label><p>The secret paired with your access key.</p></div>
 				<div class="secret-field">
 					<Input id="r2-secret-key" class="settings-input settings-secret-input" type={secretVisible ? "text" : "password"} bind:value={secretAccessKey} autocomplete="off" autocapitalize="none" spellcheck="false" required />
@@ -820,20 +746,6 @@
 	<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
 {/snippet}
 
-{#if qqQr !== null}
-	<div class="qq-login-backdrop" role="presentation" onclick={(event) => { if (event.currentTarget === event.target) closeQqLogin(); }}>
-		<div bind:this={qqDialog} class="qq-login" role="dialog" aria-modal="true" aria-labelledby="qq-login-title" tabindex="-1">
-			<Button class="qq-login-close" variant="ghost" size="icon" type="button" onclick={closeQqLogin} aria-label="Close QQ Music login"><X size={16} /></Button>
-			<div class="qq-login-icon"><QrCode size={18} /></div>
-			<h2 id="qq-login-title">Connect QQ Music</h2>
-			<p>Open QQ on your phone and scan this code to authorize Vesper.</p>
-			<div class:expired={qqStatus === "expired"} class="qq-code"><img src={qqQr.image} alt="QQ Music login QR code" /></div>
-			<div class="qq-login-status">
-				{#if qqStatus === "expired"}<span>QR code expired. Close and connect again.</span>{:else}<LoaderCircle class="qq-login-spinner" size={14} /><span>{qqStatus === "scanned" ? "Scanned — confirm on your phone" : "Waiting for scan"}</span>{/if}
-			</div>
-		</div>
-	</div>
-{/if}
 
 <style>
 	.settings { width: 100%; margin: 0 auto; }
@@ -848,47 +760,14 @@
 	.settings-group { display: grid; gap: 1rem; }
 	.settings-group[hidden] { display: none; }
 	.settings-content :global([data-slot="root"]) { overflow: hidden; box-shadow: none; }
-	:global(.settings-alert) { margin-bottom: 0.75rem; }
-	:global(.settings-alert-copy) { font-size: 0.75rem; }
-	:global(.settings-card-header) { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 0.75rem; padding: 1.25rem; }
-	:global(.settings-card-header-status) { grid-template-columns: auto minmax(0, 1fr) auto; }
-	:global(.settings-card-description) { margin-top: 0.2rem; font-size: 0.73rem; line-height: 1.55; }
-	:global(.settings-card-content) { padding: 0; }
-	:global(.settings-input) { width: 100%; min-width: 0; height: 2.35rem; padding-inline: 0.75rem; border-radius: var(--radius-md); font-size: 0.78rem; }
-	:global(.settings-secret-input) { padding-right: 2.35rem; }
 	.secret-field { position: relative; min-width: 0; }
-	:global(.settings-secret-toggle) { position: absolute; inset: 0 0 0 auto; width: 2.35rem; height: 2.35rem; color: var(--color-muted-foreground); }
-	:global(.settings-card-footer) { flex-wrap: wrap; min-height: 3.5rem; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.25rem; border-top: 1px solid var(--color-border); background: color-mix(in srgb, var(--color-muted) 35%, var(--color-background)); }
 	.settings-footer-copy { min-width: 0; overflow-wrap: anywhere; color: var(--color-muted-foreground); font-size: 0.68rem; line-height: 1.5; }
-	:global(.settings-save-button) { flex-shrink: 0; min-width: 4.5rem; height: 2rem; padding-inline: 0.85rem; font-size: 0.73rem; font-weight: 500; }
-	.icon { display: grid; width: 2.15rem; height: 2.15rem; place-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-muted); color: var(--color-muted-foreground); }
-	.setting-row p { margin: 0.25rem 0 0; color: var(--color-muted-foreground); font-size: 0.7rem; line-height: 1.5; }
 	form { border-top: 1px solid var(--color-border); }
-	.setting-row { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: center; gap: 1.5rem; padding: 1rem 1.25rem; }
-	.setting-row > :global(button) { justify-self: end; }
-	.setting-row + .setting-row { border-top: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent); }
-	.setting-row :global(label) { font-size: 0.76rem; font-weight: 500; }
 	.api-settings { border-top: 1px solid var(--color-border); }
 	.api-input { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; }
 	.api-input :global(.configuration-badge) { grid-column: 1 / -1; }
 	.lock-actions { display: flex; align-items: center; gap: 0.4rem; }
-	.qq-login-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; box-sizing: border-box; padding: 1rem; background: var(--color-overlay); backdrop-filter: blur(10px); }
-	.qq-login { position: relative; display: grid; width: min(100%, 22rem); justify-items: center; box-sizing: border-box; padding: 1.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-lg); text-align: center; }
-	:global(.qq-login-close) { position: absolute; top: 0.75rem; right: 0.75rem; }
-	.qq-login-icon { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: var(--radius-full); background: var(--color-muted); color: var(--color-accent); }
-	.qq-login h2 { margin: 0.75rem 0 0; }
-	.qq-login > p { max-width: 17rem; margin: 0.4rem 0 1rem; color: var(--color-muted-foreground); font-size: 0.75rem; line-height: 1.5; }
-	.qq-code { display: grid; width: 12rem; height: 12rem; place-items: center; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); transition: opacity var(--duration-normal); }
-	.qq-code.expired { opacity: 0.28; }
-	.qq-code img { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-	.qq-login-status { display: flex; min-height: 1.25rem; align-items: center; gap: 0.4rem; margin-top: 1rem; color: var(--color-muted-foreground); font-size: 0.7rem; }
-	:global(.qq-login-spinner) { animation: qq-login-spin var(--duration-slow) linear infinite; }
-	@keyframes qq-login-spin { to { rotate: 360deg; } }
-	@container (max-width: 34rem) {
-		.setting-row { grid-template-columns: 1fr; gap: 0.5rem; }
-		:global(.settings-card-header-status) { grid-template-columns: auto minmax(0, 1fr); }
-		:global(.settings-card-header-status .configuration-badge) { grid-column: 2; justify-self: start; }
-	}
+
 	@media (max-width: 900px) {
 		.settings-layout { gap: 1.5rem; }
 		.settings-navigation button { padding: 0.65rem 0.75rem; }

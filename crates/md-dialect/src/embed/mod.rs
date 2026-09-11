@@ -17,8 +17,9 @@ const ARCHITECTURE: &str = "embed:architecture";
 const STORYBOARD: &str = "embed:storyboard";
 const DATA_CONCURRENCY: usize = 4;
 
+/// Resolved provider snapshots used by embed rendering. Fields remain provider-owned.
 #[derive(Default)]
-pub(crate) struct Data {
+pub struct Data {
     repositories: HashMap<String, quotes::github::RepositorySnapshot>,
     stocks: HashMap<String, quotes::stocks::StockSeries>,
 }
@@ -52,7 +53,8 @@ pub enum EmbedError {
     InvalidCanvas { kind: &'static str, message: String },
 }
 
-pub(crate) async fn load(source: &str) -> Result<Data, EmbedError> {
+/// Resolve provider data referenced by namespaced fences in the document.
+pub async fn load(source: &str) -> Result<Data, EmbedError> {
     let mut block: Option<(String, String)> = None;
     let mut repositories = HashSet::new();
     let mut stocks = HashSet::new();
@@ -123,6 +125,7 @@ pub(crate) async fn load(source: &str) -> Result<Data, EmbedError> {
     Ok(data)
 }
 
+/// Render a namespaced fence, or return `None` for ordinary code languages.
 pub fn render(language: &str, source: &str, data: &Data) -> Result<Option<String>, EmbedError> {
     if !language.starts_with("embed:") {
         return Ok(None);
@@ -136,6 +139,7 @@ pub fn render(language: &str, source: &str, data: &Data) -> Result<Option<String
     }
 }
 
+/// Add the shared embed stylesheet once when assembling a document.
 pub fn add_styles(html: &mut String) {
     if html.contains("class=\"content-embed ") {
         html.insert_str(0, style::CSS);

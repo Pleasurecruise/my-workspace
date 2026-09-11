@@ -19,7 +19,7 @@ Feature implementation details are maintained in [Music](MUSIC.md), [UGOS Pro](U
 | `crates/credentials` | Typed credentials in debug SQLite or the operating-system credential store.                 |
 | `crates/ledger`      | Local GBP expense records, exact-pence validation, and monthly category/day projections.    |
 | `crates/logger`      | Shared `tracing` initialization.                                                            |
-| `crates/md-dialect`  | Publication and Knowledge Markdown dialect compilation.                                     |
+| `crates/md-dialect`  | Custom Markdown fence validation, provider data, and rendering.                             |
 | `crates/music`       | Spotify and QQ Music authentication, collections, playback, album art, and lyrics.          |
 | `crates/games`       | Game account authorization, daily notes, Steam activity, and local pull archives.           |
 | `crates/quotes`      | Shared astronomy, exchange, GitHub, quotation, stock, weather, and status read providers.   |
@@ -43,7 +43,7 @@ Trusted device
   ├─ vesper CLI
   └─ Rust boundaries
        ├─ cms-core ─────── Rust S3 SDK ─────── Cloudflare R2
-       │          └─────── md-dialect ──────── publication Markdown
+       │          └─────── md-dialect ──────── custom Markdown fences
        ├─ consumers ────── Worker APIs ─────── my-memos / my-moment / my-knowledge
        │          └─────── cms-core R2 / Markdown
        ├─ social ───────── MTProto / X API ─── outbound Memo publication
@@ -99,7 +99,9 @@ Settings prefill commands are the only frontend reads that expose stored credent
 ### Shell and feature state
 
 `apps/desktop/src/App.svelte` composes navigation, the shared page frame, sidebar/profile,
-theme, App Lock, and the update overlay. It creates feature view sessions for the lifetime of the
+theme and App Lock. `layout/ProfileEditor.svelte` owns local profile drafts, avatar presentation,
+storage and focus; `layout/UpdateDialog.svelte` owns update checks, events, progress, feedback and
+dialog cleanup, reporting only whether the shell must remain inert. The shell creates feature view sessions for the lifetime of the
 WebView, distributes the initial Rust content snapshot, and connects route and configuration changes.
 It does not implement content CRUD, photo byte submission, provider login, or Dashboard projections.
 
@@ -123,6 +125,11 @@ belong to `packages/ui`; visual composition is specified in [DESIGN.md](DESIGN.m
 The shell creates a Dashboard layout session alongside the data session. Each WebView rejects layout
 responses superseded by a newer request and invalidates pending responses when its session is
 destroyed. Dashboard and the macOS native Dynamic Island render the same WidgetContent component.
+WidgetContent only dispatches placements to feature panels. PlannerPanel owns Calendar/Todo/habit
+composition and selected-date task reads; TelemetryPanel owns device/UGOS metric rendering.
+Telemetry and AI usage panels accept one typed source state, so a card cannot combine one
+provider’s identity with another provider’s data. Dashboard event handling shares one state-update
+policy while retaining independently typed source dispatch.
 The layout uses Diesel models in the shared `vesper.sqlite3` database and stores a nullable
 `islandWidgetId` referencing one placement; defaults select Daily Planner. Rust rejects dangling selections.
 The bundled `dashboard-default.json` owns the initial and restored layout, including habit IDs and
@@ -193,6 +200,13 @@ before revealing the shell and keeps the shell inert while locked. WebView reloa
 lock; application restart starts unlocked. Locking closes developer tools and blocks reopening
 until verification succeeds. It does not encrypt content.
 
+Settings configuration reads reject superseded responses so concurrent form saves cannot restore
+older navigation availability. `settings/QqMusicConnection.svelte` owns QR creation, polling,
+cancellation, presentation and cleanup; it only notifies Settings after a current login completes.
+App and the Settings session do not adapt QQ login commands. Rust continues to own authentication
+and credential installation. Shared Settings form/card styling lives in `settings/settings.css`,
+imported by its page and connection components rather than supplied by parent-scoped rules.
+
 The signed updater checks once per launch and on native-menu request. Svelte presents the version
 and notes; installation requires an explicit action. Rust rechecks the version, downloads within a
 bounded operation, verifies the signature, installs, and restarts while emitting progress events.
@@ -214,8 +228,9 @@ consumer APIs for Memo or Knowledge bodies and does not create a retained local 
 ## Build pipeline
 
 `vesper build` recursively compiles `content/` into an operating-system temporary directory.
-`md-dialect` owns this article-oriented compiler, while `cms-core::markdown` retains generic and
-Memo rendering:
+`cms-core::markdown` owns document compilation, including article and Memo rendering.
+`md-dialect` handles the custom `embed:*` fences through a narrow data-resolution and rendering
+interface; it does not own general Markdown compilation, code highlighting, or article metadata:
 
 1. Each Markdown file becomes HTML at the same relative path. Fenced code blocks are highlighted
    with Syntect into inline-styled HTML, while `mermaid` blocks are rendered to self-contained SVG
@@ -294,10 +309,10 @@ and reconciling the upload before retrying or removing objects.
 Knowledge uses `https://knowledge.you-find.me/api/articles` with a generated Bearer key. A list read
 returns D1 summaries and an optional cursor. Rust follows those summaries with bounded-concurrency
 detail reads so the Worker can enforce its D1 authorization before resolving KV and R2 content. Rust
-then uses `md-dialect` to compile the Chinese Markdown into HTML, heading identifiers, a table of
-contents, and an excerpt. YAML front matter returned with an edition is excluded from both the
-editable body and compiled output. The dialect compiler preserves math, portable wiki links, GFM
-callouts, and supported content embeds. Structured fences without a renderer remain escaped code. If
+then uses `cms-core::markdown` to compile the Chinese Markdown into HTML, heading identifiers, a
+table of contents, and an excerpt, delegating custom embeds to `md-dialect`. YAML front matter
+returned with an edition is excluded from both the editable body and compiled output. The Knowledge
+compiler preserves math, portable wiki links, GFM callouts, and supported content embeds. Structured fences without a renderer remain escaped code. If
 optional embed enrichment fails, Knowledge preserves the embeds as code so a provider failure cannot
 hide an article or turn a committed write into an apparent failure. The desktop editor creates and
 updates drafts through the same API with content-hash conflict detection; visibility and delete
@@ -356,8 +371,9 @@ ICS, Notion, or SQLite fails; manually selected dates remain selected.
 
 `crates/ledger` owns local GBP expense records and their calendar-month projections, independently
 of Todo and habit state. `ledger_entries` in the shared `vesper.sqlite3` stores an ID, local date,
-positive integer pence, category, and creation timestamp. The table and date index are initialized
-from the current schema; no migration or existing-table rebuild is required. Amounts are parsed
+positive integer pence, category, optional description, and creation timestamp. Database initialization
+adds the nullable description column to existing tables under a write lock, preserving records and
+category names. Notes are trimmed, limited to 500 characters, and reject control characters. Amounts are parsed
 from decimal strings in Rust, accept at most two decimal places, and never use floating-point
 arithmetic in storage or aggregation. Rust also normalizes category whitespace and case, rejects
 invalid dates/amounts/categories, and computes day totals, category totals, and every day of the

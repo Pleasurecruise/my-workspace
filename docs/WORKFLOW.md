@@ -34,10 +34,10 @@ flowchart TD
 ## Static publication
 
 `vesper build` delegates to `build.rs`. The builder walks `content/`, renders Markdown through
-`md-dialect`, highlights fenced code with Syntect, renders `mermaid` fences to SVG, compiles content
-embeds, copies regular assets, rejects symbolic links and output collisions, and writes
-`content.json` into an operating-system temporary directory. Generated styles are embedded in the
-HTML artifact. Invalid Markdown dialect input fails before an upload plan exists.
+`cms-core::markdown`, highlights fenced code with Syntect, renders `mermaid` fences to SVG, delegates
+custom content embeds to `md-dialect`, copies regular assets, rejects symbolic links and output
+collisions, and writes `content.json` into an operating-system temporary directory. Generated styles
+are embedded in the HTML artifact. Invalid Markdown dialect input fails before an upload plan exists.
 
 Namespaced GitHub and stock fences resolve their data locally through `quotes`. Architecture and
 storyboard fences accept accessible authored SVG and sanitize it with `svg-hush`. The complete

@@ -188,8 +188,8 @@ fn print_help() {
          todo undo-check-in <habit-id>  undo a dated check-in\n  \
          ledger --date <YYYY-MM-DD> <action> [...]  select another expense date\n  \
          ledger list                   read daily expenses and monthly totals\n  \
-         ledger create <amount> <category>       add a GBP expense\n  \
-         ledger update <id> <amount> <category>  edit an expense on the selected date\n  \
+         ledger create <amount> <category> [description]       add a GBP expense\n  \
+         ledger update <id> <amount> <category> [description]  edit an expense on the selected date\n  \
          ledger delete <id>             delete an expense on the selected date\n\n\
          Status sources: ugos, claude, codex, copilot, grok, opencode, deepseek, cherryin\n\n\
          todo notion status | connect <calendar-view-url> | disconnect\n\

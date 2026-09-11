@@ -242,15 +242,16 @@ layout with its own WebView date; it does not start Dashboard polling. Date chan
 writes, expense events, focus, and the existing minute timer update data.
 
 Quick entry requires only a positive GBP amount and a category; the selected date is implicit.
+An optional note (up to 500 characters) can be saved, edited, and viewed below the category.
 Amounts range from £0.01 to £999,999.99 with at most two decimal places. The initial suggestions are
-Dining, Groceries, Transport, Shopping, Housing, Entertainment, and Other; custom categories are
+Coffee, Subscriptions, Eating out, Groceries, Transport, Shopping, and Other; custom categories are
 accepted through the Custom category option and become suggestions. The category dropdown uses
 the shared UI Select component rather than a native select or datalist. Case and repeated whitespace do not create duplicate categories.
 This is an expense ledger, with no income, conversion, bank connection, or automatic import.
 Entries can be edited or deleted. A successful write updates the list, selected-day total, monthly
 total, category donut, and daily bars together. The charts always cover the selected date's calendar
 month. Categories and Daily spending switch within one fixed-height chart region; changing chart
-view does not reread data or change the entry draft. Empty months show an explicit empty state and zero daily bars. Amount/category drafts are
+view does not reread data or change the entry draft. Empty months show an explicit empty state and zero daily bars. Amount/category/note drafts are
 preserved on failed writes and when edited during saving; changing the selected date starts a new
 form for that date.
 
@@ -427,3 +428,10 @@ dependencies. All nonessential motion is disabled when the operating system requ
 [open-meteo]: https://open-meteo.com/en/docs
 [open-meteo-geocoding]: https://open-meteo.com/en/docs/geocoding-api
 [openai-status]: https://status.openai.com/api/v2/summary.json
+
+## Component ownership
+
+Dashboard and Dynamic Island share placement dispatch in `WidgetContent`. `PlannerPanel` owns the
+Calendar/Todo/habit composition; `TelemetryPanel` owns metric labels and charts. Usage and telemetry
+receive only the selected source’s typed state. Source events share the same loading/error update
+policy and preserve settled data after failed reads; each provider remains independent.

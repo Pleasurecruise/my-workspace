@@ -58,8 +58,8 @@ splitting directories by CRUD verb. Shared authentication belongs in `auth.rs` o
 providers use the same credential format and resolution policy.
 
 Stable capabilities retain their own boundaries: `r2.rs` owns object storage,
-`cms-core::markdown` owns generic and Memo rendering, `md-dialect` owns article-oriented Markdown
-compilation, and `build.rs` owns local artifact assembly.
+`cms-core::markdown` owns general Markdown compilation and article/Memo rendering; `md-dialect`
+owns custom fence validation, provider data, and rendering. `build.rs` owns local artifact assembly.
 
 ## Helpers and abstractions
 

@@ -19,12 +19,13 @@ pub(crate) async fn create_expense(
     date: String,
     amount: String,
     category: String,
+    description: Option<String>,
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
 ) -> CommandResponse<ledger::Snapshot> {
     changed(
         app.state::<ledger::Store>()
-            .create(&date, &amount, &category)
+            .create(&date, &amount, &category, description.as_deref())
             .await,
         &app,
         &window,
@@ -37,12 +38,19 @@ pub(crate) async fn update_expense(
     id: String,
     amount: String,
     category: String,
+    description: Option<String>,
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
 ) -> CommandResponse<ledger::Snapshot> {
     changed(
         app.state::<ledger::Store>()
-            .update(&date, &id, &amount, &category)
+            .update(
+                &date,
+                &id,
+                &amount,
+                &category,
+                Some(description.as_deref().unwrap_or("")),
+            )
             .await,
         &app,
         &window,

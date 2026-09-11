@@ -26,10 +26,12 @@ async fn execute(
 ) -> Result<ledger::Snapshot, String> {
     let result = match (action, arguments) {
         ("list", []) => store.read(date).await,
-        ("create", [amount, category]) => store.create(date, amount, category).await,
-        ("update", [id, amount, category]) => store.update(date, id, amount, category).await,
+        ("create", [amount, category]) => store.create(date, amount, category, None).await,
+        ("update", [id, amount, category]) => store.update(date, id, amount, category, None).await,
+        ("create", [amount, category, description]) => store.create(date, amount, category, Some(description)).await,
+        ("update", [id, amount, category, description]) => store.update(date, id, amount, category, Some(description)).await,
         ("delete", [id]) => store.delete(date, id).await,
-        _ => return Err("expected ledger [--date YYYY-MM-DD] list | create <amount> <category> | update <id> <amount> <category> | delete <id>".into()),
+        _ => return Err("expected ledger [--date YYYY-MM-DD] list | create <amount> <category> [description] | update <id> <amount> <category> [description] | delete <id>".into()),
     };
     result.map_err(|error| error.to_string())
 }

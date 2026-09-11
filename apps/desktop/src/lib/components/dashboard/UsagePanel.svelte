@@ -1,34 +1,26 @@
 <script lang="ts">
-	import type { CherryInBalance, ClaudeUsage, CodexUsage, CopilotQuota, CopilotUsage, DeepSeekBalance, GrokUsage, OpenCodeUsage, RateLimitWindow } from "../../consumer";
+	import type { QueryState, CherryInBalance, ClaudeUsage, CodexUsage, CopilotQuota, CopilotUsage, DeepSeekBalance, GrokUsage, OpenCodeUsage, RateLimitWindow } from "../../consumer";
 
-	let { provider, codex, codexError, openCode, openCodeError, claude, claudeError, grok, grokError, copilot, copilotError, deepSeek, deepSeekError, cherryIn, cherryInError }: {
-		provider: "codex" | "openCode" | "claude" | "grok" | "copilot" | "deepSeek" | "cherryIn";
-		codex: CodexUsage | null;
-		codexError: string | null;
-		openCode: OpenCodeUsage | null;
-		openCodeError: string | null;
-		claude: ClaudeUsage | null;
-		claudeError: string | null;
-		grok: GrokUsage | null;
-		grokError: string | null;
-		copilot: CopilotUsage | null;
-		copilotError: string | null;
-		deepSeek: DeepSeekBalance | null;
-		deepSeekError: string | null;
-		cherryIn: CherryInBalance | null;
-		cherryInError: string | null;
-	} = $props();
+	let source:
+		| { provider: "codex"; state: QueryState<CodexUsage> }
+		| { provider: "openCode"; state: QueryState<OpenCodeUsage> }
+		| { provider: "claude"; state: QueryState<ClaudeUsage> }
+		| { provider: "grok"; state: QueryState<GrokUsage> }
+		| { provider: "copilot"; state: QueryState<CopilotUsage> }
+		| { provider: "deepSeek"; state: QueryState<DeepSeekBalance> }
+		| { provider: "cherryIn"; state: QueryState<CherryInBalance> } = $props();
 
 	const percentFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 	const usdFormatter = new Intl.NumberFormat("en-US", { currency: "USD", currencyDisplay: "narrowSymbol", maximumFractionDigits: 2, minimumFractionDigits: 2, style: "currency" });
-	let panelLabel = $derived(providerLabel(provider));
-	let openCodeWindows = $derived(openCode === null ? [] : [
-		{ label: "5 hours", window: openCode.usage.rolling, available: Math.max(0, 100 - openCode.usage.rolling.percent) },
-		{ label: "Weekly", window: openCode.usage.weekly, available: Math.max(0, 100 - openCode.usage.weekly.percent) },
-		{ label: "Monthly", window: openCode.usage.monthly, available: Math.max(0, 100 - openCode.usage.monthly.percent) },
+	let panelLabel = $derived(providerLabel(source.provider));
+	let openCodeWindows = $derived(source.provider !== "openCode" || source.state.data === null ? [] : [
+		{ label: "5 hours", window: source.state.data.usage.rolling, available: Math.max(0, 100 - source.state.data.usage.rolling.percent) },
+		{ label: "Weekly", window: source.state.data.usage.weekly, available: Math.max(0, 100 - source.state.data.usage.weekly.percent) },
+		{ label: "Monthly", window: source.state.data.usage.monthly, available: Math.max(0, 100 - source.state.data.usage.monthly.percent) },
 	]);
 	let copilotQuotas = $derived.by((): Array<{ label: string; quota: CopilotQuota }> => {
-		if (copilot === null) return [];
+		if (source.provider !== "copilot" || source.state.data === null) return [];
+		const copilot = source.state.data;
 		const quotas: Array<{ label: string; quota: CopilotQuota | null }> = [
 			{ label: "Premium requests", quota: copilot.quotaSnapshots.premiumInteractions },
 			{ label: "Chat", quota: copilot.quotaSnapshots.chat },
@@ -38,7 +30,7 @@
 	});
 
 	function remaining(window: { usedPercent: number }): number { return Math.max(0, Math.min(100, 100 - window.usedPercent)); }
-	function providerLabel(value: typeof provider): string {
+	function providerLabel(value: typeof source.provider): string {
 		if (value === "codex") return "Codex quota";
 		if (value === "openCode") return "OpenCode Go quota";
 		if (value === "claude") return "Claude quota";
@@ -70,7 +62,8 @@
 
 <section class="usage-panel" aria-label={panelLabel}>
 	<article>
-		{#if provider === "codex"}
+		{#if source.provider === "codex"}
+			{@const codex = source.state.data}
 			<div class="provider-heading"><strong>Codex</strong>{#if codex !== null && codex.planType !== null}<span>{codex.planType}</span>{/if}</div>
 			{#if codex !== null}
 				<div class="meter-list">
@@ -78,25 +71,31 @@
 					{#if codex.secondary !== null}<div class="meter"><div><span>{windowLabel(codex.secondary, "Secondary")}</span><strong>{percentFormatter.format(remaining(codex.secondary))}%</strong></div><div class="progress" role="progressbar" aria-label="Codex secondary quota" aria-valuenow={remaining(codex.secondary)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(codex.secondary)}%`}></span></div><small>{resetLabel(codex.secondary.resetsAt)}</small></div>{/if}
 					{#if codex.spark !== null && codex.spark.primary !== null}<div class="meter"><div><span>GPT-5.3 Codex Spark</span><strong>{percentFormatter.format(remaining(codex.spark.primary))}%</strong></div><div class="progress spark" role="progressbar" aria-label="GPT-5.3 Codex Spark quota" aria-valuenow={remaining(codex.spark.primary)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(codex.spark.primary)}%`}></span></div><small>{resetLabel(codex.spark.primary.resetsAt)}</small></div>{/if}
 				</div>
-			{:else}<p>{loadingMessage(codexError)}</p>{/if}
-		{:else if provider === "openCode"}
+			{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
+		{:else if source.provider === "openCode"}
+			{@const openCode = source.state.data}
 			<div class="provider-heading"><strong>OpenCode Go</strong><span>Go</span></div>
-			{#if openCode !== null}<div class="meter-list">{#each openCodeWindows as item}<div class="meter"><div><span>{item.label}</span><strong>{percentFormatter.format(item.available)}%</strong></div><div class:limited={item.window.status === "rate-limited"} class="progress" role="progressbar" aria-label={`OpenCode Go ${item.label} quota`} aria-valuenow={item.available} aria-valuemin="0" aria-valuemax="100"><span style:width={`${item.available}%`}></span></div><small>{resetLabel(item.window.resetsAt)}</small></div>{/each}</div>{:else}<p>{loadingMessage(openCodeError)}</p>{/if}
-		{:else if provider === "claude"}
+			{#if openCode !== null}<div class="meter-list">{#each openCodeWindows as item}<div class="meter"><div><span>{item.label}</span><strong>{percentFormatter.format(item.available)}%</strong></div><div class:limited={item.window.status === "rate-limited"} class="progress" role="progressbar" aria-label={`OpenCode Go ${item.label} quota`} aria-valuenow={item.available} aria-valuemin="0" aria-valuemax="100"><span style:width={`${item.available}%`}></span></div><small>{resetLabel(item.window.resetsAt)}</small></div>{/each}</div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
+		{:else if source.provider === "claude"}
+			{@const claude = source.state.data}
 			<div class="provider-heading"><strong>Claude</strong>{#if claude !== null}<span>{claude.planType}</span>{/if}</div>
-			{#if claude !== null}<div class="meter-list">{#if claude.fiveHour !== null}<div class="meter"><div><span>5 hours</span><strong>{percentFormatter.format(remaining(claude.fiveHour))}%</strong></div><div class="progress" role="progressbar" aria-label="Claude 5-hour quota" aria-valuenow={remaining(claude.fiveHour)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(claude.fiveHour)}%`}></span></div><small>{resetLabel(claude.fiveHour.resetsAt)}</small></div>{/if}{#if claude.sevenDay !== null}<div class="meter"><div><span>Weekly</span><strong>{percentFormatter.format(remaining(claude.sevenDay))}%</strong></div><div class="progress" role="progressbar" aria-label="Claude weekly quota" aria-valuenow={remaining(claude.sevenDay)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(claude.sevenDay)}%`}></span></div><small>{resetLabel(claude.sevenDay.resetsAt)}</small></div>{/if}</div>{:else}<p>{loadingMessage(claudeError)}</p>{/if}
-		{:else if provider === "grok"}
+			{#if claude !== null}<div class="meter-list">{#if claude.fiveHour !== null}<div class="meter"><div><span>5 hours</span><strong>{percentFormatter.format(remaining(claude.fiveHour))}%</strong></div><div class="progress" role="progressbar" aria-label="Claude 5-hour quota" aria-valuenow={remaining(claude.fiveHour)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(claude.fiveHour)}%`}></span></div><small>{resetLabel(claude.fiveHour.resetsAt)}</small></div>{/if}{#if claude.sevenDay !== null}<div class="meter"><div><span>Weekly</span><strong>{percentFormatter.format(remaining(claude.sevenDay))}%</strong></div><div class="progress" role="progressbar" aria-label="Claude weekly quota" aria-valuenow={remaining(claude.sevenDay)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(claude.sevenDay)}%`}></span></div><small>{resetLabel(claude.sevenDay.resetsAt)}</small></div>{/if}</div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
+		{:else if source.provider === "grok"}
+			{@const grok = source.state.data}
 			<div class="provider-heading"><strong>Grok</strong>{#if grok !== null && grok.planType !== null}<span>{grok.planType}</span>{/if}</div>
-			{#if grok !== null}<div class="meter-list"><div class="meter"><div><span>{grok.window.windowDurationMins === 10_080 ? "Weekly" : "Current period"}</span><strong>{percentFormatter.format(remaining(grok.window))}%</strong></div><div class="progress" role="progressbar" aria-label="Grok quota" aria-valuenow={remaining(grok.window)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(grok.window)}%`}></span></div><small>{resetLabel(grok.window.resetsAt)}</small></div></div>{:else}<p>{loadingMessage(grokError)}</p>{/if}
-		{:else if provider === "copilot"}
+			{#if grok !== null}<div class="meter-list"><div class="meter"><div><span>{grok.window.windowDurationMins === 10_080 ? "Weekly" : "Current period"}</span><strong>{percentFormatter.format(remaining(grok.window))}%</strong></div><div class="progress" role="progressbar" aria-label="Grok quota" aria-valuenow={remaining(grok.window)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(grok.window)}%`}></span></div><small>{resetLabel(grok.window.resetsAt)}</small></div></div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
+		{:else if source.provider === "copilot"}
+			{@const copilot = source.state.data}
 			<div class="provider-heading"><strong>Copilot</strong>{#if copilot !== null && copilot.copilotPlan !== null}<span>{copilot.copilotPlan}</span>{/if}</div>
-			{#if copilot !== null && copilotQuotas.length > 0}<div class="meter-list">{#each copilotQuotas as item}{@const available = Math.max(0, Math.min(100, item.quota.percentRemaining === null ? 0 : item.quota.percentRemaining))}<div class="meter"><div><span>{item.label}</span><strong>{percentFormatter.format(available)}%</strong></div><div class="progress" role="progressbar" aria-label={`Copilot ${item.label} quota`} aria-valuenow={available} aria-valuemin="0" aria-valuemax="100"><span style:width={`${available}%`}></span></div><small>{copilotQuotaDetail(item.quota, copilot.quotaResetDateUtc)}</small></div>{/each}</div>{:else if copilot !== null}<p>No metered Copilot quota is available.</p>{:else}<p>{loadingMessage(copilotError)}</p>{/if}
-		{:else if provider === "deepSeek"}
+			{#if copilot !== null && copilotQuotas.length > 0}<div class="meter-list">{#each copilotQuotas as item}{@const available = Math.max(0, Math.min(100, item.quota.percentRemaining === null ? 0 : item.quota.percentRemaining))}<div class="meter"><div><span>{item.label}</span><strong>{percentFormatter.format(available)}%</strong></div><div class="progress" role="progressbar" aria-label={`Copilot ${item.label} quota`} aria-valuenow={available} aria-valuemin="0" aria-valuemax="100"><span style:width={`${available}%`}></span></div><small>{copilotQuotaDetail(item.quota, copilot.quotaResetDateUtc)}</small></div>{/each}</div>{:else if copilot !== null}<p>No metered Copilot quota is available.</p>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
+		{:else if source.provider === "deepSeek"}
+			{@const deepSeek = source.state.data}
 			<div class="provider-heading"><strong>DeepSeek</strong>{#if deepSeek !== null}<span class:unavailable={!deepSeek.isAvailable}>{deepSeek.isAvailable ? "Available" : "Unavailable"}</span>{/if}</div>
-			{#if deepSeek !== null && deepSeek.balanceInfos.length > 0}<div class="account-balances">{#each deepSeek.balanceInfos as balance}<div class="account-balance"><div><strong>{balance.currency === "CNY" ? "¥" : "$"}{balance.totalBalance}</strong><span>{balance.currency === "CNY" ? "RMB" : balance.currency}</span></div><small>Available balance</small></div>{/each}</div>{:else}<p>{loadingMessage(deepSeekError)}</p>{/if}
+			{#if deepSeek !== null && deepSeek.balanceInfos.length > 0}<div class="account-balances">{#each deepSeek.balanceInfos as balance}<div class="account-balance"><div><strong>{balance.currency === "CNY" ? "¥" : "$"}{balance.totalBalance}</strong><span>{balance.currency === "CNY" ? "RMB" : balance.currency}</span></div><small>Available balance</small></div>{/each}</div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
 		{:else}
+			{@const cherryIn = source.state.data}
 			<div class="provider-heading"><strong>Cherry</strong>{#if cherryIn !== null}<span>Available</span>{/if}</div>
-			{#if cherryIn !== null}<div class="account-balances"><div class="account-balance"><div><strong>{usdFormatter.format(cherryIn.balance)}</strong><span>USD</span></div><small>Available balance</small></div></div>{:else}<p>{loadingMessage(cherryInError)}</p>{/if}
+			{#if cherryIn !== null}<div class="account-balances"><div class="account-balance"><div><strong>{usdFormatter.format(cherryIn.balance)}</strong><span>USD</span></div><small>Available balance</small></div></div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
 		{/if}
 	</article>
 </section>

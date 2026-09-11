@@ -4,7 +4,7 @@ import { createLedgerSession } from "../session.svelte";
 
 const { invoke, mounts, listeners } = vi.hoisted(() => ({
 	invoke: vi.fn(),
-	mounts: [] as Array<() => () => void>,
+	mounts: new Array<() => () => void>(),
 	listeners: new Map<string, (event: { payload: string }) => void>(),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -72,14 +72,15 @@ it("keeps the submitted expense date and rereads the new selection after a write
 	invoke
 		.mockReturnValueOnce(old.promise)
 		.mockResolvedValueOnce({ status: "ready", data: snapshot("2026-10-01") });
-	const save = session.save(null, "12.34", "Dining");
-	expect(await session.save(null, "12.34", "Dining")).toBe(false);
+	const save = session.save(null, "12.34", "Dining", null);
+	expect(await session.save(null, "12.34", "Dining", null)).toBe(false);
 	await session.load("2026-10-01");
 	expect(session.data).toBeNull();
 	expect(invoke).toHaveBeenLastCalledWith("create_expense", {
 		date: "2026-09-30",
 		amount: "12.34",
 		category: "Dining",
+		description: null,
 	});
 	old.resolve({ status: "ready", data: snapshot("2026-09-30") });
 	expect(await save).toBe(false);
@@ -88,14 +89,16 @@ it("keeps the submitted expense date and rereads the new selection after a write
 
 it("refreshes monthly totals for another day's mutation and preserves write errors", async () => {
 	const session = createLedgerSession();
-	cleanup = mounts[0]!();
+	const mount = mounts[0];
+	if (!mount) throw new Error("Missing lifecycle callback");
+	cleanup = mount();
 	await Promise.resolve();
 	const data = snapshot("2026-09-11");
 	invoke.mockResolvedValueOnce({ status: "ready", data });
 	await session.load(data.date);
 	const old = pending();
 	invoke.mockReturnValueOnce(old.promise).mockResolvedValueOnce({ status: "ready", data });
-	const save = session.save("entry", "1.20", "Dining");
+	const save = session.save("entry", "1.20", "Dining", null);
 	listeners.get("expenses-updated")?.({ payload: "2026-09-20" });
 	old.resolve({ status: "failed", message: "Could not save expense" });
 	expect(await save).toBe(false);
@@ -112,7 +115,9 @@ it("refreshes monthly totals for another day's mutation and preserves write erro
 
 it("discards late responses and removes focus reads after disposal", async () => {
 	const session = createLedgerSession();
-	cleanup = mounts[0]!();
+	const mount = mounts[0];
+	if (!mount) throw new Error("Missing lifecycle callback");
+	cleanup = mount();
 	await Promise.resolve();
 	const old = pending();
 	invoke.mockReturnValueOnce(old.promise);

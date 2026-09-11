@@ -183,9 +183,9 @@
 	h2 { margin: 0; color: var(--color-muted-foreground); font-size: 0.72rem; font-weight: 500; text-transform: uppercase; }
 	.todo-heading > span { color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 0.65rem; }
 	form { gap: 0.4rem; }
-	form input { min-width: 0; height: 2rem; flex: 1; padding: 0 0.65rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-foreground); font-size: 0.72rem; outline: none; }
+	form input { box-sizing: border-box; min-width: 0; height: 2rem; flex: 1; padding: 0 0.65rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-foreground); font-size: 0.72rem; outline: none; }
 	form input:focus { border-color: var(--color-accent); }
-	button { display: inline-flex; width: 2rem; height: 2rem; flex: 0 0 auto; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-muted-foreground); cursor: pointer; }
+	button { box-sizing: border-box; display: inline-flex; width: 2rem; height: 2rem; flex: 0 0 auto; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-muted-foreground); cursor: pointer; }
 	button:disabled { cursor: not-allowed; opacity: 0.45; }
 	ul { display: grid; min-height: 0; gap: 0.15rem; flex: 1; align-content: start; padding: 0; margin: 0.5rem 0 0; overflow-y: auto; list-style: none; }
 	li { min-width: 0; gap: 0.5rem; min-height: 1.8rem; }
@@ -212,7 +212,7 @@
 	.todo-detail dt { display: flex; align-items: center; gap: 0.4rem; color: var(--color-muted-foreground); }
 	.todo-detail dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 	.todo-description { margin-top: 0.8rem; }
-	.todo-description p, .todo-manual { margin: 0.45rem 0 0; color: var(--color-muted-foreground); font-size: 0.68rem; line-height: 1.6; white-space: pre-wrap; }
+	.todo-description p, .todo-manual { margin: 0.45rem 0 0; color: var(--color-muted-foreground); font-size: 0.68rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 	.add-form, .edit-form { flex-direction: column; align-items: stretch; }
 	.add-row { display: flex; gap: 0.4rem; }
@@ -223,4 +223,5 @@
 	.edit-form input { flex: auto; }
 	.edit-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 	.edit-actions button { width: auto; padding: 0 0.65rem; gap: 0.4rem; font-size: 0.68rem; }
+	@media (hover: none) { li > button { opacity: 1; } }
 </style>

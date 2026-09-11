@@ -7,12 +7,12 @@ use std::path::PathBuf;
 const MAX_PENCE: i64 = 99_999_999;
 const MAX_TOTAL: i64 = 9_007_199_254_740_991;
 const CATEGORIES: [&str; 7] = [
-    "Dining",
+    "Coffee",
+    "Subscriptions",
+    "Eating out",
     "Groceries",
     "Transport",
     "Shopping",
-    "Housing",
-    "Entertainment",
     "Other",
 ];
 
@@ -22,6 +22,7 @@ diesel::table! {
         date -> Text,
         amount_pence -> BigInt,
         category -> Text,
+        description -> Nullable<Text>,
         created_at -> BigInt,
     }
 }
@@ -32,6 +33,8 @@ pub enum Error {
     Amount,
     #[error("Enter a category containing 1–40 characters without control characters")]
     Category,
+    #[error("Enter a note of at most 500 characters without control characters")]
+    Description,
     #[error("Choose a valid date in YYYY-MM-DD format")]
     Date,
     #[error("This expense no longer exists on the selected date")]
@@ -54,6 +57,7 @@ pub struct Entry {
     pub date: String,
     pub amount_pence: i64,
     pub category: String,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -109,9 +113,11 @@ impl Store {
         date: &str,
         amount: &str,
         category: &str,
+        description: Option<&str>,
     ) -> Result<Snapshot, Error> {
         let amount_pence = parse_amount(amount)?;
         let category = parse_category(category)?;
+        let description = parse_description(description)?;
         self.mutate(date, move |connection, date| {
             let category = canonical_category(connection, &category)?;
             diesel::insert_into(ledger_entries::table)
@@ -120,6 +126,7 @@ impl Store {
                     ledger_entries::date.eq(date),
                     ledger_entries::amount_pence.eq(amount_pence),
                     ledger_entries::category.eq(category),
+                    ledger_entries::description.eq(description),
                     ledger_entries::created_at.eq(time::OffsetDateTime::now_utc().unix_timestamp()),
                 ))
                 .execute(connection)?;
@@ -134,15 +141,18 @@ impl Store {
         id: &str,
         amount: &str,
         category: &str,
+        description: Option<&str>,
     ) -> Result<Snapshot, Error> {
         let amount_pence = parse_amount(amount)?;
         let category = parse_category(category)?;
+        let change_description = description.is_some();
+        let description = parse_description(description)?;
         let id = id.to_owned();
         self.mutate(date, move |connection, date| {
             let category = canonical_category(connection, &category)?;
             let count = diesel::update(
                 ledger_entries::table
-                    .filter(ledger_entries::id.eq(id))
+                    .filter(ledger_entries::id.eq(&id))
                     .filter(ledger_entries::date.eq(date)),
             )
             .set((
@@ -152,6 +162,11 @@ impl Store {
             .execute(connection)?;
             if count == 0 {
                 return Err(Error::MissingEntry);
+            }
+            if change_description {
+                diesel::update(ledger_entries::table.filter(ledger_entries::id.eq(&id)))
+                    .set(ledger_entries::description.eq(description))
+                    .execute(connection)?;
             }
             Ok(())
         })
@@ -243,6 +258,15 @@ fn parse_category(value: &str) -> Result<String, Error> {
         return Err(Error::Category);
     }
     Ok(value)
+}
+
+fn parse_description(value: Option<&str>) -> Result<Option<String>, Error> {
+    let Some(value) = value else { return Ok(None) };
+    if value.chars().any(char::is_control) || value.chars().count() > 500 {
+        return Err(Error::Description);
+    }
+    let value = value.trim();
+    Ok((!value.is_empty()).then(|| value.to_owned()))
 }
 
 fn canonical_category(connection: &mut SqliteConnection, category: &str) -> Result<String, Error> {

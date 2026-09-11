@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS ledger_entries (
     date TEXT NOT NULL,
     amount_pence BIGINT NOT NULL CHECK (amount_pence BETWEEN 1 AND 99999999),
     category TEXT NOT NULL CHECK (length(category) BETWEEN 1 AND 40),
+    description TEXT CHECK (description IS NULL OR length(description) <= 500),
     created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ledger_entries_date ON ledger_entries(date);

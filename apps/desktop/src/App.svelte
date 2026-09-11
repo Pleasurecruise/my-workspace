@@ -1,5 +1,7 @@
 <script lang="ts">
 	import "./lib/components/layout/page.css";
+	import ProfileEditor from "./lib/components/layout/ProfileEditor.svelte";
+	import UpdateDialog from "./lib/components/layout/UpdateDialog.svelte";
 	import PageSkeleton from "./lib/components/layout/PageSkeleton.svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
@@ -19,9 +21,6 @@
 		CommandResponse,
 		Channel,
 		InitialViews,
-		QqQr,
-		UpdateInfo,
-		UpdateProgress,
 	} from "./lib/consumer";
 	import { createDashboardSession } from "./lib/components/dashboard/session.svelte";
 	import { createInboxSession } from "./lib/components/inbox/session.svelte";
@@ -42,9 +41,6 @@
 		{ id: "knowledge", label: "Knowledge" },
 		{ id: "settings", label: "Settings" },
 	];
-	const defaultProfileAvatar = new URL("./assets/pleasure1234-avatar.png", import.meta.url).href;
-	const profileNameKey = "vesper.profile.name";
-	const profileAvatarKey = "vesper.profile.avatar";
 	const sidebarWidthKey = "vesper.sidebar.width";
 	const minimumSidebarWidth = 64;
 	const maximumSidebarWidth = 360;
@@ -73,9 +69,9 @@
 		selected === "memos" ? memos : selected === "moment" ? moment
 			: selected === "knowledge" || selected === "newspaper" ? knowledge : null,
 	);
-    const paginatedContent = $derived(
-        selected === "memos" ? memos : selected === "knowledge" || selected === "newspaper" ? knowledge : null,
-    );
+	const paginatedContent = $derived(
+		selected === "memos" ? memos : selected === "knowledge" || selected === "newspaper" ? knowledge : null,
+	);
 	const content = $derived(activeContent === null ? null : activeContent.content);
 	const contentError = $derived(activeContent === null ? null : activeContent.error);
 	let initializationRequest = 0;
@@ -109,104 +105,13 @@
 	$effect(() => {
 		if (!viewAvailable(selected)) untrack(() => { void select("dashboard"); });
 	});
-	let updateAvailable = $state<UpdateInfo | null>(null);
-	let updateProgress = $state<UpdateProgress | null>(null);
-	let updateError = $state<string | null>(null);
-	let updateCheckError = $state<string | null>(null);
-	let updateCheckNotice = $state<string | null>(null);
-	let updateChecking = $state(false);
-	let installingUpdate = $state(false);
-	let updateDialog = $state<HTMLDivElement | null>(null);
-	let updatePercent = $derived(
-		updateProgress?.status === "downloading" && updateProgress.total !== null && updateProgress.total > 0
-			? Math.min(100, Math.round((updateProgress.downloaded / updateProgress.total) * 100))
-			: null,
-	);
-	$effect(() => {
-		if (updateAvailable === null || locked) return;
-		void tick().then(() => updateDialog?.focus());
-	});
+	let updateModalOpen = $state(false);
 	let locked = $state(true);
 	let unlockPassword = $state("");
 	let unlockError = $state<string | null>(null);
 	let unlocking = $state(false);
 	let unlockInput = $state<HTMLInputElement | null>(null);
-	let profileName = $state("Pleasure1234");
-	let profileAvatar = $state(defaultProfileAvatar);
-	let profileEditing = $state(false);
-	let profileNameDraft = $state("Pleasure1234");
-	let profileAvatarDraft = $state(defaultProfileAvatar);
-	let profileError = $state<string | null>(null);
-	let profileAvatarInput = $state<HTMLInputElement | null>(null);
-	let profileNameInput = $state<HTMLInputElement | null>(null);
-	let profilePopover = $state<HTMLDivElement | null>(null);
 	let sidebarWidth = $state(240);
-
-	async function checkForUpdate(manual = false) {
-		if (updateChecking) {
-			if (manual) {
-				const message = "An update check is already running.";
-				updateCheckNotice = message;
-				window.setTimeout(() => {
-					if (updateCheckNotice === message) updateCheckNotice = null;
-				}, 5_000);
-			}
-			return;
-		}
-		updateChecking = true;
-		updateCheckError = null;
-		updateCheckNotice = null;
-		const response = await invoke<CommandResponse<UpdateInfo | null>>("check_for_update");
-		updateChecking = false;
-		if (response.status === "failed") {
-			updateCheckError = response.message;
-			const message = response.message;
-			window.setTimeout(() => {
-				if (updateCheckError === message) updateCheckError = null;
-			}, 5_000);
-			return;
-		}
-		updateAvailable = response.data;
-		if (manual && response.data === null) {
-			const message = "Vesper is up to date.";
-			updateCheckNotice = message;
-			window.setTimeout(() => {
-				if (updateCheckNotice === message) updateCheckNotice = null;
-			}, 5_000);
-		}
-	}
-
-	async function installUpdate() {
-		if (updateAvailable === null) return;
-		installingUpdate = true;
-		updateError = null;
-		updateProgress = null;
-		const response = await invoke<CommandResponse<string>>("install_update", {
-			version: updateAvailable.version,
-		});
-		if (response.status === "failed") {
-			installingUpdate = false;
-			updateError = response.message;
-		}
-	}
-
-	function keepUpdateDialogFocus(event: KeyboardEvent) {
-		if (event.key !== "Tab" || updateDialog === null) return;
-		const controls = updateDialog.querySelectorAll<HTMLElement>("button:not(:disabled)");
-		if (controls.length === 0) return;
-		const first = controls.item(0);
-		const last = controls.item(controls.length - 1);
-		if (document.activeElement === updateDialog) {
-			event.preventDefault();
-			(event.shiftKey ? last : first).focus();
-		} else if (event.shiftKey && document.activeElement === first) {
-			event.preventDefault();
-			last.focus();
-		} else if (!event.shiftKey && document.activeElement === last) {
-			event.preventDefault();
-			first.focus();
-		}
-	}
 
 	function openMusicPlayer() {
 		musicReturnView = selected;
@@ -270,9 +175,7 @@
 		void Promise.all([memos.refresh(), moment.refresh(), knowledge.refresh()]);
 	}
 
-	function loadProfile() {
-		profileName = localStorage.getItem(profileNameKey) ?? "Pleasure1234";
-		profileAvatar = localStorage.getItem(profileAvatarKey) ?? defaultProfileAvatar;
+	function loadSidebarWidth() {
 		const savedSidebarWidth = Number(localStorage.getItem(sidebarWidthKey));
 		if (Number.isFinite(savedSidebarWidth) && savedSidebarWidth >= minimumSidebarWidth && savedSidebarWidth <= maximumSidebarWidth) {
 			sidebarWidth = savedSidebarWidth;
@@ -316,98 +219,6 @@
 		localStorage.setItem(sidebarWidthKey, String(sidebarWidth));
 	}
 
-	async function toggleProfileEditor() {
-		profileEditing = !profileEditing;
-		profileNameDraft = profileName;
-		profileAvatarDraft = profileAvatar;
-		profileError = null;
-		if (profileEditing) {
-			await tick();
-			const input = profileNameInput;
-			if (input !== null) {
-				input.focus();
-				input.setSelectionRange(input.value.length, input.value.length);
-			}
-		}
-	}
-
-	function closeProfileEditorOnBlur(event: FocusEvent) {
-		const next = event.relatedTarget;
-		if (next instanceof Node && profilePopover?.contains(next)) return;
-		window.setTimeout(() => {
-			if (profilePopover?.contains(document.activeElement)) return;
-			profileEditing = false;
-			profileError = null;
-		}, 0);
-	}
-
-	async function changeProfileAvatar(input: HTMLInputElement) {
-		const files = input.files;
-		input.value = "";
-		if (files === null) return;
-		const file = files.item(0);
-		if (file === null) return;
-		if (!file.type.startsWith("image/")) {
-			profileError = "Choose an image file.";
-			return;
-		}
-		let image: ImageBitmap | null = null;
-		try {
-			image = await createImageBitmap(file);
-			const canvas = document.createElement("canvas");
-			canvas.width = 256;
-			canvas.height = 256;
-			const context = canvas.getContext("2d");
-			if (context === null) {
-				profileError = "The image processor is unavailable.";
-				return;
-			}
-			const sourceSize = Math.min(image.width, image.height);
-			context.drawImage(
-				image,
-				(image.width - sourceSize) / 2,
-				(image.height - sourceSize) / 2,
-				sourceSize,
-				sourceSize,
-				0,
-				0,
-				canvas.width,
-				canvas.height,
-			);
-			profileAvatarDraft = canvas.toDataURL("image/png");
-			profileError = null;
-		} catch {
-			profileError = "This image could not be opened.";
-		} finally {
-			image?.close();
-		}
-	}
-
-	function saveProfile(event: SubmitEvent) {
-		event.preventDefault();
-		const name = profileNameDraft.trim();
-		if (name === "") {
-			profileError = "Enter a username.";
-			return;
-		}
-		try {
-			localStorage.setItem(profileNameKey, name);
-			localStorage.setItem(profileAvatarKey, profileAvatarDraft);
-		} catch {
-			profileError = "The profile could not be saved on this device.";
-			return;
-		}
-		profileName = name;
-		profileAvatar = profileAvatarDraft;
-		profileEditing = false;
-	}
-
-	function resetProfileDraft() {
-		profileNameDraft = "Pleasure1234";
-		profileAvatarDraft = defaultProfileAvatar;
-		profileError = null;
-	}
-
 	function toggleTheme() {
 		dark = !dark;
 		applyTheme(dark);
@@ -433,22 +244,13 @@
 				unlockInput?.focus();
 			}
 		});
-		loadProfile();
+		loadSidebarWidth();
 		void settings.loadConfiguration();
 		const unlistenGameLogin = listen("game-login-required", () => {
-            void select("settings").then(() => { reconnectMihoyo = true; });
-        });
-		const unlistenUpdater = listen<UpdateProgress>("updater-progress", (event) => {
-			updateProgress = event.payload;
+			void select("settings").then(() => { reconnectMihoyo = true; });
 		});
-		const unlistenUpdateRequest = listen("check-for-updates-requested", () => {
-			void checkForUpdate(true);
-		});
-		void checkForUpdate();
 		return () => {
 			void unlistenGameLogin.then((unlisten) => unlisten());
-			void unlistenUpdater.then((unlisten) => unlisten());
-			void unlistenUpdateRequest.then((unlisten) => unlisten());
 		};
 	});
 </script>
@@ -458,7 +260,7 @@
 	<meta name="description" content="Local previews for Memos and Moment." />
 </svelte:head>
 
-<div class="shell" class:locked inert={locked || updateAvailable !== null} style:--sidebar-width={`${sidebarWidth}px`}>
+<div class="shell" class:locked inert={locked || updateModalOpen} style:--sidebar-width={`${sidebarWidth}px`}>
 	<button
 		type="button"
 		class:open={sidebarOpen}
@@ -491,31 +293,7 @@
 		</nav>
 
 		<div class="sidebar-footer">
-			<div class="profile-popover-anchor" bind:this={profilePopover} onfocusout={closeProfileEditorOnBlur}>
-				{#if profileEditing}
-					<div class="profile-editor" role="dialog" aria-label="Edit local profile">
-					<form onsubmit={saveProfile}>
-						<div class="profile-editor-heading">
-							<img src={profileAvatarDraft} alt="Profile preview" />
-							<div><strong>Local profile</strong><span>Display only</span></div>
-						</div>
-						<label for="profile-name">Username</label>
-						<input id="profile-name" bind:this={profileNameInput} maxlength="24" autocomplete="off" bind:value={profileNameDraft} />
-						<input class="avatar-input" bind:this={profileAvatarInput} type="file" accept="image/*" onchange={(event) => void changeProfileAvatar(event.currentTarget)} />
-						<div class="profile-editor-actions">
-							<button type="button" onclick={() => profileAvatarInput?.click()}>Change photo</button>
-							<button type="button" onclick={resetProfileDraft}>Reset</button>
-							<button type="submit">Save</button>
-						</div>
-						{#if profileError !== null}<p role="alert">{profileError}</p>{/if}
-					</form>
-					</div>
-				{/if}
-				<button class="user-profile" type="button" onclick={toggleProfileEditor} aria-haspopup="dialog" aria-expanded={profileEditing} aria-label={`Edit local profile for ${profileName}`} title="Edit local profile">
-					<img src={profileAvatar} alt="" />
-					<span>{profileName}</span>
-				</button>
-			</div>
+			<ProfileEditor compact={sidebarWidth < 160} />
 			<div class="footer-controls">
 				{#if viewAvailable("inbox")}
 				<div class="footer-navigation">
@@ -587,9 +365,6 @@
 						onsaveapplock={settings.saveAppLock}
 						onremoveapplock={settings.removeAppLock}
 						onconnectspotify={settings.connectSpotify}
-						onbeginqq={() => invoke<CommandResponse<QqQr>>("begin_qq_music_login")}
-						onpollqq={settings.pollQqLogin}
-						oncancelqq={() => invoke<CommandResponse<null>>("cancel_qq_music_login")}
 						onconfigurationchanged={settings.loadConfiguration}
 					/>
 				{:else if selected === "inbox"}
@@ -709,41 +484,7 @@
 	</div>
 {/if}
 
-{#if updateAvailable !== null && !locked}
-	<div class="update-overlay" role="presentation">
-		<div bind:this={updateDialog} class="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title" tabindex="-1" onkeydown={keepUpdateDialogFocus}>
-			<p>Application update</p>
-			<h1 id="update-title">Vesper {updateAvailable.version} is available</h1>
-			<span>Installed version: {updateAvailable.currentVersion}</span>
-			{#if updateAvailable.notes}<div class="update-notes">{updateAvailable.notes}</div>{/if}
-			{#if installingUpdate}
-				<div class="update-progress" class:indeterminate={updatePercent === null} role="progressbar" aria-label="Application update download" aria-valuemin="0" aria-valuemax="100" aria-valuenow={updatePercent}>
-					<span style:width={updatePercent === null ? "100%" : `${updatePercent}%`}></span>
-				</div>
-				<small>{updateProgress?.status === "downloaded" ? "Installing and restarting…" : updatePercent === null ? "Downloading update…" : `Downloading update… ${updatePercent}%`}</small>
-			{/if}
-			{#if updateError}<div class="update-error" role="alert">{updateError}</div>{/if}
-			<div class="update-actions">
-				<button type="button" disabled={installingUpdate} onclick={() => (updateAvailable = null)}>Later</button>
-				<button class="primary" type="button" disabled={installingUpdate} onclick={() => void installUpdate()}>{installingUpdate ? "Updating…" : "Download and restart"}</button>
-			</div>
-		</div>
-	</div>
-{/if}
-
-{#if updateCheckError !== null && updateAvailable === null && !locked}
-	<div class="update-check-feedback error" role="alert">
-		<span>{updateCheckError}</span>
-		<button type="button" aria-label="Dismiss update error" onclick={() => (updateCheckError = null)}>×</button>
-	</div>
-{/if}
-
-{#if updateCheckNotice !== null && updateAvailable === null && updateCheckError === null && !locked}
-	<div class="update-check-feedback" role="status">
-		<span>{updateCheckNotice}</span>
-		<button type="button" aria-label="Dismiss update status" onclick={() => (updateCheckNotice = null)}>×</button>
-	</div>
-{/if}
+<UpdateDialog {locked} onmodalchange={(open) => { updateModalOpen = open; }} />
 
 <style>
 	:global(html),
@@ -774,51 +515,6 @@
 	}
 
 	.shell.locked { filter: blur(1rem); }
-
-	.update-overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 120;
-		display: grid;
-		place-items: center;
-		padding: 1rem;
-		background: var(--color-overlay);
-	}
-
-	.update-dialog {
-		display: grid;
-		width: min(28rem, 100%);
-		box-sizing: border-box;
-		gap: 0.75rem;
-		padding: 1.25rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-		background: var(--color-background);
-		box-shadow: var(--shadow-lg);
-	}
-
-	.update-dialog p,
-	.update-dialog h1,
-	.update-dialog span,
-	.update-dialog small { margin: 0; }
-	.update-dialog p { color: var(--color-accent); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-	.update-dialog > span,
-	.update-dialog small { color: var(--color-muted-foreground); font-size: 0.72rem; }
-	.update-notes { max-height: 10rem; overflow: auto; white-space: pre-wrap; font-size: 0.78rem; line-height: 1.6; }
-	.update-progress { height: 0.35rem; overflow: hidden; border-radius: var(--radius-full); background: var(--color-muted); }
-	.update-progress span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); }
-	.update-progress.indeterminate span { animation: update-pulse 1.2s ease-in-out infinite alternate; }
-	.update-error { color: var(--color-destructive); font-size: 0.75rem; }
-	.update-actions { display: flex; justify-content: flex-end; gap: 0.5rem; padding-top: 0.25rem; }
-	.update-actions button { height: 2rem; padding: 0 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-foreground); cursor: pointer; font-size: 0.72rem; }
-	.update-actions button.primary { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-foreground); }
-	.update-actions button:disabled { cursor: not-allowed; opacity: 0.6; }
-	.update-check-feedback { position: fixed; right: 1rem; bottom: 1rem; z-index: 110; display: flex; max-width: min(32rem, calc(100vw - 2rem)); align-items: center; gap: 0.625rem; padding: 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-lg); }
-	.update-check-feedback span { color: var(--color-foreground); font-size: 0.75rem; line-height: 1.4; }
-	.update-check-feedback.error { border-color: var(--color-error); }
-	.update-check-feedback.error span { color: var(--color-error); }
-	.update-check-feedback button { padding: 0.25rem 0.5rem; border: 0; border-radius: var(--radius-sm); background: var(--color-muted); color: var(--color-foreground); cursor: pointer; font-size: 0.7rem; }
-	@keyframes update-pulse { from { opacity: 0.35; } to { opacity: 1; } }
 
 	.sidebar-overlay {
 		display: none;
@@ -917,48 +613,6 @@
 		color: var(--color-accent);
 	}
 
-	.user-profile {
-		display: flex;
-		flex: 1 1 auto;
-		align-items: center;
-		gap: 0.375rem;
-		min-width: 0;
-		height: 2rem;
-		padding: 0 0.125rem;
-		border: 0;
-		border-radius: var(--radius-md);
-		background: transparent;
-		cursor: pointer;
-		text-align: left;
-	}
-
-	.profile-popover-anchor {
-		position: relative;
-		display: flex;
-		flex: 1 1 auto;
-		min-width: 0;
-	}
-
-	.user-profile:hover { background: var(--color-muted); }
-
-	.user-profile img {
-		width: 1.75rem;
-		height: 1.75rem;
-		flex: 0 0 auto;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-full);
-		object-fit: cover;
-	}
-
-	.user-profile span {
-		overflow: hidden;
-		color: var(--color-foreground);
-		font-size: 0.65rem;
-		font-weight: 500;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
 	.sidebar-footer {
 		display: flex;
 		align-items: center;
@@ -967,37 +621,6 @@
 		padding: 0.625rem 0.5rem;
 		border-top: 1px solid var(--color-border);
 	}
-
-	.profile-editor {
-		position: absolute;
-		bottom: calc(100% + 0.75rem);
-		left: 0;
-		z-index: 30;
-		display: grid;
-		width: min(17rem, calc(100vw - 2rem));
-		box-sizing: border-box;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-		background: var(--color-background);
-		box-shadow: var(--shadow-lg);
-	}
-	.profile-editor form { display: contents; }
-
-	.profile-editor-heading { display: flex; align-items: center; gap: 0.625rem; }
-	.profile-editor-heading img { width: 2.5rem; height: 2.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-full); object-fit: cover; }
-	.profile-editor-heading div { display: grid; gap: 0.1rem; }
-	.profile-editor-heading strong { font-size: 0.75rem; font-weight: 600; }
-	.profile-editor-heading span,
-	.profile-editor label { color: var(--color-muted-foreground); font-size: 0.65rem; }
-	.profile-editor input:not(.avatar-input) { min-width: 0; height: 1.9rem; box-sizing: border-box; padding: 0 0.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-size: 0.72rem; }
-	.profile-editor input:not(.avatar-input):focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 14%, transparent); }
-	.avatar-input { display: none; }
-	.profile-editor-actions { display: flex; gap: 0.3rem; }
-	.profile-editor-actions button { height: 1.7rem; padding: 0 0.45rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: transparent; color: var(--color-foreground); cursor: pointer; font-size: 0.62rem; }
-	.profile-editor-actions button:last-child { margin-left: auto; border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-foreground); }
-	.profile-editor p { margin: 0; color: var(--color-error); font-size: 0.62rem; }
 
 	.footer-controls {
 		display: flex;
@@ -1242,8 +865,7 @@
 			padding: 0;
 		}
 
-		aside.compact nav button span,
-		aside.compact .user-profile span {
+		aside.compact nav button span {
 			display: none;
 		}
 
@@ -1255,14 +877,7 @@
 			justify-content: center;
 		}
 
-		aside.compact .user-profile {
-			justify-content: center;
-		}
 
-		aside.compact .profile-editor {
-			left: calc(100% + 0.75rem);
-			bottom: 0;
-		}
 	}
 
 	@media (max-width: 767px) {

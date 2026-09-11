@@ -290,7 +290,7 @@ it.each([false, true])(
 			key.value = "replacement-key";
 			key.dispatchEvent(new Event("input", { bubbles: true }));
 			await tick();
-			const row = key.closest(".setting-row");
+			const row = key.closest(".settings-row");
 			if (!(row instanceof HTMLElement)) throw new Error("Credential row missing");
 			const previousReads = tagReads;
 			button(row, "Save").click();

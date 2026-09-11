@@ -6,10 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 futures-util.workspace = true
-mermaid-svg.workspace = true
 pulldown-cmark.workspace = true
 quotes.workspace = true
-serde.workspace = true
-syntect.workspace = true
 svg-hush.workspace = true
 thiserror.workspace = true

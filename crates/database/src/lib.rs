@@ -54,7 +54,26 @@ pub fn open(path: &Path) -> Result<SqliteConnection, Error> {
         "PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON; PRAGMA synchronous = FULL;",
     )?;
     connection.batch_execute(include_str!("schema.sql"))?;
+    if !ledger_has_description(&mut connection)? {
+        connection.immediate_transaction::<_, diesel::result::Error, _>(|connection| {
+            if !ledger_has_description(connection)? {
+                connection.batch_execute("ALTER TABLE ledger_entries ADD COLUMN description TEXT CHECK (description IS NULL OR length(description) <= 500)")?;
+            }
+            Ok(())
+        })?;
+    }
     Ok(connection)
+}
+
+fn ledger_has_description(connection: &mut SqliteConnection) -> QueryResult<bool> {
+    #[derive(QueryableByName)]
+    struct Column {
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        name: String,
+    }
+    let columns =
+        diesel::sql_query("PRAGMA table_info(ledger_entries)").load::<Column>(connection)?;
+    Ok(columns.iter().any(|column| column.name == "description"))
 }
 
 #[cfg(test)]

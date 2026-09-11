@@ -9,6 +9,14 @@ import type {
 	TodoList,
 } from "../../consumer";
 
+function applySource<T>(state: QueryState<T>, response: CommandResponse<T | null>) {
+	state.loading = false;
+	if (response.status === "ready") {
+		state.data = response.data;
+		state.error = null;
+	} else state.error = response.message;
+}
+
 export function createDashboardSession(
 	isActive: () => boolean,
 	surface: "dashboard" | "island" = "dashboard",
@@ -222,109 +230,50 @@ export function createDashboardSession(
 			const update = event.payload;
 			switch (update.source) {
 				case "taskManager":
-					dashboard.taskManager.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.taskManager.data = update.result.data;
-						dashboard.taskManager.error = null;
-					} else dashboard.taskManager.error = update.result.message;
+					applySource(dashboard.taskManager, update.result);
 					break;
 				case "deviceTelemetry":
-					dashboard.deviceTelemetry.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.deviceTelemetry.data = update.result.data;
-						dashboard.deviceTelemetry.error = null;
-					} else dashboard.deviceTelemetry.error = update.result.message;
+					applySource(dashboard.deviceTelemetry, update.result);
 					break;
 				case "codex":
-					dashboard.codex.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.codex.data = update.result.data;
-						dashboard.codex.error = null;
-					} else dashboard.codex.error = update.result.message;
+					applySource(dashboard.codex, update.result);
 					break;
 				case "openCode":
-					dashboard.openCode.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.openCode.data = update.result.data;
-						dashboard.openCode.error = null;
-					} else dashboard.openCode.error = update.result.message;
+					applySource(dashboard.openCode, update.result);
 					break;
 				case "claude":
-					dashboard.claude.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.claude.data = update.result.data;
-						dashboard.claude.error = null;
-					} else dashboard.claude.error = update.result.message;
+					applySource(dashboard.claude, update.result);
 					break;
 				case "grok":
-					dashboard.grok.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.grok.data = update.result.data;
-						dashboard.grok.error = null;
-					} else dashboard.grok.error = update.result.message;
+					applySource(dashboard.grok, update.result);
 					break;
 				case "copilot":
-					dashboard.copilot.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.copilot.data = update.result.data;
-						dashboard.copilot.error = null;
-					} else dashboard.copilot.error = update.result.message;
+					applySource(dashboard.copilot, update.result);
 					break;
 				case "deepSeek":
-					dashboard.deepSeek.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.deepSeek.data = update.result.data;
-						dashboard.deepSeek.error = null;
-					} else dashboard.deepSeek.error = update.result.message;
+					applySource(dashboard.deepSeek, update.result);
 					break;
 				case "cherryIn":
-					dashboard.cherryIn.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.cherryIn.data = update.result.data;
-						dashboard.cherryIn.error = null;
-					} else dashboard.cherryIn.error = update.result.message;
+					applySource(dashboard.cherryIn, update.result);
 					break;
 				case "weather":
-					dashboard.weather.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.weather.data = update.result.data;
-						dashboard.weather.error = null;
-					} else dashboard.weather.error = update.result.message;
+					applySource(dashboard.weather, update.result);
 					break;
 				case "stocks":
-					dashboard.stocks.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.stocks.data = update.result.data;
-						dashboard.stocks.error = null;
-					} else dashboard.stocks.error = update.result.message;
+					applySource(dashboard.stocks, update.result);
 					break;
 				case "exchange":
-					dashboard.exchange.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.exchange.data = update.result.data;
-						dashboard.exchange.error = null;
-					} else dashboard.exchange.error = update.result.message;
+					applySource(dashboard.exchange, update.result);
 					break;
 				case "serviceStatus":
-					dashboard.serviceStatus.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.serviceStatus.data = update.result.data;
-						dashboard.serviceStatus.error = null;
-					} else dashboard.serviceStatus.error = update.result.message;
+					applySource(dashboard.serviceStatus, update.result);
 					break;
 				case "github":
-					dashboard.github.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.github.data = update.result.data;
-						dashboard.github.error = null;
-					} else dashboard.github.error = update.result.message;
+					applySource(dashboard.github, update.result);
 					break;
 				case "quotation":
-					dashboard.quotation.loading = false;
-					if (update.result.status === "ready") {
-						dashboard.quotation.data = update.result.data;
-						dashboard.quotation.error = null;
-					} else dashboard.quotation.error = update.result.message;
+					applySource(dashboard.quotation, update.result);
+					break;
 			}
 		}).then(async (unlisten) => {
 			if (!disposed && isActive()) {

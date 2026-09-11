@@ -1,0 +1,106 @@
+.settings-alert {
+  margin-bottom: 0.75rem;
+}
+.settings-alert-copy {
+  font-size: 0.75rem;
+}
+.settings-card-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+.settings-card-header-status {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.settings-card-description {
+  margin-top: 0.2rem;
+  font-size: 0.73rem;
+  line-height: 1.55;
+}
+.settings-card-content {
+  padding: 0;
+}
+.settings-input {
+  width: 100%;
+  min-width: 0;
+  height: 2.35rem;
+  padding-inline: 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+}
+.settings-secret-input {
+  padding-right: 2.35rem;
+}
+.settings-secret-toggle {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 2.35rem;
+  height: 2.35rem;
+  color: var(--color-muted-foreground);
+}
+.settings-card-footer {
+  flex-wrap: wrap;
+  min-height: 3.5rem;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-muted) 35%, var(--color-background));
+}
+.settings-save-button {
+  flex-shrink: 0;
+  min-width: 4.5rem;
+  height: 2rem;
+  padding-inline: 0.85rem;
+  font-size: 0.73rem;
+  font-weight: 500;
+}
+.settings-icon {
+  display: grid;
+  width: 2.15rem;
+  height: 2.15rem;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-muted);
+  color: var(--color-muted-foreground);
+}
+.settings-row p {
+  margin: 0.25rem 0 0;
+  color: var(--color-muted-foreground);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem 1.25rem;
+}
+.settings-row > button {
+  justify-self: end;
+}
+.settings-row + .settings-row {
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
+}
+.settings-row label {
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+@container (max-width: 34rem) {
+  .settings-row {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  .settings-card-header-status {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .settings-card-header-status .configuration-badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

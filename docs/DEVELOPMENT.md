@@ -335,3 +335,9 @@ and assumptions. If no implementation changed, report a diagnosis or experiment 
 - Update [DESIGN.md](DESIGN.md) when tokens, theme behavior, or reusable UI ownership changes.
 - Update [STYLEGUIDE.md](STYLEGUIDE.md) when engineering conventions change.
 - Keep the root README concise; it is an entry point, not the architecture specification.
+
+## Expense notes
+
+`vesper ledger create <amount> <category> [description]` accepts an optional note.
+`vesper ledger update <id> <amount> <category> [description]` preserves the existing note when
+omitted; pass an empty string to clear it. Desktop clears notes by saving an empty note field.

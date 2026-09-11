@@ -8,7 +8,6 @@ import type {
 	NotionCalendar,
 	R2Configuration,
 	UgosConfiguration,
-	QqLoginStatus,
 } from "../../consumer";
 
 export function createSettingsSession(effects: {
@@ -18,10 +17,13 @@ export function createSettingsSession(effects: {
 }) {
 	let configuration = $state<ConfigurationStatus | null>(null);
 	let configurationError = $state<string | null>(null);
+	let configurationRequest = 0;
 	let spotifyRevision = $state(0);
 	async function loadConfiguration() {
+		const version = ++configurationRequest;
 		configurationError = null;
 		const response = await invoke<CommandResponse<ConfigurationStatus>>("read_configuration");
+		if (version !== configurationRequest) return;
 		if (response.status === "failed") {
 			configurationError = response.message;
 			return;
@@ -75,13 +77,6 @@ export function createSettingsSession(effects: {
 		return response;
 	}
 
-	async function pollQqLogin(): Promise<CommandResponse<QqLoginStatus>> {
-		const response = await invoke<CommandResponse<QqLoginStatus>>("poll_qq_music_login");
-		if (response.status === "ready" && response.data.status === "complete")
-			await loadConfiguration();
-		return response;
-	}
-
 	async function saveNotionCalendar(
 		configuration: NotionCalendar,
 	): Promise<CommandResponse<string>> {
@@ -130,7 +125,6 @@ export function createSettingsSession(effects: {
 		saveR2Configuration,
 		saveApiConfiguration,
 		connectSpotify,
-		pollQqLogin,
 		saveNtfy,
 		saveNotionCalendar,
 		saveAppLock,

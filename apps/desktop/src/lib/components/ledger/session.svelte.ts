@@ -66,7 +66,12 @@ export function createLedgerSession() {
 		return current && response.status === "ready";
 	}
 
-	async function save(id: string | null, amount: string, category: string) {
+	async function save(
+		id: string | null,
+		amount: string,
+		category: string,
+		description: string | null,
+	) {
 		if (disposed || loading || writing || !date) return false;
 		const selected = date;
 		return write(() =>
@@ -75,12 +80,14 @@ export function createLedgerSession() {
 						date: selected,
 						amount,
 						category,
+						description,
 					})
 				: invoke<CommandResponse<ExpenseSnapshot>>("update_expense", {
 						date: selected,
 						id,
 						amount,
 						category,
+						description,
 					}),
 		);
 	}

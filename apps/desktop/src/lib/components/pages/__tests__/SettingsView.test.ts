@@ -84,9 +84,6 @@ async function setup() {
 				onsaveapplock: save,
 				onremoveapplock: vi.fn().mockResolvedValue({ status: "ready", data: "Removed" }),
 				onconnectspotify: connectSpotify,
-				onbeginqq: vi.fn(),
-				onpollqq: vi.fn(),
-				oncancelqq: vi.fn(),
 				onconfigurationchanged: vi.fn(),
 			},
 		}),
@@ -99,7 +96,7 @@ async function setup() {
 	}
 	function button(id: string) {
 		const input = field(id);
-		const container = input.closest("form") ?? input.closest(".setting-row");
+		const container = input.closest("form") ?? input.closest(".settings-row");
 		if (container === null) throw new Error(`Missing form or settings row: ${id}`);
 		for (const item of container.querySelectorAll("button")) {
 			if (
