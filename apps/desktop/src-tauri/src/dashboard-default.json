@@ -1,0 +1,131 @@
+{
+  "widgets": [
+    {
+      "id": "stock-aapl",
+      "widget": {
+        "kind": "stock",
+        "symbol": "AAPL"
+      }
+    },
+    {
+      "id": "stock-tsla",
+      "widget": {
+        "kind": "stock",
+        "symbol": "TSLA"
+      }
+    },
+    {
+      "id": "localCpu",
+      "widget": {
+        "kind": "localCpu"
+      }
+    },
+    {
+      "id": "localStorage",
+      "widget": {
+        "kind": "localStorage"
+      }
+    },
+    {
+      "id": "exchange",
+      "widget": {
+        "kind": "exchange"
+      }
+    },
+    {
+      "id": "service-status-github",
+      "widget": {
+        "kind": "serviceStatus",
+        "serviceId": "github"
+      }
+    },
+    {
+      "id": "quotation",
+      "widget": {
+        "kind": "quotation"
+      }
+    },
+    {
+      "id": "weather-ningbo",
+      "widget": {
+        "kind": "weather",
+        "location": "ningbo"
+      }
+    },
+    {
+      "id": "weather-nottingham",
+      "widget": {
+        "kind": "weather",
+        "location": "nottingham"
+      }
+    },
+    {
+      "id": "weather-shanghai",
+      "widget": {
+        "kind": "weather",
+        "location": "shanghai"
+      }
+    },
+    {
+      "id": "calendar",
+      "widget": {
+        "kind": "planner",
+        "habits": [
+          {
+            "id": "habit-df07275b-f0eb-4ecf-b040-d8844c198bb5",
+            "name": "Eat Breakfast 🍚"
+          },
+          {
+            "id": "habit-d544a3b4-f9ff-4f61-a6f9-13eab06f4177",
+            "name": "Work Out 🏋️"
+          }
+        ]
+      }
+    },
+    {
+      "id": "spending",
+      "widget": {
+        "kind": "spending"
+      }
+    },
+    {
+      "id": "github",
+      "widget": {
+        "kind": "github"
+      }
+    },
+    {
+      "id": "codex",
+      "widget": {
+        "kind": "codex"
+      }
+    },
+    {
+      "id": "open-code",
+      "widget": {
+        "kind": "openCode"
+      }
+    },
+    {
+      "id": "cherry-in",
+      "widget": {
+        "kind": "cherryIn"
+      }
+    },
+    {
+      "id": "game-arknights",
+      "widget": {
+        "kind": "game",
+        "game": "arknights"
+      }
+    },
+    {
+      "id": "game-starRail",
+      "widget": {
+        "kind": "game",
+        "game": "starRail"
+      }
+    }
+  ],
+  "islandWidgetId": "calendar"
+}

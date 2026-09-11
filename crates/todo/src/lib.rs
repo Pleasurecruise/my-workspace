@@ -6,7 +6,7 @@ mod notion;
 mod schedule;
 mod store;
 
-pub use date::{current_date, next_rollover_delay, validate_date};
+pub use date::{current_date, validate_date};
 pub use model::{Details, Error, Item, List};
 pub use store::Store;
 

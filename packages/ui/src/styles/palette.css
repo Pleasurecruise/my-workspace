@@ -24,4 +24,12 @@
   --palette-warning-dark: #d4b88e;
   --palette-error-light: #a03030;
   --palette-error-dark: #d06464;
+  --palette-chart-blue-light: #426b8c;
+  --palette-chart-blue-dark: #91b7d4;
+  --palette-chart-purple-light: #74538c;
+  --palette-chart-purple-dark: #bba0d0;
+  --palette-chart-teal-light: #39736e;
+  --palette-chart-teal-dark: #8bbfb7;
+  --palette-chart-orange-light: #a56038;
+  --palette-chart-orange-dark: #dfa77f;
 }

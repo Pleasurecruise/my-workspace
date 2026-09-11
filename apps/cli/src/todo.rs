@@ -60,6 +60,18 @@ async fn run_with_store(
     arguments: &[String],
 ) -> Result<(), String> {
     match (action, arguments) {
+        ("check-ins", ids) if !ids.is_empty() => print_json(
+            &store
+                .read_check_ins(ids.to_vec(), date)
+                .await
+                .map_err(|error| error.to_string())?,
+        ),
+        ("check-in" | "undo-check-in", [id]) => print_json(
+            &store
+                .set_check_in(id, date, action == "check-in")
+                .await
+                .map_err(|error| error.to_string())?,
+        ),
         ("list", []) => print_json(
             &store
                 .sync_calendar(date)

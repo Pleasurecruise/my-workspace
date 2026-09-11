@@ -21,12 +21,12 @@ export interface WidgetDef {
 	span: WidgetSpan;
 }
 
-export type WidgetCategory = "system" | "quota" | "balance" | "online" | "games";
+export type WidgetCategory = "personal" | "devices" | "ai" | "online" | "games";
 
 export const widgetCategories: Array<{ id: WidgetCategory; label: string }> = [
-	{ id: "system", label: "System Status" },
-	{ id: "quota", label: "Quota" },
-	{ id: "balance", label: "Balance" },
+	{ id: "personal", label: "Personal" },
+	{ id: "devices", label: "Devices" },
+	{ id: "ai", label: "AI Services" },
 	{ id: "online", label: "Online Services" },
 	{ id: "games", label: "Games" },
 ];
@@ -45,11 +45,25 @@ export interface WidgetOption extends Omit<WidgetDef, "id" | "span"> {
 }
 
 export const widgets: Record<WidgetKind, WidgetDef> = {
+	invalid: {
+		id: "invalid",
+		label: "Invalid widget",
+		description: "This widget configuration could not be loaded",
+		category: "personal",
+		span: { columns: 6 },
+	},
+	spending: {
+		id: "spending",
+		label: "Spending",
+		description: "Log GBP expenses by date and see monthly category and daily totals",
+		category: "personal",
+		span: { columns: 12 },
+	},
 	planner: {
 		id: "planner",
 		label: "Daily Planner",
 		description: "Calendar, tasks and daily habits in one place",
-		category: "system",
+		category: "personal",
 		span: { columns: 12 },
 	},
 	game: {
@@ -70,56 +84,56 @@ export const widgets: Record<WidgetKind, WidgetDef> = {
 		id: "cpu",
 		label: "UGREEN CPU",
 		description: "Monitor UGREEN NAS processor load and temperature trends",
-		category: "system",
+		category: "devices",
 		span: { columns: 3 },
 	},
 	memory: {
 		id: "memory",
 		label: "UGREEN Memory",
 		description: "Monitor UGREEN NAS memory usage and recent changes",
-		category: "system",
+		category: "devices",
 		span: { columns: 3 },
 	},
 	storage: {
 		id: "storage",
 		label: "UGREEN Storage",
 		description: "Monitor used and available storage on UGREEN NAS",
-		category: "system",
+		category: "devices",
 		span: { columns: 3 },
 	},
 	network: {
 		id: "network",
 		label: "UGREEN Network",
 		description: "Monitor UGREEN NAS upload and download throughput",
-		category: "system",
+		category: "devices",
 		span: { columns: 3 },
 	},
 	localCpu: {
 		id: "localCpu",
 		label: "Device CPU",
 		description: "Monitor processor load on the current device",
-		category: "system",
+		category: "devices",
 		span: { columns: 3 },
 	},
 	localMemory: {
 		id: "localMemory",
 		label: "Device Memory",
 		description: "Monitor memory usage on the current device",
-		category: "system",
+		category: "devices",
 		span: { columns: 3 },
 	},
 	localStorage: {
 		id: "localStorage",
 		label: "Device Storage",
 		description: "Monitor storage usage on the current device",
-		category: "system",
+		category: "devices",
 		span: { columns: 3 },
 	},
 	localNetwork: {
 		id: "localNetwork",
 		label: "Device Network",
 		description: "Monitor network throughput on the current device",
-		category: "system",
+		category: "devices",
 		span: { columns: 3 },
 	},
 	weather: {
@@ -161,49 +175,49 @@ export const widgets: Record<WidgetKind, WidgetDef> = {
 		id: "codex",
 		label: "Codex",
 		description: "View Codex subscription quotas and reset times",
-		category: "quota",
+		category: "ai",
 		span: { columns: 4 },
 	},
 	openCode: {
 		id: "openCode",
 		label: "OpenCode Go",
 		description: "View OpenCode Go quotas and reset times",
-		category: "quota",
+		category: "ai",
 		span: { columns: 4 },
 	},
 	claude: {
 		id: "claude",
 		label: "Claude",
 		description: "View Claude Code quotas and reset times",
-		category: "quota",
+		category: "ai",
 		span: { columns: 4 },
 	},
 	grok: {
 		id: "grok",
 		label: "Grok",
 		description: "View Grok quotas and reset times",
-		category: "quota",
+		category: "ai",
 		span: { columns: 4 },
 	},
 	copilot: {
 		id: "copilot",
 		label: "Copilot",
 		description: "View GitHub Copilot quotas",
-		category: "quota",
+		category: "ai",
 		span: { columns: 4 },
 	},
 	deepSeek: {
 		id: "deepSeek",
 		label: "DeepSeek",
 		description: "View the DeepSeek account balance",
-		category: "balance",
+		category: "ai",
 		span: { columns: 4 },
 	},
 	cherryIn: {
 		id: "cherryIn",
 		label: "Cherry",
 		description: "View the Cherry account balance",
-		category: "balance",
+		category: "ai",
 		span: { columns: 4 },
 	},
 	quotation: {
@@ -216,8 +230,9 @@ export const widgets: Record<WidgetKind, WidgetDef> = {
 };
 
 const singletonKinds: Array<
-	Exclude<WidgetKind, "weather" | "stock" | "serviceStatus" | "game" | "planner">
+	Exclude<WidgetKind, "weather" | "stock" | "serviceStatus" | "game" | "planner" | "invalid">
 > = [
+	"spending",
 	"steam",
 	"cpu",
 	"memory",
@@ -246,7 +261,7 @@ export const widgetOptions: WidgetOption[] = [
 		widget: { kind: "planner", habits: [] },
 		label: widgets.planner.label,
 		description: widgets.planner.description,
-		category: "system",
+		category: "personal",
 	},
 	...gameKinds.map((game): WidgetOption => ({
 		id: `game-${game}`,

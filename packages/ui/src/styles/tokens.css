@@ -13,6 +13,13 @@
   --color-success: var(--palette-success-light);
   --color-warning: var(--palette-warning-light);
   --color-error: var(--palette-error-light);
+  --color-chart-1: var(--palette-brand-light);
+  --color-chart-2: var(--palette-success-light);
+  --color-chart-3: var(--palette-chart-blue-light);
+  --color-chart-4: var(--palette-warning-light);
+  --color-chart-5: var(--palette-chart-purple-light);
+  --color-chart-6: var(--palette-chart-teal-light);
+  --color-chart-7: var(--palette-chart-orange-light);
   --color-overlay: color-mix(in srgb, var(--palette-black) 35%, transparent);
   --color-image-scrim: color-mix(in srgb, var(--palette-black) 78%, transparent);
   --color-on-dark: var(--palette-white);
@@ -77,4 +84,11 @@
   --color-success: var(--palette-success-dark);
   --color-warning: var(--palette-warning-dark);
   --color-error: var(--palette-error-dark);
+  --color-chart-1: var(--palette-brand-dark);
+  --color-chart-2: var(--palette-success-dark);
+  --color-chart-3: var(--palette-chart-blue-dark);
+  --color-chart-4: var(--palette-warning-dark);
+  --color-chart-5: var(--palette-chart-purple-dark);
+  --color-chart-6: var(--palette-chart-teal-dark);
+  --color-chart-7: var(--palette-chart-orange-dark);
 }

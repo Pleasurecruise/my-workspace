@@ -33,14 +33,31 @@ export function createDashboardSession(
 	let dashboardRefreshing = $state(false);
 	let dashboardRequest = 0;
 	let todos = $state<QueryState<TodoList>>({ data: null, error: null, loading: false });
-	const initialTodoDate = new Intl.DateTimeFormat("en-CA").format(new Date());
-	let todayDate = $state(initialTodoDate);
-	let todoDate = $state(initialTodoDate);
+	const initialDate = new Intl.DateTimeFormat("en-CA").format(new Date());
+	let todayDate = $state(initialDate);
+	let selectedDate = $state(initialDate);
 	let todoRequest = 0;
 	let todoInvalidated = false;
-	let todoRefreshRequested = false;
+	let todoRefresh = false;
 	let todoWriting = false;
 	let todoWriteError: string | null = null;
+	let dateRequest = 0;
+	function acceptDate(date: string) {
+		const followsToday = selectedDate === todayDate;
+		todayDate = date;
+		if (followsToday && selectedDate !== date) {
+			selectedDate = date;
+			todoWriteError = null;
+		}
+	}
+	async function refreshPlanner(refresh = false) {
+		const version = ++dateRequest;
+		const response = await invoke<CommandResponse<string>>("read_planner_date");
+		if (version !== dateRequest) return;
+		if (response.status === "ready") acceptDate(response.data);
+		await loadTodos(refresh);
+		if (version === dateRequest && response.status === "failed") todos.error = response.message;
+	}
 	async function refreshDashboard(refreshGames = false) {
 		if (!isActive() || dashboardRefreshing) return;
 		const version = ++dashboardRequest;
@@ -51,7 +68,7 @@ export function createDashboardSession(
 		}
 		const [response] = await Promise.all([
 			invoke<CommandResponse<null>>("refresh_dashboard", { refreshGames }),
-			loadTodos(todoDate, refreshGames),
+			refreshPlanner(refreshGames),
 		]);
 		if (version !== dashboardRequest) return;
 		if (response.status === "failed") {
@@ -63,26 +80,31 @@ export function createDashboardSession(
 		dashboardRefreshing = false;
 	}
 
-	async function loadTodos(date = todoDate, refresh = false) {
-		todoRefreshRequested ||= refresh;
-		if (date !== todoDate) todoWriteError = null;
+	function selectDate(date: string) {
+		if (date === selectedDate) return;
+		selectedDate = date;
+		todoWriteError = null;
+		todos.error = null;
+	}
+
+	async function loadTodos(refresh = false) {
+		const date = selectedDate;
+		todoRefresh ||= refresh;
 		if (todoWriting) {
-			todoDate = date;
 			todoInvalidated = true;
 			todos.loading = true;
 			return;
 		}
 		const version = ++todoRequest;
-		todoDate = date;
 		todos.loading = true;
 		todos.error = todoWriteError;
-		const forceRefresh = todoRefreshRequested;
-		todoRefreshRequested = false;
+		const forceRefresh = todoRefresh;
+		todoRefresh = false;
 		const response = await invoke<CommandResponse<TodoList>>(
 			"read_todos",
 			forceRefresh ? { date, refresh: true } : { date },
 		);
-		if (version !== todoRequest) return;
+		if (version !== todoRequest || date !== selectedDate) return;
 		todos.loading = false;
 		if (todoInvalidated) {
 			todoInvalidated = false;
@@ -96,11 +118,7 @@ export function createDashboardSession(
 				todoWriteError === null ? response.message : `${todoWriteError} · ${response.message}`;
 	}
 
-	function finishTodoMutation(
-		version: number,
-		date: string,
-		response: CommandResponse<TodoList>,
-	): boolean {
+	function finishTodo(version: number, date: string, response: CommandResponse<TodoList>): boolean {
 		todoWriting = false;
 		if (version !== todoRequest) {
 			if (todoInvalidated) {
@@ -110,7 +128,7 @@ export function createDashboardSession(
 			return false;
 		}
 		todos.loading = false;
-		const sameDate = todoDate === date;
+		const sameDate = selectedDate === date;
 		if (sameDate) {
 			if (response.status === "ready") {
 				todos.data = response.data;
@@ -131,7 +149,7 @@ export function createDashboardSession(
 		todoWriting = true;
 		todoWriteError = null;
 		const version = ++todoRequest;
-		const date = todoDate;
+		const date = selectedDate;
 		todos.loading = true;
 		todos.error = null;
 		const response = await invoke<CommandResponse<TodoList>>("add_todo", {
@@ -139,7 +157,7 @@ export function createDashboardSession(
 			text,
 			description,
 		});
-		return finishTodoMutation(version, date, response);
+		return finishTodo(version, date, response);
 	}
 
 	async function editTodo(id: string, text: string, description: string): Promise<boolean> {
@@ -147,7 +165,7 @@ export function createDashboardSession(
 		todoWriting = true;
 		todoWriteError = null;
 		const version = ++todoRequest;
-		const date = todoDate;
+		const date = selectedDate;
 		todos.loading = true;
 		todos.error = null;
 		const response = await invoke<CommandResponse<TodoList>>("update_todo", {
@@ -156,7 +174,7 @@ export function createDashboardSession(
 			text,
 			description,
 		});
-		return finishTodoMutation(version, date, response);
+		return finishTodo(version, date, response);
 	}
 
 	async function toggleTodo(id: string, completed: boolean) {
@@ -164,7 +182,7 @@ export function createDashboardSession(
 		todoWriting = true;
 		todoWriteError = null;
 		const version = ++todoRequest;
-		const date = todoDate;
+		const date = selectedDate;
 		todos.loading = true;
 		todos.error = null;
 		const response = await invoke<CommandResponse<TodoList>>("set_todo_completed", {
@@ -172,7 +190,7 @@ export function createDashboardSession(
 			id,
 			completed,
 		});
-		finishTodoMutation(version, date, response);
+		finishTodo(version, date, response);
 	}
 
 	async function deleteTodo(id: string) {
@@ -180,14 +198,14 @@ export function createDashboardSession(
 		todoWriting = true;
 		todoWriteError = null;
 		const version = ++todoRequest;
-		const date = todoDate;
+		const date = selectedDate;
 		todos.loading = true;
 		todos.error = null;
 		const response = await invoke<CommandResponse<TodoList>>("delete_todo", {
 			date,
 			id,
 		});
-		finishTodoMutation(version, date, response);
+		finishTodo(version, date, response);
 	}
 
 	async function activate(active: boolean) {
@@ -315,28 +333,27 @@ export function createDashboardSession(
 			}
 			return unlisten;
 		});
-		const unlistenTodo = listen<TodoList>("todo-list-changed", (event) => {
-			const followsToday = todoDate === todayDate;
-			todayDate = event.payload.date;
-			if (followsToday) {
-				if (todoDate !== event.payload.date) todoWriteError = null;
-				todoRequest += 1;
-				todoDate = event.payload.date;
-				todos.data = event.payload;
-				todos.error = todoWriteError;
-				todos.loading = false;
-			}
+		const unlistenTodo = listen<string>("planner-date-changed", (event) => {
+			++dateRequest;
+			acceptDate(event.payload);
+			void loadTodos();
 		});
 		const unlistenUpdates = listen<string>("todo-updated", (event) => {
-			if (event.payload !== todoDate) return;
+			if (event.payload !== selectedDate) return;
 			if (todos.loading) todoInvalidated = true;
 			else void loadTodos();
 		});
 		const todoTimer = window.setInterval(() => {
-			if (isActive() && !todos.loading) void loadTodos();
+			if (isActive() && !todos.loading) void refreshPlanner();
 		}, 60_000);
+		const focus = () => {
+			if (isActive()) void refreshPlanner();
+		};
+		window.addEventListener("focus", focus);
 		return () => {
 			disposed = true;
+			++dateRequest;
+			window.removeEventListener("focus", focus);
 			todoRequest += 1;
 			dashboardRequest += 1;
 			todoInvalidated = false;
@@ -361,11 +378,13 @@ export function createDashboardSession(
 		get todayDate() {
 			return todayDate;
 		},
-		get todoDate() {
-			return todoDate;
+		get selectedDate() {
+			return selectedDate;
 		},
 		activate,
 		refreshDashboard,
+		refreshPlanner,
+		selectDate,
 		loadTodos,
 		addTodo,
 		editTodo,

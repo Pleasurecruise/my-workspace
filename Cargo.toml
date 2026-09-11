@@ -8,6 +8,7 @@ members = [
   "crates/database",
   "crates/games",
   "crates/logger",
+  "crates/ledger",
   "crates/md-dialect",
   "crates/music",
   "crates/quotes",
@@ -52,6 +53,7 @@ md-5 = "0.10"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 md-dialect = { path = "crates/md-dialect" }
 music = { path = "crates/music" }
+ledger = { path = "crates/ledger" }
 quotes = { path = "crates/quotes" }
 social = { path = "crates/social" }
 todo-core = { package = "todo", path = "crates/todo" }

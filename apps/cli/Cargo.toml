@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 quotes.workspace = true
 games.workspace = true
+ledger.workspace = true
 vesper-database.workspace = true
 cms-core.workspace = true
 consumers.workspace = true
@@ -18,10 +19,12 @@ my-workspace-logger.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["io-std"] }
+time.workspace = true
 todo-core.workspace = true
 ugos.workspace = true
 useage.workspace = true
 vesper-credentials.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 uuid.workspace = true

@@ -59,8 +59,8 @@ pub enum Error {
     DescriptionTooLong,
     #[error("check-in identifier is invalid")]
     InvalidCheckIn,
-    #[error("the date has changed; refresh before checking in")]
-    CheckInDateChanged,
+    #[error("cannot check in for a future date")]
+    FutureCheckIn,
     #[error("could not parse Todo schedule {path}: {message}")]
     ScheduleParse { path: PathBuf, message: String },
     #[error("Todo schedule source must be an .ics file: {0}")]

@@ -27,6 +27,7 @@ beforeEach(() => {
 					islandWidgetId: "todo",
 				},
 			};
+		if (command === "read_planner_date") return { status: "ready", data: "2026-09-07" };
 		if (command === "island_available") return true;
 		if (command === "set_island_expanded")
 			return { status: "ready", data: { topInset: 0, notchWidth: 0 } };

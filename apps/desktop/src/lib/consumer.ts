@@ -471,6 +471,7 @@ export interface DashboardState {
 }
 
 export type WidgetKind =
+	| "invalid"
 	| "cpu"
 	| "memory"
 	| "storage"
@@ -485,6 +486,7 @@ export type WidgetKind =
 	| "serviceStatus"
 	| "github"
 	| "planner"
+	| "spending"
 	| "codex"
 	| "openCode"
 	| "claude"
@@ -500,13 +502,17 @@ export interface WidgetPlacement {
 	id: string;
 	widget:
 		| {
-				kind: Exclude<WidgetKind, "weather" | "stock" | "serviceStatus" | "game" | "planner">;
+				kind: Exclude<
+					WidgetKind,
+					"weather" | "stock" | "serviceStatus" | "game" | "planner" | "invalid"
+				>;
 		  }
 		| { kind: "game"; game: Game }
 		| { kind: "weather"; location: WeatherLocation }
 		| { kind: "stock"; symbol: string }
 		| { kind: "serviceStatus"; serviceId: string }
-		| { kind: "planner"; habits: Habit[] };
+		| { kind: "planner"; habits: Habit[] }
+		| { kind: "invalid"; configuration: string; error: string };
 }
 
 export interface WidgetLayout {
@@ -754,6 +760,8 @@ export interface MusicLyrics {
 }
 
 export interface CheckIn {
+	id: string;
+	editable: boolean;
 	date: string;
 	completed: boolean;
 	streak: number;
@@ -764,4 +772,22 @@ export interface CheckIn {
 export interface Habit {
 	id: string;
 	name: string;
+}
+
+export interface ExpenseEntry {
+	id: string;
+	date: string;
+	amountPence: number;
+	category: string;
+}
+
+export interface ExpenseSnapshot {
+	date: string;
+	month: string;
+	entries: ExpenseEntry[];
+	dayTotalPence: number;
+	monthTotalPence: number;
+	categories: Array<{ category: string; amountPence: number }>;
+	days: Array<{ date: string; amountPence: number }>;
+	suggestions: string[];
 }

@@ -40,6 +40,10 @@ fn help_lists_consumer_queries() {
         "moment query",
         "moment get",
         "status [source]",
+        "ledger create",
+        "ledger list",
+        "todo check-ins",
+        "todo undo-check-in",
         "--stdin",
     ] {
         assert!(help.contains(command), "missing command: {command}");

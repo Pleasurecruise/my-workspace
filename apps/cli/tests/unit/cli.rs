@@ -39,6 +39,10 @@ async fn rejects_invalid_consumer_queries_before_authentication() {
         vec!["knowledge", "page", r#"{"unknown":true}"#],
         vec!["status", "unknown"],
         vec!["status", "codex", "claude"],
+        vec!["ledger", "--date", "2024-02-30", "list"],
+        vec!["ledger", "create", "1.001", "Dining"],
+        vec!["todo", "--date", "+9999-12-31", "check-in", "read"],
+        vec!["todo", "--date", "+2024-02-29", "check-ins", "read"],
     ] {
         let result = run(arguments.into_iter().map(str::to_owned)).await;
         let error = result.expect_err("invalid arguments must fail");

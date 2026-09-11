@@ -5,7 +5,7 @@ description: Operate Vesper's typed CLI for provider status, local builds, Todo,
 
 # Vesper CLI
 
-Use this skill when an AI agent needs to build or publish local content, operate Todo, inspect
+Use this skill when an AI agent needs to build or publish local content, operate Todo or Ledger, inspect
 consumer data, or perform a Memo, Knowledge, or Moment mutation through `vesper`.
 
 ## Before running commands
@@ -35,6 +35,9 @@ vesper todo update <id> <text>
 vesper todo complete <id>
 vesper todo reopen <id>
 vesper todo delete <id>
+vesper todo check-ins <habit-id>...
+vesper todo check-in <habit-id>
+vesper todo undo-check-in <habit-id>
 vesper todo database-path
 vesper todo schedule-path
 vesper todo import-ics <path>...
@@ -61,6 +64,30 @@ configuration presence and the view URL; authentication remains owned by `ntn`.
 `list` and `get` return a nullable top-level `description` for both manual and imported items.
 Nullable `details` contains calendar, timing, and location for imported items; manual items return
 `null`. CLI title updates preserve the existing description. Legacy Todo JSON is not read.
+
+Habit commands accept stable habit IDs from the saved Planner configuration, not habit names or the
+Planner placement ID. `check-ins` reads the selected date's state and history; `check-in` and
+`undo-check-in` mutate that date. Historical writes are allowed and future writes fail. They never
+synchronize calendars. Habit names and membership remain managed by Desktop.
+
+## Ledger
+
+Ledger uses Desktop's local GBP expense records without credentials. Commands default to today;
+use `ledger --date YYYY-MM-DD` for another date. Quote categories containing spaces.
+
+```sh
+vesper ledger list
+vesper ledger create 12.34 "Coffee shop"
+vesper ledger update <id> 8.50 Dining
+vesper ledger delete <id>
+vesper ledger --date 2024-02-29 list
+```
+
+All commands return a snapshot containing the selected day's entries and total, calendar-month total,
+category totals, daily totals, and category suggestions. Amounts are decimal GBP strings, limited to
+two decimal places. Update/delete require the entry's own date. Writes are atomic; invalid input or
+missing entries fail without changing data. Obtain user intent before create/update/delete or habit
+check-in/undo. Desktop sees CLI writes on its next focus or periodic refresh.
 
 ## Provider status
 

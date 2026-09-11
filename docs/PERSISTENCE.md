@@ -29,16 +29,17 @@ database starts with empty tasks, archives and Inbox, default layout, and no Tel
 session or debug credentials. Old files remain on disk; re-saving credentials or syncing provider
 history does not recover records that are no longer available remotely.
 
-| Tables                                        | Feature owner           | Contents                                                        |
-| --------------------------------------------- | ----------------------- | --------------------------------------------------------------- |
-| `dashboard_widgets`, `dashboard_layout`       | Desktop widgets         | Ordered placements and nullable island selection                |
-| `todo_items`, `todo_occurrences`              | Todo                    | Dated tasks and suppressed/imported occurrence keys             |
-| `check_ins`                                   | Todo                    | Daily habit records keyed by widget placement ID and local date |
-| `notifications`, `notification_cursor`        | Desktop Inbox           | Pending messages and SSE replay cursor                          |
-| `game_accounts`, `game_pulls`, `game_reports` | Games                   | Accounts, deduplicated history and official reports             |
-| `game_diagnostic`                             | Games                   | Latest bounded verification metadata, excluding secrets         |
-| `telegram_session`                            | Social                  | MTProto session state                                           |
-| `credentials`                                 | Credentials, debug only | Development credentials and renewable sessions                  |
+| Tables                                        | Feature owner           | Contents                                                            |
+| --------------------------------------------- | ----------------------- | ------------------------------------------------------------------- |
+| `dashboard_widgets`, `dashboard_layout`       | Desktop widgets         | Ordered placements and nullable island selection                    |
+| `todo_items`, `todo_occurrences`              | Todo                    | Dated tasks and suppressed/imported occurrence keys                 |
+| `check_ins`                                   | Todo                    | Habit completions keyed by stable habit ID and selected date        |
+| `ledger_entries`                              | Ledger                  | Dated GBP expenses in integer pence with category and creation time |
+| `notifications`, `notification_cursor`        | Desktop Inbox           | Pending messages and SSE replay cursor                              |
+| `game_accounts`, `game_pulls`, `game_reports` | Games                   | Accounts, deduplicated history and official reports                 |
+| `game_diagnostic`                             | Games                   | Latest bounded verification metadata, excluding secrets             |
+| `telegram_session`                            | Social                  | MTProto session state                                               |
+| `credentials`                                 | Credentials, debug only | Development credentials and renewable sessions                      |
 
 Typed provider unions, report payloads and credential values may use JSON inside a database field.
 Their owning module validates the payload; ordering, identity and transaction boundaries are database
@@ -47,6 +48,9 @@ fields. There is no parallel JSON file writer for these records.
 ## Transactions and failure behavior
 
 Layout replacement validates references before writing and commits placements and selection together.
+Invalid widget configurations retain their original JSON through unrelated layout edits; structural
+errors fail the layout read. The bundled default initializes or explicitly resets only the layout,
+never Todo, habit, or expense records.
 Todo mutations reload the selected day inside an immediate transaction. Read-only lists use a read
 transaction and can return committed data while another connection holds a pending write. ICS files remain in the
 existing `ics/` directory and are read on each calendar sync. Imports validate every source before
@@ -59,6 +63,12 @@ projection. A failed CLI read leaves the stored projection untouched. Stable pag
 completion, while remote title/date changes and removals are reflected by a successful refresh.
 Todo completion and deletion do not edit the Notion page. Imported titles and descriptions are
 source-owned; manual title edits preserve descriptions when the CLI omits that field. A feature lock coordinates configuration changes with reads and commits across Desktop and CLI. See [Dashboard](DASHBOARD.md#calendar-and-todo) for the request lifecycle.
+
+Habit mutations validate their explicit date under the write lock, permit historical changes, and
+reject future check-ins. Ledger independently validates decimal amounts and categories, then commits
+each expense mutation and its selected-month projection in one immediate transaction. Ledger reads
+use a consistent transaction; failed validation or aggregation leaves the stored entries intact.
+Removing either widget preserves its feature records.
 
 Inbox commits its messages and replay cursor together before publishing the new in-memory state.
 Game imports validate provider records and reject conflicts with archived identity before committing

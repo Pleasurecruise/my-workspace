@@ -1,14 +1,24 @@
 import { expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
+import { fromStore, writable } from "svelte/store";
+import type { CheckIn, CommandResponse } from "../../../consumer";
 import HabitsPanel from "../HabitsPanel.svelte";
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 it("checks in an individual habit without selection controls and keeps write errors visible", async () => {
-	const state = { date: "2026-09-11", completed: false, streak: 0, total: 0, days: [] };
+	const state = {
+		id: "read",
+		editable: true,
+		date: "2026-09-11",
+		completed: false,
+		streak: 0,
+		total: 0,
+		days: [],
+	};
 	invoke.mockImplementation(async (command: string) =>
 		command === "read_check_ins"
-			? { status: "ready", data: [state, state] }
+			? { status: "ready", data: [{ ...state, id: "walk", completed: true }, state] }
 			: { status: "failed", message: "Write failed" },
 	);
 	const onchange = vi.fn(async () => true);
@@ -18,7 +28,10 @@ it("checks in an individual habit without selection controls and keeps write err
 	];
 	const target = document.createElement("div");
 	document.body.append(target);
-	const view = mount(HabitsPanel, { target, props: { habits, onchange } });
+	const view = mount(HabitsPanel, {
+		target,
+		props: { habits, selectedDate: state.date, onchange },
+	});
 	const button = (text: string) => {
 		const found = Array.from(target.querySelectorAll<HTMLButtonElement>("button")).find((item) =>
 			item.getAttribute("aria-label")?.startsWith(text),
@@ -29,6 +42,7 @@ it("checks in an individual habit without selection controls and keeps write err
 	try {
 		await vi.waitFor(() => expect(button("Check in").disabled).toBe(false));
 		expect(target.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+		expect(button("Undo Walk").getAttribute("aria-pressed")).toBe("true");
 		expect(target.querySelector('button[aria-label="Select habits"]')).toBeNull();
 		button("Check in Read").click();
 		await vi.waitFor(() => expect(target.textContent).toContain("Write failed"));
@@ -62,7 +76,15 @@ it("checks in an individual habit without selection controls and keeps write err
 });
 
 it("keeps a successful check-in when the following read fails and can undo it", async () => {
-	const state = { date: "2026-09-11", completed: false, streak: 0, total: 0, days: [] };
+	const state = {
+		id: "read",
+		editable: true,
+		date: "2026-09-11",
+		completed: false,
+		streak: 0,
+		total: 0,
+		days: [],
+	};
 	const checked = { ...state, completed: true, streak: 1, total: 1 };
 	invoke.mockReset();
 	invoke
@@ -72,7 +94,10 @@ it("keeps a successful check-in when the following read fails and can undo it", 
 		.mockResolvedValueOnce({ status: "ready", data: state })
 		.mockResolvedValueOnce({ status: "ready", data: [state] });
 	const target = document.createElement("div");
-	const view = mount(HabitsPanel, { target, props: { habits: [{ id: "read", name: "Read" }] } });
+	const view = mount(HabitsPanel, {
+		target,
+		props: { habits: [{ id: "read", name: "Read" }], selectedDate: state.date },
+	});
 	try {
 		await vi.waitFor(() =>
 			expect(
@@ -105,7 +130,10 @@ it("preserves text entered while saving a habit", async () => {
 	});
 	const onchange = vi.fn(() => pending);
 	const target = document.createElement("div");
-	const view = mount(HabitsPanel, { target, props: { habits: [], onchange } });
+	const view = mount(HabitsPanel, {
+		target,
+		props: { habits: [], selectedDate: "2026-09-11", onchange },
+	});
 	try {
 		await tick();
 		target.querySelector<HTMLButtonElement>('[aria-label="Manage habits"]')?.click();
@@ -129,7 +157,15 @@ it("preserves text entered while saving a habit", async () => {
 });
 
 it("rejects late reads and stops focus reads after unmount", async () => {
-	const state = { date: "2026-09-11", completed: false, streak: 0, total: 0, days: [] };
+	const state = {
+		id: "read",
+		editable: true,
+		date: "2026-09-11",
+		completed: false,
+		streak: 0,
+		total: 0,
+		days: [],
+	};
 	let finish = (_result: { status: "ready"; data: (typeof state)[] }) => {};
 	const pending = new Promise<{ status: "ready"; data: (typeof state)[] }>((resolve) => {
 		finish = resolve;
@@ -140,7 +176,10 @@ it("rejects late reads and stops focus reads after unmount", async () => {
 		.mockReturnValueOnce(pending)
 		.mockResolvedValueOnce({ status: "ready", data: [{ ...state, completed: true }] });
 	const target = document.createElement("div");
-	const view = mount(HabitsPanel, { target, props: { habits: [{ id: "read", name: "Read" }] } });
+	const view = mount(HabitsPanel, {
+		target,
+		props: { habits: [{ id: "read", name: "Read" }], selectedDate: state.date },
+	});
 	await vi.waitFor(() =>
 		expect(target.querySelector<HTMLButtonElement>('[aria-label="Check in Read"]')?.disabled).toBe(
 			false,
@@ -157,4 +196,114 @@ it("rejects late reads and stops focus reads after unmount", async () => {
 	const calls = invoke.mock.calls.length;
 	window.dispatchEvent(new Event("focus"));
 	expect(invoke).toHaveBeenCalledTimes(calls);
+});
+
+function pendingResponse<T>() {
+	let resolve: (value: T) => void = () => {
+		throw new Error("Not initialized");
+	};
+	const promise = new Promise<T>((settle) => {
+		resolve = settle;
+	});
+	return { promise, resolve };
+}
+
+it("switches the selected habit date while a write is pending without applying its old status", async () => {
+	const initial: CheckIn = {
+		id: "read",
+		editable: true,
+		date: "2026-09-10",
+		completed: false,
+		streak: 0,
+		total: 0,
+		days: [],
+	};
+	const next = { ...initial, date: "2026-09-11" };
+	const pending = pendingResponse<CommandResponse<CheckIn>>();
+	const selection = writable(initial.date);
+	const date = fromStore(selection);
+	invoke.mockReset();
+	invoke
+		.mockResolvedValueOnce({ status: "ready", data: [initial] })
+		.mockReturnValueOnce(pending.promise)
+		.mockResolvedValueOnce({ status: "ready", data: [next] });
+	const target = document.createElement("div");
+	const view = mount(HabitsPanel, {
+		target,
+		props: {
+			habits: [{ id: "read", name: "Read" }],
+			get selectedDate() {
+				return date.current;
+			},
+		},
+	});
+	try {
+		await vi.waitFor(() =>
+			expect(
+				target.querySelector<HTMLButtonElement>('[aria-label="Check in Read"]')?.disabled,
+			).toBe(false),
+		);
+		target.querySelector<HTMLButtonElement>('[aria-label="Check in Read"]')?.click();
+		selection.set(next.date);
+		await tick();
+		expect(invoke).toHaveBeenCalledTimes(2);
+		pending.resolve({ status: "ready", data: { ...initial, completed: true } });
+		await vi.waitFor(() =>
+			expect(invoke).toHaveBeenLastCalledWith("read_check_ins", { ids: ["read"], date: next.date }),
+		);
+		await vi.waitFor(() =>
+			expect(
+				target.querySelector<HTMLButtonElement>('[aria-label="Check in Read"]')?.disabled,
+			).toBe(false),
+		);
+		expect(target.querySelector('[aria-label="Undo Read"]')).toBeNull();
+		expect(target.querySelector(".subtitle")?.textContent).toBe(next.date);
+	} finally {
+		await unmount(view);
+	}
+});
+
+it("rejects a late read from another date and leaves a future date read-only", async () => {
+	const initial: CheckIn = {
+		id: "read",
+		editable: true,
+		date: "2026-09-10",
+		completed: true,
+		streak: 1,
+		total: 1,
+		days: [],
+	};
+	const future = { ...initial, date: "9999-01-01", completed: false, editable: false };
+	const pending = pendingResponse<CommandResponse<CheckIn[]>>();
+	const selection = writable(initial.date);
+	const date = fromStore(selection);
+	invoke.mockReset();
+	invoke
+		.mockReturnValueOnce(pending.promise)
+		.mockResolvedValueOnce({ status: "ready", data: [future] });
+	const target = document.createElement("div");
+	const view = mount(HabitsPanel, {
+		target,
+		props: {
+			habits: [{ id: "read", name: "Read" }],
+			get selectedDate() {
+				return date.current;
+			},
+		},
+	});
+	try {
+		await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+		selection.set(future.date);
+		await vi.waitFor(() => expect(target.textContent).toContain("Future check-ins are read-only"));
+		pending.resolve({ status: "ready", data: [initial] });
+		await tick();
+		await tick();
+		expect(target.querySelector('[aria-label="Undo Read"]')).toBeNull();
+		expect(target.querySelector<HTMLButtonElement>('[aria-label="Check in Read"]')?.disabled).toBe(
+			true,
+		);
+		expect(target.querySelector(".subtitle")?.textContent).toBe(future.date);
+	} finally {
+		await unmount(view);
+	}
 });

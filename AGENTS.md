@@ -22,6 +22,7 @@
 - `crates/ugos`: read-only UGOS Pro boundary.
 - `crates/useage`: AI subscription and credit reads; CherryIN may refresh its existing OAuth session.
   The spelling is intentional.
+- `crates/ledger`: local GBP expense storage, validation, and monthly category/day statistics.
 - `crates/logger`: shared `tracing` initialization.
 - `crates/music`: Spotify and QQ Music authentication, collections, playback, album art, and lyrics.
 - `crates/games`: Game account authorization, daily notes, Steam activity, and local pull archives.

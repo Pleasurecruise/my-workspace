@@ -1,4 +1,6 @@
 <script lang="ts">
+	import InvalidWidget from "./InvalidWidget.svelte";
+	import { untrack } from "svelte";
 	import { Cpu, Database, MemoryStick, Network } from "@lucide/svelte";
 	import type { Habit, WidgetPlacement, ServiceStatusCatalogEntry } from "../../consumer";
 	import type { createDashboardSession } from "./session.svelte";
@@ -9,6 +11,7 @@
 	import StoragePanel from "./StoragePanel.svelte";
 	import HabitsPanel from "./HabitsPanel.svelte";
 	import Todo from "./Todo.svelte";
+	import SpendingPanel from "../ledger/SpendingPanel.svelte";
 	import CalendarPanel from "./CalendarPanel.svelte";
 	import QuotationPanel from "./QuotationPanel.svelte";
 	import UsagePanel from "./UsagePanel.svelte";
@@ -53,15 +56,18 @@
 	const githubError = $derived(session.dashboard.github.error);
 	const quotation = $derived(session.dashboard.quotation.data);
 	const quotationError = $derived(session.dashboard.quotation.error);
-	const todos = $derived(session.todos.data);
+	const todos = $derived(session.todos.data?.date === session.selectedDate ? session.todos.data : null);
 	const todosError = $derived(session.todos.error);
 	const todosLoading = $derived(session.todos.loading);
 	const todayDate = $derived(session.todayDate);
-	const todoDate = $derived(session.todoDate);
-	const onselecttododate = $derived(session.loadTodos);
+	const selectedDate = $derived(session.selectedDate);
 	const onaddtodo = $derived(session.addTodo);
 	const ontoggletodo = $derived(session.toggleTodo);
 	const ondeletetodo = $derived(session.deleteTodo);
+	$effect(() => {
+		if (kind !== "planner" || !selectedDate) return;
+		untrack(() => { void session.loadTodos(); });
+	});
 	const percentFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 	const rateFormatter = new Intl.NumberFormat("en-US", {
 		maximumFractionDigits: 1,
@@ -101,7 +107,9 @@
 </script>
 
 <div class="widget-content" class:embedded>
-					{#if kind === "cpu"}
+					{#if placement.widget.kind === "invalid"}
+						<InvalidWidget configuration={placement.widget.configuration} error={placement.widget.error} />
+					{:else if kind === "cpu"}
 						<article class="metric">
 							<h2><Cpu size={15} /> UGREEN CPU <small>Live</small></h2>
 							{#if error !== null}<p class="metric-message" role="alert">{error}</p>{:else if snapshot?.cpu}<p><strong>{percentFormatter.format(snapshot.cpu.usedPercent)}%</strong><span>{percentFormatter.format(snapshot.cpu.temperature)} °C</span></p><svg class="sparkline cpu-chart" viewBox="0 0 160 44" preserveAspectRatio="none" role="img" aria-label="CPU usage and temperature trends"><polyline points={chartPoints(snapshot.cpuHistory.map((point) => point.usedPercent))}></polyline><polyline class="secondary" points={chartPoints(snapshot.cpuHistory.map((point) => point.temperature))}></polyline></svg>{:else}<p class="metric-message">Connecting to UGOS…</p>{/if}
@@ -148,11 +156,13 @@
 						<ServiceStatusPanel report={serviceStatus} catalog={serviceCatalog} serviceId={placement.widget.serviceId} error={serviceStatusError} />
 					{:else if kind === "github"}
 						<GithubPanel {github} error={githubError} />
+					{:else if kind === "spending"}
+						<SpendingPanel {selectedDate} {todayDate} onselect={session.selectDate} {embedded} />
 					{:else if placement.widget.kind === "planner"}
 						<section class="planner" class:compact={embedded} aria-label="Daily Planner">
-							<div class="planner-calendar"><CalendarPanel {todayDate} selectedDate={todoDate} loading={todosLoading} onselect={onselecttododate} /></div>
-							<div class="planner-todos"><Todo {embedded} {todos} error={todosError} loading={todosLoading} selectedDate={todoDate} onadd={onaddtodo} onedit={session.editTodo} ontoggle={ontoggletodo} ondelete={ondeletetodo} /></div>
-							<HabitsPanel habits={placement.widget.habits} onchange={onhabitschange} />
+							<div class="planner-calendar"><CalendarPanel {todayDate} {selectedDate} onselect={session.selectDate} /></div>
+							<div class="planner-todos"><Todo {embedded} {todos} error={todosError} loading={todosLoading} {selectedDate} onadd={onaddtodo} onedit={session.editTodo} ontoggle={ontoggletodo} ondelete={ondeletetodo} /></div>
+							<HabitsPanel {selectedDate} habits={placement.widget.habits} onchange={onhabitschange} />
 						</section>
 					{:else if kind === "codex" || kind === "openCode" || kind === "claude" || kind === "grok" || kind === "copilot" || kind === "deepSeek" || kind === "cherryIn"}
 						<UsagePanel provider={kind} codex={usage} codexError={usageError} openCode={openCodeUsage} openCodeError={openCodeUsageError} claude={claudeUsage} claudeError={claudeUsageError} grok={grokUsage} grokError={grokUsageError} copilot={copilotUsage} copilotError={copilotUsageError} deepSeek={deepSeekBalance} deepSeekError={deepSeekBalanceError} cherryIn={cherryInUsage} cherryInError={cherryInUsageError} />

@@ -37,7 +37,7 @@ The shell passes route activation to the Dashboard view session, which owns sour
 refresh feedback, Todo selection, and cleanup. An unavailable credential or failed source does not
 block the other cards. Codex, OpenCode, Claude, Grok, Copilot, DeepSeek, CherryIN and GitHub read
 only when their corresponding widget is saved. An absent widget emits a ready `null` projection
-without reading credentials, launching a CLI or renewing OAuth; an invalid layout fails before
+without reading credentials, launching a CLI or renewing OAuth; a structural layout error fails before
 provider I/O. Rust starts unified Dashboard reads concurrently and emits each result as it settles.
 A per-source lock prevents overlapping reads; scheduled refreshes skip a source that is still
 running, while an explicit refresh waits for that source and then obtains fresh data. Leaving
@@ -85,22 +85,29 @@ Dashboard cards occupy a twelve-track canvas. Edit mode supports dragging, remov
 restoring the Rust-owned default. Dragging within a row targets individual cards; dragging across
 rows inserts at a row boundary. Narrow windows scroll the canvas without changing saved order.
 
-The default order is AAPL, TSLA, Device CPU, Device Storage, Exchange, GitHub service status,
-Quotation, Ningbo/Nottingham/Shanghai weather, Arknights, Star Rail, GitHub activity, Daily Planner,
-Codex, OpenCode Go, DeepSeek, and CherryIN. Daily Planner is the default Dynamic Island selection.
-Existing Calendar, Todo, and Check-in placements combine at their earliest position on read.
-Unrelated placements keep their order, each habit keeps its ID and history, and a pin on a combined
-placement follows the Planner. Saving the layout persists the combined placement.
+The bundled `apps/desktop/src-tauri/src/dashboard-default.json` defines the default order:
+AAPL, TSLA, Device CPU, Device Storage, Exchange, GitHub service status, Quotation,
+Ningbo/Nottingham/Shanghai weather, Daily Planner, Spending, GitHub activity, Codex, OpenCode Go,
+CherryIN, Arknights, and Star Rail. Daily Planner retains placement ID `calendar`, the two habits
+Eat Breakfast 🍚 and Work Out 🏋️ with their stable IDs, and the Dynamic Island selection.
+The same configuration is used for an uninitialized layout and Restore Default.
 
 Rust validates and transactionally replaces `{ widgets, islandWidgetId }` in `vesper.sqlite3`.
 Placements have unique IDs and typed configurations; a non-null island selection references one
 placement. Habit IDs and names are unique within the Planner. Unknown fields, unsupported kinds,
 duplicate placements, and dangling selections fail validation. An uninitialized layout uses the
-default; invalid stored data remains an error until corrected. Legacy layout files are not imported.
+default. Invalid widget configurations appear as individual diagnostic cards showing only that
+widget’s raw configuration and expandable error details; valid cards remain usable. Editing
+other cards preserves the invalid configuration verbatim. Conflicting singleton configurations are
+validated in stable placement-ID order, so dragging cards cannot switch which configuration is
+active. Removing the active conflict allows the remaining valid configuration to load normally.
+Remove a diagnostic card to discard its configuration, or use Restore Default to rebuild the layout. Old Calendar, TodoList, and CheckIn kinds are unsupported;
+no old widget conversion or legacy file import runs. Database and layout-integrity failures remain
+layout-level errors.
 
-The widget library uses a category rail without search. System Status contains Daily Planner,
-UGREEN CPU/Memory/Storage/Network, and Device CPU/Memory/Storage/Network. Quota lists Codex,
-OpenCode Go, Claude, Grok, and Copilot; Balance lists DeepSeek and Cherry. The remaining categories
+The widget library uses a category rail without search. Personal contains Daily Planner and Spending. Devices contains
+UGREEN CPU/Memory/Storage/Network and Device CPU/Memory/Storage/Network. AI Services contains Codex,
+OpenCode Go, Claude, Grok, Copilot, DeepSeek, and Cherry. The remaining categories
 are Online Services and Games. Existing singleton widgets remain visible with an Added state.
 
 The macOS Dynamic Island shares WidgetContent rendering, saved layout, and Rust source locks with
@@ -209,20 +216,53 @@ contribution activity nor GitHub notifications are persisted in the local ntfy I
 
 Daily Planner displays multiple named habits beside Calendar and Todo. Manage accepts names
 separated by commas or newlines and removes individual habits. Each row provides an icon action
-for today's check-in or undo, an ongoing streak, total checked-in days, and 28-day history. The
-habit date always follows the device's local day, independently of calendar selection. Rust
-validates that day inside the write transaction and rejects a request that crosses midnight.
-A streak remains active through yesterday until today is missed.
+for the selected date's check-in or undo, an ongoing streak, total checked-in days through that
+date, and the 28 days ending on it. Calendar, Todo, and habits share one Planner `selectedDate`.
+Historical dates allow check-in and undo; future dates are read-only. Rust validates the future-date
+restriction inside the write transaction. A write keeps its submitted date even if midnight or
+calendar navigation occurs before it finishes. An unfinished selected day retains the previous
+day's streak.
 
 Records are local in `check_ins`, keyed by habit ID and date. Layout changes and restarts preserve
 history; removing and re-adding a habit creates a new ID. No credentials or providers are involved.
 The panel reads all displayed habits on mount, focus, once per minute, and cross-window updates.
-Each write targets one habit. Pending writes defer reads, request revisions discard stale responses,
-and automatic reads preserve write errors until another write or a change of habit/date.
+Each write targets one habit and date. Responses carry habit IDs, so rows never depend on response
+order. Pending writes defer reads; changing dates clears the old projection and invalidates pending
+responses, then rereads the latest selection after any write settles. Automatic reads preserve write
+errors until another write or a change of habit/date.
+
+## Spending
+
+Spending is a singleton in Personal, offered in the widget library and included in new/default
+layouts after Daily Planner. Existing saved layouts can add it through Edit dashboard → Add widget.
+Daily Planner's Calendar and Spending share the selected date. Spending offers previous/next-day
+buttons and Today around a text date, without a second calendar or native date picker. Its charts
+remain read-only and there is no refresh button. The Dynamic Island can pin Spending in a stacked
+layout with its own WebView date; it does not start Dashboard polling. Date changes, successful
+writes, expense events, focus, and the existing minute timer update data.
+
+Quick entry requires only a positive GBP amount and a category; the selected date is implicit.
+Amounts range from £0.01 to £999,999.99 with at most two decimal places. The initial suggestions are
+Dining, Groceries, Transport, Shopping, Housing, Entertainment, and Other; custom categories are
+accepted through the Custom category option and become suggestions. The category dropdown uses
+the shared UI Select component rather than a native select or datalist. Case and repeated whitespace do not create duplicate categories.
+This is an expense ledger, with no income, conversion, bank connection, or automatic import.
+Entries can be edited or deleted. A successful write updates the list, selected-day total, monthly
+total, category donut, and daily bars together. The charts always cover the selected date's calendar
+month. Categories and Daily spending switch within one fixed-height chart region; changing chart
+view does not reread data or change the entry draft. Empty months show an explicit empty state and zero daily bars. Amount/category drafts are
+preserved on failed writes and when edited during saving; changing the selected date starts a new
+form for that date.
+
+Reads run on mount, selected-date changes, focus, once per minute while mounted, and cross-window
+expense events for the displayed month. Pending writes defer reads; request generations prevent
+old dates/months from replacing the current projection. Failed background reads preserve settled
+data, and write errors survive automatic refreshes until another write or date change. Entries
+remain in local SQLite when the widget is removed. No credentials or provider settings are needed.
 
 ## Calendar and Todo
 
-Daily Planner has one selected task date. Calendar renders a complete Sunday-first month; Todo
+Daily Planner has one selected date shared by tasks and habits. Calendar renders a complete Sunday-first month; Todo
 creates, edits, completes, reopens, and deletes that day's items. Quick add accepts a title and an
 expandable description. Manual-task editing preserves date and completion while changing title
 and description. Imported items retain source-owned content. Titles are limited to 120 characters
@@ -233,8 +273,13 @@ Back restores the list without changing the Planner layout.
 Svelte retains settled data during reads and accepts a response only for the current request and
 selected date. Reads requested during a write are coalesced and run after it commits, retaining an
 explicit refresh request. Write errors survive automatic reads until the next write or date change.
-At midnight, a view following today advances without deleting history. Cross-window Todo mutations
-invalidate the other surface's list after its current operation finishes.
+Rust checks the local date every thirty seconds and emits `planner-date-changed` independently of
+ICS, Notion, or SQLite reads. A view following today advances; an explicitly selected historical or
+future day remains selected. Planner refresh, active-window focus, and island expansion also read
+the local date, recovering missed events and sleep/time-zone changes. A failed task read cannot
+hold back the Calendar or habit date. Cross-window Todo mutations invalidate the other surface's
+list after its current operation finishes. Calendar navigation remains available during task reads
+and writes; responses can only populate their own selected day.
 
 Rust stores tasks and occurrence keys in SQLite. The `ics/` directory remains the source for local
 calendar files. Imports validate all files before installing each through atomic replacement.
@@ -289,7 +334,7 @@ response types; callers only expose its typed result.
 | `deepseek.rs` | `https://api.deepseek.com/user/balance`          | pi auth entry `deepseek`                                             | Availability and currency balances                   |
 | `cherryin.rs` | CherryIN OAuth balance endpoint                  | Cherry Studio OAuth session                                          | Account balance shown under Cherry                   |
 
-Claude, Copilot, and Grok are independent Quota widgets and Dashboard sources in addition to their
+Claude, Copilot, and Grok are independent AI Services widgets and Dashboard sources in addition to their
 CLI status checks. Claude reuses Claude Code's OAuth session and reads the five-hour and seven-day
 subscription windows. Debug builds read its local credential file only; macOS release builds may
 also read the existing Claude Code Keychain item. Copilot reuses the authenticated GitHub CLI and reads the same typed user and
@@ -363,7 +408,7 @@ Model-token limits are not account balance.
 3. Reuse `auth::api_key` only when the provider uses a pi API-key record or custom model provider.
 4. Add the provider to the Rust Dashboard source enum and unified refresh runtime.
 5. Add the matching TypeScript event variant and an independent `QueryState` entry.
-6. Add the provider as its own widget under Quota or Balance without changing other
+6. Add the provider as its own widget under AI Services without changing other
    providers' loading state or the Todo area.
 7. Cover response parsing with a unit test. Keep authenticated network tests ignored and opt-in.
 8. Document the credential identifier, endpoint ownership, units, and failure behavior here.

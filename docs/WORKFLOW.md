@@ -193,6 +193,9 @@ vesper todo update <id> <text>
 vesper todo complete <id>
 vesper todo reopen <id>
 vesper todo delete <id>
+vesper todo check-ins <habit-id>...
+vesper todo check-in <habit-id>
+vesper todo undo-check-in <habit-id>
 vesper todo database-path
 vesper todo schedule-path
 vesper todo sync-ics
@@ -213,6 +216,32 @@ Run `ntn login` before connecting a view. `notion connect` saves only the link, 
 the calendar view ID. `list` and `sync` invoke `ntn api` and preserve the view filters; local completion
 survives successful refreshes. Notion pages are never modified. `notion status` prints configuration
 presence and the view URL; authentication remains owned by `ntn`.
+
+Habit commands use stable habit IDs from the saved Planner configuration, not display names or the
+Planner placement ID. `check-ins` returns each requested habit's dated completion, editability,
+streak, total and 28-day history. `check-in` and `undo-check-in` target the same selected date and
+reject future writes. These commands only access local habit records and never synchronize calendars;
+habit names and membership remain managed by Desktop.
+
+## Ledger
+
+Ledger shares Desktop's local GBP expense store. Commands default to today; `ledger --date YYYY-MM-DD`
+selects the expense day. Amounts are decimal GBP strings and categories with spaces must be quoted.
+
+```text
+vesper ledger list
+vesper ledger create 12.34 "Coffee shop"
+vesper ledger update <id> 8.50 Dining
+vesper ledger delete <id>
+vesper ledger --date 2024-02-29 list
+```
+
+Every command returns the same JSON snapshot: the selected day's entries and total, calendar-month
+total, category totals, all daily totals, and category suggestions. Read any day in a month to inspect
+that month's statistics. Update and delete require the entry's own date; a missing entry or incorrect
+date fails without changing records. The Ledger crate owns validation and atomic writes, including
+integer-pence arithmetic. CLI errors use stderr and a failing exit code. No provider or credential is
+required. Desktop observes CLI writes on its next focus or periodic refresh.
 
 ## Additional read commands
 

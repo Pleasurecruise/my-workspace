@@ -40,11 +40,13 @@ it("rejects an older date response after switching dates", async () => {
 		status: "ready",
 		data: { date: "2026-09-08", items: [], syncError: null },
 	});
-	const older = session.loadTodos("2026-09-07");
-	await session.loadTodos("2026-09-08");
+	session.selectDate("2026-09-07");
+	const older = session.loadTodos();
+	session.selectDate("2026-09-08");
+	await session.loadTodos();
 	resolve({ status: "ready", data: { date: "2026-09-07", items: [], syncError: null } });
 	await older;
-	expect(session.todoDate).toBe("2026-09-08");
+	expect(session.selectedDate).toBe("2026-09-08");
 	expect(session.todos.data?.date).toBe("2026-09-08");
 });
 
@@ -59,7 +61,8 @@ it("coalesces cross-window updates during a read and retains API failure feedbac
 		status: "ready",
 		data: { date: "2026-09-07", items: [], syncError: "Notion unavailable" },
 	});
-	const read = session.loadTodos("2026-09-07");
+	session.selectDate("2026-09-07");
+	const read = session.loadTodos();
 	listeners.get("todo-updated")?.({ payload: "2026-09-08" });
 	listeners.get("todo-updated")?.({ payload: "2026-09-07" });
 	listeners.get("todo-updated")?.({ payload: "2026-09-07" });
@@ -80,7 +83,8 @@ it("does not replay an invalidated read after the island session is disposed", a
 		resolve = settle;
 	});
 	invoke.mockReturnValueOnce(pending);
-	const read = session.loadTodos("2026-09-07");
+	session.selectDate("2026-09-07");
+	const read = session.loadTodos();
 	listeners.get("todo-updated")?.({ payload: "2026-09-07" });
 	cleanup();
 	cleanup = undefined;
@@ -96,7 +100,8 @@ it("passes Todo descriptions and ignores an edit response after date navigation"
 		status: "ready",
 		data: { date: "2026-09-10", items: [], syncError: null },
 	});
-	await session.loadTodos("2026-09-10");
+	session.selectDate("2026-09-10");
+	await session.loadTodos();
 	const pending = deferred<CommandResponse<TodoList>>();
 	invoke.mockReturnValueOnce(pending.promise);
 	const edit = session.editTodo("read", "Read", "Chapter two");
@@ -110,7 +115,8 @@ it("passes Todo descriptions and ignores an edit response after date navigation"
 		status: "ready",
 		data: { date: "2026-09-11", items: [], syncError: null },
 	});
-	await session.loadTodos("2026-09-11");
+	session.selectDate("2026-09-11");
+	await session.loadTodos();
 	pending.resolve({ status: "ready", data: { date: "2026-09-10", items: [], syncError: null } });
 	expect(await edit).toBe(false);
 	await vi.waitFor(() => expect(session.todos.data?.date).toBe("2026-09-11"));
@@ -145,14 +151,17 @@ it("retains an explicit Notion refresh requested during an edit", async () => {
 		],
 	};
 	invoke.mockResolvedValueOnce({ status: "ready", data: before });
-	await session.loadTodos(before.date);
+	session.selectDate(before.date);
+	await session.loadTodos();
 	const pending = deferred<CommandResponse<TodoList>>();
 	invoke
 		.mockReturnValueOnce(pending.promise)
 		.mockResolvedValueOnce({ status: "ready", data: after });
 	const edit = session.editTodo("read", "Read more", "Chapter two");
-	await session.loadTodos(before.date, true);
-	await session.loadTodos(before.date);
+	session.selectDate(before.date);
+	await session.loadTodos(true);
+	session.selectDate(before.date);
+	await session.loadTodos();
 	expect(invoke).toHaveBeenCalledTimes(2);
 	pending.resolve({ status: "ready", data: after });
 	expect(await edit).toBe(true);
@@ -177,7 +186,8 @@ it("retains a failed edit error after a queued refresh succeeds", async () => {
 	const session = createDashboardSession(() => false, "island");
 	const data: TodoList = { date: "2026-09-10", items: [], syncError: null };
 	invoke.mockResolvedValueOnce({ status: "ready", data });
-	await session.loadTodos(data.date);
+	session.selectDate(data.date);
+	await session.loadTodos();
 	const pending = deferred<CommandResponse<TodoList>>();
 	invoke.mockReturnValueOnce(pending.promise).mockResolvedValueOnce({ status: "ready", data });
 	const write = session.editTodo("read", "Read", "Notes");
@@ -190,7 +200,8 @@ it("retains a failed edit error after a queued refresh succeeds", async () => {
 	await session.loadTodos();
 	expect(session.todos.error).toBe("Could not save Todo");
 	invoke.mockResolvedValueOnce({ status: "ready", data: { ...data, date: "2026-09-11" } });
-	await session.loadTodos("2026-09-11");
+	session.selectDate("2026-09-11");
+	await session.loadTodos();
 	expect(session.todos.error).toBeNull();
 });
 
@@ -220,4 +231,57 @@ it("clears disabled provider failures independently when Rust emits an absent-wi
 		expect(state.loading).toBe(false);
 	}
 	expect(invoke).not.toHaveBeenCalled();
+});
+
+it("advances the Planner date even when the new day's task read fails", async () => {
+	const session = createDashboardSession(() => false, "island");
+	cleanup = mounts[0]!();
+	invoke.mockResolvedValue({ status: "failed", message: "Invalid ICS file" });
+	listeners.get("planner-date-changed")?.({ payload: "2026-09-12" });
+	await vi.waitFor(() => expect(session.todos.loading).toBe(false));
+	expect(session.todayDate).toBe("2026-09-12");
+	expect(session.selectedDate).toBe("2026-09-12");
+	expect(session.todos.error).toBe("Invalid ICS file");
+	expect(invoke).toHaveBeenCalledWith("read_todos", { date: "2026-09-12" });
+});
+
+it("keeps an explicitly selected history date when the local day changes", async () => {
+	const session = createDashboardSession(() => false, "island");
+	cleanup = mounts[0]!();
+	invoke.mockResolvedValue({
+		status: "ready",
+		data: { date: "2024-02-29", items: [], syncError: null },
+	});
+	session.selectDate("2024-02-29");
+	await session.loadTodos();
+	listeners.get("planner-date-changed")?.({ payload: "2026-09-12" });
+	await vi.waitFor(() => expect(session.todos.loading).toBe(false));
+	expect(session.todayDate).toBe("2026-09-12");
+	expect(session.selectedDate).toBe("2024-02-29");
+	expect(invoke).toHaveBeenLastCalledWith("read_todos", { date: "2024-02-29" });
+});
+
+it("reads the local date on refresh and defers rollover tasks until a pending write finishes", async () => {
+	const session = createDashboardSession(() => false, "island");
+	cleanup = mounts[0]!();
+	const initial = { date: session.todayDate, items: [], syncError: null };
+	invoke.mockResolvedValueOnce({ status: "ready", data: initial });
+	await session.loadTodos();
+	const pending = deferred<CommandResponse<TodoList>>();
+	invoke.mockReturnValueOnce(pending.promise);
+	const write = session.addTodo("Read", "");
+	listeners.get("planner-date-changed")?.({ payload: "2026-09-12" });
+	expect(session.selectedDate).toBe("2026-09-12");
+	expect(invoke).toHaveBeenCalledTimes(2);
+	invoke.mockResolvedValueOnce({ status: "ready", data: { ...initial, date: "2026-09-12" } });
+	pending.resolve({ status: "ready", data: initial });
+	expect(await write).toBe(false);
+	await vi.waitFor(() => expect(session.todos.data?.date).toBe("2026-09-12"));
+	invoke
+		.mockResolvedValueOnce({ status: "ready", data: "2026-09-13" })
+		.mockResolvedValueOnce({ status: "ready", data: { ...initial, date: "2026-09-13" } });
+	await session.refreshPlanner();
+	expect(session.todayDate).toBe("2026-09-13");
+	expect(session.selectedDate).toBe("2026-09-13");
+	expect(session.todos.data?.date).toBe("2026-09-13");
 });

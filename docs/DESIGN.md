@@ -71,9 +71,8 @@ Cross-row dragging inserts at row boundaries. Cards retain their configured span
 window changes width; compact three-track cards share an 8.5rem minimum height.
 
 Add Widget opens a category rail, widget list, and preview with feature-specific configuration.
-Weather accepts a location and stocks accept a ticker. System Status includes Daily Planner,
-UGREEN telemetry, and current-device telemetry. Quota and Balance present individual provider
-widgets; Online Services and Games contain their respective integrations. Provider-card content
+Weather accepts a location and stocks accept a ticker. Personal includes Daily Planner and Spending; Devices includes
+UGREEN and current-device telemetry. AI Services groups usage and balance provider widgets; Online Services and Games contain their respective integrations. Provider-card content
 is vertically centered within its card.
 
 Daily Planner spans all twelve tracks with Calendar on the left, Todo in the middle, and daily
@@ -81,16 +80,33 @@ habits on the right inside one border. The sections share 0.75rem insets and 1.7
 Todo and habit titles use 0.7rem regular-weight text and compact icon actions. Fixed-height content
 areas keep scrolling inside lists and details; the Dynamic Island stacks the three sections.
 
-Calendar selection controls the Todo date. Todo completion uses checkboxes; titles open a detail
+Calendar selection controls both the Todo and habit date, and stays available while tasks load. Todo completion uses checkboxes; titles open a detail
 view with status, date, description, and available calendar metadata. Back restores the list without
 resizing the card. Quick add offers an expandable description, and manual-task details provide an
 editor with Save and Cancel. Failed saves preserve the draft; duplicate submissions are disabled.
 Imported items direct content changes to the source calendar.
 
-Habits always refer to today, shown explicitly beside their ongoing streak, total days, and compact
-28-day history. Each row has its own check-in/undo icon, keeping the action distinct from Todo's
+Habits show the selected date explicitly beside their ongoing streak, total days through that date,
+and the 28-day history ending on it. Historical dates support check-in and undo. Future dates show
+a read-only explanation and disabled check-in actions. Each row has its own check-in/undo icon, keeping the action distinct from Todo's
 completion checkbox. Manage opens the habit-name form and individual removal controls. Habit reads
 happen automatically and need no separate refresh control.
+
+Spending is a separate full-width card linked to the Calendar date. Its header provides
+previous/next-day navigation and Today. The left column holds the day's total, a compact GBP amount
+and category form, and a scrolling list with edit/delete actions. Categories use the shared Select;
+Custom category reveals a text input. There is no second calendar or refresh control.
+
+The right column shows the monthly total and switchable category donut or daily bars in a fixed
+9rem chart region. Chart changes preserve drafts and card height. Read-only bars expose dates and
+GBP amounts and highlight the selected day. Empty months show a neutral ring, explicit copy, and
+zero daily bars. Narrow surfaces and Dynamic Island stack the columns. Semantic tokens
+`--color-chart-1` through `--color-chart-7` provide colors in both themes; labels and amounts keep
+charts understandable without color discrimination.
+
+An invalid widget displays its saved configuration as escaped text and collapsible error details
+in its original position. Dashboard edit controls can remove it; other cards remain usable. This
+diagnostic is not offered in the widget library.
 
 NAS CPU, memory, and network cards pair the latest numeric value with a compact in-session SVG trend
 line; NAS storage uses a used/free capacity bar. Device Storage shows startup-disk used, total and

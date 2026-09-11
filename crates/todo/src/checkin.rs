@@ -1,4 +1,4 @@
-//! Local daily check-ins, identified by a stable Dashboard placement ID.
+//! Dated habit check-ins for the shared Planner selection.
 use crate::{Error, Store, parse_date};
 use diesel::prelude::*;
 use serde::Serialize;
@@ -14,6 +14,8 @@ diesel::table! {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckIn {
+    pub id: String,
+    pub editable: bool,
     pub date: String,
     pub completed: bool,
     pub streak: usize,
@@ -28,27 +30,23 @@ pub struct Day {
 }
 
 impl Store {
-    pub async fn read_check_ins(&self, ids: Vec<String>) -> Result<Vec<CheckIn>, Error> {
+    pub async fn read_check_ins(
+        &self,
+        ids: Vec<String>,
+        date: &str,
+    ) -> Result<Vec<CheckIn>, Error> {
+        parse_date(date)?;
+        let date = date.to_owned();
         for id in &ids {
             validate_id(id)?;
         }
         self.transaction(move |connection| {
-            let date = crate::current_date()?;
-            ids.iter().map(|id| read(connection, id, &date)).collect()
+            let today = crate::current_date()?;
+            ids.iter()
+                .map(|id| read(connection, id, &date, &today))
+                .collect()
         })
         .await
-    }
-
-    pub async fn read_check_in(&self, id: &str) -> Result<CheckIn, Error> {
-        validate_id(id)?;
-        let id = id.to_owned();
-        let path = self.database_path().to_owned();
-        tokio::task::spawn_blocking(move || {
-            let mut connection = vesper_database::open(&path)?;
-            read(&mut connection, &id, &crate::current_date()?)
-        })
-        .await
-        .map_err(|error| Error::Task(error.to_string()))?
     }
 
     pub async fn set_check_in(
@@ -62,12 +60,13 @@ impl Store {
         let id = id.to_owned();
         let date = date.to_owned();
         self.transaction(move |connection| {
-            // Check after acquiring the write lock, including when a request spans midnight.
-            if date != crate::current_date()? {
-                return Err(Error::CheckInDateChanged);
+            // Validate after acquiring the write lock. Historical dates remain explicit.
+            let today = crate::current_date()?;
+            if date > today {
+                return Err(Error::FutureCheckIn);
             }
             set(connection, &id, &date, completed)?;
-            read(connection, &id, &date)
+            read(connection, &id, &date, &today)
         })
         .await
     }
@@ -107,22 +106,28 @@ fn set(
     Ok(())
 }
 
-fn read(connection: &mut SqliteConnection, id: &str, date: &str) -> Result<CheckIn, Error> {
-    let today = parse_date(date)?;
+fn read(
+    connection: &mut SqliteConnection,
+    id: &str,
+    date: &str,
+    local_date: &str,
+) -> Result<CheckIn, Error> {
+    let selected = parse_date(date)?;
+    let cutoff = std::cmp::min(date, local_date);
     let recorded = check_ins::table
         .filter(check_ins::id.eq(id))
-        .filter(check_ins::date.le(date))
+        .filter(check_ins::date.le(cutoff))
         .select(check_ins::date)
         .load::<String>(connection)?
         .into_iter()
         .map(|date| parse_date(&date))
         .collect::<Result<BTreeSet<_>, _>>()?;
-    let completed = recorded.contains(&today);
-    // An unfinished today does not break yesterday's ongoing streak.
+    let completed = recorded.contains(&selected);
+    // An unfinished selected day does not break the previous day's ongoing streak.
     let mut cursor = if completed {
-        Some(today)
+        Some(selected)
     } else {
-        today.previous_day()
+        selected.previous_day()
     };
     let mut streak = 0;
     while let Some(day) = cursor {
@@ -134,7 +139,7 @@ fn read(connection: &mut SqliteConnection, id: &str, date: &str) -> Result<Check
     }
     let mut days = Vec::with_capacity(28);
     for offset in (0..28).rev() {
-        let day = today
+        let day = selected
             .checked_sub(time::Duration::days(offset))
             .ok_or(Error::DateOverflow)?;
         days.push(Day {
@@ -143,6 +148,8 @@ fn read(connection: &mut SqliteConnection, id: &str, date: &str) -> Result<Check
         });
     }
     Ok(CheckIn {
+        id: id.to_owned(),
+        editable: date <= local_date,
         date: date.to_owned(),
         completed,
         streak,

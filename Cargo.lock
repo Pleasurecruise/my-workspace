@@ -3738,6 +3738,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ledger"
+version = "0.1.0"
+dependencies = [
+ "diesel",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.20",
+ "time",
+ "tokio",
+ "uuid",
+ "vesper-database",
+]
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8277,6 +8291,7 @@ dependencies = [
  "diesel",
  "futures-util",
  "games",
+ "ledger",
  "music",
  "my-workspace-logger",
  "objc2",
@@ -8312,10 +8327,13 @@ dependencies = [
  "cms-core",
  "consumers",
  "games",
+ "ledger",
  "my-workspace-logger",
  "quotes",
  "serde",
  "serde_json",
+ "tempfile",
+ "time",
  "todo",
  "tokio",
  "ugos",

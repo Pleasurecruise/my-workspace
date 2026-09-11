@@ -17,6 +17,7 @@ Feature implementation details are maintained in [Music](MUSIC.md), [UGOS Pro](U
 | `crates/consumers`   | Memos, Moment, and Knowledge APIs, projections, and Moment media processing.                |
 | `crates/database`    | Shared Diesel SQLite connection, schema initialization, and database location.              |
 | `crates/credentials` | Typed credentials in debug SQLite or the operating-system credential store.                 |
+| `crates/ledger`      | Local GBP expense records, exact-pence validation, and monthly category/day projections.    |
 | `crates/logger`      | Shared `tracing` initialization.                                                            |
 | `crates/md-dialect`  | Publication and Knowledge Markdown dialect compilation.                                     |
 | `crates/music`       | Spotify and QQ Music authentication, collections, playback, album art, and lyrics.          |
@@ -47,6 +48,7 @@ Trusted device
        │          └─────── cms-core R2 / Markdown
        ├─ social ───────── MTProto / X API ─── outbound Memo publication
        ├─ todo ─────────── ICS files / ntn CLI ── SQLite task projections
+       ├─ ledger ───────── local SQLite expenses and monthly projections
        ├─ credentials ──── debug SQLite / operating-system credential store
        ├─ quotes ───────── external read-only data used by Dashboard and Markdown compilation
        ├─ music ────────── Spotify Web API, QQ Music, and LRCLIB
@@ -104,14 +106,15 @@ It does not implement content CRUD, photo byte submission, provider login, or Da
 Under `src/lib/components`, `pages` owns complete navigation views and `layout` owns cross-page
 controls and `page.css`. Supporting components and their view state live together by feature:
 
-| Feature                       | View-state ownership                                                                                    |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `memos/session.svelte.ts`     | Feed cache, search/display filters, pagination, tag index, mutations, and publication command callbacks |
-| `moment/session.svelte.ts`    | Gallery cache, tag index, selected-file byte submission, and photo mutations                            |
-| `knowledge/session.svelte.ts` | Article and Newspaper overview, refresh scheduling, and editor save callbacks                           |
-| `dashboard/session.svelte.ts` | Independent source projections, route activation, event cleanup, and selected-date Todo interactions    |
-| `settings/session.svelte.ts`  | Configuration status, save/login callbacks, and explicit refresh effects supplied by the shell          |
-| `inbox/session.svelte.ts`     | Notification projection, mark-read interaction, and subscription activation                             |
+| Feature                       | View-state ownership                                                                                           |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `memos/session.svelte.ts`     | Feed cache, search/display filters, pagination, tag index, mutations, and publication command callbacks        |
+| `moment/session.svelte.ts`    | Gallery cache, tag index, selected-file byte submission, and photo mutations                                   |
+| `knowledge/session.svelte.ts` | Article and Newspaper overview, refresh scheduling, and editor save callbacks                                  |
+| `dashboard/session.svelte.ts` | Independent source projections, route activation, event cleanup, and shared Planner date and Todo interactions |
+| `ledger/session.svelte.ts`    | Dated expense reads, mutations, request ordering, and cross-window invalidation                                |
+| `settings/session.svelte.ts`  | Configuration status, save/login callbacks, and explicit refresh effects supplied by the shell                 |
+| `inbox/session.svelte.ts`     | Notification projection, mark-read interaction, and subscription activation                                    |
 
 These sessions contain view state and typed command adaptation. Image processing, publication,
 authorization, and content classification stay in Rust. Reusable primitives and semantic tokens
@@ -122,6 +125,10 @@ responses superseded by a newer request and invalidates pending responses when i
 destroyed. Dashboard and the macOS native Dynamic Island render the same WidgetContent component.
 The layout uses Diesel models in the shared `vesper.sqlite3` database and stores a nullable
 `islandWidgetId` referencing one placement; defaults select Daily Planner. Rust rejects dangling selections.
+The bundled `dashboard-default.json` owns the initial and restored layout, including habit IDs and
+island selection. Layout reads isolate configuration decoding and validation failures per widget as
+an `Invalid` projection carrying the original configuration and diagnostic. Saving preserves that
+original string. Missing metadata and invalid placement identities remain layout-level errors.
 Opening the island requests only that widget's source through `refresh_island`, using the same
 per-source request lock as Dashboard. It does not enable Dashboard route polling. Todo retains
 its own read and mutation commands; game panels retain their existing source reads.
@@ -303,7 +310,7 @@ The stored body, API payload, and content-hash conflict contract remain Markdown
 
 `crates/database` owns the shared Diesel/SQLite schema and connection policy. Desktop and CLI use
 `vesper.sqlite3` in local application data. Feature modules own typed records, validation and
-transactions: layout, Todo, Inbox, game archives and Telegram sessions. Debug credentials use the
+transactions: layout, Todo, Ledger, Inbox, game archives and Telegram sessions. Debug credentials use the
 same database; release credentials retain the operating-system store boundary. Legacy files are
 neither read nor migrated. Todo reads use a read transaction; mutations retain their immediate
 transactions. `schema.sql` is the only schema definition; there is no versioned migration layer.
@@ -314,9 +321,8 @@ Incompatible schema changes are handled by a one-time rebuild of the affected lo
 
 `crates/todo` owns dated tasks, local habit records, ICS parsing, and Notion calendar projection.
 Svelte renders Calendar, Todo, and daily habits in one Planner placement. The layout stores each
-habit's stable ID and name; existing Calendar, Todo, and Check-in placements are combined on read,
-preserving their relative position, habit IDs, and Dynamic Island selection. The next layout save
-persists that combined representation.
+habit's stable ID and name. Planner is the only supported calendar/task/habit placement; old
+standalone kinds are not converted.
 
 Desktop and CLI construct the production store through `Store::shared()`. Tasks, imported-occurrence
 keys, and `check_ins` records live in the shared local SQLite database. ICS files remain in
@@ -333,24 +339,53 @@ writes share an in-process gate and cross-process lock, retained through the dat
 Failed or incomplete reads preserve the last saved task projection. Provider protocols and refresh
 rules are detailed in [DASHBOARD.md](DASHBOARD.md#calendar-and-todo).
 
-Habit history is keyed by stable habit ID and local date, independently of the selected task date.
-Each write targets one habit and validates today's date inside its transaction. Rust returns the
-completion state, total days, ongoing streak, and last 28 days; yesterday's streak remains active
-until today is missed. Reordering and restarting preserve records. Removing and re-adding a habit
+Habit history is keyed by stable habit ID and date. Calendar, tasks, and habits share one selected
+Planner date; their existing SQLite tables remain separate and require no schema rebuild or
+migration. Reads explicitly target that date and return habit IDs, editability, completion, total
+days through the selection, ongoing streak, and the 28 days ending on the selection. Historical
+check-ins can be added or undone; Rust rejects future writes inside the transaction. Pending reads
+and writes cannot install another date's projection. The previous day's streak remains active when
+the selected day is unfinished. Reordering and restarting preserve records. Removing and re-adding a habit
 creates a new ID without deleting or reassigning the old history. The panel reads habits together
-on mount, focus, minute ticks, and cross-window events, deferring reads while a write is pending.
+on mount, date changes, focus, minute ticks, and cross-window events, deferring reads while a write
+is pending. Rust emits local-date changes every thirty seconds independently of task synchronization;
+Planner refresh and focus also read the date. Following today advances all three sections even if
+ICS, Notion, or SQLite fails; manually selected dates remain selected.
 
-## CLI consumer surface
+### Spending
 
-The CLI groups commands by feature in `status.rs`, `todo.rs`, `memo.rs`, `knowledge.rs`, and
-`moment.rs`. Consumer commands reuse the desktop's typed Rust REST boundaries. Compact Knowledge
+`crates/ledger` owns local GBP expense records and their calendar-month projections, independently
+of Todo and habit state. `ledger_entries` in the shared `vesper.sqlite3` stores an ID, local date,
+positive integer pence, category, and creation timestamp. The table and date index are initialized
+from the current schema; no migration or existing-table rebuild is required. Amounts are parsed
+from decimal strings in Rust, accept at most two decimal places, and never use floating-point
+arithmetic in storage or aggregation. Rust also normalizes category whitespace and case, rejects
+invalid dates/amounts/categories, and computes day totals, category totals, and every day of the
+selected month including zero-spend days. Writes and their resulting projections share one
+immediate transaction; reads use a consistent read transaction.
+
+The standalone Spending widget shares the Dashboard session's `selectedDate` with Planner.
+Calendar and Spending navigate through `selectDate`; mounted Planner views react by loading their
+Todo projection, while Spending reads only its ledger projection. Reads never change the selection. The feature's `ledger/session.svelte.ts`
+owns its read/write lifecycle and receives the selected date from the widget composition. A date
+change clears the prior projection, superseded reads are discarded, and navigation during a write
+rereads the latest selection after the submitted date commits. `expenses-updated` invalidates the
+other WebView when any date in its displayed month changes. Hiding or unpinning the widget leaves
+all entries intact; no provider, login, credential, or network service is involved.
+
+## CLI surface
+
+The CLI groups commands by feature in `status.rs`, `game.rs`, `todo.rs`, `ledger.rs`, `memo.rs`,
+`knowledge.rs`, and `moment.rs`. Consumer commands reuse the desktop's typed Rust REST boundaries. Compact Knowledge
 summary pages and filtered Moment queries expose the corresponding consumer MCP business
 capabilities without introducing an MCP proxy or duplicating server-side filtering.
 
 Markdown and JSON payloads can come from arguments, UTF-8 files or standard input; read and parse
 failures precede remote operations. Memo and Knowledge writes retain Worker coordination and
 Knowledge content-hash checks. Moment coordinates image preparation and R2 transfer before metadata
-registration. Todo shares the date-keyed local calendar, and provider status can query all sources
+registration. Todo shares the date-keyed local calendar and habit history; Ledger reuses its own
+crate for expense CRUD and month projections. Neither duplicates Desktop business logic. Provider
+status can query all sources
 or one explicitly selected source. Desktop layout, player state, consumer chat memory and interactive
 visuals remain outside the CLI. Command contracts and recovery behavior live in
 [WORKFLOW.md](WORKFLOW.md).

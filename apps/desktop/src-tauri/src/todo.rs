@@ -120,19 +120,6 @@ pub(crate) async fn update_todo(
 }
 
 #[tauri::command]
-pub(crate) async fn read_check_in(
-    id: String,
-    app: tauri::AppHandle,
-) -> CommandResponse<todo_core::CheckIn> {
-    match app.state::<todo_core::Store>().read_check_in(&id).await {
-        Ok(data) => CommandResponse::Ready { data },
-        Err(error) => CommandResponse::Failed {
-            message: error.to_string(),
-        },
-    }
-}
-
-#[tauri::command]
 pub(crate) async fn set_check_in(
     id: String,
     date: String,
@@ -157,9 +144,24 @@ pub(crate) async fn set_check_in(
 #[tauri::command]
 pub(crate) async fn read_check_ins(
     ids: Vec<String>,
+    date: String,
     app: tauri::AppHandle,
 ) -> CommandResponse<Vec<todo_core::CheckIn>> {
-    match app.state::<todo_core::Store>().read_check_ins(ids).await {
+    match app
+        .state::<todo_core::Store>()
+        .read_check_ins(ids, &date)
+        .await
+    {
+        Ok(data) => CommandResponse::Ready { data },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) fn read_planner_date() -> CommandResponse<String> {
+    match todo_core::current_date() {
         Ok(data) => CommandResponse::Ready { data },
         Err(error) => CommandResponse::Failed {
             message: error.to_string(),

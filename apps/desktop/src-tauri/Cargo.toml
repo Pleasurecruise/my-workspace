@@ -32,6 +32,7 @@ games.workspace = true
 futures-util.workspace = true
 my-workspace-logger.workspace = true
 music.workspace = true
+ledger.workspace = true
 percent-encoding.workspace = true
 reqwest = { workspace = true, features = ["system-proxy"] }
 quotes.workspace = true

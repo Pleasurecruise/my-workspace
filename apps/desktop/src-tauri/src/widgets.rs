@@ -56,10 +56,10 @@ pub(crate) enum Widget {
     Planner {
         habits: Vec<Habit>,
     },
-    Calendar,
-    TodoList,
-    CheckIn {
-        name: String,
+    Spending,
+    Invalid {
+        configuration: String,
+        error: String,
     },
     Codex,
     OpenCode,
@@ -114,128 +114,12 @@ impl Layout {
 
 impl Default for Layout {
     fn default() -> Self {
-        let widgets = [
-            (
-                "stock-aapl",
-                Widget::Stock {
-                    symbol: "AAPL".to_owned(),
-                },
-            ),
-            (
-                "stock-tsla",
-                Widget::Stock {
-                    symbol: "TSLA".to_owned(),
-                },
-            ),
-            ("localCpu", Widget::LocalCpu),
-            ("localStorage", Widget::LocalStorage),
-            ("exchange", Widget::Exchange),
-            (
-                "service-status-github",
-                Widget::ServiceStatus {
-                    service_id: "github".to_owned(),
-                },
-            ),
-            ("quotation", Widget::Quotation),
-            (
-                "weather-ningbo",
-                Widget::Weather {
-                    location: "ningbo".to_owned(),
-                },
-            ),
-            (
-                "weather-nottingham",
-                Widget::Weather {
-                    location: "nottingham".to_owned(),
-                },
-            ),
-            (
-                "weather-shanghai",
-                Widget::Weather {
-                    location: "shanghai".to_owned(),
-                },
-            ),
-            (
-                "game-arknights",
-                Widget::Game {
-                    game: games::Game::Arknights,
-                },
-            ),
-            (
-                "game-starRail",
-                Widget::Game {
-                    game: games::Game::StarRail,
-                },
-            ),
-            ("github", Widget::Github),
-            ("todo-list", Widget::Planner { habits: Vec::new() }),
-            ("codex", Widget::Codex),
-            ("open-code", Widget::OpenCode),
-            ("deep-seek", Widget::DeepSeek),
-            ("cherry-in", Widget::CherryIn),
-        ]
-        .into_iter()
-        .map(|(id, widget)| Placement {
-            id: id.to_owned(),
-            widget,
-        })
-        .collect();
-        Self {
-            widgets,
-            island_widget_id: Some("todo-list".to_owned()),
-        }
+        serde_json::from_str(include_str!("dashboard-default.json"))
+            .expect("bundled Dashboard layout must be valid")
     }
 }
 
 impl Layout {
-    fn merge_planner(&mut self) {
-        let Some(first) = self.widgets.iter().position(|p| {
-            matches!(
-                p.widget,
-                Widget::Planner { .. }
-                    | Widget::Calendar
-                    | Widget::TodoList
-                    | Widget::CheckIn { .. }
-            )
-        }) else {
-            return;
-        };
-        let id = self.widgets[first].id.clone();
-        let mut habits = Vec::new();
-        let mut selected = false;
-        self.widgets.retain(|p| {
-            let merged = matches!(
-                p.widget,
-                Widget::Planner { .. }
-                    | Widget::Calendar
-                    | Widget::TodoList
-                    | Widget::CheckIn { .. }
-            );
-            if merged {
-                selected |= self.island_widget_id.as_ref() == Some(&p.id);
-                match &p.widget {
-                    Widget::Planner { habits: saved } => habits.extend(saved.clone()),
-                    Widget::CheckIn { name } => habits.push(Habit {
-                        id: p.id.clone(),
-                        name: name.clone(),
-                    }),
-                    _ => {}
-                }
-            }
-            !merged
-        });
-        if selected {
-            self.island_widget_id = Some(id.clone());
-        }
-        self.widgets.insert(
-            first,
-            Placement {
-                id,
-                widget: Widget::Planner { habits },
-            },
-        );
-    }
-
     fn validate(&self) -> Result<(), String> {
         if self
             .island_widget_id
@@ -270,16 +154,6 @@ impl Layout {
                         {
                             return Err("Habit names and IDs must be valid and unique".into());
                         }
-                    }
-                }
-                Widget::CheckIn { name } => {
-                    if name.trim() != name || name.chars().any(char::is_control) {
-                        return Err(
-                            "Check-in name must be trimmed and contain no line breaks".to_owned()
-                        );
-                    }
-                    if !(1..=120).contains(&name.chars().count()) {
-                        return Err("Check-in name must contain 1–120 characters".to_owned());
                     }
                 }
                 Widget::Weather { location } => {
@@ -318,9 +192,7 @@ impl Layout {
                 Widget::ServiceStatus { service_id } => format!("service-status-{service_id}"),
                 Widget::Github => "github".to_owned(),
                 Widget::Planner { .. } => "planner".to_owned(),
-                Widget::Calendar => "calendar".to_owned(),
-                Widget::TodoList => "todo-list".to_owned(),
-                Widget::CheckIn { name } => format!("check-in-{}", name.to_lowercase()),
+                Widget::Spending => "spending".to_owned(),
                 Widget::Codex => "codex".to_owned(),
                 Widget::OpenCode => "open-code".to_owned(),
                 Widget::Claude => "claude".to_owned(),
@@ -331,6 +203,7 @@ impl Layout {
                 Widget::Quotation => "quotation".to_owned(),
                 Widget::Game { game } => format!("game-{}", game.key()),
                 Widget::Steam => "steam".to_owned(),
+                Widget::Invalid { .. } => format!("invalid-{}", placement.id),
             };
             if !singletons.insert(key.clone()) {
                 return Err(format!("Dashboard layout contains duplicate {key} widgets"));
@@ -375,6 +248,26 @@ fn decode(bytes: &[u8]) -> Result<Layout, String> {
     Ok(layout)
 }
 
+fn parse_widget(configuration: &str) -> Result<Widget, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(configuration).map_err(|error| error.to_string())?;
+    let widget: Widget =
+        serde_json::from_value(value.clone()).map_err(|error| error.to_string())?;
+    if matches!(widget, Widget::Invalid { .. }) {
+        return Err("Reserved widget kind".into());
+    }
+    // Serde's internally tagged unit variants otherwise ignore additional fields.
+    let encoded = serde_json::to_value(&widget).map_err(|error| error.to_string())?;
+    if let Some(fields) = value.as_object() {
+        for key in fields.keys() {
+            if encoded.get(key).is_none() {
+                return Err(format!("Unknown widget field: {key}"));
+            }
+        }
+    }
+    Ok(widget)
+}
+
 fn read(path: &Path) -> Result<Layout, String> {
     let mut connection = vesper_database::open(path).map_err(|error| error.to_string())?;
     connection
@@ -390,29 +283,44 @@ fn read(path: &Path) -> Result<Layout, String> {
             Ok((selected, records))
         })
         .map_err(|error| format!("Could not read Dashboard layout: {error}"))
-        .and_then(|(selected, records)| {
+        .and_then(|(selected, mut records)| {
             let Some(island_widget_id) = selected else {
                 if !records.is_empty() {
                     return Err("Dashboard layout is missing its selection record".to_owned());
                 }
                 return Ok(Layout::default());
             };
-            let widgets = records
-                .into_iter()
-                .map(|(id, encoded)| {
-                    serde_json::from_str(&encoded)
-                        .map(|widget| Placement { id, widget })
-                        .map_err(|error| {
-                            format!("Dashboard widget configuration is invalid: {error}")
-                        })
-                })
-                .collect::<Result<Vec<_>, _>>()?;
             let mut layout = Layout {
-                widgets,
-                island_widget_id,
+                widgets: Vec::new(),
+                island_widget_id: None,
             };
-            layout.validate()?;
-            layout.merge_planner();
+            let positions: std::collections::HashMap<_, _> = records
+                .iter()
+                .enumerate()
+                .map(|(position, (id, _))| (id.clone(), position))
+                .collect();
+            records.sort_by(|a, b| a.0.cmp(&b.0));
+            for (id, configuration) in records {
+                let widget = match parse_widget(&configuration) {
+                    Ok(widget) => widget,
+                    Err(error) => Widget::Invalid {
+                        configuration: configuration.clone(),
+                        error,
+                    },
+                };
+                let position = layout.widgets.len();
+                layout.widgets.push(Placement { id, widget });
+                if let Err(error) = layout.validate() {
+                    layout.widgets[position].widget = Widget::Invalid {
+                        configuration,
+                        error,
+                    };
+                }
+            }
+            layout
+                .widgets
+                .sort_by_key(|placement| positions[&placement.id]);
+            layout.island_widget_id = island_widget_id;
             layout.validate()?;
             Ok(layout)
         })
@@ -427,8 +335,10 @@ fn write(path: &Path, layout: &Layout) -> Result<(), String> {
         .map(|(position, placement)| {
             let position =
                 i32::try_from(position).map_err(|_| "Too many Dashboard widgets".to_owned())?;
-            let configuration =
-                serde_json::to_string(&placement.widget).map_err(|error| error.to_string())?;
+            let configuration = match &placement.widget {
+                Widget::Invalid { configuration, .. } => configuration.clone(),
+                widget => serde_json::to_string(widget).map_err(|error| error.to_string())?,
+            };
             Ok((&placement.id, position, configuration))
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -613,61 +523,70 @@ mod tests {
     use super::*;
 
     #[test]
-    fn check_in_layout_persists_names_and_rejects_duplicate_habits() {
-        let mut layout: Layout = serde_json::from_str(r#"{"widgets":[{"id":"check-in-read","widget":{"kind":"checkIn","name":"Read"}},{"id":"check-in-walk","widget":{"kind":"checkIn","name":"Walk"}}],"islandWidgetId":"check-in-read"}"#).unwrap();
-        layout.validate().unwrap();
+    fn planner_habits() {
+        let mut layout = Layout {
+            widgets: vec![Placement {
+                id: "planner".into(),
+                widget: Widget::Planner {
+                    habits: vec![
+                        Habit {
+                            id: "read".into(),
+                            name: "Read".into(),
+                        },
+                        Habit {
+                            id: "walk".into(),
+                            name: "Walk".into(),
+                        },
+                    ],
+                },
+            }],
+            island_widget_id: Some("planner".into()),
+        };
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join(vesper_database::FILE_NAME);
         write(&path, &layout).unwrap();
-        let restored = read(&path).unwrap();
-        restored.validate().unwrap();
-        assert!(
-            matches!(&restored.widgets[0].widget, Widget::Planner { habits } if habits.len() == 2 && habits[0].id == "check-in-read" && habits[1].id == "check-in-walk")
+        assert_eq!(
+            serde_json::to_value(read(&path).unwrap()).unwrap(),
+            serde_json::to_value(&layout).unwrap()
         );
-        assert_eq!(restored.island_widget_id.as_deref(), Some("check-in-read"));
-        layout.widgets[1].widget = Widget::CheckIn {
-            name: "READ".to_owned(),
+        let Widget::Planner { habits } = &mut layout.widgets[0].widget else {
+            panic!("Expected Planner")
         };
-        assert!(layout.validate().unwrap_err().contains("duplicate"));
+        habits[1].name = "READ".into();
+        assert!(layout.validate().is_err());
         for name in ["", "  Read", "Read\nmore"] {
-            layout.widgets[1].widget = Widget::CheckIn {
-                name: name.to_owned(),
+            let Widget::Planner { habits } = &mut layout.widgets[0].widget else {
+                panic!("Expected Planner")
             };
+            habits[1].name = name.into();
             assert!(layout.validate().is_err());
         }
     }
 
-    #[tokio::test]
-    async fn planner_migration_preserves_order_pin_and_habit_history() {
+    #[test]
+    fn spending_is_a_persisted_singleton_that_can_be_pinned() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join(vesper_database::FILE_NAME);
-        let layout: Layout = serde_json::from_str(r#"{"widgets":[{"id":"cpu","widget":{"kind":"localCpu"}},{"id":"calendar","widget":{"kind":"calendar"}},{"id":"github","widget":{"kind":"github"}},{"id":"read","widget":{"kind":"checkIn","name":"Read"}},{"id":"todo","widget":{"kind":"todoList"}}],"islandWidgetId":"read"}"#).unwrap();
-        let store = todo_core::Store::new(path.clone());
-        store
-            .set_check_in("read", &todo_core::current_date().unwrap(), true)
-            .await
-            .unwrap();
-        write(&path, &layout).unwrap();
-        let migrated = read(&path).unwrap();
-        assert_eq!(
-            migrated
-                .widgets
-                .iter()
-                .map(|p| p.id.as_str())
-                .collect::<Vec<_>>(),
-            ["cpu", "calendar", "github"]
-        );
-        assert_eq!(migrated.island_widget_id.as_deref(), Some("calendar"));
-        let Widget::Planner { habits } = &migrated.widgets[1].widget else {
-            panic!("Expected Planner")
+        let mut layout = Layout {
+            widgets: vec![Placement {
+                id: "spending".into(),
+                widget: Widget::Spending,
+            }],
+            island_widget_id: Some("spending".into()),
         };
-        assert_eq!(habits[0].id, "read");
-        assert_eq!(store.read_check_in(&habits[0].id).await.unwrap().total, 1);
-        write(&path, &migrated).unwrap();
-        assert_eq!(
-            serde_json::to_value(read(&path).unwrap()).unwrap(),
-            serde_json::to_value(migrated).unwrap()
-        );
+        write(&path, &layout).unwrap();
+        let restored = read(&path).unwrap();
+        assert!(matches!(restored.widgets[0].widget, Widget::Spending));
+        assert_eq!(restored.island_widget_id.as_deref(), Some("spending"));
+        layout.widgets.push(Placement {
+            id: "spending-other".into(),
+            widget: Widget::Spending,
+        });
+        assert!(layout.validate().is_err());
+        assert!(matches!(
+            read(&path).unwrap().widgets[0].widget,
+            Widget::Spending
+        ));
     }
 
     #[test]
@@ -745,22 +664,98 @@ mod tests {
     }
 
     #[test]
-    fn reports_corrupt_widget_without_replacing_it() {
+    fn duplicate_order() {
+        use diesel::connection::SimpleConnection;
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join(vesper_database::FILE_NAME);
-        write(&path, &Layout::default()).unwrap();
         let mut connection = vesper_database::open(&path).unwrap();
-        diesel::update(dashboard_widgets::table.find("todo-list"))
-            .set(dashboard_widgets::configuration.eq("{"))
-            .execute(&mut connection)
+        connection
+            .batch_execute(
+                r#"
+            INSERT INTO dashboard_widgets VALUES
+              ('planner-a', 0, '{"kind":"planner","habits":[{"id":"read","name":"Read"}]}'),
+              ('planner-b', 1, '{"kind":"planner","habits":[{"id":"walk","name":"Walk"}]}');
+            INSERT INTO dashboard_layout VALUES (1, 'planner-a');
+        "#,
+            )
             .unwrap();
-        assert!(read(&path).is_err());
-        let value: String = dashboard_widgets::table
-            .find("todo-list")
-            .select(dashboard_widgets::configuration)
-            .first(&mut connection)
-            .unwrap();
-        assert_eq!(value, "{");
+        let mut layout = read(&path).unwrap();
+        assert!(matches!(layout.widgets[1].widget, Widget::Invalid { .. }));
+        layout.widgets.reverse();
+        write(&path, &layout).unwrap();
+        assert_eq!(
+            serde_json::to_value(read(&path).unwrap()).unwrap(),
+            serde_json::to_value(&layout).unwrap(),
+        );
+    }
+
+    #[test]
+    fn isolates_invalid_widgets() {
+        for configuration in [
+            "{",
+            r#"{"kind":"calendar"}"#,
+            r#"{"kind":"spending","extra":true}"#,
+            r#"{"kind":"stock","symbol":""}"#,
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join(vesper_database::FILE_NAME);
+            let initial = Layout {
+                widgets: vec![
+                    Placement {
+                        id: "planner".into(),
+                        widget: Widget::Planner { habits: vec![] },
+                    },
+                    Placement {
+                        id: "spending".into(),
+                        widget: Widget::Spending,
+                    },
+                ],
+                island_widget_id: Some("planner".into()),
+            };
+            write(&path, &initial).unwrap();
+            let mut connection = vesper_database::open(&path).unwrap();
+            diesel::update(dashboard_widgets::table.find("planner"))
+                .set(dashboard_widgets::configuration.eq(configuration))
+                .execute(&mut connection)
+                .unwrap();
+            let mut restored = read(&path).unwrap();
+            assert_eq!(restored.widgets.len(), initial.widgets.len());
+            assert_eq!(restored.island_widget_id.as_deref(), Some("planner"));
+            let broken = restored.widgets.iter().find(|p| p.id == "planner").unwrap();
+            assert!(
+                matches!(&broken.widget, Widget::Invalid { configuration: raw, error } if raw == configuration && !error.is_empty()),
+                "{configuration}: {:?}",
+                broken.widget
+            );
+            assert!(
+                restored
+                    .widgets
+                    .iter()
+                    .any(|p| matches!(p.widget, Widget::Spending))
+            );
+            restored.widgets.reverse();
+            write(&path, &restored).unwrap();
+            let value: String = dashboard_widgets::table
+                .find("planner")
+                .select(dashboard_widgets::configuration)
+                .first(&mut connection)
+                .unwrap();
+            assert_eq!(value, configuration);
+            assert_eq!(
+                serde_json::to_value(read(&path).unwrap()).unwrap(),
+                serde_json::to_value(&restored).unwrap()
+            );
+            restored.widgets.retain(|p| p.id != "planner");
+            restored.island_widget_id = None;
+            write(&path, &restored).unwrap();
+            assert!(
+                read(&path)
+                    .unwrap()
+                    .widgets
+                    .iter()
+                    .all(|p| !matches!(p.widget, Widget::Invalid { .. }))
+            );
+        }
     }
 
     #[test]
@@ -854,13 +849,15 @@ mod tests {
     }
 
     #[test]
-    fn rejects_legacy_widgets() {
-        for kind in ["usage", "quota", "balance", "todo"] {
+    fn rejects_old_widgets() {
+        for kind in [
+            "usage", "quota", "balance", "todo", "calendar", "todoList", "checkIn",
+        ] {
             let bytes = serde_json::to_vec(&serde_json::json!({
-                "widgets": [{ "id": "legacy", "widget": { "kind": kind } }]
+                "widgets": [{ "id": "old", "widget": { "kind": kind } }]
             }))
             .unwrap();
-            assert!(decode(&bytes).is_err(), "legacy widget {kind}");
+            assert!(decode(&bytes).is_err(), "unsupported widget {kind}");
         }
     }
 }

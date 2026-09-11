@@ -2,6 +2,7 @@ use std::process::ExitCode;
 
 mod game;
 mod knowledge;
+mod ledger;
 mod memo;
 mod moment;
 mod status;
@@ -64,6 +65,10 @@ async fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
             todo::run(action, rest, Some(date)).await
         }
         [domain, action, rest @ ..] if domain == "todo" => todo::run(action, rest, None).await,
+        [domain, flag, date, action, rest @ ..] if domain == "ledger" && flag == "--date" => {
+            ledger::run(action, rest, Some(date)).await
+        }
+        [domain, action, rest @ ..] if domain == "ledger" => ledger::run(action, rest, None).await,
         invalid_arguments => Err(format!(
             "invalid arguments: {}; run `vesper help`",
             invalid_arguments.join(" ")
@@ -177,7 +182,15 @@ fn print_help() {
          todo update <id> <text>        replace a Todo's text\n  \
          todo complete <id>             mark a Todo complete\n  \
          todo reopen <id>               mark a Todo incomplete\n  \
-         todo delete <id>               delete a Todo\n\n\
+         todo delete <id>               delete a Todo\n  \
+         todo check-ins <habit-id>...   read dated habit states\n  \
+         todo check-in <habit-id>       check in on the selected date\n  \
+         todo undo-check-in <habit-id>  undo a dated check-in\n  \
+         ledger --date <YYYY-MM-DD> <action> [...]  select another expense date\n  \
+         ledger list                   read daily expenses and monthly totals\n  \
+         ledger create <amount> <category>       add a GBP expense\n  \
+         ledger update <id> <amount> <category>  edit an expense on the selected date\n  \
+         ledger delete <id>             delete an expense on the selected date\n\n\
          Status sources: ugos, claude, codex, copilot, grok, opencode, deepseek, cherryin\n\n\
          todo notion status | connect <calendar-view-url> | disconnect\n\
          game <notes|archive|sync> <genshin|star-rail|zzz|arknights|endfield>\n\

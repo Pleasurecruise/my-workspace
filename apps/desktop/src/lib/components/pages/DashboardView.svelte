@@ -22,8 +22,8 @@
 	$effect(() => { if (layoutSession.layout !== null) layout = layoutSession.layout.widgets; });
 	let editing = $state(false);
 	let widgetLibraryOpen = $state(false);
-	let selectedCategory = $state<WidgetCategory>("system");
-	let selectedWidgetId = $state("cpu");
+	let selectedCategory = $state<WidgetCategory>("personal");
+	let selectedWidgetId = $state("planner");
 	let weatherLocation = $state("");
 	let stockSymbol = $state("");
 	let serviceQuery = $state("");
@@ -51,8 +51,8 @@
 
 	function openWidgetLibrary() {
 		if (layoutSaving) return;
-		selectedCategory = "system";
-		selectedWidgetId = "cpu";
+		selectedCategory = "personal";
+		selectedWidgetId = "planner";
 		weatherLocation = "";
 		stockSymbol = "";
 		serviceQuery = "";
@@ -310,7 +310,7 @@
 						{#each categoryWidgets as option (option.id)}
 							{@const added = option.kind !== "weather" && option.kind !== "stock" && option.kind !== "serviceStatus" && layout.some((item) => widgetKey(item.widget) === option.id)}
 							<button type="button" class:selected={selectedWidget !== null && selectedWidget.id === option.id} class:added onclick={() => { selectedWidgetId = option.id; widgetFormError = null; }}>
-								<span class="library-list-icon">{#if option.kind === "cpu" || option.kind === "localCpu"}<Cpu size={16} />{:else if option.kind === "memory" || option.kind === "localMemory"}<MemoryStick size={16} />{:else if option.kind === "storage" || option.kind === "localStorage"}<HardDrive size={16} />{:else if option.kind === "network" || option.kind === "localNetwork"}<Network size={16} />{:else if option.kind === "codex" || option.kind === "openCode" || option.kind === "claude" || option.kind === "grok" || option.kind === "copilot"}<Gauge size={16} />{:else if option.kind === "deepSeek" || option.kind === "cherryIn"}<WalletCards size={16} />{:else if option.kind === "planner"}<ListTodo size={16} />{:else if option.kind === "stock"}<ChartNoAxesCombined size={16} />{:else if option.kind === "exchange"}<ArrowLeftRight size={16} />{:else if option.kind === "weather"}<CloudSun size={16} />{:else if option.kind === "serviceStatus"}<ShieldCheck size={16} />{:else}<Sparkles size={16} />{/if}</span>
+								<span class="library-list-icon">{#if option.kind === "cpu" || option.kind === "localCpu"}<Cpu size={16} />{:else if option.kind === "memory" || option.kind === "localMemory"}<MemoryStick size={16} />{:else if option.kind === "storage" || option.kind === "localStorage"}<HardDrive size={16} />{:else if option.kind === "network" || option.kind === "localNetwork"}<Network size={16} />{:else if option.kind === "codex" || option.kind === "openCode" || option.kind === "claude" || option.kind === "grok" || option.kind === "copilot"}<Gauge size={16} />{:else if option.kind === "spending" || option.kind === "deepSeek" || option.kind === "cherryIn"}<WalletCards size={16} />{:else if option.kind === "planner"}<ListTodo size={16} />{:else if option.kind === "stock"}<ChartNoAxesCombined size={16} />{:else if option.kind === "exchange"}<ArrowLeftRight size={16} />{:else if option.kind === "weather"}<CloudSun size={16} />{:else if option.kind === "serviceStatus"}<ShieldCheck size={16} />{:else}<Sparkles size={16} />{/if}</span>
 								<span>{option.label}<small>{added ? "Added" : option.description}</small></span>
 								{#if added}<Check size={13} />{:else}<ChevronRight size={13} />{/if}
 							</button>
@@ -323,7 +323,7 @@
 						<div class="preview-copy"><span>{widgetCategoryLabel(selectedWidget.category)}</span><h3>{selectedWidget.label}</h3><p>{selectedWidget.description}</p></div>
 						<div class="widget-preview">
 							<div class="preview-card">
-								<span class="preview-app-icon">{#if selectedWidget.kind === "cpu" || selectedWidget.kind === "localCpu"}<Cpu size={22} />{:else if selectedWidget.kind === "memory" || selectedWidget.kind === "localMemory"}<MemoryStick size={22} />{:else if selectedWidget.kind === "storage" || selectedWidget.kind === "localStorage"}<HardDrive size={22} />{:else if selectedWidget.kind === "network" || selectedWidget.kind === "localNetwork"}<Network size={22} />{:else if selectedWidget.kind === "codex" || selectedWidget.kind === "openCode" || selectedWidget.kind === "claude" || selectedWidget.kind === "grok" || selectedWidget.kind === "copilot"}<Gauge size={22} />{:else if selectedWidget.kind === "deepSeek" || selectedWidget.kind === "cherryIn"}<WalletCards size={22} />{:else if selectedWidget.kind === "planner"}<ListTodo size={22} />{:else if selectedWidget.kind === "stock"}<ChartNoAxesCombined size={22} />{:else if selectedWidget.kind === "exchange"}<ArrowLeftRight size={22} />{:else if selectedWidget.kind === "weather"}<CloudSun size={22} />{:else if selectedWidget.kind === "serviceStatus"}<ShieldCheck size={22} />{:else}<Sparkles size={22} />{/if}</span>
+								<span class="preview-app-icon">{#if selectedWidget.kind === "cpu" || selectedWidget.kind === "localCpu"}<Cpu size={22} />{:else if selectedWidget.kind === "memory" || selectedWidget.kind === "localMemory"}<MemoryStick size={22} />{:else if selectedWidget.kind === "storage" || selectedWidget.kind === "localStorage"}<HardDrive size={22} />{:else if selectedWidget.kind === "network" || selectedWidget.kind === "localNetwork"}<Network size={22} />{:else if selectedWidget.kind === "codex" || selectedWidget.kind === "openCode" || selectedWidget.kind === "claude" || selectedWidget.kind === "grok" || selectedWidget.kind === "copilot"}<Gauge size={22} />{:else if selectedWidget.kind === "spending" || selectedWidget.kind === "deepSeek" || selectedWidget.kind === "cherryIn"}<WalletCards size={22} />{:else if selectedWidget.kind === "planner"}<ListTodo size={22} />{:else if selectedWidget.kind === "stock"}<ChartNoAxesCombined size={22} />{:else if selectedWidget.kind === "exchange"}<ArrowLeftRight size={22} />{:else if selectedWidget.kind === "weather"}<CloudSun size={22} />{:else if selectedWidget.kind === "serviceStatus"}<ShieldCheck size={22} />{:else}<Sparkles size={22} />{/if}</span>
 								<div><strong>{selectedWidget.label}</strong><span>{selectedWidget.description}</span></div>
 								<div class="preview-lines"><i></i><i></i><i></i></div>
 							</div>

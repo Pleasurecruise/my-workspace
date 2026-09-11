@@ -8,6 +8,7 @@ mod consumer;
 mod dashboard;
 mod gaming;
 mod island;
+mod ledger;
 mod music;
 mod notifications;
 mod status;
@@ -37,89 +38,87 @@ pub fn run() {
     my_workspace_logger::info!("starting desktop application");
 
     let result = tauri::Builder::default()
-        .register_asynchronous_uri_scheme_protocol(
-            "vesper-asset",
-            |context, request, responder| {
-                if context.webview_label() != "main" {
+        .register_asynchronous_uri_scheme_protocol("vesper-asset", |context, request, responder| {
+            if context.webview_label() != "main" {
+                responder.respond(
+                    Response::builder()
+                        .status(StatusCode::FORBIDDEN)
+                        .body(Vec::new())
+                        .expect("static asset response should build"),
+                );
+                return;
+            }
+            if request.method() != tauri::http::Method::GET {
+                responder.respond(
+                    Response::builder()
+                        .status(StatusCode::METHOD_NOT_ALLOWED)
+                        .body(Vec::new())
+                        .expect("static asset response should build"),
+                );
+                return;
+            }
+            let app = context.app_handle().clone();
+            let key = match percent_encoding::percent_decode_str(
+                request.uri().path().trim_start_matches('/'),
+            )
+            .decode_utf8()
+            {
+                Ok(key) => key.into_owned(),
+                Err(_) => {
                     responder.respond(
                         Response::builder()
-                            .status(StatusCode::FORBIDDEN)
+                            .status(StatusCode::BAD_REQUEST)
                             .body(Vec::new())
                             .expect("static asset response should build"),
                     );
                     return;
                 }
-                if request.method() != tauri::http::Method::GET {
-                    responder.respond(
-                        Response::builder()
-                            .status(StatusCode::METHOD_NOT_ALLOWED)
-                            .body(Vec::new())
-                            .expect("static asset response should build"),
-                    );
-                    return;
-                }
-                let app = context.app_handle().clone();
-                let key = match percent_encoding::percent_decode_str(
-                    request.uri().path().trim_start_matches('/'),
-                )
-                .decode_utf8()
+            };
+            let content_type = match key.rsplit_once('.').map(|(_, extension)| extension) {
+                Some(extension) if extension.eq_ignore_ascii_case("png") => "image/png",
+                Some(extension)
+                    if extension.eq_ignore_ascii_case("jpg")
+                        || extension.eq_ignore_ascii_case("jpeg") =>
                 {
-                    Ok(key) => key.into_owned(),
-                    Err(_) => {
-                        responder.respond(
-                            Response::builder()
-                                .status(StatusCode::BAD_REQUEST)
-                                .body(Vec::new())
-                                .expect("static asset response should build"),
-                        );
-                        return;
-                    }
-                };
-                let content_type = match key.rsplit_once('.').map(|(_, extension)| extension) {
-                    Some(extension) if extension.eq_ignore_ascii_case("png") => "image/png",
-                    Some(extension)
-                        if extension.eq_ignore_ascii_case("jpg")
-                            || extension.eq_ignore_ascii_case("jpeg") =>
-                    {
-                        "image/jpeg"
-                    }
-                    Some(extension) if extension.eq_ignore_ascii_case("webp") => "image/webp",
-                    Some(extension) if extension.eq_ignore_ascii_case("avif") => "image/avif",
-                    _ => {
-                        responder.respond(
-                            Response::builder()
-                                .status(StatusCode::BAD_REQUEST)
-                                .body(Vec::new())
-                                .expect("static asset response should build"),
-                        );
-                        return;
-                    }
-                };
-                tauri::async_runtime::spawn(async move {
-                    let response = match app.state::<CmsState>().asset(&key).await {
-                        Ok(data) => Response::builder()
-                            .status(StatusCode::OK)
-                            .header(header::CONTENT_TYPE, content_type)
-                            .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-                            .header(header::CACHE_CONTROL, "no-store")
-                            .body(data.as_ref().clone())
+                    "image/jpeg"
+                }
+                Some(extension) if extension.eq_ignore_ascii_case("webp") => "image/webp",
+                Some(extension) if extension.eq_ignore_ascii_case("avif") => "image/avif",
+                _ => {
+                    responder.respond(
+                        Response::builder()
+                            .status(StatusCode::BAD_REQUEST)
+                            .body(Vec::new())
                             .expect("static asset response should build"),
-                        Err(error) => {
-                            tracing::warn!(%error, %key, "could not serve a Moment image");
-                            Response::builder()
-                                .status(StatusCode::NOT_FOUND)
-                                .body(Vec::new())
-                                .expect("static asset response should build")
-                        }
-                    };
-                    responder.respond(response);
-                });
-            },
-        )
+                    );
+                    return;
+                }
+            };
+            tauri::async_runtime::spawn(async move {
+                let response = match app.state::<CmsState>().asset(&key).await {
+                    Ok(data) => Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, content_type)
+                        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+                        .header(header::CACHE_CONTROL, "no-store")
+                        .body(data.as_ref().clone())
+                        .expect("static asset response should build"),
+                    Err(error) => {
+                        tracing::warn!(%error, %key, "could not serve a Moment image");
+                        Response::builder()
+                            .status(StatusCode::NOT_FOUND)
+                            .body(Vec::new())
+                            .expect("static asset response should build")
+                    }
+                };
+                responder.respond(response);
+            });
+        })
         .register_asynchronous_uri_scheme_protocol(
             "vesper-music-cover",
             |context, request, responder| {
-                if context.webview_label() != "main" || request.method() != tauri::http::Method::GET {
+                if context.webview_label() != "main" || request.method() != tauri::http::Method::GET
+                {
                     responder.respond(
                         Response::builder()
                             .status(StatusCode::FORBIDDEN)
@@ -174,44 +173,36 @@ pub fn run() {
         .menu(updater::menu)
         .on_menu_event(|app, event| updater::handle_menu_event(app, &event))
         .setup(|app| {
-            app.manage(games::Runtime::new(app.path().app_local_data_dir()?.join(vesper_database::FILE_NAME)));
+            app.manage(games::Runtime::new(
+                app.path()
+                    .app_local_data_dir()?
+                    .join(vesper_database::FILE_NAME),
+            ));
             app.manage(todo_core::Store::shared()?);
-            let notifications_path = app.path().app_local_data_dir()?.join(vesper_database::FILE_NAME);
+            app.manage(::ledger::Store::new(vesper_database::shared_path()?));
+            let notifications_path = app
+                .path()
+                .app_local_data_dir()?
+                .join(vesper_database::FILE_NAME);
             app.manage(notifications::NotificationState::new(notifications_path));
             island::sync(app.handle());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                let mut previous_date = None;
                 loop {
-                    let delay = match todo_core::next_rollover_delay() {
-                        Ok(delay) => delay,
-                        Err(error) => {
-                            tracing::error!(%error, "failed to schedule Todo rollover");
-                            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-                            continue;
-                        }
-                    };
-                    tokio::time::sleep(delay).await;
-                    let date = match todo_core::current_date() {
-                        Ok(date) => date,
-                        Err(error) => {
-                            tracing::error!(%error, "failed to resolve the date for Todo rollover");
-                            continue;
-                        }
-                    };
-                    match handle
-                        .state::<todo_core::Store>()
-                        .sync_schedule(&date)
-                        .await
-                    {
-                        Ok(list) => {
-                            if let Err(error) = handle.emit("todo-list-changed", list) {
-                                tracing::warn!(%error, "failed to notify the Todo view after rollover");
+                    match todo_core::current_date() {
+                        Ok(date) => {
+                            if previous_date.as_ref() != Some(&date) {
+                                if let Err(error) = handle.emit("planner-date-changed", &date) {
+                                    tracing::warn!(%error, "failed to notify the Planner date");
+                                } else {
+                                    previous_date = Some(date);
+                                }
                             }
                         }
-                        Err(error) => {
-                            tracing::error!(%error, "failed to load the new Todo date at midnight");
-                        }
+                        Err(error) => tracing::error!(%error, "failed to resolve the Planner date"),
                     }
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
                 }
             });
             Ok(())
@@ -244,9 +235,13 @@ pub fn run() {
             widgets::read_layout,
             widgets::reset_layout,
             widgets::save_layout,
+            ledger::read_expenses,
+            ledger::create_expense,
+            ledger::update_expense,
+            ledger::delete_expense,
             todo::read_todos,
+            todo::read_planner_date,
             todo::read_check_ins,
-            todo::read_check_in,
             todo::set_check_in,
             todo::add_todo,
             todo::update_todo,

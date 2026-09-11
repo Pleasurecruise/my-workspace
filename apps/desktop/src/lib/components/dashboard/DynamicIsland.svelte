@@ -15,6 +15,7 @@
 	} = $props();
 	const placement = $derived(layoutSession.layout?.widgets.find((item) => item.id === layoutSession.layout?.islandWidgetId) ?? null);
 	let expanded = $state(false);
+	let contentReady = $state(false);
 	let hovered = false;
 	let refreshError = $state<string | null>(null);
 	let request = 0;
@@ -55,8 +56,9 @@
 		const version = ++request;
 		await resize(true);
 		if (disposed || version !== request) return;
+		contentReady = true;
 		if (placement.widget.kind === "planner") {
-			if (!session.todos.loading) await session.loadTodos();
+			if (!session.todos.loading) await session.refreshPlanner();
 			return;
 		}
 		const response = await invoke<CommandResponse<null>>("refresh_island");
@@ -65,6 +67,7 @@
 
 	function close(restoreFocus = false) {
 		expanded = false;
+		contentReady = false;
 		request += 1;
 		void resize(false);
 		if (restoreFocus) void tick().then(() => trigger?.focus());
@@ -86,11 +89,11 @@
 				<div class="expanded-view" id="dynamic-island-content">
 					<header>
 						<div class="heading"><span class="heading-icon">{#if isTodo}<ListTodo size={17} />{:else}<Layers size={17} />{/if}</span><span>{widgets[placement.widget.kind].label}</span></div>
-						<div class="actions">{#if isTodo}<span class="count">{remaining === null ? session.todoDate : `${remaining} open`}</span>{/if}<button class="close" type="button" aria-label="Collapse Dynamic Island" onclick={() => close(true)}><ChevronUp size={16} /></button></div>
+						<div class="actions">{#if isTodo}<span class="count">{remaining === null ? session.selectedDate : `${remaining} open`}</span>{/if}<button class="close" type="button" aria-label="Collapse Dynamic Island" onclick={() => close(true)}><ChevronUp size={16} /></button></div>
 					</header>
 					<div class="island-content">
 						{#if refreshError !== null}<p role="alert">{refreshError}</p>{/if}
-						{#key placement.id}<WidgetContent embedded {placement} {session} serviceCatalog={layoutSession.serviceCatalog} />{/key}
+						{#if contentReady}{#key placement.id}<WidgetContent embedded {placement} {session} serviceCatalog={layoutSession.serviceCatalog} />{/key}{/if}
 					</div>
 				</div>
 			{/if}

@@ -3,7 +3,7 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import type { CheckIn, CommandResponse, Habit } from "../../consumer";
-	let { habits, onchange = null }: { habits: Habit[]; onchange?: ((habits: Habit[]) => Promise<boolean>) | null } = $props();
+	let { habits, selectedDate, onchange = null }: { habits: Habit[]; selectedDate: string; onchange?: ((habits: Habit[]) => Promise<boolean>) | null } = $props();
 	let progress = $state<CheckIn[]>([]);
 	let error = $state<string | null>(null);
 	let writeError = $state<string | null>(null);
@@ -12,34 +12,37 @@
 	let managing = $state(false);
 	let saving = $state(false);
 	let revision = 0;
-	let writing = false;
-	let queued = false;
-	async function refresh(ids: string[]) {
-		if (writing) { queued = true; return; }
+	let context = 0;
+	let disposed = true;
+	async function refresh() {
+		if (busy || disposed) return;
 		const version = ++revision;
-		const response = await invoke<CommandResponse<CheckIn[]>>("read_check_ins", { ids });
-		if (version !== revision) return;
+		const date = selectedDate;
+		const ids = habits.map((habit) => habit.id);
+		const response = await invoke<CommandResponse<CheckIn[]>>("read_check_ins", { ids, date });
+		if (version !== revision || disposed) return;
 		if (response.status === "ready") {
-			if (progress[0]?.date !== response.data[0]?.date) writeError = null;
 			progress = response.data;
 			error = null;
 		} else error = response.message;
 	}
 	async function set(id: string, completed: boolean) {
-		const date = progress[0]?.date;
-		if (busy || !date) return;
-		const version = ++revision;
+		const state = progress.find((item) => item.id === id && item.date === selectedDate);
+		if (busy || !state?.editable) return;
+		const date = selectedDate;
+		const generation = context;
+		++revision;
 		busy = true;
-		writing = true;
 		writeError = null;
 		const response = await invoke<CommandResponse<CheckIn>>("set_check_in", { id, date, completed });
-		if (version !== revision) return;
-		writing = false;
 		busy = false;
-		if (response.status === "failed") writeError = response.message;
-        else progress = progress.map((state, index) => habits[index]?.id === id ? response.data : state);
-		queued = false;
-		await refresh(habits.map((habit) => habit.id));
+		if (disposed) return;
+		if (generation === context) {
+			if (response.status === "failed") writeError = response.message;
+			else progress = progress.map((item) => item.id === id ? response.data : item);
+		}
+		// A date change or cross-window update during a write always rereads the current day.
+		await refresh();
 	}
 	async function add() {
 		if (onchange === null || saving) return;
@@ -52,41 +55,42 @@
 	}
 	$effect(() => {
 		const ids = habits.map((habit) => habit.id);
+		const date = selectedDate;
+		++context;
+		disposed = false;
 		progress = [];
+		error = null;
 		writeError = null;
-		writing = false;
-		busy = false;
-		queued = false;
-		let disposed = false;
+		let active = true;
 		const listener = listen<string>("check-in-updated", ({ payload }) => {
-			if (!disposed && ids.includes(payload)) {
-				if (queued) return;
-				queued = true;
-				queueMicrotask(() => { if (!disposed && !writing) { queued = false; void refresh(ids); } });
-			}
+			if (active && ids.includes(payload)) void refresh();
 		});
-		void listener.then(() => { if (!disposed) void refresh(ids); });
-		const timer = setInterval(() => void refresh(ids), 60_000);
-		const focus = () => void refresh(ids);
+		const rollover = listen<string>("planner-date-changed", () => {
+			if (active) void refresh();
+		});
+		void listener.then(() => { if (active && date === selectedDate) void refresh(); });
+		const timer = setInterval(() => void refresh(), 60_000);
+		const focus = () => void refresh();
 		window.addEventListener("focus", focus);
-		return () => { disposed = true; ++revision; clearInterval(timer); window.removeEventListener("focus", focus); void listener.then((stop) => stop()); };
+		return () => { active = false; disposed = true; ++revision; clearInterval(timer); window.removeEventListener("focus", focus); void listener.then((stop) => stop()); void rollover.then((stop) => stop()); };
 	});
 </script>
 <section class="habits" aria-label="Daily habits">
 	<header><div class="heading"><ListChecks size={15} /><h2>Daily check-in</h2></div>{#if onchange !== null}<button type="button" aria-label="Manage habits" title="Manage habits" aria-pressed={managing} onclick={() => managing = !managing}><Settings2 size={15} /></button>{/if}</header>
-	<p class="subtitle">Today · {progress[0] !== undefined ? progress[0].date : "Local time"}</p>
+	<p class="subtitle">{selectedDate}</p>
 	{#if managing && onchange !== null}
 		<form onsubmit={(event) => { event.preventDefault(); void add(); }}><label>New habits<textarea aria-label="New habits" placeholder="Read, Exercise, Drink water" bind:value={names}></textarea></label><button aria-label="Add habits" title="Add habits" disabled={saving || busy || !names.trim()}><Plus size={15} /></button></form>
 	{/if}
 	<div class="rows">
-		{#each habits as habit, index (habit.id)}
-			{@const state = progress[index]}
+		{#each habits as habit (habit.id)}
+			{@const state = progress.find((item) => item.id === habit.id && item.date === selectedDate)}
 			<div class="habit">
 				<div class="habit-info"><strong>{habit.name}</strong>{#if state}<small>{state.streak} day streak · {state.total} total</small><div class="history" aria-label={`${habit.name}: last 28 days`}>{#each state.days as day}<span class:done={day.completed} role="img" aria-label={`${day.date}: ${day.completed ? "Checked in" : "Not checked in"}`} title={`${day.date}: ${day.completed ? "Checked in" : "Not checked in"}`}></span>{/each}</div>{/if}</div>
-				<button type="button" disabled={busy || !state} aria-label={`${state?.completed ? "Undo" : "Check in"} ${habit.name}`} title={`${state?.completed ? "Undo" : "Check in"} ${habit.name}`} aria-pressed={state?.completed === true} onclick={() => void set(habit.id, !state?.completed)}>{#if state?.completed}<Undo2 size={15} />{:else}<Check size={15} />{/if}</button>
+				<button type="button" disabled={busy || !state?.editable} aria-label={`${state?.completed ? "Undo" : "Check in"} ${habit.name}`} title={`${state?.completed ? "Undo" : "Check in"} ${habit.name}`} aria-pressed={state?.completed === true} onclick={() => void set(habit.id, !state?.completed)}>{#if state?.completed}<Undo2 size={15} />{:else}<Check size={15} />{/if}</button>
 				{#if managing && onchange !== null}<button type="button" disabled={saving || busy} aria-label={`Remove ${habit.name}`} title={`Remove ${habit.name}`} onclick={async () => { if (onchange === null) return; saving = true; await onchange(habits.filter((item) => item.id !== habit.id)); saving = false; }}><Trash2 size={14} /></button>{/if}
 			</div>
 		{/each}
+		{#if progress.some((item) => !item.editable)}<p>Future check-ins are read-only.</p>{/if}
 		{#if habits.length === 0}<p>Add the habits you want to track each day.</p>{/if}
 	</div>
 

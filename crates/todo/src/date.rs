@@ -9,18 +9,13 @@ pub fn validate_date(date: &str) -> Result<(), Error> {
 }
 
 pub(crate) fn parse_date(date: &str) -> Result<time::Date, Error> {
-    time::Date::parse(
+    let parsed = time::Date::parse(
         date,
         &time::macros::format_description!("[year]-[month]-[day]"),
     )
-    .map_err(|_| Error::InvalidDate(date.to_owned()))
-}
-
-pub fn next_rollover_delay() -> Result<std::time::Duration, Error> {
-    let now = time::OffsetDateTime::now_local()?;
-    let tomorrow = now.date().next_day().ok_or(Error::DateOverflow)?;
-    let midnight = tomorrow.midnight();
-    let approximate = midnight.assume_offset(now.offset());
-    let midnight_offset = time::UtcOffset::local_offset_at(approximate)?;
-    Ok((midnight.assume_offset(midnight_offset) - now).unsigned_abs())
+    .map_err(|_| Error::InvalidDate(date.to_owned()))?;
+    if !(1..=9999).contains(&parsed.year()) || parsed.to_string() != date {
+        return Err(Error::InvalidDate(date.to_owned()));
+    }
+    Ok(parsed)
 }

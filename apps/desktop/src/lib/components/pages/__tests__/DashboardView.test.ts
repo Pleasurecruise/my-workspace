@@ -14,9 +14,11 @@ vi.mock("svelte", async (original) => ({
 }));
 // These tests exercise library configuration and persistence; each card has its own tests.
 vi.mock("../../dashboard/WidgetContent.svelte", () => ({ default: () => {} }));
-beforeEach(() => invoke.mockReset());
+beforeEach(() => {
+	invoke.mockReset();
+});
 
-it("offers one planner in System Status without a Personal category", async () => {
+it("groups planner and spending under Personal", async () => {
 	const initial: WidgetLayout = { widgets: [], islandWidgetId: null };
 	invoke.mockResolvedValueOnce({ status: "ready", data: initial });
 	const layoutSession = createLayoutSession();
@@ -31,7 +33,11 @@ it("offers one planner in System Status without a Personal category", async () =
 		await tick();
 		target.querySelector<HTMLButtonElement>(".add-widget-button")?.click();
 		await tick();
-		expect(target.querySelector(".category-list")?.textContent).not.toContain("Personal");
+		expect(
+			Array.from(target.querySelectorAll(".category-list button"), (button) => button.textContent),
+		).toEqual(["Personal", "Devices", "AI Services", "Online Services", "Games"]);
+		expect(target.querySelector(".widget-list")?.textContent).toContain("Spending");
+		expect(target.querySelector(".widget-list")?.textContent).not.toContain("CPU");
 		const planner = Array.from(
 			target.querySelectorAll<HTMLButtonElement>(".widget-list button"),
 		).find((button) => button.textContent?.includes("Daily Planner"));
