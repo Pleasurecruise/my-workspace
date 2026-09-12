@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-Use Rust `1.95` or newer, pnpm `12.3.4` (pinned in `package.json`), and the platform
+Use Rust `1.95` or newer, pnpm `12.4.1` (pinned in `package.json`), and the platform
 build dependencies required by Tauri v2. The desktop app requires macOS 12 or newer on Mac.
 R2 access is needed for publication and Moment image transfer; UGOS requires Tailscale with MagicDNS.
 

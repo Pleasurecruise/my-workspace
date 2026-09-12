@@ -86,7 +86,8 @@ rendering safety; [Workflow](WORKFLOW.md) owns operations and recovery.
 regular assets, and emits `content.json`. It rejects symlinks and output collisions. A Rust guard
 removes temporary artifacts after success or failure. Source HTML stays escaped; generated markup
 and sanitized diagrams enter the output through the compiler boundary.
-Media fences compile to native audio/video players. The builder validates document-relative media
+Media fences compile to native players; desktop readers add playback controls and stop media on exit.
+GitHub file links resolve to raw resources. The builder validates document-relative media
 inside `content/`; static publication streams copied assets to R2 with extension-based MIME types.
 Remote media stays a URL and is loaded by the reader rather than the compilation pipeline.
 

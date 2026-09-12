@@ -13,6 +13,7 @@
 
 <script lang="ts">
 	import { openArticleLinks } from "../knowledge/links";
+	import { mediaPlayers } from "../knowledge/media";
 	import { ArrowLeft, Pencil, Plus } from "@lucide/svelte";
 	import type { CommandResponse, KnowledgeDraft, KnowledgeUpdate } from "../../consumer";
 	import KnowledgeHeader from "../knowledge/KnowledgeHeader.svelte";
@@ -180,7 +181,7 @@
 		</div>
 			{/snippet}
 		</KnowledgeHeader>
-		<article class="prose" use:openArticleLinks={(message) => { linkError = message; }}>{@html selected.html}</article>
+		<article use:mediaPlayers={selected.html} class="prose" use:openArticleLinks={(message) => { linkError = message; }}>{@html selected.html}</article>
 		{#if linkError !== null}<p role="alert">{linkError}</p>{/if}
 
 	</section>

@@ -16,7 +16,7 @@
     "test": "vp test --run"
   },
   "dependencies": {
-    "@lucide/svelte": "1.44.0",
+    "@lucide/svelte": "1.45.0",
     "@my-workspace/ui": "workspace:*",
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-notification": "2.4.0",

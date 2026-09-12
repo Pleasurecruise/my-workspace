@@ -77,13 +77,33 @@ fn parse_source(value: &str, field: &'static str) -> Result<Source, EmbedError> 
         return Err(invalid());
     }
     match Url::parse(value) {
-        Ok(url) => {
+        Ok(mut url) => {
             if !matches!(url.scheme(), "https" | "http")
                 || url.host_str().is_none()
                 || !url.username().is_empty()
                 || url.password().is_some()
             {
                 return Err(invalid());
+            }
+            // GitHub's file viewer is HTML. Keep the full ref/path suffix when requesting bytes.
+            if url.host_str() == Some("github.com") && url.port().is_none() {
+                let segments: Vec<_> = url.path().split('/').collect();
+                if segments.len() >= 6
+                    && segments[3] == "blob"
+                    && segments[1..3].iter().all(|segment| !segment.is_empty())
+                    && segments[4..].iter().all(|segment| !segment.is_empty())
+                {
+                    let path = format!(
+                        "/{}/{}/{}",
+                        segments[1],
+                        segments[2],
+                        segments[4..].join("/")
+                    );
+                    url.set_host(Some("raw.githubusercontent.com"))
+                        .map_err(|_| invalid())?;
+                    url.set_path(&path);
+                    url.set_query(None);
+                }
             }
             Ok(Source {
                 url: url.to_string(),

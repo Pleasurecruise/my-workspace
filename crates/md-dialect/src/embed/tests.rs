@@ -198,3 +198,35 @@ fn previews_video_frames_without_overriding_posters_or_start_times() {
     assert!(timed.contains("src=\"https://example.com/demo.mp4#t=5,10\""));
     assert!(!timed.contains("0.001"));
 }
+
+#[test]
+fn github_media_file_pages_resolve_to_bytes_without_rewriting_other_hosts() {
+    let data = Default::default();
+    for (source, expected) in [
+        (
+            "https://github.com/Pleasurecruise/pleasure1234/blob/main/public/cat.mp3",
+            "https://raw.githubusercontent.com/Pleasurecruise/pleasure1234/main/public/cat.mp3",
+        ),
+        (
+            "https://github.com/a/b/blob/feature/audio/my%20clip.mp3?raw=true#t=5",
+            "https://raw.githubusercontent.com/a/b/feature/audio/my%20clip.mp3#t=5",
+        ),
+        (
+            "https://github.com/a/b/releases/download/v1/song.mp3",
+            "https://github.com/a/b/releases/download/v1/song.mp3",
+        ),
+        (
+            "https://github.com.example.com/a/b/blob/main/song.mp3",
+            "https://github.com.example.com/a/b/blob/main/song.mp3",
+        ),
+        (
+            "https://github.com/a/b/blob/main",
+            "https://github.com/a/b/blob/main",
+        ),
+    ] {
+        let html = render(MEDIA, &format!("type: audio\nsrc: {source}"), &data)
+            .unwrap()
+            .unwrap();
+        assert!(html.contains(&format!("src=\"{expected}\"")), "{html}");
+    }
+}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { openArticleLinks } from "../knowledge/links";
+	import { mediaPlayers } from "../knowledge/media";
 	import { tick } from "svelte";
 	import type { KnowledgeDocument, NewspaperIssues } from "../../consumer";
 
@@ -66,7 +67,7 @@
 						<h2>{issue.title}</h2>
 						<p class="deck">{issue.summary}</p>
 					</header>
-					<article class="copy" use:openArticleLinks={(message) => { linkError = message; }}>{@html issue.html}</article>
+					<article use:mediaPlayers={issue.html} class="copy" use:openArticleLinks={(message) => { linkError = message; }}>{@html issue.html}</article>
 					{#if linkError !== null}<p role="alert">{linkError}</p>{/if}
 					<footer>
 						<span>Updated {new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit" }).format(new Date(issue.updatedAt))}</span>

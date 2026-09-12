@@ -11,6 +11,8 @@
   --color-success: var(--color-success);
   --color-warning: var(--color-warning);
   --color-error: var(--color-error);
+  --color-error-foreground: var(--color-error-foreground);
+  --color-error-hover: var(--color-error-hover);
   --color-overlay: var(--color-overlay);
   --color-image-scrim: var(--color-image-scrim);
   --color-on-dark: var(--color-on-dark);
@@ -19,6 +21,7 @@
   --font-serif: var(--font-serif);
   --font-mono: var(--font-mono);
 
+  --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);

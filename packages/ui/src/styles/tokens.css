@@ -13,6 +13,8 @@
   --color-success: var(--palette-success-light);
   --color-warning: var(--palette-warning-light);
   --color-error: var(--palette-error-light);
+  --color-error-foreground: var(--palette-light-paper);
+  --color-error-hover: color-mix(in srgb, var(--color-error) 90%, var(--color-background));
   --color-chart-1: var(--palette-brand-light);
   --color-chart-2: var(--palette-success-light);
   --color-chart-3: var(--palette-chart-blue-light);
@@ -84,6 +86,8 @@
   --color-success: var(--palette-success-dark);
   --color-warning: var(--palette-warning-dark);
   --color-error: var(--palette-error-dark);
+  --color-error-foreground: var(--palette-dark-base);
+  --color-error-hover: color-mix(in srgb, var(--color-error) 90%, var(--color-background));
   --color-chart-1: var(--palette-brand-dark);
   --color-chart-2: var(--palette-success-dark);
   --color-chart-3: var(--palette-chart-blue-dark);

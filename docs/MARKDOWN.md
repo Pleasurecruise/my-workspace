@@ -75,12 +75,13 @@ in filenames. Absolute filesystem paths, `~/`, `file:` URLs, and protocol-relati
 The generated HTML retains relative URLs, so the serving application must preserve the document's
 published directory when resolving them, including when rendering `content.json`.
 
-HTTP(S) sources are direct playable resource URLs, not YouTube or other watch-page URLs. They are
+HTTP(S) sources must be playable resources; GitHub file links resolve to raw URLs. Resources are
 neither downloaded nor checked for availability during compilation. Knowledge and Newspaper can
 render remote media with the same syntax; local assets belong to the `content/` publication workflow,
 not the desktop application's filesystem. No upload or local file access is triggered by rendering.
 
-The compiler emits native audio/video controls: click the play control to start, with no autoplay
+Desktop readers add seeking, volume, errors and video fullscreen; leaving stops playback.
+Static output retains native controls: click play to start, with no autoplay
 and inline video. A video without `poster` uses `preload="metadata"` and an opening-time fragment
 (`#t=0.001`) to request a frame preview; an authored URL fragment is preserved. No image is extracted,
 uploaded, or stored. Explicit posters and audio retain `preload="none"`. Browser loading preferences

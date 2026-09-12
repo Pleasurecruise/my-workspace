@@ -26,7 +26,7 @@
 		secondary: "border border-border bg-muted text-foreground hover:bg-border",
 		outline: "border border-border bg-transparent text-foreground hover:bg-muted",
 		ghost: "bg-transparent text-foreground hover:bg-muted",
-		destructive: "bg-error text-on-dark hover:bg-error/90",
+		destructive: "bg-error text-error-foreground hover:enabled:bg-error-hover",
 		link: "text-accent underline-offset-4 hover:underline",
 	};
 
