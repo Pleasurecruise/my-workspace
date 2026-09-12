@@ -41,11 +41,10 @@ App Lock closes the island; verification WebViews receive no account data.
 ## Current device
 
 `sysinfo` reports CPU, memory, network, and startup-filesystem capacity in decimal GB. APFS volumes
-sharing that capacity are not summed. On Unix, a separate file-category scan stays on the startup
-filesystem, skips symlinks and nested mounts, deduplicates hard links, and counts allocated blocks.
-Its twenty-second/one-million-entry budget and permission failures produce explicitly partial
-estimates. Shared blocks, snapshots, and unscanned files can prevent totals from matching capacity.
-Results cache for five minutes; rescan bypasses the cache. Windows reports capacity without categories.
+sharing that capacity are not summed. Vesper reads capacity from the operating system and does not
+walk directories or estimate file categories. The storage card opens the operating system's storage
+settings on macOS and Windows for category details; other platforms report that users should open
+their disk utility. Opening settings is explicit and failures remain visible in the card.
 
 ## Public feeds
 

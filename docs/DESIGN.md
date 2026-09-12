@@ -64,7 +64,7 @@ monthly charts; compact surfaces stack them. Chart changes preserve drafts and h
 amounts must explain donut segments and daily bars without relying on color. Empty months are explicit.
 
 Provider cards prioritize the current value and supporting context. Telemetry trends are session
-history; storage category estimates stay labeled when partial. Service status shows affected names,
+history; storage offers system settings for category details. Service status shows affected names,
 not only a colored percentage. GitHub notification failures remain inside their section. Preserve
 settled content during background refresh; initial placeholders belong only to the affected surface.
 
@@ -122,7 +122,9 @@ Index, reader, and editor share the page frame. The reader has bounded table-of-
 Rich editing includes explicit Markdown mode; unsupported syntax opens there without rewriting it.
 Session drafts survive navigation, and saving preserves edits made during the request.
 
-Compiled embeds use restrained paper, outlines, shadows, and accents. Architecture and storyboard
+Compiled embeds use restrained paper, outlines, shadows, and accents. Audio and video embeds use
+responsive native controls, optional captions and video posters, and never autoplay. Videos without
+a supplied poster request an opening-frame preview; playback starts through the play control. Architecture and storyboard
 SVG remain transparent and frame-free, with their authored semantic hierarchy intact.
 
 ## Moment interaction
@@ -153,6 +155,8 @@ settled content. Game status and verification copy use English. [Games](GAMES.md
 Newspaper presents the latest two editions on a warm paper surface with a serif masthead and original
 article hierarchy. Edition changes start at the top; background refresh preserves reading position.
 Page-turn motion respects Reduce Motion. Editions stay out of the Knowledge index and Inbox.
+Newspaper and Knowledge article web links open in the default browser, preserving the reader;
+fragment links remain within the article. Opening failures appear beside the article.
 
 Inbox is independent of Dashboard. Unreadable storage displays an error, never a false empty state.
 Replayed notifications populate history; only new live messages may trigger system notifications.

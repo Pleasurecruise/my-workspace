@@ -235,7 +235,7 @@ pub fn run() {
             island::set_island_expanded,
             dashboard::set_dashboard_active,
             status::read_service_status_catalog,
-            storage::read_storage,
+            storage::open_storage_settings,
             widgets::read_layout,
             widgets::reset_layout,
             widgets::save_layout,

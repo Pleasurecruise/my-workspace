@@ -2,6 +2,7 @@ mod architecture;
 mod canvas;
 mod github;
 mod link;
+mod media;
 mod stock;
 mod storyboard;
 mod style;
@@ -14,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 
 const GITHUB: &str = "embed:github";
 const LINK: &str = "embed:link";
+const MEDIA: &str = "embed:media";
 const STOCK: &str = "embed:stock";
 const ARCHITECTURE: &str = "embed:architecture";
 const STORYBOARD: &str = "embed:storyboard";
@@ -46,6 +48,11 @@ pub enum EmbedError {
     InvalidRepository(String),
     #[error("invalid embed alignment `{0}`; expected `left`, `right`, or `wide`")]
     InvalidAlignment(String),
+    #[error("invalid media field `{field}`: {message}")]
+    InvalidMedia {
+        field: &'static str,
+        message: &'static str,
+    },
     #[error("invalid stock code `{0}`")]
     InvalidStockCode(String),
     #[error("could not resolve embed data: {0}")]
@@ -58,51 +65,34 @@ pub enum EmbedError {
 
 /// Resolve provider data referenced by namespaced fences in the document.
 pub async fn load(source: &str) -> Result<Data, EmbedError> {
-    let mut block: Option<(String, String)> = None;
     let mut repositories = HashSet::new();
     let mut stocks = HashSet::new();
     let mut links = HashSet::new();
-    for event in Parser::new(source) {
-        match event {
-            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) => {
-                let language = info
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or_default()
-                    .to_ascii_lowercase();
-                block = Some((language, String::new()));
-            }
-            Event::Text(text) if block.is_some() => {
-                if let Some((_, source)) = &mut block {
-                    source.push_str(&text);
+    for (language, source) in parse_fences(source) {
+        match language.as_str() {
+            GITHUB => {
+                let mut parsed = fields(&language, &source)?;
+                let repo = required(&mut parsed, "github", "repo")?;
+                if !github::valid(repo) {
+                    return Err(EmbedError::InvalidRepository(repo.to_owned()));
                 }
+                repositories.insert(repo.to_owned());
             }
-            Event::End(TagEnd::CodeBlock) if block.is_some() => {
-                let (language, source) = block.take().expect("code block starts before ending");
-                match language.as_str() {
-                    GITHUB => {
-                        let mut parsed = fields(&language, &source)?;
-                        let repo = required(&mut parsed, "github", "repo")?;
-                        if !github::valid(repo) {
-                            return Err(EmbedError::InvalidRepository(repo.to_owned()));
-                        }
-                        repositories.insert(repo.to_owned());
-                    }
-                    LINK => {
-                        let parsed = fields(&language, &source)?;
-                        let (url, _) = link::parse(parsed)?;
-                        links.insert(url.to_owned());
-                    }
-                    STOCK => {
-                        let mut parsed = fields(&language, &source)?;
-                        let code = required(&mut parsed, "stock", "code")?.to_ascii_uppercase();
-                        if !stock::valid(&code) {
-                            return Err(EmbedError::InvalidStockCode(code));
-                        }
-                        stocks.insert(code);
-                    }
-                    _ => {}
+            LINK => {
+                let parsed = fields(&language, &source)?;
+                let (url, _) = link::parse(parsed)?;
+                links.insert(url.to_owned());
+            }
+            STOCK => {
+                let mut parsed = fields(&language, &source)?;
+                let code = required(&mut parsed, "stock", "code")?.to_ascii_uppercase();
+                if !stock::valid(&code) {
+                    return Err(EmbedError::InvalidStockCode(code));
                 }
+                stocks.insert(code);
+            }
+            MEDIA => {
+                media::parse(fields(&language, &source)?)?;
             }
             _ => {}
         }
@@ -150,6 +140,7 @@ pub fn render(language: &str, source: &str, data: &Data) -> Result<Option<String
     match language {
         GITHUB => github::render(fields(language, source)?, data).map(Some),
         LINK => link::render(fields(language, source)?, data).map(Some),
+        MEDIA => media::render(fields(language, source)?).map(Some),
         STOCK => stock::render(fields(language, source)?, data).map(Some),
         ARCHITECTURE => architecture::render(source).map(Some),
         STORYBOARD => storyboard::render(source).map(Some),
@@ -242,4 +233,53 @@ fn reject_unknown(
         });
     }
     Ok(())
+}
+
+/// Collect document-relative media assets for the publication builder to validate and copy.
+/// Remote sources are rendered directly and never downloaded during compilation.
+pub fn collect_media_paths(source: &str) -> Result<Vec<String>, EmbedError> {
+    let mut paths = Vec::new();
+    for (language, source) in parse_fences(source) {
+        if language != MEDIA {
+            continue;
+        }
+        let item = media::parse(fields(&language, &source)?)?;
+        for source in [Some(item.src), item.poster].into_iter().flatten() {
+            if source.local {
+                paths.push(source.url);
+            }
+        }
+    }
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
+fn parse_fences(source: &str) -> Vec<(String, String)> {
+    let mut blocks = Vec::new();
+    let mut block: Option<(String, String)> = None;
+    for event in Parser::new(source) {
+        match event {
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) => {
+                let language = info
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                block = Some((language, String::new()));
+            }
+            Event::Text(text) => {
+                if let Some((_, source)) = &mut block {
+                    source.push_str(&text);
+                }
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                if let Some(block) = block.take() {
+                    blocks.push(block);
+                }
+            }
+            _ => {}
+        }
+    }
+    blocks
 }

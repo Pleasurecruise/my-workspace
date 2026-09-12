@@ -120,3 +120,68 @@ fn temporary_directory(name: &str) -> PathBuf {
     fs::create_dir_all(&path).unwrap();
     path
 }
+
+#[tokio::test]
+async fn copies_local_media_beside_compiled_articles() {
+    let repository = temporary_directory("media");
+    let content = repository.join("content");
+    fs::create_dir_all(content.join("posts")).unwrap();
+    fs::create_dir_all(content.join("media")).unwrap();
+    fs::write(content.join("media/片段 one.mp3"), b"audio").unwrap();
+    fs::write(content.join("media/cover.jpg"), b"poster").unwrap();
+    fs::write(content.join("posts/article.md"), "# Media\n\n```embed:media\ntype: audio\nsrc: ../media/片段 one.mp3\n```\n\n```embed:media\ntype: video\nsrc: https://example.com/demo.mp4\nposter: ../media/cover.jpg\n```").unwrap();
+    let output = build(&repository).await.unwrap();
+    assert_eq!(output.report().copied_files, 2);
+    let html = fs::read_to_string(output.directory().join("posts/article.html")).unwrap();
+    assert!(html.contains("src=\"../media/%E7%89%87%E6%AE%B5%20one.mp3\""));
+    assert!(html.contains("src=\"https://example.com/demo.mp4\""));
+    assert_eq!(
+        fs::read(output.directory().join("media/片段 one.mp3")).unwrap(),
+        b"audio"
+    );
+    assert_eq!(
+        fs::read(output.directory().join("media/cover.jpg")).unwrap(),
+        b"poster"
+    );
+    let index: serde_json::Value =
+        serde_json::from_slice(&fs::read(output.directory().join("content.json")).unwrap())
+            .unwrap();
+    assert_eq!(index["documents"][0]["html"], html);
+    fs::remove_dir_all(repository).unwrap();
+}
+
+#[tokio::test]
+async fn rejects_missing_or_unpublished_media() {
+    let repository = temporary_directory("invalid-media");
+    let content = repository.join("content");
+    fs::create_dir_all(&content).unwrap();
+    fs::write(repository.join("private.mp3"), b"private").unwrap();
+    fs::write(content.join("other.md"), "# Other").unwrap();
+    fs::write(content.join("audio.mp3"), b"audio").unwrap();
+    let absolute = content
+        .join("audio.mp3")
+        .to_string_lossy()
+        .replace('/', "%2F");
+    for src in [
+        "missing.mp3",
+        "../private.mp3",
+        "%2E%2E/private.mp3",
+        &absolute,
+        "other.md",
+        ".",
+    ] {
+        fs::write(
+            content.join("article.md"),
+            format!("```embed:media\ntype: audio\nsrc: {src}\n```"),
+        )
+        .unwrap();
+        assert!(
+            matches!(
+                build(&repository).await.unwrap_err(),
+                BuildError::Media { .. }
+            ),
+            "{src}"
+        );
+    }
+    fs::remove_dir_all(repository).unwrap();
+}

@@ -37,6 +37,63 @@ The Desktop rich editor compares source and reserialized Markdown through the sa
 Formatting differences such as bullet markers are allowed; changed text, tables, images, raw HTML,
 and custom fence languages or bodies prevent switching. Source remains authoritative until an edit.
 
+## Audio and video
+
+Use `embed:media` between paragraphs. `type` and `src` are required; `title` supplies the player's
+accessible name, `caption` adds visible text, and `align` accepts `left`, `right`, or `wide` (default).
+Video accepts an optional `poster`; omit it to preview the video’s opening frame automatically. Field values are plain text, with optional surrounding quotes.
+
+````markdown
+A recording from the session:
+
+```embed:media
+type: audio
+src: ./media/interview.mp3
+title: Interview recording
+caption: The full conversation.
+```
+
+A demonstration from a remote source:
+
+```embed:media
+type: video
+src: https://cdn.example.com/demo.mp4
+poster: ./media/demo-cover.jpg
+title: Product demonstration
+caption: A short walkthrough.
+align: wide
+```
+
+Continue the article here.
+````
+
+For static publication, local paths are relative to the Markdown file: `content/posts/story.md`
+can reference `../media/interview.mp3` in `content/media/`. Files must exist inside `content/` and
+remain regular copied assets; missing files, outside-root paths, symlinks, and Markdown references
+fail the build. Spaces and non-ASCII names are URL-encoded. Use `%23` or `%3F` for literal `#` or `?`
+in filenames. Absolute filesystem paths, `~/`, `file:` URLs, and protocol-relative URLs are rejected.
+The generated HTML retains relative URLs, so the serving application must preserve the document's
+published directory when resolving them, including when rendering `content.json`.
+
+HTTP(S) sources are direct playable resource URLs, not YouTube or other watch-page URLs. They are
+neither downloaded nor checked for availability during compilation. Knowledge and Newspaper can
+render remote media with the same syntax; local assets belong to the `content/` publication workflow,
+not the desktop application's filesystem. No upload or local file access is triggered by rendering.
+
+The compiler emits native audio/video controls: click the play control to start, with no autoplay
+and inline video. A video without `poster` uses `preload="metadata"` and an opening-time fragment
+(`#t=0.001`) to request a frame preview; an authored URL fragment is preserved. No image is extracted,
+uploaded, or stored. Explicit posters and audio retain `preload="none"`. Browser loading preferences
+can defer a preview, and an unavailable or unsupported source cannot provide a frame; controls remain
+available. Remote poster images may load with the article. Playback formats and codecs
+must be supported by the reader's browser. Published files receive extension-based MIME types
+(unknown extensions use `application/octet-stream`), and R2 uploads stream from disk. There is no
+transcoding. Keep subtitles or transcripts alongside the media in the article when needed.
+
+Invalid types, duplicate or unsupported fields, unsafe URL schemes, and credential-bearing URLs
+fail dialect compilation. Titles and captions are escaped. Knowledge's existing plain fallback
+keeps an invalid or unavailable embed visible as source code.
+
 ## What Waku does
 
 [Waku][waku] has two Markdown surfaces with different constraints:

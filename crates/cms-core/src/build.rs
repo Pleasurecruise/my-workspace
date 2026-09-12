@@ -72,6 +72,10 @@ pub enum BuildError {
         path: PathBuf,
         source: crate::markdown::PublicationError,
     },
+    Media {
+        path: PathBuf,
+        message: String,
+    },
     Serialize(serde_json::Error),
 }
 
@@ -109,6 +113,9 @@ impl Display for BuildError {
             Self::Markdown { path, source } => {
                 write!(formatter, "could not compile {}: {source}", path.display())
             }
+            Self::Media { path, message } => {
+                write!(formatter, "invalid media in {}: {message}", path.display())
+            }
             Self::Serialize(source) => {
                 write!(formatter, "could not serialize content index: {source}")
             }
@@ -123,9 +130,10 @@ impl Error for BuildError {
             Self::Markdown { source, .. } => Some(source),
             Self::Serialize(source) => Some(source),
             Self::PathOutsideRoot { source, .. } => Some(source),
-            Self::MissingSource(..) | Self::UnsupportedSymlink(..) | Self::OutputCollision(..) => {
-                None
-            }
+            Self::MissingSource(..)
+            | Self::UnsupportedSymlink(..)
+            | Self::OutputCollision(..)
+            | Self::Media { .. } => None,
         }
     }
 }
@@ -231,6 +239,7 @@ async fn compile_directory(
         }
         if markdown {
             let source = io(&path, fs::read_to_string(&path))?;
+            validate_media(root, &path, &source)?;
             let html = crate::markdown::render_publication_enriched(&source)
                 .await
                 .map_err(|source| BuildError::Markdown {
@@ -253,6 +262,54 @@ async fn compile_directory(
         } else {
             io(&destination, fs::copy(&path, &destination))?;
             report.copied_files += 1;
+        }
+    }
+    Ok(())
+}
+
+fn validate_media(root: &Path, document: &Path, source: &str) -> Result<(), BuildError> {
+    let paths = md_dialect::collect_media_paths(source).map_err(|error| BuildError::Markdown {
+        path: document.to_owned(),
+        source: error.into(),
+    })?;
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let root = io(root, fs::canonicalize(root))?;
+    let parent = document.parent().expect("content documents have a parent");
+    for relative in paths {
+        let decoded = percent_encoding::percent_decode_str(&relative)
+            .decode_utf8()
+            .map_err(|_| BuildError::Media {
+                path: document.to_owned(),
+                message: "asset path must be UTF-8".to_owned(),
+            })?;
+        if !Path::new(decoded.as_ref()).is_relative() || decoded.contains('\\') {
+            return Err(BuildError::Media {
+                path: document.to_owned(),
+                message: format!("`{relative}` must be a document-relative asset path"),
+            });
+        }
+        let path = parent.join(decoded.as_ref());
+        let canonical = fs::canonicalize(&path).map_err(|error| BuildError::Media {
+            path: document.to_owned(),
+            message: format!("could not resolve `{relative}`: {error}"),
+        })?;
+        if !canonical.starts_with(&root) || !canonical.is_file() {
+            return Err(BuildError::Media {
+                path: document.to_owned(),
+                message: format!("`{relative}` must be a file inside content/"),
+            });
+        }
+        if is_ignored(&path)
+            || path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
+        {
+            return Err(BuildError::Media {
+                path: document.to_owned(),
+                message: format!("`{relative}` is not a copied publication asset"),
+            });
         }
     }
     Ok(())

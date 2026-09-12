@@ -8,5 +8,7 @@ rust-version.workspace = true
 futures-util.workspace = true
 pulldown-cmark.workspace = true
 quotes.workspace = true
+url.workspace = true
+percent-encoding.workspace = true
 svg-hush.workspace = true
 thiserror.workspace = true

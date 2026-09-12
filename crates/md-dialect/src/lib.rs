@@ -4,6 +4,6 @@
 mod embed;
 
 pub use embed::{
-    Data as EmbedData, EmbedError, add_styles as add_embed_styles, load as load_embeds,
-    render as render_embed,
+    Data as EmbedData, EmbedError, add_styles as add_embed_styles, collect_media_paths,
+    load as load_embeds, render as render_embed,
 };

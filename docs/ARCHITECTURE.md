@@ -67,6 +67,9 @@ rejecting dangling references. [Dashboard](DASHBOARD.md) owns scheduling and sou
 Music and game runtimes outlive route mounts. Their authentication, cancellation, cache and playback
 rules belong in [Music](MUSIC.md) and [Games](GAMES.md); NAS protocols belong in [UGOS](UGOS.md).
 Inbox independently activates its ntfy stream while its route is active.
+Device storage reads OS capacity only; category inspection is delegated to system storage settings.
+Compiled Knowledge and Newspaper article links open through the system browser boundary while
+fragment links remain in the reader.
 
 App Lock is an in-memory privacy screen backed by a stored password. Reload preserves the lock;
 restart starts unlocked. It blocks developer tools while locked and does not encrypt content.
@@ -83,6 +86,9 @@ rendering safety; [Workflow](WORKFLOW.md) owns operations and recovery.
 regular assets, and emits `content.json`. It rejects symlinks and output collisions. A Rust guard
 removes temporary artifacts after success or failure. Source HTML stays escaped; generated markup
 and sanitized diagrams enter the output through the compiler boundary.
+Media fences compile to native audio/video players. The builder validates document-relative media
+inside `content/`; static publication streams copied assets to R2 with extension-based MIME types.
+Remote media stays a URL and is loaded by the reader rather than the compilation pipeline.
 
 `vesper publish` shows an upload plan by default; `--live` uploads beneath `blog/` through the Rust
 S3 SDK. It does not delete destination-only objects. Remote consumer projects own their Worker

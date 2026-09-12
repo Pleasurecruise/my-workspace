@@ -12,11 +12,14 @@
 </script>
 
 <script lang="ts">
+	import { openArticleLinks } from "../knowledge/links";
 	import { ArrowLeft, Pencil, Plus } from "@lucide/svelte";
 	import type { CommandResponse, KnowledgeDraft, KnowledgeUpdate } from "../../consumer";
 	import KnowledgeHeader from "../knowledge/KnowledgeHeader.svelte";
 	import KnowledgeToc from "../knowledge/KnowledgeToc.svelte";
 	import RichMarkdownEditor from "../knowledge/RichMarkdownEditor.svelte";
+
+	let linkError = $state<string | null>(null);
 
 	let {
 		documents,
@@ -177,7 +180,8 @@
 		</div>
 			{/snippet}
 		</KnowledgeHeader>
-		<article class="prose">{@html selected.html}</article>
+		<article class="prose" use:openArticleLinks={(message) => { linkError = message; }}>{@html selected.html}</article>
+		{#if linkError !== null}<p role="alert">{linkError}</p>{/if}
 
 	</section>
 {:else}

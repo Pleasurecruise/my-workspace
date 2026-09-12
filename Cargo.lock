@@ -1199,6 +1199,8 @@ dependencies = [
  "linkify",
  "md-dialect",
  "mermaid-svg",
+ "mime_guess",
+ "percent-encoding",
  "pulldown-cmark",
  "serde",
  "serde_json",
@@ -4146,10 +4148,12 @@ name = "md-dialect"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "percent-encoding",
  "pulldown-cmark",
  "quotes",
  "svg-hush",
  "thiserror 2.0.20",
+ "url",
 ]
 
 [[package]]
@@ -8319,7 +8323,6 @@ dependencies = [
  "useage",
  "vesper-credentials",
  "vesper-database",
- "walkdir",
 ]
 
 [[package]]

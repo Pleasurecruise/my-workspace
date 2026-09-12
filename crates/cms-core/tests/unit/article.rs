@@ -243,3 +243,24 @@ fn blocks_unsafe_destinations() {
     assert!(output.html.contains("href=\"mailto:me@example.com\""));
     assert!(output.html.contains("href=\"/articles/one\""));
 }
+
+#[tokio::test]
+async fn compiles_media_in_publication_and_knowledge() {
+    let source = "# Listen\n\nBefore.\n\n```embed:media\ntype: audio\nsrc: https://example.com/clip.mp3\ncaption: A short recording\n```\n\nAfter.";
+    let publication = render_publication_enriched(source).await.unwrap();
+    let knowledge = compile_knowledge_enriched(source).await.unwrap();
+    for html in [&publication, &knowledge.html] {
+        assert!(html.contains("<audio controls preload=\"none\""));
+        assert!(html.contains("<figcaption>A short recording</figcaption>"));
+        assert!(html.contains("<p>Before.</p>"));
+        assert!(html.contains("<p>After.</p>"));
+        assert_eq!(html.matches("<style data-md-dialect").count(), 1);
+    }
+    assert_eq!(knowledge.toc.len(), 1);
+    assert!(!knowledge.excerpt.contains("type: audio"));
+    assert!(
+        compile_knowledge_plain(source)
+            .html
+            .contains("language-embed:media")
+    );
+}

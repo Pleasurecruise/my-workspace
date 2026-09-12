@@ -207,23 +207,6 @@ export interface LocalStorageSample extends PercentSample {
 	totalBytes: number;
 }
 
-export interface StorageBreakdown {
-	categories: {
-		category:
-			| "system"
-			| "applications"
-			| "documents"
-			| "development"
-			| "media"
-			| "appData"
-			| "other";
-		bytes: number;
-	}[];
-	incomplete: boolean;
-	unclassifiedBytes: number | null;
-	sampledAt: number;
-}
-
 export interface CodexUsage {
 	planType: string | null;
 	primary: RateLimitWindow | null;

@@ -49,7 +49,6 @@ todo-core.workspace = true
 tracing.workspace = true
 ugos.workspace = true
 useage.workspace = true
-walkdir.workspace = true
 vesper-credentials.workspace = true
 tauri-plugin-notification = "2"
 

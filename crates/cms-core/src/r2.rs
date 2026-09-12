@@ -29,7 +29,7 @@ pub enum StoreError {
     Body(String),
     Read {
         path: std::path::PathBuf,
-        source: std::io::Error,
+        source: aws_sdk_s3::primitives::ByteStreamError,
     },
 }
 
@@ -138,7 +138,7 @@ impl Store {
     }
 
     pub async fn put_file(&self, key: &str, path: &Path) -> Result<(), StoreError> {
-        let bytes = tokio::fs::read(path)
+        let body = aws_sdk_s3::primitives::ByteStream::from_path(path)
             .await
             .map_err(|source| StoreError::Read {
                 path: path.to_owned(),
@@ -148,7 +148,8 @@ impl Store {
             .put_object()
             .bucket(BUCKET)
             .key(key)
-            .body(bytes.into())
+            .content_type(mime_guess::from_path(path).first_or_octet_stream().as_ref())
+            .body(body)
             .send()
             .await
             .map_err(|error| StoreError::Request(error.to_string()))?;
@@ -184,3 +185,7 @@ impl Store {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/r2.rs"]
+mod tests;
