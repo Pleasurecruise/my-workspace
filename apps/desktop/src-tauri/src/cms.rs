@@ -1,3 +1,5 @@
+mod knowledge;
+
 use crate::CommandResponse;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Weak};
@@ -110,6 +112,7 @@ pub(crate) struct CmsState {
     repository: tokio::sync::Mutex<Option<Arc<consumers::view::Repository>>>,
     views: tokio::sync::Mutex<ViewCache>,
     assets: tokio::sync::Mutex<AssetCache>,
+    pub(crate) knowledge: knowledge::KnowledgeReader,
 }
 
 impl Default for CmsState {
@@ -118,6 +121,7 @@ impl Default for CmsState {
             repository: tokio::sync::Mutex::new(None),
             views: tokio::sync::Mutex::new(ViewCache::default()),
             assets: tokio::sync::Mutex::new(AssetCache::default()),
+            knowledge: knowledge::KnowledgeReader::default(),
         }
     }
 }
@@ -192,6 +196,9 @@ impl CmsState {
 
     pub(crate) async fn invalidate_view(&self, channel: consumers::view::Channel) {
         self.views.lock().await.clear(channel);
+        if channel == consumers::view::Channel::Knowledge {
+            self.knowledge.clear().await;
+        }
     }
 
     pub(crate) async fn reset(&self) {
@@ -201,6 +208,7 @@ impl CmsState {
     }
 
     pub(crate) async fn reset_views(&self) {
+        self.knowledge.clear().await;
         let mut views = self.views.lock().await;
         for channel in [
             consumers::view::Channel::Memos,

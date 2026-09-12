@@ -4,7 +4,7 @@ Vesper compiles Markdown in Rust. The Svelte layer receives rendered HTML and di
 does not own parsing rules. This keeps Desktop and CLI behavior aligned and prevents consumer-specific
 frontend parsers from producing different output for the same Markdown source.
 
-## Current pipeline
+## Compilation contract
 
 ```text
 API or local Markdown
@@ -25,8 +25,8 @@ handle them. Consumers access compilation through `cms-core::markdown`.
 The existing output profiles remain distinct: publication highlights code with Syntect and renders
 Mermaid to SVG; Knowledge preserves ordinary code and Mermaid fences as code, and adds heading IDs,
 a table of contents, and an excerpt. Both enriched article paths render custom embeds. Knowledge's
-plain fallback preserves all embed fences as code when enrichment fails. Knowledge strips a leading
-front matter block without interpreting it as metadata; publication does not apply that stripping.
+plain fallback preserves all embed fences as code when enrichment fails. Knowledge removes one leading front matter block before resolving embeds, without interpreting
+it as metadata; publication does not apply that stripping.
 
 `render_memo` converts soft line breaks into hard line breaks to preserve the compact writing style
 used by my-memos. `compile_knowledge_enriched` assigns stable, de-duplicated heading IDs and produces the table
@@ -36,6 +36,37 @@ storage and metadata; Vesper does not retain a second Markdown mirror.
 The Desktop rich editor compares source and reserialized Markdown through the same Rust parser options used for Knowledge rendering.
 Formatting differences such as bullet markers are allowed; changed text, tables, images, raw HTML,
 and custom fence languages or bodies prevent switching. Source remains authoritative until an edit.
+
+## Loading and navigation
+
+Knowledge and Newspaper receive a metadata-only index: titles, summaries, tags, dates, edition
+classification and content hashes. Listing never reads or compiles article bodies. Opening an article
+reads and compiles that document. Visible index entries preload after rendering, with two requests at a time. Pointer intent
+(60 ms), keyboard focus and touch also start reads early. Rust shares in-flight reads and caches at most 16 compiled documents for 30 seconds; a changed
+content hash forces a new read. Speculative reads are limited to two of six reader slots. Writes and
+credential changes invalidate the cache, including results still in flight. A failed preload does
+not prevent clicking to retry. These policies apply to Vesper; they are not a static web build.
+
+## Article lists
+
+An explicit `embed:article` fence accepts 1–50 URL-only lines, optionally prefixed with Markdown list bullets. Each entry renders a compact card containing the resolved article title and description. URLs identify destinations and never become card labels. Ordinary Markdown links outside these fences remain ordinary links. Order and repeated entries are retained; metadata reads are deduplicated and bounded.
+
+````markdown
+```embed:article
+https://knowledge.you-find.me/articles/first-article
+https://knowledge.you-find.me/articles/second-article
+```
+````
+
+The Knowledge consumer resolves Knowledge URLs against the authenticated, paginated summary index.
+The index includes both ordinary articles and all daily pages, including historical editions.
+It decodes the URL path segment once and matches the web slug to the record’s real ID and supplies title, description, and the desktop
+`/articles/<id>` destination without reading or compiling target bodies. Clicking reads the selected
+article through the ID-based detail endpoint. The desktop reader opens these cards inside the application, including targets absent from the index. Stale requests cannot replace a later selection; editing blocks navigation. The web adapter authorizes the same URL against D1 and renders its canonical web route. Missing or unauthorized web targets remain non-clickable.
+
+Other public sites use the Open Graph provider without credentials. Failed preview entries remain explicit unavailable cards without removing successful siblings. Legacy single-entry `id`/`url` fields with independent title/description overrides remain supported. Static publication without a host-resolved route retains the original web destination. URL navigation uses the same summary-to-ID resolution and does not require a slug-based detail API.
+
+Existing article visibility is a draft property alongside body metadata. Switching it does not persist or navigate; Save sends content and visibility in one request, Cancel discards it, and failures retain the draft. Creation remains public.
 
 ## Audio and video
 
@@ -94,54 +125,3 @@ transcoding. Keep subtitles or transcripts alongside the media in the article wh
 Invalid types, duplicate or unsupported fields, unsafe URL schemes, and credential-bearing URLs
 fail dialect compilation. Titles and captions are escaped. Knowledge's existing plain fallback
 keeps an invalid or unavailable embed visible as source code.
-
-## What Waku does
-
-[Waku][waku] has two Markdown surfaces with different constraints:
-
-- Its native GPUI application parses with `pulldown-cmark` into a typed block tree. Every top-level
-  block retains its byte range, and inline formatting is represented as styled text runs rather than
-  serialized HTML.
-- Its web application uses `react-markdown` with `remark-gfm`. A small rehype plugin wraps only newly
-  appended text ranges to animate streaming output without replaying animation on stable content.
-
-The native parser enables tables, strikethrough, and task lists. It treats raw HTML as literal text,
-which is a deliberate transcript-safety decision. Its renderer maps paragraphs, headings, images,
-code, quotes, lists, tables, and rules directly to GPUI elements.
-
-### Incremental parsing
-
-Waku's `IncrementalParser` recognizes append-only changes and reparses from the last stable source
-boundary. It deliberately keeps the last two top-level source groups unsettled because an appended
-table row or an inline image can change the preceding group. Link-reference definitions force a full
-reparse because they can resolve references anywhere in the document.
-
-For a still-streaming tail, Waku builds a display-only repaired version. It temporarily closes
-unfinished emphasis, code spans, strikethrough, and links so formatting does not jump when the final
-delimiter arrives. The canonical source and canonical parse tree are never modified.
-
-### Stable rendering
-
-Waku shapes one text element per block and applies inline style runs over the flat text. Syntax color,
-inline-code backgrounds, search highlights, and selections are paint operations that do not alter
-layout geometry. Settled blocks and tokenized code are cached, so an append rebuilds only volatile
-tail content. Its syntax highlighter is a lightweight internal line tokenizer with cross-line state,
-not a general-purpose compiler.
-
-## Vesper adoption boundary
-
-Vesper's stored Memo and Knowledge documents are settled content, so the current full
-`pulldown-cmark` compilation remains the appropriate path. Introducing a second AST or a frontend
-Markdown dependency now would add two sources of rendering truth without improving stored-document
-behavior.
-
-If Vesper later adds a live streaming preview, adopt the reusable ideas rather than Waku's GPUI
-renderer:
-
-1. Keep the canonical Markdown untouched and create display-only repairs for incomplete syntax.
-2. Preserve source byte ranges in an intermediate representation.
-3. Reparse only an append-only volatile tail, with a full-parse fallback for non-local constructs.
-4. Keep syntax color and reveal animations from changing measured layout.
-5. Treat raw HTML according to an explicit trust policy before it reaches Svelte's HTML renderer.
-
-[waku]: https://github.com/egoist/waku

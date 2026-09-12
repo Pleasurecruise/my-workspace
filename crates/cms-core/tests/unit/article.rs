@@ -264,3 +264,85 @@ async fn compiles_media_in_publication_and_knowledge() {
             .contains("language-embed:media")
     );
 }
+
+#[test]
+fn heading_suffixes_do_not_collide_with_authored_headings() {
+    let output = compile_knowledge("# Repeat\n\n# Repeat\n\n# Repeat-2\n\n# Repeat").unwrap();
+    let ids: std::collections::HashSet<_> = output.toc.iter().map(|entry| &entry.id).collect();
+    assert_eq!(ids.len(), output.toc.len());
+}
+
+#[tokio::test]
+async fn ignores_embeds_in_knowledge_front_matter() {
+    let output = compile_knowledge_enriched(
+        "---\n```embed:media\ntype: invalid\nsrc: https://example.com/a\n```\n---\n\n# Visible",
+    )
+    .await
+    .unwrap();
+    assert_eq!(output.excerpt, "Visible");
+}
+
+#[tokio::test]
+async fn article_shortcuts_compile_in_lists_for_both_hosts() {
+    let source = "# Reading\n\n- First\n\n  ```embed:article\n  id: first-article\n  title: First article\n  ```\n\n- Second\n\n  ```embed:article\n  url: https://example.com/story\n  title: External story\n  description: External summary\n  ```";
+    let publication = render_publication_enriched(source).await.unwrap();
+    let knowledge = compile_knowledge_enriched(source).await.unwrap();
+    for html in [&publication, &knowledge.html] {
+        assert!(html.contains("href=\"/articles/first-article\""));
+        assert!(html.contains("href=\"https://example.com/story\""));
+        assert_eq!(html.matches("<style data-md-dialect").count(), 1);
+        assert_eq!(html.matches("<li>").count(), 2);
+        assert!(!html.contains("language-embed:article"));
+    }
+    assert!(
+        compile_knowledge_plain(source)
+            .html
+            .contains("language-embed:article")
+    );
+}
+
+#[tokio::test]
+async fn knowledge_uses_authorized_article_metadata() {
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "article-123".to_owned(),
+        md_dialect::ArticleMetadata {
+            href: None,
+            title: "Resolved article title".to_owned(),
+            description: "Resolved article summary".to_owned(),
+        },
+    );
+    let compiled =
+        compile_knowledge_with_articles("```embed:article\nid: article-123\n```", metadata)
+            .await
+            .unwrap();
+    assert!(compiled.html.contains("Resolved article title"));
+    assert!(compiled.html.contains("Resolved article summary"));
+    assert!(compiled.html.contains("href=\"/articles/article-123\""));
+}
+
+#[tokio::test]
+async fn compiles_url_list_cards_with_host_metadata_and_in_app_routes() {
+    let url = "https://knowledge.you-find.me/articles/real-slug";
+    let metadata = std::collections::HashMap::from([(
+        url.to_owned(),
+        md_dialect::ArticleMetadata {
+            href: Some("/articles/real-id".to_owned()),
+            title: "Actual title".to_owned(),
+            description: "Actual description".to_owned(),
+        },
+    )]);
+    let source = format!("[ordinary]({url})\n\n```embed:article\n{url}\n```");
+    let compiled = compile_knowledge_with_articles(&source, metadata)
+        .await
+        .unwrap();
+    assert!(compiled.html.contains("<strong>Actual title</strong>"));
+    assert!(compiled.html.contains("Actual description"));
+    assert!(compiled.html.contains("href=\"/articles/real-id\""));
+    assert!(
+        compiled
+            .html
+            .contains(&format!("href=\"{url}\">ordinary</a>"))
+    );
+    assert!(!compiled.html.contains("target=\"_blank\""));
+}

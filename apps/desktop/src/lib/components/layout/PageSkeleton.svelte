@@ -1,10 +1,10 @@
 <script lang="ts">
-	let { view, title = "" }: { view: "memos" | "moment" | "knowledge" | "newspaper" | "music"; title?: string } = $props();
+	let { view, title = "", description = "Loading…" }: { view: "memos" | "moment" | "knowledge" | "newspaper" | "music"; title?: string; description?: string } = $props();
 </script>
 
 <section class="page-skeleton" aria-label={`Loading ${view}`} aria-busy="true" role="status">
 	{#if title}
-		<header class="page-header"><div><h1>{title}</h1><p class="page-description">Loading…</p></div></header>
+		<header class="page-header"><div><h1>{title}</h1><p class="page-description">{description}</p></div></header>
 	{/if}
 	<div class="placeholders" class:newspaper={view === "newspaper"} class:photos={view === "moment"} aria-hidden="true">
 		{#if view === "moment"}

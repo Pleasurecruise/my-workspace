@@ -1,8 +1,8 @@
 use super::ApiError;
 use cms_core::markdown::{
-    TocEntry, compile_knowledge_enriched, compile_knowledge_plain, knowledge_body,
+    ArticleMetadata, TocEntry, article_ids, article_urls, compile_knowledge_plain,
+    compile_knowledge_with_articles, knowledge_body,
 };
-use futures_util::stream::{self, StreamExt, TryStreamExt};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -11,8 +11,22 @@ use time::format_description::well_known::Rfc3339;
 use vesper_credentials::{ConsumerApi, Stored};
 
 const ENDPOINT: &str = "https://knowledge.you-find.me/api/articles";
-const READ_CONCURRENCY: usize = 6;
 const OVERVIEW_PAGE_SIZE: usize = 100;
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Entry {
+    pub id: String,
+    pub slug: String,
+    pub title: String,
+    pub summary: String,
+    pub tags: Vec<String>,
+    pub visibility: Visibility,
+    pub content_hash: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub newspaper_edition: Option<NewspaperEdition>,
+}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -118,7 +132,7 @@ pub struct Summary {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Page {
-    pub documents: Vec<Document>,
+    pub documents: Vec<Entry>,
     pub cursor: Option<String>,
 }
 
@@ -150,6 +164,8 @@ pub enum Create {
 #[serde(rename_all = "camelCase")]
 pub struct DraftUpdate {
     pub expected_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<Visibility>,
     pub title: String,
     pub summary: String,
     pub body: String,
@@ -235,7 +251,11 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
         },
     )
     .await?;
-    let documents = read_documents(&client, page.articles).await?;
+    let documents = page
+        .articles
+        .into_iter()
+        .map(project_summary)
+        .collect::<Result<_, _>>()?;
     Ok(Page {
         documents,
         cursor: page.cursor,
@@ -278,7 +298,10 @@ pub async fn overview() -> Result<Page, ApiError> {
                 .filter(|summary| newspaper_edition(&summary.tags).is_some()),
         )
         .collect();
-    let documents = read_documents(&client, overview_summaries(summaries)).await?;
+    let documents = overview_summaries(summaries)
+        .into_iter()
+        .map(project_summary)
+        .collect::<Result<_, _>>()?;
     Ok(Page {
         documents,
         cursor: None,
@@ -337,35 +360,40 @@ async fn read_summary_page(
     Ok(response.json().await?)
 }
 
-async fn read_documents(
-    client: &Client,
-    summaries: Vec<Summary>,
-) -> Result<Vec<Document>, ApiError> {
-    stream::iter(summaries)
-        .map(|summary| {
-            let client = client.clone();
-            async move {
-                let response = client
-                    .http
-                    .get(format!("{ENDPOINT}/{}", summary.id))
-                    .bearer_auth(&client.api_key)
-                    .send()
-                    .await?;
-                let status = response.status();
-                if !status.is_success() {
-                    return Err(ApiError::Status {
-                        operation: "read knowledge article",
-                        status,
-                    });
-                }
-                let result: ArticleResponse<Article> = response.json().await?;
-                let article = result.article;
-                project_article(article).await
-            }
-        })
-        .buffered(READ_CONCURRENCY)
-        .try_collect()
-        .await
+fn project_summary(summary: Summary) -> Result<Entry, ApiError> {
+    let edition = summary.editions.get("zh").ok_or_else(|| {
+        ApiError::Protocol(format!("article {} has no Chinese summary", summary.id))
+    })?;
+    let newspaper_edition = newspaper_edition(&summary.tags);
+    Ok(Entry {
+        id: summary.id,
+        slug: summary.slug,
+        title: edition.title.clone(),
+        summary: edition.summary.clone(),
+        tags: summary.tags,
+        visibility: summary.visibility,
+        content_hash: summary.content_hash,
+        created_at: summary.created_at,
+        updated_at: summary.updated_at,
+        newspaper_edition,
+    })
+}
+
+impl From<&Document> for Entry {
+    fn from(document: &Document) -> Self {
+        Self {
+            id: document.id.clone(),
+            slug: document.slug.clone(),
+            title: document.title.clone(),
+            summary: document.summary.clone(),
+            tags: document.tags.clone(),
+            visibility: document.visibility,
+            content_hash: document.content_hash.clone(),
+            created_at: document.created_at.clone(),
+            updated_at: document.updated_at.clone(),
+            newspaper_edition: document.newspaper_edition,
+        }
+    }
 }
 
 fn overview_summaries(summaries: Vec<Summary>) -> Vec<Summary> {
@@ -400,7 +428,47 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
         ApiError::Protocol(format!("article {} has no Chinese edition", article.id))
     })?;
     let source = knowledge_body(&edition.markdown).to_owned();
-    let compiled = match compile_knowledge_enriched(&source).await {
+    let mut metadata = HashMap::new();
+    let ids = article_ids(&source).unwrap_or_default();
+    let urls: Vec<_> = article_urls(&source)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|url| article_slug(url).is_some())
+        .collect();
+    let own = Summary {
+        id: article.id.clone(),
+        slug: article.slug.clone(),
+        editions: article
+            .editions
+            .iter()
+            .map(|(locale, edition)| {
+                (
+                    locale.clone(),
+                    EditionSummary {
+                        title: edition.title.clone(),
+                        summary: edition.summary.clone(),
+                    },
+                )
+            })
+            .collect(),
+        tags: article.tags.clone(),
+        visibility: article.visibility,
+        content_hash: article.content_hash.clone(),
+        created_at: article.created_at.clone(),
+        updated_at: article.updated_at.clone(),
+    };
+    resolve_card_metadata(&own, &ids, &urls, &mut metadata);
+    let needs_index = ids.iter().any(|id| !metadata.contains_key(id))
+        || urls.iter().any(|url| !metadata.contains_key(url));
+    let summaries = if needs_index {
+        reference_summaries().await.unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    for summary in summaries {
+        resolve_card_metadata(&summary, &ids, &urls, &mut metadata);
+    }
+    let compiled = match compile_knowledge_with_articles(&source, metadata).await {
         Ok(compiled) => compiled,
         Err(error) => {
             tracing::warn!(
@@ -444,7 +512,7 @@ fn newspaper_edition(tags: &[String]) -> Option<NewspaperEdition> {
     }
 }
 
-pub fn latest_newspaper_issues(documents: &[Document]) -> NewspaperIssues {
+pub fn latest_newspaper_issues(documents: &[Entry]) -> NewspaperIssues {
     let mut developer = None;
     let mut personal = None;
     for document in documents {
@@ -463,7 +531,7 @@ pub fn latest_newspaper_issues(documents: &[Document]) -> NewspaperIssues {
     }
 }
 
-fn is_newer(candidate: &Document, current: &Document) -> bool {
+fn is_newer(candidate: &Entry, current: &Entry) -> bool {
     match (
         OffsetDateTime::parse(&candidate.created_at, &Rfc3339),
         OffsetDateTime::parse(&current.created_at, &Rfc3339),
@@ -473,7 +541,119 @@ fn is_newer(candidate: &Document, current: &Document) -> bool {
     }
 }
 
-pub async fn get(id: &str) -> Result<Article, ApiError> {
+fn article_slug(value: &str) -> Option<String> {
+    let url = reqwest::Url::parse(value).ok()?;
+    if url.origin().ascii_serialization() != "https://knowledge.you-find.me"
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return None;
+    }
+    let slug = url.path().strip_prefix("/articles/")?.trim_end_matches('/');
+    if slug.is_empty() || slug.contains('/') {
+        return None;
+    }
+    percent_encoding::percent_decode_str(slug)
+        .decode_utf8()
+        .ok()
+        .map(|slug| slug.into_owned())
+}
+
+fn resolve_card_metadata(
+    summary: &Summary,
+    ids: &[String],
+    urls: &[String],
+    metadata: &mut HashMap<String, ArticleMetadata>,
+) {
+    let Some(edition) = summary.editions.get("zh") else {
+        return;
+    };
+    for key in ids.iter().filter(|id| *id == &summary.id).chain(
+        urls.iter()
+            .filter(|url| article_slug(url).as_deref() == Some(summary.slug.as_str())),
+    ) {
+        metadata.insert(
+            key.clone(),
+            ArticleMetadata {
+                href: Some(format!("/articles/{}", summary.id)),
+                title: edition.title.clone(),
+                description: edition.summary.clone(),
+            },
+        );
+    }
+}
+
+async fn reference_summaries() -> Result<Vec<Summary>, ApiError> {
+    let client = Client::load()?;
+    let client_ref = &client;
+    reference_pages(|filters| async move { read_summary_page(client_ref, &filters).await }).await
+}
+
+async fn reference_pages<F, Fut>(mut read: F) -> Result<Vec<Summary>, ApiError>
+where
+    F: FnMut(ListFilters) -> Fut,
+    Fut: std::future::Future<Output = Result<ArticlePage, ApiError>>,
+{
+    let mut result = Vec::new();
+    let mut ids = HashSet::new();
+    for tags in [vec![], vec!["daily".to_owned()]] {
+        let mut filters = ListFilters {
+            limit: Some(100),
+            tags,
+            ..Default::default()
+        };
+        let mut cursors = HashSet::new();
+        loop {
+            let page = read(ListFilters {
+                cursor: filters.cursor.clone(),
+                limit: filters.limit,
+                tags: filters.tags.clone(),
+                ..Default::default()
+            })
+            .await?;
+            result.extend(
+                page.articles
+                    .into_iter()
+                    .filter(|summary| ids.insert(summary.id.clone())),
+            );
+            let Some(cursor) = page.cursor else {
+                break;
+            };
+            if !cursors.insert(cursor.clone()) {
+                return Err(ApiError::Protocol(
+                    "article pagination repeated a cursor".to_owned(),
+                ));
+            }
+            filters.cursor = Some(cursor);
+        }
+    }
+    Ok(result)
+}
+
+pub async fn get(reference: &str) -> Result<Article, ApiError> {
+    let id = if let Some(slug) = article_slug(reference) {
+        reference_summaries()
+            .await?
+            .into_iter()
+            .find(|summary| summary.slug == slug)
+            .map(|summary| summary.id)
+            .ok_or(ApiError::Status {
+                operation: "resolve knowledge article",
+                status: StatusCode::NOT_FOUND,
+            })?
+    } else {
+        reference.to_owned()
+    };
+    if id.is_empty()
+        || id.len() > 240
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(ApiError::Protocol(
+            "invalid knowledge article reference".to_owned(),
+        ));
+    }
     let client = Client::load()?;
     let response = client
         .http
@@ -640,6 +820,114 @@ mod tests {
         })
         .await
         .expect("article should project")
+    }
+
+    #[test]
+    fn article_urls_decode_one_path_segment_without_reinterpreting_slug_characters() {
+        for (path, slug) in [
+            ("%61lpha", "alpha"),
+            ("%e4%b8%ad%e6%96%87", "中文"),
+            ("a%23b", "a#b"),
+            ("a%2520b", "a%20b"),
+        ] {
+            assert_eq!(
+                article_slug(&format!("https://knowledge.you-find.me/articles/{path}")).as_deref(),
+                Some(slug)
+            );
+        }
+        assert!(article_slug("https://knowledge.you-find.me/articles/%FF").is_none());
+        assert!(article_slug("https://example.com/articles/alpha").is_none());
+    }
+
+    #[tokio::test]
+    async fn reference_index_keeps_historical_dailies_and_checks_each_cursor() {
+        let mut requests = Vec::new();
+        let articles = reference_pages(|filters| {
+            requests.push((filters.tags.clone(), filters.cursor.clone()));
+            let daily = !filters.tags.is_empty();
+            let id = if daily {
+                if filters.cursor.is_some() {
+                    "older-daily"
+                } else {
+                    "latest-daily"
+                }
+            } else {
+                "regular"
+            };
+            std::future::ready(Ok(ArticlePage {
+                articles: vec![Summary {
+                    id: id.into(),
+                    slug: id.into(),
+                    editions: HashMap::new(),
+                    tags: filters.tags,
+                    visibility: Visibility::Private,
+                    content_hash: String::new(),
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                }],
+                cursor: if daily && filters.cursor.is_none() {
+                    Some("older".into())
+                } else {
+                    None
+                },
+            }))
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            articles
+                .iter()
+                .map(|article| article.id.as_str())
+                .collect::<Vec<_>>(),
+            ["regular", "latest-daily", "older-daily"]
+        );
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[2], (vec!["daily".into()], Some("older".into())));
+        assert!(
+            reference_pages(|_| std::future::ready(Ok(ArticlePage {
+                articles: vec![],
+                cursor: Some("loop".into())
+            })))
+            .await
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn cards_use_summary_metadata_and_real_ids_for_web_slugs() {
+        let summary = Summary {
+            id: "real-id".into(),
+            slug: "different-slug".into(),
+            editions: HashMap::from([(
+                "zh".into(),
+                EditionSummary {
+                    title: "Actual title".into(),
+                    summary: "Actual description".into(),
+                },
+            )]),
+            tags: vec![],
+            visibility: Visibility::Private,
+            content_hash: "hash".into(),
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        let url =
+            "https://knowledge.you-find.me/articles/different-slug?from=list#section".to_owned();
+        let mut metadata = HashMap::new();
+        resolve_card_metadata(
+            &summary,
+            &["real-id".into()],
+            std::slice::from_ref(&url),
+            &mut metadata,
+        );
+        assert_eq!(metadata[&url].title, "Actual title");
+        assert_eq!(metadata[&url].description, "Actual description");
+        assert_eq!(metadata[&url].href.as_deref(), Some("/articles/real-id"));
+        assert_eq!(
+            metadata["real-id"].href.as_deref(),
+            Some("/articles/real-id")
+        );
+        assert!(!metadata.contains_key("different-slug"));
     }
 
     #[tokio::test]
@@ -915,7 +1203,7 @@ mod tests {
 
     #[tokio::test]
     async fn selects_latest_issues() {
-        let documents = vec![
+        let documents = [
             projected_document(
                 "older-personal",
                 &["personal-daily"],
@@ -927,11 +1215,143 @@ mod tests {
         ];
 
         assert_eq!(
-            latest_newspaper_issues(&documents),
+            latest_newspaper_issues(&documents.iter().map(Entry::from).collect::<Vec<_>>()),
             NewspaperIssues {
                 developer: Some("developer".to_owned()),
                 personal: Some("personal".to_owned()),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn rejects_article_path_injection_before_loading_credentials() {
+        for id in [
+            "",
+            "..",
+            "../settings",
+            "one?token=other",
+            "one#fragment",
+            "one%2Ftwo",
+        ] {
+            assert!(matches!(get(id).await, Err(ApiError::Protocol(_))), "{id}");
+        }
+    }
+
+    #[tokio::test]
+    async fn self_shortcut_uses_current_metadata_without_recursive_reads() {
+        let document = project_article(Article {
+            id: "self".to_owned(),
+            slug: "self-slug".to_owned(),
+            editions: HashMap::from([(
+                "zh".to_owned(),
+                Edition {
+                    title: "Automatic title".to_owned(),
+                    summary: "Automatic summary".to_owned(),
+                    markdown: "```embed:article\nid: self\n```".to_owned(),
+                },
+            )]),
+            tags: Vec::new(),
+            visibility: Visibility::Private,
+            content_hash: "hash".to_owned(),
+            created_at: "2026-09-12".to_owned(),
+            updated_at: "2026-09-12".to_owned(),
+        })
+        .await
+        .unwrap();
+        assert!(document.html.contains("Automatic title"));
+        assert!(document.html.contains("Automatic summary"));
+        assert!(!document.html.contains("Preview unavailable"));
+    }
+
+    #[tokio::test]
+    #[ignore = "manual local index projection benchmark; writes raw samples under /private/tmp"]
+    async fn benchmark_index_projection() {
+        let markdown = format!("# Sample article\n\n{}", "## Details\n\nA paragraph with **formatting**, [a link](https://example.com), and `code`.\n\n".repeat(100));
+        let articles: Vec<_> = (0..100)
+            .map(|index| Article {
+                id: format!("article-{index}"),
+                slug: format!("article-{index}"),
+                editions: HashMap::from([(
+                    "zh".to_owned(),
+                    Edition {
+                        title: format!("Article {index}"),
+                        summary: "A short article summary".to_owned(),
+                        markdown: markdown.clone(),
+                    },
+                )]),
+                tags: vec!["benchmark".to_owned()],
+                visibility: Visibility::Private,
+                content_hash: format!("hash-{index}"),
+                created_at: "2026-09-12T10:00:00Z".to_owned(),
+                updated_at: "2026-09-12T10:00:00Z".to_owned(),
+            })
+            .collect();
+        let summaries: Vec<_> = articles
+            .iter()
+            .map(|article| Summary {
+                id: article.id.clone(),
+                slug: article.slug.clone(),
+                editions: article
+                    .editions
+                    .iter()
+                    .map(|(locale, edition)| {
+                        (
+                            locale.clone(),
+                            EditionSummary {
+                                title: edition.title.clone(),
+                                summary: edition.summary.clone(),
+                            },
+                        )
+                    })
+                    .collect(),
+                tags: article.tags.clone(),
+                visibility: article.visibility,
+                content_hash: article.content_hash.clone(),
+                created_at: article.created_at.clone(),
+                updated_at: article.updated_at.clone(),
+            })
+            .collect();
+        let mut candidate = Vec::new();
+        for index in 0..18 {
+            let started = std::time::Instant::now();
+            let entries: Vec<_> = summaries
+                .iter()
+                .cloned()
+                .map(project_summary)
+                .collect::<Result<_, _>>()
+                .unwrap();
+            let serialized = serde_json::to_vec(&entries).unwrap();
+            let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+            let value: serde_json::Value = serde_json::from_slice(&serialized).unwrap();
+            assert!(value[0].get("source").is_none());
+            assert!(value[0].get("html").is_none());
+            assert!(value[0].get("toc").is_none());
+            if index >= 3 {
+                candidate.push(serde_json::json!({ "ms": elapsed, "bytes": serialized.len() }));
+            }
+        }
+        std::fs::write(
+            "/private/tmp/vesper-index-candidate.json",
+            serde_json::to_vec_pretty(&candidate).unwrap(),
+        )
+        .unwrap();
+        let mut samples = Vec::new();
+        for index in 0..18 {
+            let started = std::time::Instant::now();
+            let mut documents = Vec::new();
+            for article in &articles {
+                documents.push(project_article(article.clone()).await.unwrap());
+            }
+            let bytes = serde_json::to_vec(&documents).unwrap().len();
+            let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+            if index >= 3 {
+                samples.push(serde_json::json!({ "ms": elapsed, "bytes": bytes }));
+            }
+        }
+        std::fs::write(
+            "/private/tmp/vesper-index-comparison-full.json",
+            serde_json::to_vec_pretty(&samples).unwrap(),
+        )
+        .unwrap();
     }
 }

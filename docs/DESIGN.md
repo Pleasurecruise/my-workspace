@@ -118,10 +118,22 @@ regular cards and editing. Only public cards expose outbound Telegram and X acti
 
 ## Knowledge interaction
 
-Index, reader, and editor share the page frame. The reader has bounded table-of-contents navigation.
-Rich editing includes explicit Markdown mode; unsupported syntax opens there without rewriting it.
-Session drafts survive navigation, and saving preserves edits made during the request.
+Index, reader, and editor share the page frame. The index renders from metadata before article
+bodies load. Visible entries preload after the index renders; hover, focus and touch also warm destinations.
+Pending clicks keep titles stable and expose busy state to assistive technology. Detail failures keep the index available for retry.
+Newspaper loads only the active edition and preloads the other edition on arrow intent. Switching
+editions cancels stale presentation updates; loading and failure states are distinct from unpublished
+editions. The reader toolbar groups table-of-contents navigation, copying the canonical article URL, editing
+and returning to the index. Contents entries scroll the current main reader with heading clearance
+and respect Reduce Motion. Pointer selection survives menu focus changes; outside clicks and Escape
+close the menu. Copying shows success only after the clipboard write completes and reports failures.
 
+Article shortcuts use compact, keyboard-accessible title links and automatically resolved summaries.
+Internal references open Knowledge and retain a bounded reading history; Back returns to the
+previous article before returning to the index. External targets open the system browser. Failed navigation
+preserves the current article. Rich editing includes explicit Markdown mode; unsupported syntax
+opens there without rewriting it. Session drafts survive navigation, saving preserves edits made
+during the request, and unfinished edits block switching articles.
 Compiled embeds use restrained paper, outlines, shadows, and accents. Audio and video embeds use
 responsive native controls, optional captions and video posters, and never autoplay. Videos without
 a supplied poster request an opening-frame preview; playback starts through the play control. Architecture and storyboard
@@ -153,7 +165,10 @@ settled content. Game status and verification copy use English. [Games](GAMES.md
 ## Newspaper and Inbox
 
 Newspaper presents the latest two editions on a warm paper surface with a serif masthead and original
-article hierarchy. Edition changes start at the top; background refresh preserves reading position.
+article hierarchy. Index lookup and initial detail compilation share one continuous Newspaper
+skeleton; the finished edition replaces it directly. Background refresh retains the settled paper
+without adding a second loading indicator. Edition changes start at the top; background refresh
+preserves reading position.
 Page-turn motion respects Reduce Motion. Editions stay out of the Knowledge index and Inbox.
 Newspaper and Knowledge article web links open in the default browser, preserving the reader;
 fragment links remain within the article. Opening failures appear beside the article.
@@ -168,3 +183,5 @@ Toggles expose state; progress exposes a name and numeric bounds. Immediate erro
 Keep muted text readable in both themes, and communicate status beyond color. Dialogs contain focus
 and return it when dismissed. Skeletons hide decorative content while the region announces loading.
 Use shared motion durations and disable nonessential animation for reduced-motion preferences.
+
+Article-list rows pair document thumbnails with resolved titles and descriptions, following workspace’s reading layout. Return and edit actions align vertically with the article title. The bounded reading trail records article navigation in order. The Knowledge reader handles their internal article destinations without opening the system browser. Existing-article editors stage the Visibility select until Save; switching or cancelling never writes it immediately.

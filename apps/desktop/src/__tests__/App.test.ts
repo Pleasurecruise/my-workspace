@@ -458,3 +458,58 @@ it("shows only configured destinations after configuration loads", async () => {
 	expect(target.querySelector('[aria-label="Open inbox"]')).toBeNull();
 	expect(target.querySelector("aside")?.textContent).not.toContain("Connections");
 });
+
+it("keeps one newspaper loading surface from index lookup through article compilation", async () => {
+	setupCommands();
+	const fallback = invoke.getMockImplementation()!;
+	const index = deferred<CommandResponse<ChannelView>>();
+	const detail = deferred<CommandResponse<import("../lib/consumer").KnowledgeDocument>>();
+	invoke.mockImplementation((command: string, args: unknown) => {
+		if (command === "read_channel") return index.promise;
+		if (command === "read_knowledge") return detail.promise;
+		return fallback(command, args);
+	});
+	const target = document.createElement("div");
+	document.body.append(target);
+	views.push(mount(App, { target }));
+	await tick();
+	await vi.waitFor(() => expect(button(target, "Newspaper", "nav button")).toBeDefined());
+	button(target, "Newspaper", "nav button").click();
+	await tick();
+	const loading = target.querySelector('[aria-label="Loading newspaper"]');
+	expect(loading).not.toBeNull();
+	const entry = {
+		id: "daily",
+		slug: "daily",
+		title: "Daily",
+		summary: "Summary",
+		tags: [],
+		visibility: "private" as const,
+		contentHash: "hash",
+		createdAt: "2026-09-12",
+		updatedAt: "2026-09-12",
+		newspaperEdition: "developer" as const,
+	};
+	index.resolve({
+		status: "ready",
+		data: {
+			channel: "knowledge",
+			knowledge: [entry],
+			newspaper: { developer: "daily", personal: null },
+			nextCursor: null,
+		},
+	});
+	await vi.waitFor(() =>
+		expect(invoke).toHaveBeenCalledWith("read_knowledge", { id: "daily", expectedHash: "hash" }),
+	);
+	expect(target.querySelector('[aria-label="Loading newspaper"]')).toBe(loading);
+	expect(target.textContent).not.toContain("Loading edition");
+	expect(target.textContent).not.toContain("Preparing the article");
+	expect(target.querySelectorAll('[aria-label="Loading newspaper"]')).toHaveLength(1);
+	detail.resolve({
+		status: "ready",
+		data: { ...entry, source: "Daily body", html: "<p>Daily body</p>", toc: [] },
+	});
+	await vi.waitFor(() => expect(target.querySelector(".copy")?.textContent).toBe("Daily body"));
+	expect(target.querySelector('[aria-label="Loading newspaper"]')).toBeNull();
+});

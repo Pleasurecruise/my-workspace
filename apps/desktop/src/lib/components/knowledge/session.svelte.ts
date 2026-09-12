@@ -113,6 +113,25 @@ export function createKnowledgeSession(context: {
 		content = response.data;
 		error = null;
 	}
+	async function readArticle(
+		id: string,
+		expectedHash: string | null,
+	): Promise<CommandResponse<KnowledgeDocument>> {
+		const version = session;
+		const response = await invoke<CommandResponse<KnowledgeDocument>>("read_knowledge", {
+			id,
+			expectedHash,
+		}).catch((): CommandResponse<KnowledgeDocument> => ({
+			status: "failed",
+			message: "Could not load the article. Please try again.",
+		}));
+		if (version !== session)
+			return {
+				status: "failed",
+				message: "Knowledge configuration changed. Open the article again.",
+			};
+		return response;
+	}
 	async function createKnowledge(
 		input: KnowledgeDraft,
 	): Promise<CommandResponse<KnowledgeDocument>> {
@@ -204,6 +223,7 @@ export function createKnowledgeSession(context: {
 		reset,
 		initialize,
 		loadMore,
+		readArticle,
 		createKnowledge,
 		updateKnowledge,
 	};

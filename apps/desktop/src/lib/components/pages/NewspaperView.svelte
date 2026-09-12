@@ -1,12 +1,13 @@
 <script lang="ts">
-	import { openArticleLinks } from "../knowledge/links";
+	import { openArticleLinks, preloadArticles } from "../knowledge/links";
+	import PageSkeleton from "../layout/PageSkeleton.svelte";
 	import { mediaPlayers } from "../knowledge/media";
-	import { tick } from "svelte";
-	import type { KnowledgeDocument, NewspaperIssues } from "../../consumer";
+	import { tick, untrack } from "svelte";
+	import type { KnowledgeDocument, KnowledgeEntry, CommandResponse, NewspaperIssues } from "../../consumer";
 
 	let linkError = $state<string | null>(null);
 
-	let { documents, issues, loading }: { documents: KnowledgeDocument[]; issues: NewspaperIssues; loading: boolean } = $props();
+	let { documents, issues, loading, onread, onopenarticle }: { documents: KnowledgeEntry[]; issues: NewspaperIssues; loading: boolean; onread: (id: string, expectedHash: string | null) => Promise<CommandResponse<KnowledgeDocument>>; onopenarticle: (document: KnowledgeDocument) => string | null } = $props();
 
 	type EditionKind = "developer" | "personal";
 	const editionLabels: Record<EditionKind, string> = {
@@ -17,20 +18,47 @@
 	let viewElement = $state<HTMLDivElement | null>(null);
 	let selectedEdition = $state<EditionKind>("developer");
 	let turnDirection = $state<"left" | "right">("right");
-	const issue = $derived(documents.find((document) => document.id === issues[selectedEdition]) ?? null);
+	const activeEntry = $derived(documents.find((document) => document.id === issues[selectedEdition]) ?? null);
+	let issue = $state<KnowledgeDocument | null>(null);
+	let reading = $state(false);
+	let readError = $state<string | null>(null);
+	let retry = $state(0);
+	$effect(() => {
+		const attempt = retry;
+		const entry = activeEntry;
+		let cancelled = false;
+		readError = null;
+		if (entry === null) { issue = null; reading = false; return; }
+		if (untrack(() => issue?.id) !== entry.id) issue = null;
+		reading = true;
+		void onread(entry.id, entry.contentHash).then((response) => {
+			if (cancelled || attempt !== retry) return;
+			reading = false;
+			if (response.status === "failed") readError = response.message;
+			else issue = response.data;
+		});
+		return () => { cancelled = true; };
+	});
 
 	async function turnPage(edition: EditionKind) {
+		const scroller = viewElement?.closest("main");
 		turnDirection = edition === "developer" ? "left" : "right";
 		selectedEdition = edition;
 		await tick();
-		viewElement?.closest("main")?.scrollTo({ top: 0, behavior: "instant" });
+		scroller?.scrollTo({ top: 0, behavior: "instant" });
 	}
 </script>
 
+{#if issue === null && readError === null && (loading || reading || activeEntry !== null)}
+	<PageSkeleton view="newspaper" title="Newspaper" description={editionLabels[selectedEdition]} />
+{:else}
 <div data-content-typography bind:this={viewElement} class="newspaper-view">
 	<header class="page-header"><div><h1 class="page-title">Newspaper</h1><p class="page-description">{editionLabels[selectedEdition]}</p></div></header>
 	<button
 		class="page-arrow previous"
+		use:preloadArticles
+		data-knowledge-id={issues.developer}
+		data-content-hash={documents.find((entry) => entry.id === issues.developer)?.contentHash}
 		type="button"
 		disabled={selectedEdition === "developer"}
 		aria-label="翻到程序员日报"
@@ -39,6 +67,9 @@
 	><span aria-hidden="true"></span></button>
 	<button
 		class="page-arrow next"
+		use:preloadArticles
+		data-knowledge-id={issues.personal}
+		data-content-hash={documents.find((entry) => entry.id === issues.personal)?.contentHash}
 		type="button"
 		disabled={selectedEdition === "personal"}
 		aria-label="翻到每日日报"
@@ -51,8 +82,11 @@
 			{#if issue === null}
 				<section class="empty edition-page" class:turn-right={turnDirection === "right"} class:turn-left={turnDirection === "left"} aria-label={editionLabels[selectedEdition]}>
 					<p>{editionLabels[selectedEdition]}</p>
-					<h2>{editionLabels[selectedEdition]}尚未发布</h2>
-					<span>{loading ? "正在检查 my-knowledge…" : "发布后，最新一期会出现在这里。"}</span>
+					{#if readError !== null}
+						<h2>Could not load edition</h2><p role="alert">{readError}</p><button onclick={() => retry++}>Retry</button>
+					{:else}
+						<h2>{editionLabels[selectedEdition]}尚未发布</h2><span>发布后，最新一期会出现在这里。</span>
+					{/if}
 				</section>
 			{:else}
 				<section class="paper edition-page" class:turn-right={turnDirection === "right"} class:turn-left={turnDirection === "left"} lang="zh-CN" aria-label={editionLabels[selectedEdition]}>
@@ -67,8 +101,11 @@
 						<h2>{issue.title}</h2>
 						<p class="deck">{issue.summary}</p>
 					</header>
-					<article use:mediaPlayers={issue.html} class="copy" use:openArticleLinks={(message) => { linkError = message; }}>{@html issue.html}</article>
+					{#key issue.id}
+						<article use:mediaPlayers={issue.html} class="copy" use:openArticleLinks={{ onError: (message) => { linkError = message; }, onOpen: onopenarticle }}>{@html issue.html}</article>
+					{/key}
 					{#if linkError !== null}<p role="alert">{linkError}</p>{/if}
+					{#if readError !== null}<p role="alert">{readError}</p>{/if}
 					<footer>
 						<span>Updated {new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit" }).format(new Date(issue.updatedAt))}</span>
 						<span>Vesper · my-knowledge</span>
@@ -78,6 +115,8 @@
 		{/key}
 	</div>
 </div>
+
+{/if}
 
 <style>
 	.newspaper-view { min-height: calc(100vh - 7rem); }

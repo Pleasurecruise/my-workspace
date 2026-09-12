@@ -337,6 +337,37 @@ pub(crate) async fn delete_photo(id: String, app: tauri::AppHandle) -> CommandRe
 }
 
 #[tauri::command]
+pub(crate) async fn read_knowledge(
+    id: String,
+    expected_hash: Option<String>,
+    app: tauri::AppHandle,
+) -> CommandResponse<consumers::api::knowledge::Document> {
+    match app
+        .state::<CmsState>()
+        .knowledge
+        .read(&id, expected_hash.as_deref(), false)
+        .await
+    {
+        Ok(data) => CommandResponse::Ready { data },
+        Err(message) => CommandResponse::Failed { message },
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn prefetch_knowledge(
+    id: String,
+    expected_hash: Option<String>,
+    app: tauri::AppHandle,
+) {
+    // Speculation has no visible outcome. An explicit read retries any failed preview.
+    let _ = app
+        .state::<CmsState>()
+        .knowledge
+        .read(&id, expected_hash.as_deref(), true)
+        .await;
+}
+
+#[tauri::command]
 pub(crate) async fn create_knowledge(
     input: consumers::api::knowledge::Draft,
     app: tauri::AppHandle,

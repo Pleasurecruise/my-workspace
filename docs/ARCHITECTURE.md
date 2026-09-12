@@ -68,8 +68,19 @@ Music and game runtimes outlive route mounts. Their authentication, cancellation
 rules belong in [Music](MUSIC.md) and [Games](GAMES.md); NAS protocols belong in [UGOS](UGOS.md).
 Inbox independently activates its ntfy stream while its route is active.
 Device storage reads OS capacity only; category inspection is delegated to system storage settings.
-Compiled Knowledge and Newspaper article links open through the system browser boundary while
-fragment links remain in the reader.
+Knowledge and Newspaper load a summary-only index without fetching or compiling bodies. The desktop
+Rust `KnowledgeReader` owns lazy detail compilation, a 30-second/16-document cache, and same-ID
+in-flight request sharing. A changed index content hash bypasses cached content. Visible index entries, pointer intent,
+keyboard focus and touch request prefetch through Tauri, with at most two speculative reads and six
+reads overall. Writes and credential resets clear cached documents and invalidate pending results.
+Svelte owns loading/error presentation and discards detail responses after switching or leaving.
+
+Compiled external links open in the system browser; fragment links remain in the reader. Internal
+article shortcuts read authorized details by ID and open Knowledge, preserving unsaved drafts.
+Before compiling a selected article, the consumer resolves shortcut titles, summaries and real IDs
+from the authorized paginated summary index. Card rendering does not fetch target bodies; clicking
+reads the ID-based detail endpoint. Web slugs are resolved through that same index. External previews use Open
+Graph. The dialect receives metadata snapshots and emits escaped cards with explicit fallbacks.
 
 App Lock is an in-memory privacy screen backed by a stored password. Reload preserves the lock;
 restart starts unlocked. It blocks developer tools while locked and does not encrypt content.
@@ -101,16 +112,16 @@ runtimes, R2 bindings and deployment configuration.
 repository and image caches; `consumer.rs` adapts commands. Cache revisions prevent a late read from
 restoring invalidated content. Writes retain each consumer's server-side coordination.
 
-| Consumer  | Boundary                                                                                                                                             |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Memos     | API records include Markdown; Rust compiles it without another R2 read. CRUD and X imports use the Memo API.                                         |
-| Moment    | API owns metadata; Rust prepares image variants, uploads them to R2, then registers them. The list is a bounded batch without a synthetic cursor.    |
-| Knowledge | API summaries lead to authorized detail reads; Rust compiles Markdown and classifies Newspaper editions. Writes use content-hash conflict detection. |
+| Consumer  | Boundary                                                                                                                                                                                            |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Memos     | API records include Markdown; Rust compiles it without another R2 read. CRUD and X imports use the Memo API.                                                                                        |
+| Moment    | API owns metadata; Rust prepares image variants, uploads them to R2, then registers them. The list is a bounded batch without a synthetic cursor.                                                   |
+| Knowledge | API summaries form the metadata-only index and classify Newspaper editions. Opening a document performs an authorized detail read and Rust compilation. Writes use content-hash conflict detection. |
 
 Moment upload cleanup depends on whether metadata registration has started: before registration,
 failed partial uploads can be removed; afterward objects are retained for reconciliation because the
 server may have committed. Knowledge's rich-text and source editors preserve a Markdown storage
-contract. Failed optional embed enrichment leaves code visible rather than hiding an article.
+contract. Article-list URLs resolve authorized metadata and desktop article destinations in Rust; individual preview failures preserve neighboring cards. Existing content and draft visibility share one Save request. Failed optional embed enrichment leaves code visible rather than hiding an article.
 
 Outbound Memo publication belongs to `crates/social`. Commands reread a Memo by ID; the social
 boundary independently rejects non-public content before sending bounded text and its canonical URL.

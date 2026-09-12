@@ -230,3 +230,155 @@ fn github_media_file_pages_resolve_to_bytes_without_rewriting_other_hosts() {
         assert!(html.contains(&format!("src=\"{expected}\"")), "{html}");
     }
 }
+
+#[test]
+fn article_links_use_host_routes_or_external_urls_without_provider_data() {
+    let internal = render(
+        "embed:article",
+        "id: article-123\ntitle: <Read & learn>\ndescription: A \"summary\"",
+        &Data::default(),
+    )
+    .unwrap()
+    .unwrap();
+    assert!(internal.contains("href=\"/articles/article-123\""));
+    assert!(internal.contains("&lt;Read &amp; learn&gt;"));
+    assert!(internal.contains("A &quot;summary&quot;"));
+    assert!(!internal.contains("target="));
+    let external = render(
+        "embed:article",
+        "url: https://example.com/story?q=a&b=2\ntitle: Story",
+        &Data::default(),
+    )
+    .unwrap()
+    .unwrap();
+    assert!(external.contains("href=\"https://example.com/story?q=a&amp;b=2\""));
+    assert!(external.contains("target=\"_blank\""));
+}
+
+#[test]
+fn article_links_reject_ambiguous_and_unsafe_targets() {
+    for fields in [
+        "id: one\nurl: https://example.com",
+        "id: ../other",
+        "id: one?secret",
+        "id: one%2Ftwo",
+        "id: .",
+        "url: javascript:alert(1)",
+        "url: //example.com",
+        "url: https://user:password@example.com",
+        "url: /articles/one",
+        "id: one\nextra: ignored",
+        "id: one\nid: two",
+        "description: Missing target",
+    ] {
+        assert!(
+            render(
+                "embed:article",
+                &format!("title: Story\n{fields}"),
+                &Data::default()
+            )
+            .is_err(),
+            "{fields}"
+        );
+    }
+}
+
+#[test]
+fn article_shortcuts_read_metadata_and_allow_independent_overrides() {
+    let mut data = Data::default();
+    data.articles.insert(
+        "article-123".to_owned(),
+        ArticleMetadata {
+            href: None,
+            title: "Automatic <title>".to_owned(),
+            description: "Automatic & summary".to_owned(),
+        },
+    );
+    let html = render(ARTICLE, "id: article-123", &data).unwrap().unwrap();
+    assert!(html.contains("Automatic &lt;title&gt;"));
+    assert!(html.contains("Automatic &amp; summary"));
+    let html = render(ARTICLE, "id: article-123\ntitle: Custom", &data)
+        .unwrap()
+        .unwrap();
+    assert!(html.contains("<strong>Custom</strong>"));
+    assert!(html.contains("Automatic &amp; summary"));
+    let html = render(
+        ARTICLE,
+        "id: article-123\ndescription: Custom summary",
+        &data,
+    )
+    .unwrap()
+    .unwrap();
+    assert!(html.contains("Automatic &lt;title&gt;"));
+    assert!(html.contains("Custom summary"));
+    assert_eq!(
+        article_ids(
+            "```embed:article\nid: article-123\n```\n\n```embed:article\nid: article-123\n```"
+        )
+        .unwrap(),
+        ["article-123"]
+    );
+}
+
+#[test]
+fn unresolved_article_previews_keep_the_navigation_target() {
+    for fields in ["id: article-123", "url: https://example.com/story"] {
+        let html = render(ARTICLE, fields, &Data::default()).unwrap().unwrap();
+        assert!(html.contains("<a class="));
+        assert!(html.contains("Preview unavailable"));
+    }
+}
+
+#[test]
+fn article_url_lists_render_metadata_cards_and_preserve_order() {
+    let url = "https://knowledge.you-find.me/articles/real-slug";
+    let mut data = Data::default();
+    data.articles.insert(
+        url.to_owned(),
+        ArticleMetadata {
+            href: Some("/articles/article-id".to_owned()),
+            title: "Real <title>".to_owned(),
+            description: "Real & description".to_owned(),
+        },
+    );
+    let source = format!("{url}\n- https://example.com/unavailable\n{url}");
+    let html = render(ARTICLE, &source, &data).unwrap().unwrap();
+    assert_eq!(html.matches("<li>").count(), 3);
+    assert_eq!(html.matches("Real &lt;title&gt;").count(), 2);
+    assert!(html.contains("Real &amp; description"));
+    assert!(html.contains("href=\"/articles/article-id\""));
+    assert!(!html.contains("<strong>https://"));
+    assert!(html.contains("Preview unavailable"));
+    assert!(render("text", &source, &data).unwrap().is_none());
+    let document =
+        format!("[ordinary](https://example.com/ordinary)\n\n```embed:article\n{source}\n```");
+    assert_eq!(
+        article_urls(&document).unwrap(),
+        [url, "https://example.com/unavailable"]
+    );
+    assert!(article_ids(&document).unwrap().is_empty());
+}
+
+#[test]
+fn article_url_lists_reject_mixed_and_unsafe_entries() {
+    for source in [
+        "",
+        "javascript:alert(1)",
+        "https://user:pass@example.com",
+        "https://example.com prose",
+        "https://example.com\nid: mixed",
+    ] {
+        assert!(
+            render(ARTICLE, source, &Data::default()).is_err(),
+            "{source}"
+        );
+    }
+    assert!(
+        render(
+            ARTICLE,
+            &vec!["https://example.com"; 51].join("\n"),
+            &Data::default()
+        )
+        .is_err()
+    );
+}

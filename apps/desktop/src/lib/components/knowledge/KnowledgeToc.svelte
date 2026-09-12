@@ -2,20 +2,26 @@
 	import { ListTree } from "@lucide/svelte";
 	import type { TocEntry } from "../../consumer";
 
-	let { entries }: { entries: TocEntry[] } = $props();
+	let { entries, content }: { entries: TocEntry[]; content: HTMLElement | null } = $props();
 	let panel = $state<HTMLDetailsElement | null>(null);
 
 	function scrollTo(entry: TocEntry) {
+		const heading = Array.from(content?.querySelectorAll<HTMLElement>("h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]") ?? []).find((heading) => heading.id === entry.id);
+		const scroller = content?.closest("main");
+		if (heading === undefined || scroller === null || scroller === undefined) return;
 		if (panel !== null) panel.open = false;
-		const heading = document.getElementById(entry.id);
-		if (heading !== null) heading.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+		const margin = Number.parseFloat(getComputedStyle(heading).scrollMarginTop) || 0;
+		scroller.scrollTo({ top: scroller.scrollTop + heading.getBoundingClientRect().top - scroller.getBoundingClientRect().top - scroller.clientTop - margin, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
 	}
+
 </script>
+
+<svelte:document onpointerdown={(event) => { if (panel !== null && event.target instanceof Node && !panel.contains(event.target)) panel.open = false; }} />
 
 <svelte:window onkeydown={(event) => { if (panel !== null && panel.open && event.key === "Escape") { panel.open = false; panel.querySelector("summary")?.focus(); } }} />
 
 {#if entries.length > 0}
-	<details bind:this={panel} onfocusout={(event) => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }}>
+	<details bind:this={panel} onfocusout={(event) => { if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }}>
 		<summary aria-label="Table of contents" title="Table of contents"><ListTree size={16} /></summary>
 		<nav aria-label="Table of contents">
 			{#each entries as entry (entry.id)}

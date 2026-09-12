@@ -42,7 +42,7 @@ pub enum ChannelView {
         total: usize,
     },
     Knowledge {
-        knowledge: Vec<crate::api::knowledge::Document>,
+        knowledge: Vec<crate::api::knowledge::Entry>,
         newspaper: crate::api::knowledge::NewspaperIssues,
         next_cursor: Option<String>,
     },

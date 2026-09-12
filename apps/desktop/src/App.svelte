@@ -10,7 +10,7 @@
 	import MemosView from "./lib/components/pages/MemosView.svelte";
 	import MomentView from "./lib/components/pages/MomentView.svelte";
 	import MusicView from "./lib/components/pages/MusicView.svelte";
-	import KnowledgeView from "./lib/components/pages/KnowledgeView.svelte";
+	import KnowledgeView, { selectKnowledgeArticle } from "./lib/components/pages/KnowledgeView.svelte";
 	import InboxView from "./lib/components/pages/InboxView.svelte";
 	import NewspaperView from "./lib/components/pages/NewspaperView.svelte";
 	import { createLayoutSession } from "./lib/components/dashboard/layout.svelte";
@@ -70,7 +70,7 @@
 			: selected === "knowledge" || selected === "newspaper" ? knowledge : null,
 	);
 	const paginatedContent = $derived(
-		selected === "memos" ? memos : selected === "knowledge" || selected === "newspaper" ? knowledge : null,
+		selected === "memos" ? memos : selected === "knowledge" ? knowledge : null,
 	);
 	const content = $derived(activeContent === null ? null : activeContent.content);
 	const contentError = $derived(activeContent === null ? null : activeContent.error);
@@ -386,6 +386,8 @@
 							<button type="button" onclick={() => void select("settings")}>Open Settings</button>
 						</div>
 					</section>
+				{:else if selected === "newspaper"}
+					<NewspaperView onread={knowledge.readArticle} documents={knowledge.content?.knowledge ?? []} issues={knowledge.content?.newspaper ?? { developer: null, personal: null }} loading={knowledge.content === null || knowledge.loading} onopenarticle={(document) => { const error = selectKnowledgeArticle(document); if (error === null) selected = "knowledge"; return error; }} />
 				{:else if content !== null}
 					{#if content.channel === "memos"}
 						<MemosView memos={content.memos} tags={memos.tags.tags} display={memos.memoDisplay} onfilter={memos.filterMemos} onopenmemo={memos.revealMemo} oncreate={memos.createMemo} onimportx={memos.importXMemo} onupdate={memos.updateMemo} ondelete={memos.deleteMemo} onpublishtelegram={memos.publishMemoToTelegram} onpublishx={memos.publishMemoToX}>
@@ -407,13 +409,11 @@
 						{/if}
 							{/snippet}
 						</MomentView>
-					{:else if selected === "newspaper"}
-						<NewspaperView documents={content.knowledge} issues={content.newspaper} loading={knowledge.loading} />
 					{:else}
-						<KnowledgeView documents={content.knowledge} loading={knowledge.loading} oncreate={knowledge.createKnowledge} onupdate={knowledge.updateKnowledge} />
+						<KnowledgeView onread={knowledge.readArticle} documents={content.knowledge} loading={knowledge.loading} oncreate={knowledge.createKnowledge} onupdate={knowledge.updateKnowledge} />
 					{/if}
 				{:else}
-					<PageSkeleton view={selected === "moment" ? "moment" : selected === "newspaper" ? "newspaper" : selected === "knowledge" ? "knowledge" : "memos"} title={selected === "moment" ? "Moment" : selected === "newspaper" ? "Newspaper" : selected === "knowledge" ? "Knowledge" : "Memos"} />
+					<PageSkeleton view={selected === "moment" ? "moment" : selected === "knowledge" ? "knowledge" : "memos"} title={selected === "moment" ? "Moment" : selected === "knowledge" ? "Knowledge" : "Memos"} />
 				{/if}
 				<div class="sentinel" aria-hidden="true"></div>
 				{#if contentError && content !== null}

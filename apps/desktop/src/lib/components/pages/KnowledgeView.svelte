@@ -2,41 +2,78 @@
 	import type { KnowledgeDocument } from "../../consumer";
 
 	let selected = $state<KnowledgeDocument | null>(null);
+	let articleTrail = $state<KnowledgeDocument[]>([]);
 	let editing = $state(false);
 	let draftTitle = $state("");
 	let draftSummary = $state("");
 	let draftTags = $state("");
 	let draftSource = $state("");
+	let draftVisibility = $state<KnowledgeDocument["visibility"]>("public");
 	let saving = $state(false);
 	let error = $state("");
+
+	export function selectKnowledgeArticle(document: KnowledgeDocument): string | null {
+		if (editing || saving) return "Finish or cancel the current article draft before opening another article.";
+		if (document.id === selected?.id) return null;
+		const index = articleTrail.findIndex((article) => article.id === document.id);
+		articleTrail = index >= 0 ? articleTrail.slice(0, index) : selected !== null ? [...articleTrail, selected].slice(-8) : [];
+		selected = document;
+		return null;
+	}
+
+	function returnToArticle() {
+		selected = articleTrail.at(-1) ?? null;
+		articleTrail = articleTrail.slice(0, -1);
+	}
 </script>
 
 <script lang="ts">
-	import { openArticleLinks } from "../knowledge/links";
+	import { onDestroy } from "svelte";
+	import { openArticleLinks, preloadArticles } from "../knowledge/links";
 	import { mediaPlayers } from "../knowledge/media";
-	import { ArrowLeft, Pencil, Plus } from "@lucide/svelte";
-	import type { CommandResponse, KnowledgeDraft, KnowledgeUpdate } from "../../consumer";
+	import { ArrowLeft, Check, Link, Pencil, Plus } from "@lucide/svelte";
+	import type { CommandResponse, KnowledgeDraft, KnowledgeUpdate, KnowledgeEntry } from "../../consumer";
 	import KnowledgeHeader from "../knowledge/KnowledgeHeader.svelte";
 	import KnowledgeToc from "../knowledge/KnowledgeToc.svelte";
 	import RichMarkdownEditor from "../knowledge/RichMarkdownEditor.svelte";
 
 	let linkError = $state<string | null>(null);
+	let articleElement = $state<HTMLElement | null>(null);
+	let copiedArticle = $state<string | null>(null);
+	let copyError = $state<string | null>(null);
+	let copyRequest = 0;
+	let copyTarget: string | null = null;
+	$effect(() => { const id = selected?.id ?? null; if (id === copyTarget) return; copyTarget = id; copiedArticle = null; copyError = null; copyRequest++; });
+	async function copyArticleLink() {
+		if (selected === null) return;
+		const article = selected;
+		const request = ++copyRequest;
+		copiedArticle = null;
+		copyError = null;
+		await navigator.clipboard.writeText(`https://knowledge.you-find.me/articles/${encodeURIComponent(article.slug)}`).then(() => {
+			if (request === copyRequest) copiedArticle = article.id;
+		}, () => {
+			if (request === copyRequest) copyError = "Could not copy the article link. Please try again.";
+		});
+	}
 
 	let {
 		documents,
 		loading,
+		onread,
 		oncreate,
 		onupdate,
 	}: {
-		documents: KnowledgeDocument[];
+		documents: KnowledgeEntry[];
 		loading: boolean;
+		onread: (id: string, expectedHash: string | null) => Promise<CommandResponse<KnowledgeDocument>>;
 		oncreate: (input: KnowledgeDraft) => Promise<CommandResponse<KnowledgeDocument>>;
 		onupdate: (id: string, input: KnowledgeUpdate) => Promise<CommandResponse<KnowledgeDocument>>;
 	} = $props();
 
 	type KnowledgeMonth = {
 		month: number;
-		entries: KnowledgeDocument[];
+		entries: KnowledgeEntry[];
 	};
 
 	type KnowledgeYear = {
@@ -81,12 +118,30 @@
 		return new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(2020, month)).toUpperCase();
 	}
 
+	let openingId = $state<string | null>(null);
+	let readRequest = 0;
+	onDestroy(() => { readRequest++; copyRequest++; });
+	async function openEntry(entry: KnowledgeEntry) {
+		const request = ++readRequest;
+		openingId = entry.id;
+		error = "";
+		const response = await onread(entry.id, entry.contentHash);
+		if (request !== readRequest) return;
+		openingId = null;
+		if (response.status === "failed") { error = response.message; return; }
+		error = selectKnowledgeArticle(response.data) ?? "";
+		linkError = null;
+	}
+
 	function startNew() {
+		readRequest++;
+		openingId = null;
 		selected = null;
 		draftTitle = "";
 		draftSummary = "";
 		draftTags = "";
 		draftSource = "";
+		draftVisibility = "public";
 		error = "";
 		editing = true;
 	}
@@ -96,6 +151,7 @@
 		draftSummary = document.summary;
 		draftTags = document.tags.join(", ");
 		draftSource = document.source;
+		draftVisibility = document.visibility;
 		error = "";
 		editing = true;
 	}
@@ -141,18 +197,18 @@
 			body: draftSource,
 			tags,
 		};
-		const submitted = { title: draftTitle, summary: draftSummary, tags: draftTags, source: draftSource };
+		const submitted = { title: draftTitle, summary: draftSummary, tags: draftTags, source: draftSource, visibility: draftVisibility };
 		const current = selected;
 		const response = current === null
 			? await oncreate(input)
-			: await onupdate(current.id, { ...input, expectedHash: current.contentHash });
+			: await onupdate(current.id, { ...input, expectedHash: current.contentHash, visibility: submitted.visibility });
 		saving = false;
 		if (response.status === "failed") {
 			error = response.message;
 			return;
 		}
 		selected = response.data;
-		editing = draftTitle !== submitted.title || draftSummary !== submitted.summary || draftTags !== submitted.tags || draftSource !== submitted.source;
+		editing = draftTitle !== submitted.title || draftSummary !== submitted.summary || draftTags !== submitted.tags || draftSource !== submitted.source || draftVisibility !== submitted.visibility;
 	}
 </script>
 
@@ -168,6 +224,9 @@
 			<label>Summary<input bind:value={draftSummary} maxlength="500" placeholder="A short summary" /></label>
 		</div>
 		<label class="tags">Tags<input bind:value={draftTags} placeholder="rust, api" /></label>
+		{#if selected}
+            <label class="visibility">Visibility<select aria-label="Visibility" bind:value={draftVisibility} disabled={saving}><option value="public">Public</option><option value="private">Private</option></select></label>
+        {/if}
 		<label class="markdown">Article body<RichMarkdownEditor bind:value={draftSource} /></label>
 	</section>
 {:else if selected}
@@ -175,23 +234,28 @@
 		<KnowledgeHeader title={selected.title} text={selected.source}>
 			{#snippet actions()}
 		<div class="article-actions" aria-label="Article actions">
-			{#if selected !== null}<KnowledgeToc entries={selected.toc} />{/if}
+			{#if selected !== null}<KnowledgeToc entries={selected.toc} content={articleElement} />{/if}
+			<button type="button" onclick={() => void copyArticleLink()} aria-label={copiedArticle === selected?.id ? "Article link copied" : "Copy article link"} title={copiedArticle === selected?.id ? "Link copied" : "Copy article link"}>{#if copiedArticle === selected?.id}<Check size={16} />{:else}<Link size={16} />{/if}</button>
 			<button type="button" onclick={() => selected !== null && startEdit(selected)} aria-label="Edit article" title="Edit article"><Pencil size={16} /></button>
-			<button type="button" onclick={() => (selected = null)} aria-label="Back to articles" title="Back to articles"><ArrowLeft size={16} /></button>
+			<button type="button" onclick={returnToArticle} aria-label={articleTrail.length ? "Back to previous article" : "Back to articles"} title={articleTrail.length ? "Back to previous article" : "Back to articles"}><ArrowLeft size={16} /></button>
 		</div>
 			{/snippet}
 		</KnowledgeHeader>
-		<article use:mediaPlayers={selected.html} class="prose" use:openArticleLinks={(message) => { linkError = message; }}>{@html selected.html}</article>
+		{#key selected.id}
+			<article bind:this={articleElement} use:mediaPlayers={selected.html} class="prose" use:openArticleLinks={{ onError: (message) => { linkError = message; }, onOpen: selectKnowledgeArticle }}>{@html selected.html}</article>
+		{/key}
 		{#if linkError !== null}<p role="alert">{linkError}</p>{/if}
+		{#if copyError !== null}<p role="alert">{copyError}</p>{/if}
 
 	</section>
 {:else}
-	<section class="index">
+	<section class="index" use:preloadArticles={true}>
 		<header class="index-header page-header">
 			<div><h1>Knowledge</h1><p class="page-description">Long-form writing, organized by date.</p></div>
 			<button onclick={startNew}><Plus size={12} /> New article</button>
 		</header>
 
+		{#if error}<p role="alert">{error}</p>{/if}
 		{#each groups as group (group.year)}
 			<section class="year">
 				<h2>{group.year} <small>{group.count} entries</small></h2>
@@ -199,7 +263,7 @@
 					<h3>{monthName(month.month)}</h3>
 					<ol>
 						{#each month.entries as entry (entry.id)}
-							<li><time>{new Date(entry.createdAt).getDate().toString().padStart(2, "0")}</time><button onclick={() => (selected = entry)}>{entry.title}</button><span>{entry.tags.join(" · ")}</span></li>
+							<li><time>{new Date(entry.createdAt).getDate().toString().padStart(2, "0")}</time><button data-knowledge-id={entry.id} data-content-hash={entry.contentHash} aria-busy={openingId === entry.id} disabled={openingId === entry.id} onclick={() => void openEntry(entry)}>{entry.title}</button><span>{entry.tags.join(" · ")}</span></li>
 						{/each}
 					</ol>
 				{/each}
@@ -221,9 +285,9 @@
 	.fields { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1rem; margin-bottom: 1rem; }
 	.tags { margin-bottom: 1rem; }
 	.editor label { min-width: 0; display: grid; gap: 0.5rem; color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; }
-	.editor input { min-width: 0; box-sizing: border-box; width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-family: var(--font-sans); font-size: 0.875rem; letter-spacing: normal; text-transform: none; }
-	.editor input { height: 2.5rem; padding: 0 0.75rem; }
-	.editor input:focus { border-color: var(--color-border-strong); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 16%, transparent); }
+	.editor input, .editor select { min-width: 0; box-sizing: border-box; width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-family: var(--font-sans); font-size: 0.875rem; letter-spacing: normal; text-transform: none; }
+	.editor input, .editor select { height: 2.5rem; padding: 0 0.75rem; }
+	.editor input:focus, .editor select:focus { border-color: var(--color-border-strong); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 16%, transparent); }
 	.editor-error { padding: 0.75rem; border: 1px solid var(--color-error); border-radius: var(--radius-md); color: var(--color-error); font-size: 0.75rem; }
 	.index-header { display: flex; align-items: flex-start; justify-content: space-between; }
 	.index-header div { position: relative; }

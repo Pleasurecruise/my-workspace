@@ -2,13 +2,15 @@ use pulldown_cmark::{
     CodeBlockKind, CowStr, Event, HeadingLevel, LinkType, Options, Parser, Tag, TagEnd, html,
 };
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 use syntect::highlighting::ThemeSet;
 use syntect::html::highlighted_html_for_string;
 use syntect::parsing::SyntaxSet;
 
-use md_dialect::{EmbedData, EmbedError, add_embed_styles, load_embeds, render_embed};
+use md_dialect::{
+    EmbedData, EmbedError, add_embed_styles, load_embeds, load_embeds_with_articles, render_embed,
+};
 
 const CODE_THEME: &str = "InspiredGitHub";
 
@@ -104,7 +106,14 @@ fn highlight_code(source: &str, language: &str) -> Result<String, syntect::Error
 }
 
 pub async fn compile_knowledge_enriched(source: &str) -> Result<CompiledKnowledge, EmbedError> {
-    let data = load_embeds(source).await?;
+    compile_knowledge_with_articles(source, HashMap::new()).await
+}
+
+pub async fn compile_knowledge_with_articles(
+    source: &str,
+    articles: HashMap<String, md_dialect::ArticleMetadata>,
+) -> Result<CompiledKnowledge, EmbedError> {
+    let data = load_embeds_with_articles(knowledge_body(source), articles).await?;
     compile_knowledge_with(source, &data)
 }
 
@@ -161,17 +170,21 @@ fn compile_knowledge_events(events: Vec<Event<'_>>) -> CompiledKnowledge {
     }
 
     let mut slugs: HashMap<String, usize> = HashMap::new();
+    let mut used_ids = HashSet::new();
     let toc: Vec<TocEntry> = headings
         .into_iter()
         .map(|(level, text)| {
             let base = heading_id(&text);
             let count = slugs.entry(base.clone()).or_insert(0);
             *count += 1;
-            let id = if *count == 1 {
-                base
-            } else {
-                format!("{base}-{}", *count)
-            };
+            let mut id = base.clone();
+            if *count > 1 {
+                id = format!("{base}-{}", *count);
+            }
+            while !used_ids.insert(id.clone()) {
+                *count += 1;
+                id = format!("{base}-{}", *count);
+            }
             TocEntry {
                 id,
                 text,

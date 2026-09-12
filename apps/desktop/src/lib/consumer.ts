@@ -87,7 +87,7 @@ export type ChannelView =
 	  }
 	| {
 			channel: "knowledge";
-			knowledge: KnowledgeDocument[];
+			knowledge: KnowledgeEntry[];
 			newspaper: NewspaperIssues;
 			nextCursor: string | null;
 	  };
@@ -98,7 +98,7 @@ export interface TocEntry {
 	depth: number;
 }
 
-export interface KnowledgeDocument {
+export interface KnowledgeEntry {
 	id: string;
 	slug: string;
 	title: string;
@@ -109,6 +109,9 @@ export interface KnowledgeDocument {
 	createdAt: string;
 	updatedAt: string;
 	newspaperEdition: "developer" | "personal" | null;
+}
+
+export interface KnowledgeDocument extends KnowledgeEntry {
 	source: string;
 	html: string;
 	toc: TocEntry[];
@@ -128,6 +131,7 @@ export interface KnowledgeDraft {
 
 export interface KnowledgeUpdate extends KnowledgeDraft {
 	expectedHash: string;
+	visibility?: KnowledgeDocument["visibility"];
 }
 
 export type CommandResponse<T> =

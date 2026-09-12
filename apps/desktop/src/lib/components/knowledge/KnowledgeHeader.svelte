@@ -26,10 +26,11 @@
 </header>
 
 <style>
-	header { min-width: 0; }
-	header > div { flex: 1; min-width: 0; }
-	h1 { margin: 0; }
-	.stats { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.5rem; color: var(--color-muted-foreground); font-size: 0.75rem; }
+	header { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 1rem; }
+	header > div { display: contents; }
+	header > :global(:last-child) { grid-column: 2; grid-row: 1; align-self: center; }
+	h1 { margin: 0; grid-column: 1; grid-row: 1; }
+	.stats { grid-column: 1 / -1; grid-row: 2; display: flex; align-items: center; gap: 0.4rem; margin-top: 0.5rem; color: var(--color-muted-foreground); font-size: 0.75rem; }
 	.stats span { display: inline-flex; align-items: center; gap: 0.25rem; }
 	.stats i { opacity: 0.3; font-style: normal; }
 </style>
