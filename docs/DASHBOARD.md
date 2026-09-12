@@ -263,6 +263,21 @@ remain in local SQLite when the widget is removed. No credentials or provider se
 
 ## Calendar and Todo
 
+Each Todo has a default-off carry-forward checkbox with small explanatory text at the bottom of its details. Rust moves checked unfinished tasks
+to the actual local day, repeating daily until completion or opt-out; reopening after several days
+catches up directly. The local-date loop checks every thirty seconds and Todo reads also catch up.
+Every changed date emits `todo-updated`, including past/future Notion projections removed during
+consolidation. The transaction preserves existing destination order and rejects/rolls back failed
+writes. Notion multi-day events become one local follow-up retaining read-only original metadata;
+source calendars are never modified, and refresh cannot recreate that event from its source day onward.
+If another dated projection is already complete, it remains on its original date and no follow-up is
+created; subsequent source refreshes preserve that completed history.
+
+Todo drag and keyboard ordering is local to a date, persists in SQLite, and emits `todo-updated`
+to the other surface. Notion refresh preserves positions of surviving tasks and appends new tasks;
+local ordering never writes to the source calendar. Concurrent membership changes reject a stale
+reorder atomically, leaving the saved list intact and showing an error for retry after refresh.
+
 Daily Planner has one selected date shared by tasks and habits. Calendar renders a complete Sunday-first month; Todo
 creates, edits, completes, reopens, and deletes that day's items. Quick add accepts a title and an
 expandable description. Manual-task editing preserves date and completion while changing title
@@ -310,6 +325,20 @@ configuration save. Failed reads preserve saved tasks and expose the synchroniza
 them. Notion page IDs preserve local completion across refreshes; successful reconciliation updates
 titles and removes entries no longer present for the day. Local completion and deletion never
 mutate Notion. Clearing the view link disconnects the calendar.
+
+Codex Resets uses a separate enable switch next to Notion in Settings. The fixed public endpoint
+`https://codex-resets.com/api/v1/resets` requires no login or API key. Rust queries the selected
+local day's UTC bounds, follows cursor pagination, and maps announcements to local date/time.
+Regular resets and banked credits have distinct titles; details retain the announcement and source
+URL. These are public announcements, not personal quota schedules; forecasts are not imported.
+
+Successful dated reads are cached for five minutes (up to 32 dates); explicit refresh bypasses the
+cache. Disabling the source clears the cache and removes its projection as dates are read, without
+removing manual or Notion tasks. Reads use bounded HTTP operations and incomplete/failed responses
+retain the previous source projection with a sync error. Source IDs preserve local completion,
+ordering, deletion and opt-in carry-forward across refreshes, using the same reconciliation and
+configuration lock as Notion. Completion and deletion only affect Vesper. The enable preference is
+stored through the same typed build-specific configuration backend as the Notion view link.
 
 ## UGOS Pro
 

@@ -19,6 +19,7 @@ it.each<"ready" | "failed">(["ready", "failed"])(
 			ntfy: { status: "missing" },
 			ntfyDev: false,
 			notionCalendar: { status: "missing" },
+			codexResets: { status: "missing" },
 			appLock: { status: "missing" },
 			appLockDev: false,
 			spotify: { status: "missing" },
@@ -50,3 +51,39 @@ it.each<"ready" | "failed">(["ready", "failed"])(
 		expect(session.error).toBeNull();
 	},
 );
+
+it.each([true, false])(
+	"saves Codex Resets enabled=%s through Rust and reloads settings",
+	async (enabled) => {
+		invoke.mockReset();
+		invoke.mockResolvedValueOnce({ status: "ready", data: "codex-resets" });
+		invoke.mockResolvedValueOnce({ status: "failed", message: "Read unavailable" });
+		const session = createSettingsSession({
+			resetChannel: vi.fn(),
+			initializeConsumers: vi.fn(),
+			refreshDashboard: vi.fn(),
+		});
+		expect(await session.saveCodexResets({ enabled })).toEqual({
+			status: "ready",
+			data: "codex-resets",
+		});
+		expect(invoke).toHaveBeenNthCalledWith(1, "save_codex_resets", { configuration: { enabled } });
+		expect(invoke).toHaveBeenNthCalledWith(2, "read_configuration");
+		expect(session.error).toBe("Read unavailable");
+	},
+);
+
+it("returns a Codex Resets save failure without reloading configuration", async () => {
+	invoke.mockReset();
+	invoke.mockResolvedValueOnce({ status: "failed", message: "Settings unavailable" });
+	const session = createSettingsSession({
+		resetChannel: vi.fn(),
+		initializeConsumers: vi.fn(),
+		refreshDashboard: vi.fn(),
+	});
+	expect(await session.saveCodexResets({ enabled: true })).toEqual({
+		status: "failed",
+		message: "Settings unavailable",
+	});
+	expect(invoke).toHaveBeenCalledTimes(1);
+});

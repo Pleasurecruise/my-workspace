@@ -6,6 +6,7 @@
 	export type BadgeVariant = "default" | "secondary" | "success" | "warning" | "destructive" | "outline";
 
 	export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
+		ref?: HTMLSpanElement | null;
 		variant?: BadgeVariant;
 		children?: Snippet;
 	}
@@ -21,9 +22,9 @@
 		outline: "border border-border text-foreground",
 	};
 
-	let { variant = "default", class: className = "", children, ...rest }: BadgeProps = $props();
+	let { ref = $bindable(null), variant = "default", class: className = "", children, ...rest }: BadgeProps = $props();
 </script>
 
-<span class={cn(base, variants[variant], className)} {...rest}>
+<span bind:this={ref} data-slot="badge" class={cn(base, variants[variant], className)} {...rest}>
 	{@render children?.()}
 </span>

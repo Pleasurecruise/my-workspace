@@ -201,6 +201,43 @@ export function createDashboardSession(
 		finishTodo(version, date, response);
 	}
 
+	async function setTodoRollover(id: string, rollover: boolean) {
+		if (todos.loading || todoWriting) return;
+		todoWriting = true;
+		todoWriteError = null;
+		const version = ++todoRequest;
+		const date = selectedDate;
+		todos.loading = true;
+		todos.error = null;
+		const response = await invoke<CommandResponse<TodoList>>("set_todo_rollover", {
+			date,
+			id,
+			rollover,
+		}).catch((): CommandResponse<TodoList> => ({
+			status: "failed",
+			message: "Could not save the carry-forward preference. Try again.",
+		}));
+		finishTodo(version, date, response);
+	}
+
+	async function reorderTodos(ids: string[]) {
+		if (todos.loading || todoWriting) return false;
+		todoWriting = true;
+		todoWriteError = null;
+		const version = ++todoRequest;
+		const date = selectedDate;
+		todos.loading = true;
+		todos.error = null;
+		const response = await invoke<CommandResponse<TodoList>>("reorder_todos", {
+			date,
+			ids,
+		}).catch((): CommandResponse<TodoList> => ({
+			status: "failed",
+			message: "Could not save the Todo order. Try again.",
+		}));
+		return finishTodo(version, date, response);
+	}
+
 	async function deleteTodo(id: string) {
 		if (todos.loading || todoWriting) return;
 		todoWriting = true;
@@ -338,6 +375,8 @@ export function createDashboardSession(
 		addTodo,
 		editTodo,
 		toggleTodo,
+		setTodoRollover,
 		deleteTodo,
+		reorderTodos,
 	};
 }

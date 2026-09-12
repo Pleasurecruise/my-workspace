@@ -26,6 +26,7 @@ beforeEach(() => {
 	});
 });
 afterEach(() => {
+	vi.useRealTimers();
 	cleanup?.();
 	cleanup = undefined;
 });
@@ -135,7 +136,16 @@ it("retains an explicit Notion refresh requested during an edit", async () => {
 	const before: TodoList = {
 		date: "2026-09-10",
 		syncError: null,
-		items: [{ id: "read", text: "Read", description: null, completed: true, details: null }],
+		items: [
+			{
+				id: "read",
+				text: "Read",
+				description: null,
+				completed: true,
+				rollover: false,
+				details: null,
+			},
+		],
 	};
 	const after: TodoList = {
 		...before,
@@ -146,6 +156,7 @@ it("retains an explicit Notion refresh requested during an edit", async () => {
 				text: "Read more",
 				description: "Chapter two",
 				completed: true,
+				rollover: false,
 				details: null,
 			},
 		],
@@ -262,6 +273,8 @@ it("keeps an explicitly selected history date when the local day changes", async
 });
 
 it("reads the local date on refresh and defers rollover tasks until a pending write finishes", async () => {
+	vi.useFakeTimers({ toFake: ["Date"] });
+	vi.setSystemTime(new Date("2026-09-11T12:00:00Z"));
 	const session = createDashboardSession(() => false, "island");
 	cleanup = mounts[0]!();
 	const initial = { date: session.todayDate, items: [], syncError: null };
@@ -284,4 +297,95 @@ it("reads the local date on refresh and defers rollover tasks until a pending wr
 	expect(session.todayDate).toBe("2026-09-13");
 	expect(session.selectedDate).toBe("2026-09-13");
 	expect(session.todos.data?.date).toBe("2026-09-13");
+});
+
+it("saves Todo order, retains settled tasks on failure, and ignores a save after changing dates", async () => {
+	const session = createDashboardSession(() => false, "island");
+	const data: TodoList = {
+		date: "2026-09-12",
+		syncError: null,
+		items: ["First", "Second"].map((text) => ({
+			id: text,
+			text,
+			completed: false,
+			rollover: false,
+			description: null,
+			details: null,
+		})),
+	};
+	session.selectDate(data.date);
+	invoke.mockResolvedValueOnce({ status: "ready", data });
+	await session.loadTodos();
+	const reordered = { ...data, items: [...data.items].reverse() };
+	invoke.mockResolvedValueOnce({ status: "ready", data: reordered });
+	await session.reorderTodos(["Second", "First"]);
+	expect(invoke).toHaveBeenLastCalledWith("reorder_todos", {
+		date: data.date,
+		ids: ["Second", "First"],
+	});
+	expect(session.todos.data).toEqual(reordered);
+	invoke.mockResolvedValueOnce({ status: "failed", message: "List changed" });
+	await session.reorderTodos(["First", "Second"]);
+	expect(session.todos.data).toEqual(reordered);
+	expect(session.todos.error).toBe("List changed");
+	const pending = deferred<CommandResponse<TodoList>>();
+	invoke.mockReturnValueOnce(pending.promise);
+	const write = session.reorderTodos(["First", "Second"]);
+	session.selectDate("2026-09-13");
+	invoke.mockResolvedValueOnce({
+		status: "ready",
+		data: { ...data, date: "2026-09-13", items: [] },
+	});
+	await session.loadTodos();
+	pending.resolve({ status: "ready", data });
+	await write;
+	await vi.waitFor(() => expect(session.todos.data?.date).toBe("2026-09-13"));
+	expect(session.todos.data?.items).toEqual([]);
+});
+
+it("persists carry-forward preference and retains its saved value after failure", async () => {
+	const session = createDashboardSession(() => false, "island");
+	const data: TodoList = {
+		date: "2026-09-12",
+		syncError: null,
+		items: [
+			{
+				id: "read",
+				text: "Read",
+				description: null,
+				completed: false,
+				rollover: false,
+				details: null,
+			},
+		],
+	};
+	session.selectDate(data.date);
+	invoke.mockResolvedValueOnce({ status: "ready", data });
+	await session.loadTodos();
+	const saved = { ...data, items: data.items.map((item) => ({ ...item, rollover: true })) };
+	invoke.mockResolvedValueOnce({ status: "ready", data: saved });
+	await session.setTodoRollover("read", true);
+	expect(invoke).toHaveBeenLastCalledWith("set_todo_rollover", {
+		date: data.date,
+		id: "read",
+		rollover: true,
+	});
+	expect(session.todos.data?.items[0]?.rollover).toBe(true);
+	invoke.mockResolvedValueOnce({ status: "failed", message: "Could not save" });
+	await session.setTodoRollover("read", false);
+	expect(session.todos.data?.items[0]?.rollover).toBe(true);
+	expect(session.todos.error).toBe("Could not save");
+});
+
+it("releases carry-forward and reorder controls after a rejected transport call", async () => {
+	const session = createDashboardSession(() => false, "island");
+	session.selectDate("2026-09-12");
+	invoke.mockRejectedValueOnce(new Error("Bridge unavailable"));
+	await session.setTodoRollover("read", true);
+	expect(session.todos.loading).toBe(false);
+	expect(session.todos.error).toContain("carry-forward");
+	invoke.mockRejectedValueOnce(new Error("Bridge unavailable"));
+	expect(await session.reorderTodos(["read"])).toBe(false);
+	expect(session.todos.loading).toBe(false);
+	expect(session.todos.error).toContain("Todo order");
 });

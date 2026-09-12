@@ -1,12 +1,35 @@
 use crate::CommandResponse;
 use tauri::{Emitter, Manager};
 
+pub(crate) async fn roll_over(app: &tauri::AppHandle, date: &str) -> Result<(), todo_core::Error> {
+    let changed = app.state::<todo_core::Store>().roll_over(date).await?;
+    for date in changed {
+        if let Err(error) = app.emit("todo-updated", &date) {
+            tracing::warn!(%error, "failed to notify Todo rollover");
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) async fn read_todos(
     date: String,
     refresh: Option<bool>,
     app: tauri::AppHandle,
 ) -> CommandResponse<todo_core::List> {
+    let today = match todo_core::current_date() {
+        Ok(date) => date,
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
+    if let Err(error) = roll_over(&app, &today).await {
+        return CommandResponse::Failed {
+            message: error.to_string(),
+        };
+    }
     match app
         .state::<todo_core::Store>()
         .read_calendar(&date, refresh.unwrap_or(false))
@@ -58,6 +81,53 @@ pub(crate) async fn set_todo_completed(
         .set_completed(&date, &id, completed)
         .await
     {
+        Ok(data) => {
+            let _ = app.emit_filter("todo-updated", &data.date, |target| match target {
+                tauri::EventTarget::WebviewWindow { label } => label != window.label(),
+                _ => false,
+            });
+            CommandResponse::Ready { data }
+        }
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn set_todo_rollover(
+    date: String,
+    id: String,
+    rollover: bool,
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+) -> CommandResponse<todo_core::List> {
+    match app
+        .state::<todo_core::Store>()
+        .set_rollover(&date, &id, rollover)
+        .await
+    {
+        Ok(data) => {
+            let _ = app.emit_filter("todo-updated", &data.date, |target| match target {
+                tauri::EventTarget::WebviewWindow { label } => label != window.label(),
+                _ => false,
+            });
+            CommandResponse::Ready { data }
+        }
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn reorder_todos(
+    date: String,
+    ids: Vec<String>,
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+) -> CommandResponse<todo_core::List> {
+    match app.state::<todo_core::Store>().reorder(&date, ids).await {
         Ok(data) => {
             let _ = app.emit_filter("todo-updated", &data.date, |target| match target {
                 tauri::EventTarget::WebviewWindow { label } => label != window.label(),

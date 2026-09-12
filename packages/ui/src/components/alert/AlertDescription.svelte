@@ -4,11 +4,12 @@
 	import { cn } from "../../lib/classes";
 
 	export interface AlertDescriptionProps extends HTMLAttributes<HTMLParagraphElement> {
+		ref?: HTMLParagraphElement | null;
 		children?: Snippet;
 	}
-	let { class: className = "", children, ...rest }: AlertDescriptionProps = $props();
+	let { ref = $bindable(null), class: className = "", children, ...rest }: AlertDescriptionProps = $props();
 </script>
 
-<p data-slot="alert-description" class={cn("text-sm opacity-80", className)} {...rest}>
+<p bind:this={ref} data-slot="alert-description" class={cn("text-sm opacity-80", className)} {...rest}>
 	{@render children?.()}
 </p>

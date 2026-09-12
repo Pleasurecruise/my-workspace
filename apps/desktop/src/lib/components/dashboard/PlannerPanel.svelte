@@ -6,7 +6,7 @@
 	import Todo from "./Todo.svelte";
 	import HabitsPanel from "./HabitsPanel.svelte";
 	let { session, habits, embedded = false, onchange = null }: {
-		session: Pick<ReturnType<typeof createDashboardSession>, "todayDate" | "selectedDate" | "selectDate" | "todos" | "loadTodos" | "addTodo" | "editTodo" | "toggleTodo" | "deleteTodo">;
+		session: Pick<ReturnType<typeof createDashboardSession>, "todayDate" | "selectedDate" | "selectDate" | "todos" | "loadTodos" | "addTodo" | "editTodo" | "toggleTodo" | "deleteTodo" | "reorderTodos" | "setTodoRollover">;
 		habits: Habit[];
 		embedded?: boolean;
 		onchange?: ((habits: Habit[]) => Promise<boolean>) | null;
@@ -21,7 +21,7 @@
 
 <section class="planner" class:compact={embedded} aria-label="Daily Planner">
 	<div class="planner-calendar"><CalendarPanel {todayDate} {selectedDate} onselect={session.selectDate} /></div>
-	<div class="planner-todos"><Todo {embedded} todos={session.todos.data?.date === selectedDate ? session.todos.data : null} error={session.todos.error} loading={session.todos.loading} {selectedDate} onadd={session.addTodo} onedit={session.editTodo} ontoggle={session.toggleTodo} ondelete={session.deleteTodo} /></div>
+	<div class="planner-todos"><Todo {embedded} todos={session.todos.data?.date === selectedDate ? session.todos.data : null} error={session.todos.error} loading={session.todos.loading} {selectedDate} onadd={session.addTodo} onedit={session.editTodo} ontoggle={session.toggleTodo} ondelete={session.deleteTodo} onreorder={session.reorderTodos} onrollover={session.setTodoRollover} /></div>
 	<HabitsPanel {selectedDate} habits={habits} onchange={onchange} />
 </section>
 

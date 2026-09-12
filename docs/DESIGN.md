@@ -30,6 +30,31 @@ views and desktop-specific interaction.
 Do not move a component into `packages/ui` solely to shorten an import. Promote it only when its API
 is stable and it has more than one plausible application consumer.
 
+All shared primitives are implemented and maintained in this repository. Follow
+[shadcn-svelte](https://shadcn-svelte.com/docs) component conventions while owning the interaction
+implementation as well as the styling; do not mix in packaged headless/component runtimes for
+individual controls. The existing class-merging tools are styling helpers, not component providers.
+The shared contracts are:
+Svelte 5 snippets, bindable element `ref`, forwarded native attributes, `cn` class overrides,
+component-specific `data-slot` names, visible keyboard focus, and disabled/invalid states.
+Vesper maps the visual roles to its existing semantic tokens and retains its compact sizing.
+Button supports standard `default`, `secondary`, `outline`, `ghost`, `destructive`, and `link`
+variants and default/small/large/icon sizes; `md` remains a compatibility alias. Form controls
+expose `aria-invalid`; the existing `error` prop also sets that accessibility state. Success and
+warning badges/alerts remain application extensions.
+
+Select remains a self-owned native-button/listbox implementation with an options-array adapter.
+It supports keyboard navigation, typeahead, visible selection, Escape/Tab dismissal, outside-click
+closing, and disabled/empty option lists. Its inline popup inherits the containing surface's theme;
+compact mode keeps the existing bounded menu height. No external headless component library is required.
+
+`SortableList` is a Vesper extension, not an upstream shadcn-svelte component. It renders keyed list
+items through a snippet and exposes `items`, `itemLabel`, `label`, `disabled`, and async `onreorder`.
+A dedicated handle supports mouse/touch dragging and edge scrolling after a movement threshold;
+Up/Down and Home/End move the focused item, while Escape cancels a drag. Focus and live position
+announcements support keyboard users. Pending saves disable handles; the callback returns whether the save succeeded, so only successful
+saves announce a position. Failures retain the supplied order, and rejected callbacks expose retryable feedback. Consumers own durable order and errors.
+
 ## Page layout and typography
 
 The application shell owns one centered frame in `components/layout/page.css` for every page.
@@ -85,7 +110,17 @@ Today returns to the current date from the header. Todo completion uses checkbox
 view with status, date, description, and available calendar metadata. Back restores the list without
 resizing the card. Quick add offers an expandable description, and manual-task details provide an
 editor with Save and Cancel. Failed saves preserve the draft; duplicate submissions are disabled.
-Imported items direct content changes to the source calendar.
+Imported calendar details remain read-only. Todo uses the shared SortableList;
+manual and imported tasks can be reordered together within the selected date. Rust persists order,
+and calendar refresh retains surviving tasks' positions while appending new tasks.
+A small checkbox with muted explanatory text at the bottom of Todo details opts into daily
+rollover. It stays below the scrollable details, independently of the list's completion checkbox. It defaults off; its tooltip explains that unfinished tasks
+continue moving forward until completed or unchecked. The shared self-owned `Checkbox` supports
+native checked/indeterminate states, bindable ref, compact size, invalid/disabled/focus treatment,
+and controlled `onCheckedChange` callbacks. Failed preference saves display the last saved check.
+Rust moves overdue opted-in tasks to the actual local day after midnight or on reopening; browsing
+a future date never moves them early. Existing destination tasks stay first. Imported follow-ups
+retain their original read-only calendar metadata; their local rollover never edits the calendar.
 
 Habits show the selected date explicitly beside their ongoing streak, total days through that date,
 and the 28-day history ending on it. Historical dates support check-in and undo. Future dates show

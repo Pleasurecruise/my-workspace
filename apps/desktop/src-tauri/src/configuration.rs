@@ -16,6 +16,7 @@ pub(crate) struct ConfigurationStatus {
     api: ApiConfiguration,
     ntfy: StoredConfiguration<vesper_credentials::NtfyConfig>,
     ntfy_dev: bool,
+    codex_resets: StoredConfiguration<vesper_credentials::CodexResets>,
     notion_calendar: StoredConfiguration<vesper_credentials::NotionCalendar>,
     app_lock: StoredConfiguration<String>,
     app_lock_dev: bool,
@@ -105,6 +106,17 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
             };
         }
     };
+    let codex_resets = match vesper_credentials::codex_resets() {
+        Ok(vesper_credentials::Stored::Ready(configuration)) => {
+            StoredConfiguration::Ready(configuration)
+        }
+        Ok(vesper_credentials::Stored::Missing) => StoredConfiguration::Missing,
+        Err(error) => {
+            return CommandResponse::Failed {
+                message: error.to_string(),
+            };
+        }
+    };
     let (ntfy, ntfy_dev) = match vesper_credentials::ntfy() {
         Ok(vesper_credentials::Stored::Ready(configuration)) => {
             let development = configuration.development;
@@ -171,6 +183,7 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
             ntfy,
             ntfy_dev,
             notion_calendar,
+            codex_resets,
             app_lock,
             app_lock_dev,
             spotify,
@@ -460,6 +473,25 @@ pub(crate) async fn save_notion_calendar(
     {
         Ok(()) => CommandResponse::Ready {
             data: "notion-calendar".to_owned(),
+        },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn save_codex_resets(
+    configuration: vesper_credentials::CodexResets,
+    app: tauri::AppHandle,
+) -> CommandResponse<String> {
+    match app
+        .state::<todo_core::Store>()
+        .configure_codex(configuration)
+        .await
+    {
+        Ok(()) => CommandResponse::Ready {
+            data: "codex-resets".to_owned(),
         },
         Err(error) => CommandResponse::Failed {
             message: error.to_string(),

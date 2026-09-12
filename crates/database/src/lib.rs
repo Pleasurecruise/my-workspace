@@ -62,7 +62,25 @@ pub fn open(path: &Path) -> Result<SqliteConnection, Error> {
             Ok(())
         })?;
     }
+    if !todo_has_rollover(&mut connection)? {
+        connection.immediate_transaction::<_, diesel::result::Error, _>(|connection| {
+            if !todo_has_rollover(connection)? {
+                connection.batch_execute("ALTER TABLE todo_items ADD COLUMN rollover BOOLEAN NOT NULL DEFAULT 0 CHECK (rollover IN (0, 1))")?;
+            }
+            Ok(())
+        })?;
+    }
     Ok(connection)
+}
+
+fn todo_has_rollover(connection: &mut SqliteConnection) -> QueryResult<bool> {
+    #[derive(QueryableByName)]
+    struct Column {
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        name: String,
+    }
+    let columns = diesel::sql_query("PRAGMA table_info(todo_items)").load::<Column>(connection)?;
+    Ok(columns.iter().any(|column| column.name == "rollover"))
 }
 
 fn ledger_has_description(connection: &mut SqliteConnection) -> QueryResult<bool> {
@@ -136,5 +154,39 @@ mod tests {
                 });
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod rollover_migration_tests {
+    use super::*;
+
+    #[test]
+    fn migrates_existing_tasks_without_enabling_rollover() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(FILE_NAME);
+        let mut connection = SqliteConnection::establish(path.to_str().unwrap()).unwrap();
+        let old_schema = include_str!("schema.sql").replace(
+            "    rollover BOOLEAN NOT NULL DEFAULT 0 CHECK (rollover IN (0, 1)),\n",
+            "",
+        );
+        connection.batch_execute(&old_schema).unwrap();
+        connection.batch_execute("INSERT INTO todo_items (date,id,position,text,completed) VALUES ('2026-09-12','old',0,'Existing',0)").unwrap();
+        drop(connection);
+        #[derive(QueryableByName)]
+        struct Record {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            text: String,
+            #[diesel(sql_type = diesel::sql_types::Bool)]
+            rollover: bool,
+        }
+        for _ in 0..2 {
+            let mut connection = open(&path).unwrap();
+            let record = diesel::sql_query("SELECT text, rollover FROM todo_items WHERE id='old'")
+                .get_result::<Record>(&mut connection)
+                .unwrap();
+            assert_eq!(record.text, "Existing");
+            assert!(!record.rollover);
+        }
     }
 }

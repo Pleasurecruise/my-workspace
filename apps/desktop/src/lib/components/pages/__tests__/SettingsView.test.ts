@@ -4,6 +4,7 @@ import { fromStore, writable } from "svelte/store";
 import type {
 	ApiConfiguration,
 	CommandResponse,
+	CodexResets,
 	ConfigurationStatus,
 	GameConnections,
 	NtfyConfig,
@@ -35,6 +36,7 @@ const initial: ConfigurationStatus = {
 	ntfy: { status: "ready", data: { token: "ntfy-token", development: false } },
 	ntfyDev: false,
 	notionCalendar: { status: "missing" },
+	codexResets: { status: "missing" },
 	appLock: { status: "ready", data: "lock-password" },
 	appLockDev: false,
 	spotify: { status: "missing" },
@@ -47,9 +49,9 @@ afterEach(async () => {
 	for (const view of views.splice(0)) await unmount(view);
 });
 
-async function setup() {
+async function setup(initialConfiguration: ConfigurationStatus = initial) {
 	const target = document.createElement("div");
-	const configuration = writable<ConfigurationStatus | null>(structuredClone(initial));
+	const configuration = writable<ConfigurationStatus | null>(structuredClone(initialConfiguration));
 	const snapshot = fromStore(configuration);
 	const connectSpotify = vi
 		.fn<(clientId: string) => Promise<CommandResponse<string>>>()
@@ -61,6 +63,7 @@ async function setup() {
 					| ApiConfiguration
 					| NtfyConfig
 					| NotionCalendar
+					| CodexResets
 					| R2Configuration
 					| UgosConfiguration
 					| string,
@@ -80,6 +83,7 @@ async function setup() {
 				onsaver2: save,
 				onsaveapi: save,
 				onsavenotion: save,
+				onsavecodexresets: save,
 				onsaventfy: save,
 				onsaveapplock: save,
 				onremoveapplock: vi.fn().mockResolvedValue({ status: "ready", data: "Removed" }),
@@ -265,4 +269,65 @@ it("tracks the submitted Notion link while preserving edits made during saving",
 	await submit("notion-calendar-url");
 	expect(save).toHaveBeenLastCalledWith({ viewUrl: "" });
 	expect(button("notion-calendar-url").disabled).toBe(true);
+});
+
+it("keeps Codex Resets failures retryable and saves enable and disable separately", async () => {
+	const { field, button, submit, save, target } = await setup();
+	const checkbox = field("codex-resets-enabled");
+	expect(checkbox.checked).toBe(false);
+	expect(button(checkbox.id).disabled).toBe(true);
+	checkbox.checked = !checkbox.checked;
+	checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+	await tick();
+	save.mockResolvedValueOnce({ status: "failed", message: "Settings unavailable" });
+	await submit(checkbox.id);
+	expect(save).toHaveBeenLastCalledWith({ enabled: true });
+	expect(target.textContent).toContain("Settings unavailable");
+	expect(button(checkbox.id).disabled).toBe(false);
+	await submit(checkbox.id);
+	expect(button(checkbox.id).disabled).toBe(true);
+	expect(target.textContent).not.toContain("Settings unavailable");
+	checkbox.checked = !checkbox.checked;
+	checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+	await tick();
+	await submit(checkbox.id);
+	expect(save).toHaveBeenLastCalledWith({ enabled: false });
+	expect(button(checkbox.id).disabled).toBe(true);
+});
+
+it("preserves a Codex Resets draft changed during saving and configuration refresh", async () => {
+	const { field, button, submit, save, configuration } = await setup();
+	const checkbox = field("codex-resets-enabled");
+	let finish: (response: CommandResponse<string>) => void = () => {
+		throw new Error("Save not started");
+	};
+	save.mockReturnValueOnce(
+		new Promise((resolve) => {
+			finish = resolve;
+		}),
+	);
+	checkbox.checked = !checkbox.checked;
+	checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+	await tick();
+	await submit(checkbox.id);
+	expect(button(checkbox.id).disabled).toBe(true);
+	checkbox.checked = !checkbox.checked;
+	checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+	await tick();
+	configuration.set({ ...initial, codexResets: { status: "ready", data: { enabled: true } } });
+	finish({ status: "ready", data: "codex-resets" });
+	await tick();
+	expect(checkbox.checked).toBe(false);
+	await vi.waitFor(() => expect(button(checkbox.id).disabled).toBe(false));
+	await submit(checkbox.id);
+	expect(save).toHaveBeenLastCalledWith({ enabled: false });
+});
+
+it("prefills an enabled Codex Resets subscription without marking it dirty", async () => {
+	const { field, button } = await setup({
+		...initial,
+		codexResets: { status: "ready", data: { enabled: true } },
+	});
+	expect(field("codex-resets-enabled").checked).toBe(true);
+	expect(button("codex-resets-enabled").disabled).toBe(true);
 });

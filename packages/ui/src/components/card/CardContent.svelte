@@ -4,11 +4,12 @@
 	import { cn } from "../../lib/classes";
 
 	export interface CardContentProps extends HTMLAttributes<HTMLDivElement> {
+		ref?: HTMLDivElement | null;
 		children?: Snippet;
 	}
-	let { class: className = "", children, ...rest }: CardContentProps = $props();
+	let { ref = $bindable(null), class: className = "", children, ...rest }: CardContentProps = $props();
 </script>
 
-<div data-slot="content" class={cn("p-6 pt-0", className)} {...rest}>
+<div bind:this={ref} data-slot="card-content" class={cn("p-6 pt-0", className)} {...rest}>
 	{@render children?.()}
 </div>

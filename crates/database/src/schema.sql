@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS todo_items (
     position INTEGER NOT NULL CHECK (position >= 0),
     text TEXT NOT NULL CHECK (length(text) BETWEEN 1 AND 120),
     completed BOOLEAN NOT NULL CHECK (completed IN (0, 1)),
+    rollover BOOLEAN NOT NULL DEFAULT 0 CHECK (rollover IN (0, 1)),
     calendar TEXT,
     start_date TEXT,
     start_time TEXT,

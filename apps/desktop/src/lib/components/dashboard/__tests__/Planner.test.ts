@@ -17,7 +17,14 @@ it("links calendar, tasks and check-ins while a previous task read is still pend
 	const next: TodoList = {
 		date: "2024-02-29",
 		items: [
-			{ id: "walk", text: "Leap day walk", completed: false, description: null, details: null },
+			{
+				id: "walk",
+				text: "Leap day walk",
+				completed: false,
+				rollover: false,
+				description: null,
+				details: null,
+			},
 		],
 		syncError: null,
 	};

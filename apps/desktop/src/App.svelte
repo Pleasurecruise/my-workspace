@@ -362,6 +362,7 @@
 						onsaveapi={settings.saveApiConfiguration}
 						onsaventfy={settings.saveNtfy}
 						onsavenotion={settings.saveNotionCalendar}
+						onsavecodexresets={settings.saveCodexResets}
 						onsaveapplock={settings.saveAppLock}
 						onremoveapplock={settings.removeAppLock}
 						onconnectspotify={settings.connectSpotify}

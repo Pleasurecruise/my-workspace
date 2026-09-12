@@ -11,6 +11,7 @@ pub struct Item {
     pub text: String,
     pub description: Option<String>,
     pub completed: bool,
+    pub rollover: bool,
     pub details: Option<Details>,
 }
 
@@ -37,6 +38,8 @@ pub struct List {
 pub enum Error {
     #[error("calendar synchronization lock failed: {0}")]
     CalendarLock(std::io::Error),
+    #[error("Codex Resets: {0}")]
+    Codex(String),
     #[error("Notion calendar: {0}")]
     Notion(String),
     #[error(transparent)]
@@ -53,6 +56,8 @@ pub enum Error {
     TextTooLong,
     #[error("todo item no longer exists")]
     MissingItem,
+    #[error("Todo list changed; refresh and reorder again")]
+    InvalidOrder,
     #[error("edit imported tasks in their source calendar")]
     ImportedItem,
     #[error("todo description cannot exceed 4000 characters")]

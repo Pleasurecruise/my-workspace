@@ -1,4 +1,5 @@
 mod app_lock;
+mod codex;
 mod content;
 #[cfg(debug_assertions)]
 mod environment;
@@ -11,6 +12,7 @@ mod store;
 mod ugos;
 
 pub use app_lock::{AppLock, app_lock, delete_app_lock, save_app_lock};
+pub use codex::{CodexResets, codex_resets, save_codex_resets};
 pub use content::{ConsumerApi, R2Credentials, consumer_api, r2, save_consumer_api, save_r2};
 #[cfg(debug_assertions)]
 pub use environment::load_dev_environment;

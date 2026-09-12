@@ -1,6 +1,6 @@
 use crate::{Details, Error, Item, List, MAX_TEXT_LENGTH, parse_date, validate_date};
 use diesel::prelude::*;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 diesel::table! {
@@ -10,6 +10,7 @@ diesel::table! {
         position -> Integer,
         text -> Text,
         completed -> Bool,
+        rollover -> Bool,
         calendar -> Nullable<Text>,
         start_date -> Nullable<Text>,
         start_time -> Nullable<Text>,
@@ -33,6 +34,7 @@ struct ItemRow {
     position: i32,
     text: String,
     completed: bool,
+    rollover: bool,
     calendar: Option<String>,
     start_date: Option<String>,
     start_time: Option<String>,
@@ -48,10 +50,16 @@ struct CalendarSnapshot {
     items: Vec<Item>,
 }
 
+#[derive(Default)]
+struct CalendarCache {
+    notion: Option<CalendarSnapshot>,
+    codex: BTreeMap<String, (std::time::Instant, Vec<Item>)>,
+}
+
 pub struct Store {
     path: PathBuf,
     schedule_directory: PathBuf,
-    calendar_read: tokio::sync::Mutex<Option<CalendarSnapshot>>,
+    calendar_read: tokio::sync::Mutex<CalendarCache>,
 }
 
 impl Store {
@@ -59,7 +67,7 @@ impl Store {
         Self {
             schedule_directory: path.with_file_name("ics"),
             path,
-            calendar_read: tokio::sync::Mutex::new(None),
+            calendar_read: tokio::sync::Mutex::new(CalendarCache::default()),
         }
     }
 
@@ -185,7 +193,18 @@ impl Store {
         let mut cache = self.calendar_read.lock().await;
         let _file = self.calendar_lock().await?;
         vesper_credentials::save_notion_calendar(configuration)?;
-        *cache = None;
+        cache.notion = None;
+        Ok(())
+    }
+
+    pub async fn configure_codex(
+        &self,
+        configuration: vesper_credentials::CodexResets,
+    ) -> Result<(), Error> {
+        let mut cache = self.calendar_read.lock().await;
+        let _file = self.calendar_lock().await?;
+        vesper_credentials::save_codex_resets(configuration)?;
+        cache.codex.clear();
         Ok(())
     }
 
@@ -197,11 +216,12 @@ impl Store {
         validate_date(date)?;
         let mut cache = self.calendar_read.lock().await;
         let file_guard = self.calendar_lock().await?;
-        let result: Result<Vec<Item>, Error> = async {
+        let CalendarCache { notion, codex } = &mut *cache;
+        let notion_read = async {
             let configuration = vesper_credentials::notion_calendar()?;
             let remote = match &configuration {
                 vesper_credentials::Stored::Ready(configuration) => {
-                    read_notion(&mut cache, configuration, date, refresh).await?
+                    read_notion(notion, configuration, date, refresh).await?
                 }
                 vesper_credentials::Stored::Missing => Vec::new(),
             };
@@ -219,23 +239,70 @@ impl Store {
                     "configuration changed during the request; refresh again".into(),
                 ));
             }
-            Ok(remote)
-        }
-        .await;
-        let mut local = self.sync_schedule(date).await?;
-        let remote = match result {
-            Ok(remote) => remote,
-            Err(error) => {
-                local.sync_error = Some(error.to_string());
-                return Ok(local);
-            }
+            Ok::<_, Error>(remote)
         };
-        self.replace_notion(date, remote, file_guard).await
+        let codex_read = async {
+            let enabled = matches!(vesper_credentials::codex_resets()?,
+                vesper_credentials::Stored::Ready(configuration) if configuration.enabled);
+            if !enabled {
+                codex.clear();
+                return Ok(Vec::new());
+            }
+            let reusable = !refresh
+                && codex.get(date).is_some_and(|(loaded, _)| {
+                    loaded.elapsed() < std::time::Duration::from_secs(300)
+                });
+            if !reusable {
+                let items = crate::codex::read(date).await?;
+                if codex.len() >= 32 {
+                    codex.clear();
+                }
+                codex.insert(date.to_owned(), (std::time::Instant::now(), items));
+            }
+            Ok::<_, Error>(
+                codex
+                    .get(date)
+                    .map(|(_, items)| items.clone())
+                    .unwrap_or_default(),
+            )
+        };
+        let (result, codex) = tokio::join!(notion_read, codex_read);
+        self.reconcile_calendar(date, result, codex, file_guard)
+            .await
     }
 
-    async fn replace_notion(
+    async fn reconcile_calendar(
         &self,
         date: &str,
+        notion: Result<Vec<Item>, Error>,
+        codex: Result<Vec<Item>, Error>,
+        file_guard: std::fs::File,
+    ) -> Result<List, Error> {
+        let mut local = self.sync_schedule(date).await?;
+        let mut errors = Vec::new();
+        for (prefix, result) in [("notion:", notion), ("codex:", codex)] {
+            match result {
+                Ok(remote) => {
+                    local = self
+                        .replace_remote(
+                            date,
+                            prefix,
+                            remote,
+                            file_guard.try_clone().map_err(Error::CalendarLock)?,
+                        )
+                        .await?;
+                }
+                Err(error) => errors.push(error.to_string()),
+            }
+        }
+        local.sync_error = (!errors.is_empty()).then(|| errors.join("; "));
+        Ok(local)
+    }
+
+    async fn replace_remote(
+        &self,
+        date: &str,
+        prefix: &'static str,
         remote: Vec<Item>,
         file_guard: std::fs::File,
     ) -> Result<List, Error> {
@@ -253,20 +320,47 @@ impl Store {
                     .load::<String>(connection)?
                     .into_iter()
                     .collect();
+                let carried: BTreeSet<String> = todo_occurrences::table
+                    .filter(todo_occurrences::date.le(&date))
+                    .filter(todo_occurrences::key.like(format!("rollover:{prefix}%")))
+                    .select(todo_occurrences::key)
+                    .load::<String>(connection)?
+                    .into_iter()
+                    .collect();
+                let rollover: BTreeSet<String> = list
+                    .items
+                    .iter()
+                    .filter(|item| item.rollover)
+                    .map(|item| item.id.clone())
+                    .collect();
                 let completed: BTreeSet<String> = list
                     .items
                     .iter()
                     .filter(|item| item.completed)
                     .map(|item| item.id.clone())
                     .collect();
-                list.items.retain(|item| !item.id.starts_with("notion:"));
+                let positions: BTreeMap<String, usize> = list
+                    .items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| (item.id.clone(), index))
+                    .collect();
+                list.items.retain(|item| {
+                    !item.id.starts_with(prefix)
+                        || (item.completed && carried.contains(&format!("rollover:{}", item.id)))
+                });
                 for mut item in remote {
-                    if removed.contains(&item.id) {
+                    if removed.contains(&item.id)
+                        || carried.contains(&format!("rollover:{}", item.id))
+                    {
                         continue;
                     }
                     item.completed = completed.contains(&item.id);
+                    item.rollover = rollover.contains(&item.id);
                     list.items.push(item);
                 }
+                list.items
+                    .sort_by_key(|item| positions.get(&item.id).copied().unwrap_or(usize::MAX));
                 save_items(connection, &list)?;
                 Ok(list)
             })
@@ -309,6 +403,7 @@ impl Store {
                         text: occurrence.text,
                         description: occurrence.details.description,
                         completed: false,
+                        rollover: false,
                         details: Some(Details {
                             calendar: occurrence.details.calendar,
                             start_date: occurrence.details.start_date,
@@ -408,6 +503,7 @@ impl Store {
                 text,
                 description,
                 completed: false,
+                rollover: false,
                 details: None,
             });
             Ok(())
@@ -453,6 +549,121 @@ impl Store {
         .await
     }
 
+    pub async fn set_rollover(&self, date: &str, id: &str, rollover: bool) -> Result<List, Error> {
+        let id = id.to_owned();
+        self.mutate(date, move |items| {
+            find_item(items, &id)?.rollover = rollover;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Move opted-in unfinished tasks to the actual local day, never a browsed future date.
+    pub async fn roll_over(&self, today: &str) -> Result<Vec<String>, Error> {
+        validate_date(today)?;
+        let today = today.to_owned();
+        self.transaction(move |connection| {
+            let dates = todo_items::table
+                .filter(todo_items::date.lt(&today))
+                .filter(todo_items::rollover.eq(true))
+                .filter(todo_items::completed.eq(false))
+                .select(todo_items::date)
+                .distinct()
+                .order(todo_items::date.asc())
+                .load::<String>(connection)?;
+            if dates.is_empty() {
+                return Ok(Vec::new());
+            }
+            let mut lists = BTreeMap::new();
+            let mut pending = Vec::new();
+            for date in &dates {
+                let mut list = read_list(connection, date)?;
+                let mut retained = Vec::new();
+                for item in list.items {
+                    if item.rollover && !item.completed {
+                        pending.push((date.clone(), item));
+                    } else {
+                        retained.push(item);
+                    }
+                }
+                list.items = retained;
+                lists.insert(date.clone(), list);
+            }
+            lists.insert(today.clone(), read_list(connection, &today)?);
+            let mut carried = BTreeSet::new();
+            for (source_date, mut item) in pending {
+                if item.id.starts_with("notion:") || item.id.starts_with("codex:") {
+                    if !carried.insert(item.id.clone()) {
+                        continue;
+                    }
+                    // A multi-day event becomes a single local follow-up. Remove cached projections
+                    // in the same transaction, including future dates and offline calendar snapshots.
+                    let related = todo_items::table
+                        .filter(todo_items::id.eq(&item.id))
+                        .filter(todo_items::date.ge(&source_date))
+                        .select(todo_items::date)
+                        .distinct()
+                        .load::<String>(connection)?;
+                    for date in related {
+                        if !lists.contains_key(&date) {
+                            lists.insert(date.clone(), read_list(connection, &date)?);
+                        }
+                        let list = lists.get_mut(&date).ok_or(Error::InvalidRecord)?;
+                        list.items.retain(|entry| {
+                            if entry.id != item.id {
+                                return true;
+                            }
+                            item.completed |= entry.completed;
+                            entry.completed
+                        });
+                    }
+                    diesel::insert_into(todo_occurrences::table)
+                        .values((
+                            todo_occurrences::date.eq(&source_date),
+                            todo_occurrences::key.eq(format!("rollover:{}", item.id)),
+                        ))
+                        .on_conflict_do_nothing()
+                        .execute(connection)?;
+                    if item.completed {
+                        continue;
+                    }
+                    item.id = format!("rollover:{}", uuid::Uuid::new_v4());
+                }
+                let destination = lists.get_mut(&today).ok_or(Error::InvalidRecord)?;
+                if destination.items.iter().any(|entry| entry.id == item.id) {
+                    return Err(Error::InvalidRecord);
+                }
+                destination.items.push(item);
+            }
+            for list in lists.values() {
+                save_items(connection, list)?;
+            }
+            Ok(lists.into_keys().collect())
+        })
+        .await
+    }
+
+    pub async fn reorder(&self, date: &str, ids: Vec<String>) -> Result<List, Error> {
+        self.mutate(date, move |items| {
+            let positions: BTreeMap<&str, usize> = ids
+                .iter()
+                .enumerate()
+                .map(|(index, id)| (id.as_str(), index))
+                .collect();
+            if ids.len() != items.len()
+                || positions.len() != ids.len()
+                || items
+                    .iter()
+                    .any(|item| !positions.contains_key(item.id.as_str()))
+            {
+                return Err(Error::InvalidOrder);
+            }
+            items.sort_by_key(|item| positions[item.id.as_str()]);
+            Ok(())
+        })
+        .await
+    }
+
     pub async fn delete(&self, date: &str, id: &str) -> Result<List, Error> {
         validate_date(date)?;
         let date = date.to_owned();
@@ -464,7 +675,7 @@ impl Store {
             if list.items.len() == original_len {
                 return Err(Error::MissingItem);
             }
-            if id.starts_with("notion:") {
+            if id.starts_with("notion:") || id.starts_with("codex:") {
                 diesel::insert_into(todo_occurrences::table)
                     .values((
                         todo_occurrences::date.eq(&date),
@@ -556,6 +767,7 @@ fn read_list(connection: &mut SqliteConnection, date: &str) -> Result<List, Erro
                 text: row.text,
                 description: row.description,
                 completed: row.completed,
+                rollover: row.rollover,
                 details,
             })
         })
@@ -577,6 +789,7 @@ fn save_items(connection: &mut SqliteConnection, list: &List) -> Result<(), Erro
             position: i32::try_from(position).map_err(|_| Error::InvalidRecord)?,
             text: item.text.clone(),
             completed: item.completed,
+            rollover: item.rollover,
             calendar: item
                 .details
                 .as_ref()

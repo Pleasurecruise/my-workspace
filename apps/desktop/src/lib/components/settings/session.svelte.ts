@@ -3,6 +3,7 @@ import type {
 	Channel,
 	ApiConfiguration,
 	CommandResponse,
+	CodexResets,
 	ConfigurationStatus,
 	NtfyConfig,
 	NotionCalendar,
@@ -87,6 +88,14 @@ export function createSettingsSession(effects: {
 		return response;
 	}
 
+	async function saveCodexResets(configuration: CodexResets): Promise<CommandResponse<string>> {
+		const response = await invoke<CommandResponse<string>>("save_codex_resets", {
+			configuration,
+		});
+		if (response.status === "ready") await loadConfiguration();
+		return response;
+	}
+
 	async function saveNtfy(configuration: NtfyConfig): Promise<CommandResponse<string>> {
 		const response = await invoke<CommandResponse<string>>("save_ntfy_configuration", {
 			configuration,
@@ -127,6 +136,7 @@ export function createSettingsSession(effects: {
 		connectSpotify,
 		saveNtfy,
 		saveNotionCalendar,
+		saveCodexResets,
 		saveAppLock,
 		removeAppLock,
 	};

@@ -293,6 +293,7 @@ async fn reconciles_notion() {
         text: "Remote".into(),
         description: None,
         completed: false,
+        rollover: false,
         details: Some(Details {
             calendar: "Notion · Work".into(),
             start_date: date.into(),
@@ -303,8 +304,9 @@ async fn reconciles_notion() {
         }),
     };
     store
-        .replace_notion(
+        .replace_remote(
             date,
+            "notion:",
             vec![remote.clone()],
             store.calendar_lock().await.unwrap(),
         )
@@ -319,8 +321,9 @@ async fn reconciles_notion() {
     store.set_completed(date, &remote.id, true).await.unwrap();
     remote.text = "Renamed remotely".into();
     let refreshed = store
-        .replace_notion(
+        .replace_remote(
             date,
+            "notion:",
             vec![remote.clone()],
             store.calendar_lock().await.unwrap(),
         )
@@ -332,7 +335,12 @@ async fn reconciles_notion() {
     store.delete(date, &remote.id).await.unwrap();
     assert_eq!(
         store
-            .replace_notion(date, vec![remote], store.calendar_lock().await.unwrap())
+            .replace_remote(
+                date,
+                "notion:",
+                vec![remote],
+                store.calendar_lock().await.unwrap()
+            )
             .await
             .unwrap()
             .items
@@ -341,7 +349,12 @@ async fn reconciles_notion() {
     );
     assert_eq!(
         store
-            .replace_notion(date, vec![], store.calendar_lock().await.unwrap())
+            .replace_remote(
+                date,
+                "notion:",
+                vec![],
+                store.calendar_lock().await.unwrap()
+            )
             .await
             .unwrap()
             .items[0]
@@ -390,7 +403,8 @@ fn cancelled_calendar_commit_retains_lock() {
         let blocker = tokio::task::spawn_blocking(move || blocked.recv().unwrap());
         // The only blocking thread is occupied, so the commit remains queued.
         {
-            let mut commit = std::pin::pin!(store.replace_notion("2026-09-07", vec![], guard));
+            let mut commit =
+                std::pin::pin!(store.replace_remote("2026-09-07", "notion:", vec![], guard));
             tokio::select! {
                 biased;
                 _ = &mut commit => panic!("queued commit completed"),
@@ -464,6 +478,7 @@ async fn calendar_snapshot_serves_other_dates_without_provider_io() {
         text: "Conference".into(),
         description: None,
         completed: false,
+        rollover: false,
         details: Some(Details {
             calendar: "Work".into(),
             start_date: "2026-09-07".into(),
@@ -514,4 +529,474 @@ async fn calendar_snapshot_serves_other_dates_without_provider_io() {
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn persists_order_and_rejects_stale_or_invalid_lists() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join(vesper_database::FILE_NAME);
+    let store = Store::new(path.clone());
+    let date = "2026-09-12";
+    store.create(date, "First", None).await.unwrap();
+    let original = store.create(date, "Second", None).await.unwrap();
+    let ids: Vec<String> = original
+        .items
+        .iter()
+        .rev()
+        .map(|item| item.id.clone())
+        .collect();
+    let reordered = store.reorder(date, ids.clone()).await.unwrap();
+    assert_eq!(reordered.items[0].text, "Second");
+    assert_eq!(Store::new(path).list(date).await.unwrap(), reordered);
+    for invalid in [
+        vec![ids[0].clone()],
+        vec![ids[0].clone(), ids[0].clone()],
+        vec![ids[0].clone(), "missing".into()],
+    ] {
+        assert!(matches!(
+            store.reorder(date, invalid).await,
+            Err(Error::InvalidOrder)
+        ));
+        assert_eq!(store.list(date).await.unwrap(), reordered);
+    }
+    assert!(matches!(
+        store.reorder("2026-09-13", ids.clone()).await,
+        Err(Error::InvalidOrder)
+    ));
+    store
+        .create(date, "New in another window", None)
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.reorder(date, ids).await,
+        Err(Error::InvalidOrder)
+    ));
+    assert_eq!(store.list(date).await.unwrap().items.len(), 3);
+}
+
+#[tokio::test]
+async fn notion_refresh_preserves_reordered_positions_and_appends_new_tasks() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let date = "2026-09-12";
+    let manual = store
+        .create(date, "Manual", None)
+        .await
+        .unwrap()
+        .items
+        .remove(0);
+    let mut remote = manual.clone();
+    remote.id = "notion:first".into();
+    remote.text = "Remote".into();
+    store
+        .replace_remote(
+            date,
+            "notion:",
+            vec![remote.clone()],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    store
+        .reorder(date, vec![remote.id.clone(), manual.id.clone()])
+        .await
+        .unwrap();
+    remote.text = "Updated remotely".into();
+    let mut new = remote.clone();
+    new.id = "notion:new".into();
+    let refreshed = store
+        .replace_remote(
+            date,
+            "notion:",
+            vec![new.clone(), remote.clone()],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(refreshed.items, vec![remote, manual, new]);
+}
+
+#[tokio::test]
+async fn rolls_unfinished_opted_in_tasks_forward_until_completed_or_disabled() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let first = "2026-09-12";
+    let ids = store
+        .create(first, "Carry", Some("Keep notes"))
+        .await
+        .unwrap()
+        .items;
+    let id = ids[0].id.clone();
+    assert!(!ids[0].rollover);
+    store.create(first, "Leave here", None).await.unwrap();
+    let complete = store.create(first, "Done", None).await.unwrap().items[2]
+        .id
+        .clone();
+    store.set_rollover(first, &complete, true).await.unwrap();
+    store.set_completed(first, &complete, true).await.unwrap();
+    store.set_rollover(first, &id, true).await.unwrap();
+    store
+        .create("2026-09-15", "Existing today", None)
+        .await
+        .unwrap();
+    assert!(store.roll_over(first).await.unwrap().is_empty());
+    assert!(store.list("2026-09-16").await.unwrap().items.is_empty());
+    assert_eq!(
+        store.roll_over("2026-09-15").await.unwrap(),
+        vec![first, "2026-09-15"]
+    );
+    assert_eq!(store.list(first).await.unwrap().items.len(), 2);
+    let moved = store.get("2026-09-15", &id).await.unwrap();
+    assert!(moved.rollover);
+    assert_eq!(moved.description.as_deref(), Some("Keep notes"));
+    assert_eq!(
+        store.list("2026-09-15").await.unwrap().items[0].text,
+        "Existing today"
+    );
+    assert!(store.roll_over("2026-09-15").await.unwrap().is_empty());
+    store.roll_over("2026-09-16").await.unwrap();
+    store.set_rollover("2026-09-16", &id, false).await.unwrap();
+    assert!(store.roll_over("2026-09-17").await.unwrap().is_empty());
+    store.set_rollover("2026-09-16", &id, true).await.unwrap();
+    store.set_completed("2026-09-16", &id, true).await.unwrap();
+    assert!(store.roll_over("2026-09-17").await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn concurrent_rollovers_move_a_task_once_and_failed_commits_preserve_both_dates() {
+    use diesel::connection::SimpleConnection;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join(vesper_database::FILE_NAME);
+    let store = Store::new(path.clone());
+    let other = Store::new(path.clone());
+    let id = store
+        .create("2026-09-12", "Carry", None)
+        .await
+        .unwrap()
+        .items[0]
+        .id
+        .clone();
+    store.set_rollover("2026-09-12", &id, true).await.unwrap();
+    let mut connection = vesper_database::open(&path).unwrap();
+    connection.batch_execute("CREATE TRIGGER fail_rollover BEFORE INSERT ON todo_items WHEN NEW.date = '2026-09-13' BEGIN SELECT RAISE(FAIL, 'write failed'); END;").unwrap();
+    assert!(store.roll_over("2026-09-13").await.is_err());
+    assert_eq!(store.list("2026-09-12").await.unwrap().items.len(), 1);
+    assert!(store.list("2026-09-13").await.unwrap().items.is_empty());
+    connection
+        .batch_execute("DROP TRIGGER fail_rollover")
+        .unwrap();
+    let (first, second) =
+        tokio::join!(store.roll_over("2026-09-13"), other.roll_over("2026-09-13"));
+    assert_eq!(first.unwrap().len() + second.unwrap().len(), 2);
+    assert_eq!(
+        Store::new(path).list("2026-09-13").await.unwrap().items[0].id,
+        id
+    );
+}
+
+#[tokio::test]
+async fn consolidates_multiday_notion_rollovers_and_never_recreates_cached_projections() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let remote = Item {
+        id: "notion:multi".into(),
+        text: "Multi-day event".into(),
+        description: None,
+        completed: false,
+        rollover: false,
+        details: None,
+    };
+    for date in ["2026-09-12", "2026-09-13", "2026-09-17"] {
+        store
+            .replace_remote(
+                date,
+                "notion:",
+                vec![remote.clone()],
+                store.calendar_lock().await.unwrap(),
+            )
+            .await
+            .unwrap();
+    }
+    for date in ["2026-09-12", "2026-09-13"] {
+        store.set_rollover(date, &remote.id, true).await.unwrap();
+    }
+    let refreshed = store
+        .replace_remote(
+            "2026-09-12",
+            "notion:",
+            vec![remote.clone()],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(refreshed.items[0].rollover);
+    let changed = store.roll_over("2026-09-15").await.unwrap();
+    assert!(changed.contains(&"2026-09-17".into()));
+    let moved = store.list("2026-09-15").await.unwrap();
+    assert_eq!(moved.items.len(), 1);
+    assert!(moved.items[0].id.starts_with("rollover:"));
+    for date in ["2026-09-12", "2026-09-13", "2026-09-17"] {
+        assert!(store.list(date).await.unwrap().items.is_empty());
+        assert!(
+            store
+                .replace_remote(
+                    date,
+                    "notion:",
+                    vec![remote.clone()],
+                    store.calendar_lock().await.unwrap()
+                )
+                .await
+                .unwrap()
+                .items
+                .is_empty()
+        );
+    }
+    let refreshed = store
+        .replace_remote(
+            "2026-09-15",
+            "notion:",
+            vec![remote],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(refreshed.items, moved.items);
+}
+
+#[tokio::test]
+async fn rollover_preserves_completed_multiday_calendar_history() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let remote = Item {
+        id: "notion:completed-event".into(),
+        text: "Finished event".into(),
+        description: None,
+        completed: false,
+        rollover: false,
+        details: None,
+    };
+    for date in ["2026-09-12", "2026-09-13"] {
+        store
+            .replace_remote(
+                date,
+                "notion:",
+                vec![remote.clone()],
+                store.calendar_lock().await.unwrap(),
+            )
+            .await
+            .unwrap();
+    }
+    store
+        .set_rollover("2026-09-12", &remote.id, true)
+        .await
+        .unwrap();
+    store
+        .set_completed("2026-09-13", &remote.id, true)
+        .await
+        .unwrap();
+    store.roll_over("2026-09-14").await.unwrap();
+    assert!(store.list("2026-09-14").await.unwrap().items.is_empty());
+    assert!(store.list("2026-09-12").await.unwrap().items.is_empty());
+    assert!(store.get("2026-09-13", &remote.id).await.unwrap().completed);
+    let refreshed = store
+        .replace_remote(
+            "2026-09-13",
+            "notion:",
+            vec![remote],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(refreshed.items.len(), 1);
+    assert!(refreshed.items[0].completed);
+}
+
+#[tokio::test]
+async fn codex_refresh_preserves_other_sources_and_local_choices() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let date = "2026-09-12";
+    store.create(date, "Local task", None).await.unwrap();
+    let remote = Item {
+        id: "codex:reset-1".into(),
+        text: "Codex usage reset".into(),
+        description: Some("Original announcement".into()),
+        completed: false,
+        rollover: false,
+        details: Some(Details {
+            calendar: "Codex Resets".into(),
+            start_date: date.into(),
+            start_time: Some("09:09".into()),
+            end_date: None,
+            end_time: None,
+            location: None,
+        }),
+    };
+    store
+        .replace_remote(
+            date,
+            "codex:",
+            vec![remote.clone()],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    store.set_completed(date, &remote.id, true).await.unwrap();
+    let mut revised = remote.clone();
+    revised.description = Some("Updated announcement".into());
+    let list = store
+        .replace_remote(
+            date,
+            "codex:",
+            vec![revised],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list.items.len(), 2);
+    assert_eq!(list.items[0].text, "Local task");
+    assert!(list.items[1].completed);
+    assert_eq!(
+        list.items[1].description.as_deref(),
+        Some("Updated announcement")
+    );
+    assert!(matches!(
+        store.update(date, &remote.id, "Edited", None).await,
+        Err(Error::ImportedItem)
+    ));
+    store.delete(date, &remote.id).await.unwrap();
+    let list = store
+        .replace_remote(
+            date,
+            "codex:",
+            vec![remote],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list.items.len(), 1);
+    let notion = Item {
+        id: "notion:other".into(),
+        text: "Notion event".into(),
+        description: None,
+        completed: false,
+        rollover: false,
+        details: None,
+    };
+    store
+        .replace_remote(
+            date,
+            "notion:",
+            vec![notion],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    let list = store
+        .replace_remote(date, "codex:", vec![], store.calendar_lock().await.unwrap())
+        .await
+        .unwrap();
+    assert_eq!(list.items.len(), 2);
+    assert_eq!(list.items[1].id, "notion:other");
+}
+
+#[tokio::test]
+async fn codex_carry_forward_does_not_recreate_the_announcement() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let remote = Item {
+        id: "codex:reset".into(),
+        text: "Codex usage reset".into(),
+        description: None,
+        completed: false,
+        rollover: false,
+        details: None,
+    };
+    store
+        .replace_remote(
+            "2026-09-12",
+            "codex:",
+            vec![remote.clone()],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    store
+        .set_rollover("2026-09-12", &remote.id, true)
+        .await
+        .unwrap();
+    store.roll_over("2026-09-14").await.unwrap();
+    let source = store
+        .replace_remote(
+            "2026-09-12",
+            "codex:",
+            vec![remote],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(source.items.is_empty());
+    assert_eq!(store.list("2026-09-14").await.unwrap().items.len(), 1);
+}
+
+#[tokio::test]
+async fn calendar_failure_retains_its_source_while_another_refreshes() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let date = "2026-09-12";
+    let codex = Item {
+        id: "codex:reset".into(),
+        text: "Codex usage reset".into(),
+        description: None,
+        completed: false,
+        rollover: false,
+        details: None,
+    };
+    store
+        .replace_remote(
+            date,
+            "codex:",
+            vec![codex.clone()],
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    let notion = Item {
+        id: "notion:event".into(),
+        text: "Notion event".into(),
+        ..codex.clone()
+    };
+    let list = store
+        .reconcile_calendar(
+            date,
+            Ok(vec![notion.clone()]),
+            Err(Error::Codex("request returned HTTP 503".into())),
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list.items, vec![codex.clone(), notion.clone()]);
+    assert!(list.sync_error.unwrap().contains("503"));
+    let list = store
+        .reconcile_calendar(
+            date,
+            Err(Error::Notion("offline".into())),
+            Ok(vec![]),
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list.items, vec![notion]);
+    assert!(list.sync_error.unwrap().contains("offline"));
+    let list = store
+        .reconcile_calendar(
+            date,
+            Ok(vec![]),
+            Ok(vec![]),
+            store.calendar_lock().await.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(list.items.is_empty());
+    assert!(list.sync_error.is_none());
 }

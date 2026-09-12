@@ -1,5 +1,8 @@
 <script lang="ts">
-	let { value, options, label, disabled = false, size = "default", onchange }: {
+	import { cn } from "../lib/classes";
+	let { value, options, label, disabled = false, size = "default", onchange, ref = $bindable(null), class: className = "" }: {
+		ref?: HTMLButtonElement | null;
+		class?: string;
 		value: string;
 		options: Array<{ value: string; label: string }>;
 		label: string;
@@ -10,7 +13,6 @@
 	const id = $props.id();
 	let open = $state(false);
 	let focused = $state(0);
-	let trigger = $state<HTMLButtonElement | null>(null);
 	let list = $state<HTMLDivElement | null>(null);
 	$effect(() => {
 		if (disabled || options.length === 0) open = false;
@@ -20,9 +22,12 @@
 		const option = list?.children.item(focused);
 		if (open && option instanceof HTMLElement) option.scrollIntoView({ block: "nearest" });
 	});
+	let search = "";
+	let searchedAt = 0;
 	let selected = $derived(options.find((option) => option.value === value));
 	function toggle() {
 		if (disabled || options.length === 0) return;
+		search = "";
 		focused = Math.max(0, options.findIndex((option) => option.value === value));
 		open = !open;
 	}
@@ -31,15 +36,16 @@
 		if (disabled) return;
 		if (option) onchange(option.value);
 		open = false;
-		trigger?.focus();
+		search = "";
+		ref?.focus();
 	}
 </script>
 
-<svelte:window onpointerdown={(event) => { if (event.target instanceof Node && !trigger?.parentElement?.contains(event.target)) open = false; }} />
-<div class="select" class:compact={size === "compact"}>
-	<button bind:this={trigger} type="button" role="combobox" aria-label={label} aria-haspopup="listbox" aria-expanded={open} aria-controls={`${id}-list`} aria-activedescendant={open && options.length > 0 ? `${id}-${focused}` : ""} {disabled} onclick={toggle}
+<svelte:window onpointerdown={(event) => { if (event.target instanceof Node && !ref?.parentElement?.contains(event.target)) open = false; }} />
+<div data-slot="select" class={cn("select", className)} class:compact={size === "compact"}>
+	<button data-slot="select-trigger" bind:this={ref} type="button" role="combobox" aria-label={label} aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? `${id}-list` : undefined} aria-activedescendant={open && options.length > 0 ? `${id}-${focused}` : ""} disabled={disabled || options.length === 0} onclick={toggle}
 		onkeydown={(event) => {
-			if (event.key === "Escape" || event.key === "Tab") { open = false; return; }
+			if (event.key === "Escape" || event.key === "Tab") { open = false; search = ""; return; }
 			if (disabled || options.length === 0) return;
 			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 				event.preventDefault();
@@ -48,13 +54,29 @@
 			} else if (event.key === "Home" || event.key === "End") {
 				event.preventDefault(); open = true; focused = event.key === "Home" ? 0 : options.length - 1;
 			} else if (open && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); choose(focused); }
+			else if (event.key.length === 1 && event.key !== " " && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing) {
+				const now = Date.now();
+				const key = event.key.toLocaleLowerCase();
+				search = now - searchedAt > 700 ? key : search + key;
+				searchedAt = now;
+				const query = [...search].every((character) => character === search[0]) ? key : search;
+				const start = open ? focused : options.findIndex((option) => option.value === value);
+				for (let offset = query.length === 1 ? 1 : 0; offset <= options.length; offset += 1) {
+					const index = (start + offset + options.length) % options.length;
+					const option = options[index];
+					if (!option || !option.label.toLocaleLowerCase().startsWith(query)) continue;
+					event.preventDefault();
+					if (open) focused = index; else onchange(option.value);
+					break;
+				}
+			}
 		}}>
 		<span>{selected ? selected.label : label}</span><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
 	</button>
 	{#if open && !disabled}
-		<div bind:this={list} class="options" id={`${id}-list`} role="listbox" aria-label={label}>
+		<div bind:this={list} class="options" data-slot="select-content" id={`${id}-list`} role="listbox" aria-label={label}>
 			{#each options as option, index (option.value)}
-				<button type="button" id={`${id}-${index}`} role="option" aria-selected={option.value === value} tabindex="-1" class:focused={focused === index} onpointerdown={(event) => event.preventDefault()} onclick={() => choose(index)}>{option.label}<span aria-hidden="true">{option.value === value ? "✓" : ""}</span></button>
+				<button data-slot="select-item" type="button" id={`${id}-${index}`} role="option" aria-selected={option.value === value} tabindex="-1" class:focused={focused === index} onpointerdown={(event) => event.preventDefault()} onclick={() => choose(index)}>{option.label}<span aria-hidden="true">{option.value === value ? "✓" : ""}</span></button>
 			{/each}
 		</div>
 	{/if}

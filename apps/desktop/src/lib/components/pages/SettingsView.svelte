@@ -13,6 +13,7 @@
 		CardFooter,
 		CardHeader,
 		CardTitle,
+		Checkbox,
 		Input,
 		Label,
 	} from "@my-workspace/ui";
@@ -30,6 +31,7 @@
 	import type {
 		ApiConfiguration,
 		CommandResponse,
+		CodexResets,
 		ConfigurationStatus,
 		NtfyConfig,
 		NotionCalendar,
@@ -48,6 +50,7 @@
 		onsaveapi,
 		onsaventfy,
 		onsavenotion,
+		onsavecodexresets,
 		onsaveapplock,
 		onremoveapplock,
 		onconnectspotify,
@@ -59,6 +62,7 @@
 		onsaveugos: (input: UgosConfiguration) => Promise<CommandResponse<string>>;
 		onsaver2: (input: R2Configuration) => Promise<CommandResponse<string>>;
 		onsaveapi: (input: ApiConfiguration) => Promise<CommandResponse<string>>;
+		onsavecodexresets: (configuration: CodexResets) => Promise<CommandResponse<string>>;
 		onsavenotion: (configuration: NotionCalendar) => Promise<CommandResponse<string>>;
 		onsaventfy: (configuration: NtfyConfig) => Promise<CommandResponse<string>>;
 		onsaveapplock: (password: string) => Promise<CommandResponse<string>>;
@@ -84,6 +88,9 @@
 	let memosApiKey = $state("");
 	let momentApiKey = $state("");
 	let knowledgeApiKey = $state("");
+	let codexResetsEnabled = $state(false);
+	let codexResetsSaving = $state(false);
+	let codexResetsError = $state<string | null>(null);
 	let notionViewUrl = $state("");
 	let notionSaving = $state(false);
 	let notionError = $state<string | null>(null);
@@ -109,6 +116,7 @@
 		ntfy: { token: "", development: false },
 		appLock: "",
 		notion: "",
+		codexResets: false,
 	});
 	let initialized = false;
 	let formErrors = $state<Record<keyof typeof saving, string | null>>({
@@ -143,6 +151,7 @@
 	let telegramAuthorizationChecked = false;
 
 	const canSave = $derived({
+		codexResets: configuration !== null && !codexResetsSaving && codexResetsEnabled !== saved.codexResets,
 		notion:
 			configuration !== null &&
 			!notionSaving &&
@@ -221,6 +230,10 @@
 			if (initial.api.knowledge.status === "ready") {
 				knowledgeApiKey = initial.api.knowledge.data;
 				saved.api.knowledge = knowledgeApiKey;
+			}
+			if (initial.codexResets.status === "ready") {
+				codexResetsEnabled = initial.codexResets.data.enabled;
+				saved.codexResets = codexResetsEnabled;
 			}
 			if (initial.notionCalendar.status === "ready") {
 				notionViewUrl = initial.notionCalendar.data.viewUrl;
@@ -312,6 +325,18 @@
 		}
 		saved.appLock = submitted;
 		appLockPasswordVisible = false;
+	}
+
+	async function saveCodexResets(event: SubmitEvent) {
+		event.preventDefault();
+		if (!canSave.codexResets) return;
+		codexResetsSaving = true;
+		codexResetsError = null;
+		const submitted = codexResetsEnabled;
+		const response = await onsavecodexresets({ enabled: submitted });
+		codexResetsSaving = false;
+		if (response.status === "failed") codexResetsError = response.message;
+		else saved.codexResets = submitted;
 	}
 
 	async function saveNotion(event: SubmitEvent) {
@@ -600,6 +625,21 @@
 
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">
+			<span class="settings-icon"><CalendarDays size={16} /></span>
+			<div><CardTitle class="settings-card-title">Codex Resets</CardTitle><CardDescription class="settings-card-description">Show public Codex reset announcements in your calendar.</CardDescription></div>
+			{#if configuration?.codexResets.status === "ready" && configuration.codexResets.data.enabled}<ConfigurationBadge />{/if}
+		</CardHeader>
+		<form onsubmit={saveCodexResets}>
+			<CardContent class="settings-card-content">
+				<div class="settings-row"><div><Label for="codex-resets-enabled">Subscribe to Codex Resets</Label><p>No API key required. This source tracks public announcements, not your personal quota cycle.</p></div><Checkbox id="codex-resets-enabled" bind:checked={codexResetsEnabled} /></div>
+				{#if codexResetsError !== null}<p role="alert">{codexResetsError}</p>{/if}
+			</CardContent>
+			<CardFooter class="settings-card-footer"><span class="settings-footer-copy">Announcements appear on their local date. Uncheck to disconnect.</span><Button class="settings-save-button" size="sm" type="submit" disabled={!canSave.codexResets}>{codexResetsSaving ? "Saving…" : "Save"}</Button></CardFooter>
+		</form>
+	</Card>
+
+	<Card>
+		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="settings-icon"><BellRing size={16} /></span>
 			<div><CardTitle class="settings-card-title">Notifications</CardTitle><CardDescription class="settings-card-description">Subscribe to notifications through ntfy.</CardDescription></div>
 			{#if configuration?.ntfyDev}<ConfigurationBadge label="Environment" />{:else if configuration?.ntfy.status === "ready"}<ConfigurationBadge />{/if}
@@ -759,7 +799,7 @@
 	.settings-content { min-width: 0; container-type: inline-size; }
 	.settings-group { display: grid; gap: 1rem; }
 	.settings-group[hidden] { display: none; }
-	.settings-content :global([data-slot="root"]) { overflow: hidden; box-shadow: none; }
+	.settings-content :global([data-slot="card"]) { overflow: hidden; box-shadow: none; }
 	.secret-field { position: relative; min-width: 0; }
 	.settings-footer-copy { min-width: 0; overflow-wrap: anywhere; color: var(--color-muted-foreground); font-size: 0.68rem; line-height: 1.5; }
 	form { border-top: 1px solid var(--color-border); }

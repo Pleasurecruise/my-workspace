@@ -4,14 +4,15 @@
 	import { cn } from "../lib/classes";
 
 	export interface LabelProps extends HTMLLabelAttributes {
+		ref?: HTMLLabelElement | null;
 		required?: boolean;
 		children?: Snippet;
 	}
 
-	let { required, class: className = "", children, ...rest }: LabelProps = $props();
+	let { ref = $bindable(null), required, class: className = "", children, ...rest }: LabelProps = $props();
 </script>
 
-<label
+<label bind:this={ref} data-slot="label"
 	class={cn(
 		"font-sans text-sm font-medium leading-none text-foreground",
 		"peer-disabled:cursor-not-allowed peer-disabled:opacity-70",

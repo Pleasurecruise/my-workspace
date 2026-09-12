@@ -24,7 +24,7 @@ Feature implementation details are maintained in [Music](MUSIC.md), [UGOS Pro](U
 | `crates/games`       | Game account authorization, daily notes, Steam activity, and local pull archives.                     |
 | `crates/quotes`      | Shared astronomy, exchange, GitHub, Open Graph, quotation, stock, weather, and status read providers. |
 | `crates/social`      | Outbound Telegram Channel and X publication.                                                          |
-| `crates/todo`        | Todo storage, ICS and Notion calendar projection.                                                     |
+| `crates/todo`        | Todo storage, ICS, Notion and Codex Resets calendar projection.                                       |
 | `crates/ugos`        | Read-only UGOS Pro authentication, certificate pinning, and Task Manager telemetry.                   |
 | `crates/useage`      | AI subscription and account-credit integrations. The spelling is intentional.                         |
 | `packages/ui`        | Reusable Svelte primitives and design tokens.                                                         |
@@ -47,7 +47,7 @@ Trusted device
        ├─ consumers ────── Worker APIs ─────── my-memos / my-moment / my-knowledge
        │          └─────── cms-core R2 / Markdown
        ├─ social ───────── MTProto / X API ─── outbound Memo publication
-       ├─ todo ─────────── ICS files / ntn CLI ── SQLite task projections
+       ├─ todo ─────────── ICS files / ntn CLI / Codex Resets API ── SQLite task projections
        ├─ ledger ───────── local SQLite expenses and monthly projections
        ├─ credentials ──── debug SQLite / operating-system credential store
        ├─ quotes ───────── external read-only data used by Dashboard and Markdown compilation
@@ -138,7 +138,10 @@ an `Invalid` projection carrying the original configuration and diagnostic. Savi
 original string. Missing metadata and invalid placement identities remain layout-level errors.
 Opening the island requests only that widget's source through `refresh_island`, using the same
 per-source request lock as Dashboard. It does not enable Dashboard route polling. Todo retains
-its own read and mutation commands; game panels retain their existing source reads.
+its own read and mutation commands; `reorder_todos` validates the complete dated ID set and writes
+existing `todo_items.position` values in one transaction. Stale membership is rejected without
+changing tasks. Calendar reconciliation preserves surviving positions and appends new entries.
+Sorting uses the same cross-window invalidation and frontend request generations as other writes; game panels retain their existing source reads.
 
 ### Content lifecycle
 
@@ -334,14 +337,23 @@ Incompatible schema changes are handled by a one-time rebuild of the affected lo
 
 ### Daily Planner
 
-`crates/todo` owns dated tasks, local habit records, ICS parsing, and Notion calendar projection.
+`crates/todo` owns dated tasks, local habit records, ICS parsing, and Notion/Codex Resets calendar projection.
 Svelte renders Calendar, Todo, and daily habits in one Planner placement. The layout stores each
 habit's stable ID and name. Planner is the only supported calendar/task/habit placement; old
 standalone kinds are not converted.
 
 Desktop and CLI construct the production store through `Store::shared()`. Tasks, imported-occurrence
 keys, and `check_ins` records live in the shared local SQLite database. ICS files remain in
-`dirs::data_dir()/me.you-find.vesper/ics`. Imported tasks retain source-owned content and local
+`dirs::data_dir()/me.you-find.vesper/ics`. Each task stores an opt-in `rollover` boolean; existing SQLite
+rows migrate to false. `Store::roll_over` atomically moves overdue, unfinished opted-in tasks to the
+actual local day and appends them after existing tasks. It returns every affected date for
+cross-window invalidation. The desktop's thirty-second local-date loop and Todo reads run this
+operation, covering midnight, sleep and startup without depending on calendar network access.
+Completed/unchecked tasks stay put, future browsing never advances tasks, and repeated or
+concurrent runs do not duplicate them. Notion multi-day projections consolidate into one local
+follow-up with original metadata; dated `rollover:notion:*` occurrence markers suppress recreation
+from the source date onward. Cached future projections are removed in the same transaction.
+Imported tasks retain source-owned content and local
 completion/deletion state. Manual edits change title and description without changing date or
 completion. Desktop request generations reject stale date responses and defer reads requested
 during a mutation until the write finishes. Mutations notify the other trusted WebView.
@@ -353,6 +365,12 @@ bypasses the cache, while configuration saves invalidate it. Calendar reads and 
 writes share an in-process gate and cross-process lock, retained through the database commit.
 Failed or incomplete reads preserve the last saved task projection. Provider protocols and refresh
 rules are detailed in [DASHBOARD.md](DASHBOARD.md#calendar-and-todo).
+
+Codex Resets is an opt-in public HTTP calendar source owned by `crates/todo::codex`.
+Its typed enable setting follows Notion through the configuration boundary; no API key is used.
+Rust maps dated announcements to source-prefixed SQLite tasks and caches successful dated reads
+for five minutes. Notion and Codex reads run independently and reconcile only their own records,
+so a failed provider retains its saved projection while another provider can still refresh.
 
 Habit history is keyed by stable habit ID and date. Calendar, tasks, and habits share one selected
 Planner date; their existing SQLite tables remain separate and require no schema rebuild or

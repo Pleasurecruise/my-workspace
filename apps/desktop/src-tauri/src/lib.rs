@@ -192,6 +192,9 @@ pub fn run() {
                 loop {
                     match todo_core::current_date() {
                         Ok(date) => {
+                            if let Err(error) = todo::roll_over(&handle, &date).await {
+                                tracing::error!(%error, "failed to roll over unfinished Todos");
+                            }
                             if previous_date.as_ref() != Some(&date) {
                                 if let Err(error) = handle.emit("planner-date-changed", &date) {
                                     tracing::warn!(%error, "failed to notify the Planner date");
@@ -247,7 +250,9 @@ pub fn run() {
             todo::add_todo,
             todo::update_todo,
             todo::set_todo_completed,
+            todo::set_todo_rollover,
             todo::delete_todo,
+            todo::reorder_todos,
             configuration::read_configuration,
             configuration::save_ugos_configuration,
             configuration::save_r2_configuration,
@@ -261,6 +266,7 @@ pub fn run() {
             telegram::cancel_auth,
             configuration::save_ntfy_configuration,
             configuration::save_notion_calendar,
+            configuration::save_codex_resets,
             notifications::set_notifications_active,
             notifications::read_notifications,
             notifications::mark_notification_read,

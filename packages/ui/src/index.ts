@@ -7,3 +7,5 @@ export { default as Textarea } from "./components/Textarea.svelte";
 export * from "./components/alert";
 export * from "./components/card";
 export { cn } from "./lib/classes";
+export { default as SortableList } from "./components/SortableList.svelte";
+export { default as Checkbox } from "./components/Checkbox.svelte";

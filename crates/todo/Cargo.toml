@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+reqwest.workspace = true
 dirs.workspace = true
 tempfile.workspace = true
 diesel.workspace = true

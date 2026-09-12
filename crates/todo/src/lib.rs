@@ -1,4 +1,5 @@
 mod checkin;
+mod codex;
 pub use checkin::{CheckIn, Day};
 mod date;
 mod model;

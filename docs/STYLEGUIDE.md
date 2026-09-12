@@ -127,6 +127,10 @@ early returns. Do not create a one-call helper merely to avoid ordinary Rust syn
 - Prefer inferred types and explicit narrowing. Do not use type assertions, non-null assertions,
   or definite-assignment assertions to bypass missing validation or initialization.
 - Use semantic CSS tokens and reusable UI primitives.
+- Shared UI components are self-owned in `packages/ui`, following shadcn-svelte's Svelte 5 snippet,
+  bindable ref, native-attribute, variant, data-slot, and accessibility conventions. Implement their
+  interaction behavior locally; do not mix a packaged component/headless runtime into individual
+  controls. Keep feature compositions on this same shared component foundation.
 - Avoid frontend network access for application providers; invoke Rust commands instead.
 
 ## Naming

@@ -4,11 +4,12 @@
 	import { cn } from "../../lib/classes";
 
 	export interface CardTitleProps extends HTMLAttributes<HTMLHeadingElement> {
+		ref?: HTMLHeadingElement | null;
 		children?: Snippet;
 	}
-	let { class: className = "", children, ...rest }: CardTitleProps = $props();
+	let { ref = $bindable(null), class: className = "", children, ...rest }: CardTitleProps = $props();
 </script>
 
-<h3 data-slot="title" class={cn("font-sans text-base font-semibold leading-none text-foreground", className)} {...rest}>
+<h3 bind:this={ref} data-slot="card-title" class={cn("font-sans text-base font-semibold leading-none text-foreground", className)} {...rest}>
 	{@render children?.()}
 </h3>

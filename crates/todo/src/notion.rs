@@ -351,6 +351,7 @@ fn project(
         text,
         description: None,
         completed: false,
+        rollover: false,
         details: Some(Details {
             calendar: format!("Notion · {calendar}"),
             start_date,

@@ -644,6 +644,7 @@ export interface TodoDetails {
 }
 
 export interface TodoItem {
+	rollover: boolean;
 	id: string;
 	description: string | null;
 	text: string;
@@ -670,6 +671,10 @@ export interface R2Configuration {
 export interface ApiConfiguration {
 	service: "memos" | "moment" | "knowledge";
 	apiKey: string;
+}
+
+export interface CodexResets {
+	enabled: boolean;
 }
 
 export interface NotionCalendar {
@@ -716,6 +721,7 @@ export interface ConfigurationStatus {
 	ntfy: StoredConfiguration<NtfyConfig>;
 	ntfyDev: boolean;
 	notionCalendar: StoredConfiguration<NotionCalendar>;
+	codexResets: StoredConfiguration<CodexResets>;
 	appLock: StoredConfiguration<string>;
 	appLockDev: boolean;
 	spotify: StoredConfiguration<string>;

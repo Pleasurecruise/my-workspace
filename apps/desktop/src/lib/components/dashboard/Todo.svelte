@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ArrowLeft, CalendarDays, Clock, FileText, ListTodo, MapPin, Pencil, Plus, Trash2 } from "@lucide/svelte";
+	import { Checkbox, SortableList } from "@my-workspace/ui";
 	import { tick } from "svelte";
 	import type { TodoItem, TodoList } from "../../consumer";
 
@@ -12,6 +13,8 @@
 		onedit,
 		ontoggle,
 		ondelete,
+		onreorder,
+		onrollover,
 		embedded = false,
 	}: {
 		todos: TodoList | null;
@@ -22,6 +25,8 @@
 		onedit: (id: string, text: string, description: string) => Promise<boolean>;
 		ontoggle: (id: string, completed: boolean) => Promise<void>;
 		ondelete: (id: string) => Promise<void>;
+		onreorder: (ids: string[]) => Promise<boolean>;
+		onrollover: (id: string, rollover: boolean) => Promise<void>;
 		embedded?: boolean;
 	} = $props();
 	const headingId = $props.id();
@@ -107,7 +112,7 @@
 						<div class="edit-actions"><button type="button" disabled={saving} onclick={() => (editing = false)}>Cancel</button><button type="submit" disabled={loading || saving || !editText.trim()}>{saving ? "Saving…" : "Save changes"}</button></div>
 					</form>
 				{:else}
-					{#if selectedItem.details !== null}<p class="todo-manual">Edit this task in its source calendar.</p>{/if}
+					{#if selectedItem.details !== null}<p class="todo-manual">Imported calendar details are read-only.</p>{/if}
 				<dl>
 					<div><dt><CalendarDays size={13} /> Date</dt><dd>{selectedDate}</dd></div>
 					{#if selectedItem.details !== null}
@@ -124,6 +129,10 @@
 				{/if}
 				{/if}
 			</div>
+			<label class="rollover-option" title="Repeats daily until completed or unchecked" onpointerdown={(event) => event.stopPropagation()}>
+				<Checkbox size="sm" checked={selectedItem.rollover} disabled={loading || saving} onCheckedChange={(checked: boolean) => { if (selectedItem !== null) void onrollover(selectedItem.id, checked); }} aria-label={`Carry ${selectedItem.text} forward if unfinished`} />
+				<span>Move to the next day if unfinished</span>
+			</label>
 		</div>
 	{:else}
 		<div class="todo-list-view">
@@ -143,21 +152,21 @@
 			{#if loading && todos?.date !== selectedDate}
 				<p class="todo-message">Loading Todos for {selectedDate}…</p>
 			{:else if todos?.date === selectedDate && todos.items.length > 0}
-				<ul>
-					{#each todos.items as item (item.id)}
-						<li class:completed={item.completed}>
+				<SortableList items={todos.items} label="Todo tasks" itemLabel={(item: TodoItem) => item.text} disabled={loading || saving} {onreorder} class="todo-sortable">
+					{#snippet children(item: TodoItem)}
+						<div class="todo-row" class:completed={item.completed}>
 							<input
 								type="checkbox"
 								checked={item.completed}
 								disabled={loading}
-								onchange={(event) => void ontoggle(item.id, event.currentTarget.checked)}
+								onchange={(event) => { const checked = event.currentTarget.checked; event.currentTarget.checked = item.completed; void ontoggle(item.id, checked); }}
 								aria-label={`Mark ${item.text} as ${item.completed ? "incomplete" : "complete"}`}
 							/>
 							<button class="todo-entry" type="button" aria-label={`View details for ${item.text}`} onpointerdown={(event) => event.stopPropagation()} onclick={() => (selectedItemId = item.id)}>{item.text}</button>
 							<button type="button" disabled={loading} onclick={() => void ondelete(item.id)} aria-label={`Delete ${item.text}`}><Trash2 size={13} /></button>
-						</li>
-					{/each}
-				</ul>
+						</div>
+					{/snippet}
+				</SortableList>
 			{:else if error === null}
 				<p class="todo-message">No tasks for this date.</p>
 			{/if}
@@ -170,13 +179,13 @@
 	.todo-list-view, .todo-detail { flex: 1; display: flex; min-height: 0; height: 100%; flex-direction: column; }
 	.todo.embedded { height: 14rem; }
 	.todo.embedded .todo-heading { display: none; }
-	.todo.embedded li { min-height: 2.2rem; }
-	.todo.embedded li > .todo-entry { font-size: 0.8rem; }
-	.todo.embedded li > input { appearance: none; width: 16px; height: 16px; flex: 0 0 16px; margin: 0; border: 1px solid var(--color-muted-foreground); border-radius: var(--radius-full); background: transparent; cursor: pointer; }
-	.todo.embedded li > input:checked { border-color: var(--color-accent); background: var(--color-accent); }
-	.todo.embedded li > input:checked::after { content: ""; display: block; width: 7px; height: 4px; margin: 3px 3px; border-left: 1.5px solid var(--color-accent-foreground); border-bottom: 1.5px solid var(--color-accent-foreground); transform: rotate(-45deg); }
-	.todo.embedded li > input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
-	.todo-heading, .todo-heading div, form, li { display: flex; align-items: center; }
+	.todo.embedded .todo-row { min-height: 2.2rem; }
+	.todo.embedded .todo-row > .todo-entry { font-size: 0.8rem; }
+	.todo.embedded .todo-row > input { appearance: none; width: 16px; height: 16px; flex: 0 0 16px; margin: 0; border: 1px solid var(--color-muted-foreground); border-radius: var(--radius-full); background: transparent; cursor: pointer; }
+	.todo.embedded .todo-row > input:checked { border-color: var(--color-accent); background: var(--color-accent); }
+	.todo.embedded .todo-row > input:checked::after { content: ""; display: block; width: 7px; height: 4px; margin: 3px 3px; border-left: 1.5px solid var(--color-accent-foreground); border-bottom: 1.5px solid var(--color-accent-foreground); transform: rotate(-45deg); }
+	.todo.embedded .todo-row > input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+	.todo-heading, .todo-heading div, form, .todo-row { display: flex; align-items: center; }
 	.todo-heading { min-height: 1.75rem; flex: 0 0 auto; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
 	.todo-heading div { gap: 0.4rem; }
 
@@ -187,14 +196,16 @@
 	form input:focus { border-color: var(--color-accent); }
 	button { box-sizing: border-box; display: inline-flex; width: 2rem; height: 2rem; flex: 0 0 auto; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-muted-foreground); cursor: pointer; }
 	button:disabled { cursor: not-allowed; opacity: 0.45; }
-	ul { display: grid; min-height: 0; gap: 0.15rem; flex: 1; align-content: start; padding: 0; margin: 0.5rem 0 0; overflow-y: auto; list-style: none; }
-	li { min-width: 0; gap: 0.5rem; min-height: 1.8rem; }
-	li > input { accent-color: var(--color-accent); }
-	li > .todo-entry { min-width: 0; width: auto; height: 1.7rem; flex: 1; justify-content: flex-start; overflow: hidden; padding: 0 0.15rem; border-color: transparent; color: var(--color-foreground); font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
-	li > .todo-entry:hover, li > .todo-entry:focus-visible { background: var(--color-muted); color: var(--color-foreground); }
-	li > button { width: 1.7rem; height: 1.7rem; border-color: transparent; opacity: 0; }
-	li > .todo-entry, li:hover > button, li > button:focus-visible { opacity: 1; }
-	li.completed > .todo-entry { color: var(--color-muted-foreground); text-decoration: line-through; }
+	.todo :global(.todo-sortable) { flex: 1; margin-top: 0.5rem; }
+	.todo-row { flex: 1; min-width: 0; gap: 0.5rem; min-height: 1.8rem; }
+	.todo-row > input { accent-color: var(--color-accent); }
+	.todo-row > .todo-entry { min-width: 0; width: auto; height: 1.7rem; flex: 1; justify-content: flex-start; overflow: hidden; padding: 0 0.15rem; border-color: transparent; color: var(--color-foreground); font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
+	.todo-row > .todo-entry:hover, .todo-row > .todo-entry:focus-visible { background: var(--color-muted); color: var(--color-foreground); }
+	.todo-row > button { width: 1.7rem; height: 1.7rem; border-color: transparent; opacity: 0; }
+	.todo-row > .todo-entry, .todo-row:hover > button, .todo-row > button:focus-visible { opacity: 1; }
+	.todo-row.completed > .todo-entry { color: var(--color-muted-foreground); text-decoration: line-through; }
+	.rollover-option { display: flex; flex: 0 0 auto; align-items: center; gap: 0.4rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--color-divider); color: var(--color-muted-foreground); cursor: pointer; }
+	.rollover-option span { font-size: 0.65rem; line-height: 1.4; }
 	.todo-message { margin: 0.8rem 0 0; color: var(--color-muted-foreground); font-size: 0.7rem; line-height: 1.45; }
 	.todo-detail header { padding-bottom: 0.75rem; border-bottom: 1px solid var(--color-divider); }
 	.todo-detail .detail-nav { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; min-width: 0; }
@@ -223,5 +234,5 @@
 	.edit-form input { flex: auto; }
 	.edit-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 	.edit-actions button { width: auto; padding: 0 0.65rem; gap: 0.4rem; font-size: 0.68rem; }
-	@media (hover: none) { li > button { opacity: 1; } }
+	@media (hover: none) { .todo-row > button { opacity: 1; } }
 </style>

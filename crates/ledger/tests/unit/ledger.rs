@@ -209,6 +209,7 @@ async fn suggestions_keep_other_last_after_custom_categories() {
             "Coffee",
             "Eating out",
             "Groceries",
+            "Meal deal",
             "Shopping",
             "Subscriptions",
             "Transport",
