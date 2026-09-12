@@ -9,7 +9,7 @@ pub(super) fn render(mut fields: HashMap<&str, &str>, data: &Data) -> Result<Str
     }
     let align = fields.remove("align").unwrap_or("wide");
     match align {
-        "left" | "right" | "wide" => {}
+        "left" | "right" | "wide" | "narrow" => {}
         value => return Err(EmbedError::InvalidAlignment(value.to_owned())),
     }
     let item = match data.repositories.get(repo) {

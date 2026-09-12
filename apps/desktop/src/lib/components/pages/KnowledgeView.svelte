@@ -308,7 +308,7 @@
 	.prose { min-width: 0; margin-top: 2rem; color: var(--color-foreground); font-family: var(--font-sans); font-size: 0.95rem; line-height: 1.65; overflow-wrap: break-word; word-break: break-word; }
 	.prose :global(h1), .prose :global(h2), .prose :global(h3), .prose :global(h4), .prose :global(h5), .prose :global(h6) { position: relative; margin: 2em 0 0.6em; scroll-margin-top: 4rem; }
 	.prose :global(h2) { padding-bottom: 0.3em; border-bottom: 1px solid var(--color-border); }
-	.prose :global(p), .prose :global(ul), .prose :global(ol) { margin: 1em 0; }
+	.prose :global(p), .prose :global(ul:where(:not(.content-article-list))), .prose :global(ol) { margin: 1em 0; }
 	.prose :global(ul), .prose :global(ol) { padding-left: 1.6em; }
 	.prose :global(ul) { list-style: disc; }
 	.prose :global(ol) { list-style: decimal; }

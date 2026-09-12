@@ -29,7 +29,7 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
             "align" => {
                 align = unquote(value.trim());
                 match align {
-                    "left" | "right" | "wide" => {}
+                    "left" | "right" | "wide" | "narrow" => {}
                     value => return Err(EmbedError::InvalidAlignment(value.to_owned())),
                 }
             }

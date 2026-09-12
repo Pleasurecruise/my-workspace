@@ -184,4 +184,6 @@ Keep muted text readable in both themes, and communicate status beyond color. Di
 and return it when dismissed. Skeletons hide decorative content while the region announces loading.
 Use shared motion durations and disable nonessential animation for reduced-motion preferences.
 
+Embed alignment applies to individual cards or whole article lists: left/right cap width at 32rem and align to that edge, narrow centers the same bounded width, and wide retains the existing full-width behavior and type-specific caps. Memo editors constrain content-sized textareas to their container and wrap unbroken URLs.
+
 Article-list rows pair document thumbnails with resolved titles and descriptions, following workspace’s reading layout. Return and edit actions align vertically with the article title. The bounded reading trail records article navigation in order. The Knowledge reader handles their internal article destinations without opening the system browser. Existing-article editors stage the Visibility select until Save; switching or cancelling never writes it immediately.

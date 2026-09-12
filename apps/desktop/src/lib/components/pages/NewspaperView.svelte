@@ -152,7 +152,7 @@
 	.copy :global(h3) { color: var(--color-foreground); font-size: 1.17em; }
 	.copy :global(h4) { color: var(--color-muted-foreground); font-size: 1.05em; }
 	.copy :global(p) { margin: 0 0 1em; }
-	.copy :global(ul), .copy :global(ol) { margin: 0.75em 0 1em; padding-left: 1.4rem; }
+	.copy :global(ul:where(:not(.content-article-list))), .copy :global(ol) { margin: 0.75em 0 1em; padding-left: 1.4rem; }
 	.copy :global(li) { margin: 0.35em 0; }
 	.copy :global(li::marker) { color: var(--color-accent); }
 	.copy :global(strong) { font-weight: 600; }

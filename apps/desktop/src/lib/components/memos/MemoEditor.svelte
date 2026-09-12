@@ -144,7 +144,7 @@
 </script>
 
 <Textarea
-	class="min-h-20 resize-y border-0 bg-transparent px-3 py-2 text-sm leading-relaxed shadow-none [field-sizing:content] placeholder:opacity-85 focus-visible:ring-0 focus-visible:ring-offset-0"
+	class="min-w-0 max-w-full [overflow-wrap:anywhere] min-h-20 resize-y border-0 bg-transparent px-3 py-2 text-sm leading-relaxed shadow-none [field-sizing:content] placeholder:opacity-85 focus-visible:ring-0 focus-visible:ring-offset-0"
 	bind:value
 	{placeholder}
 	onfocus={(event: FocusEvent) => {

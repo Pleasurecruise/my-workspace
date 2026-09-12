@@ -232,27 +232,16 @@ fn github_media_file_pages_resolve_to_bytes_without_rewriting_other_hosts() {
 }
 
 #[test]
-fn article_links_use_host_routes_or_external_urls_without_provider_data() {
-    let internal = render(
-        "embed:article",
-        "id: article-123\ntitle: <Read & learn>\ndescription: A \"summary\"",
-        &Data::default(),
-    )
-    .unwrap()
-    .unwrap();
-    assert!(internal.contains("href=\"/articles/article-123\""));
-    assert!(internal.contains("&lt;Read &amp; learn&gt;"));
-    assert!(internal.contains("A &quot;summary&quot;"));
-    assert!(!internal.contains("target="));
-    let external = render(
-        "embed:article",
-        "url: https://example.com/story?q=a&b=2\ntitle: Story",
-        &Data::default(),
-    )
-    .unwrap()
-    .unwrap();
-    assert!(external.contains("href=\"https://example.com/story?q=a&amp;b=2\""));
-    assert!(external.contains("target=\"_blank\""));
+fn article_links_require_index_metadata_even_with_manual_titles() {
+    for source in [
+        "id: article-123\ntitle: Custom",
+        "url: https://example.com/story\ntitle: Custom\ndescription: Summary",
+    ] {
+        let html = render(ARTICLE, source, &Data::default()).unwrap().unwrap();
+        assert!(html.contains("aria-disabled=\"true\""));
+        assert!(!html.contains("href="));
+        assert!(!html.contains("Custom"));
+    }
 }
 
 #[test]
@@ -321,11 +310,11 @@ fn article_shortcuts_read_metadata_and_allow_independent_overrides() {
 }
 
 #[test]
-fn unresolved_article_previews_keep_the_navigation_target() {
+fn unresolved_articles_are_not_clickable() {
     for fields in ["id: article-123", "url: https://example.com/story"] {
         let html = render(ARTICLE, fields, &Data::default()).unwrap().unwrap();
-        assert!(html.contains("<a class="));
-        assert!(html.contains("Preview unavailable"));
+        assert!(html.contains("<div class="));
+        assert!(html.contains("Article not found in the article list"));
     }
 }
 
@@ -348,7 +337,7 @@ fn article_url_lists_render_metadata_cards_and_preserve_order() {
     assert!(html.contains("Real &amp; description"));
     assert!(html.contains("href=\"/articles/article-id\""));
     assert!(!html.contains("<strong>https://"));
-    assert!(html.contains("Preview unavailable"));
+    assert!(html.contains("Article not found in the article list"));
     assert!(render("text", &source, &data).unwrap().is_none());
     let document =
         format!("[ordinary](https://example.com/ordinary)\n\n```embed:article\n{source}\n```");
@@ -381,4 +370,76 @@ fn article_url_lists_reject_mixed_and_unsafe_entries() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn aligned_articles_keep_metadata_targets_and_list_collection() {
+    let mut data = Data::default();
+    data.articles.insert(
+        "article-123".to_owned(),
+        ArticleMetadata {
+            href: Some("/articles/article-123".to_owned()),
+            title: "Known article".to_owned(),
+            description: "Summary".to_owned(),
+        },
+    );
+    for align in ["left", "right", "wide", "narrow"] {
+        let source = format!("align: {align}\nid: article-123");
+        let html = render(ARTICLE, &source, &data).unwrap().unwrap();
+        assert!(html.contains(&format!("content-embed-{align}\"")));
+        assert!(html.contains("href=\"/articles/article-123\""));
+        assert_eq!(
+            article_ids(&format!("```embed:article\n{source}\n```")).unwrap(),
+            ["article-123"]
+        );
+        let source =
+            format!("align: \"{align}\"\nhttps://example.com/story\n- https://example.com/second");
+        let html = render(ARTICLE, &source, &data).unwrap().unwrap();
+        assert!(html.starts_with(&format!(
+            "<ul class=\"content-article-list content-embed-{align}\">"
+        )));
+        assert_eq!(html.matches("<li>").count(), 2);
+        let document = format!("```embed:article\n{source}\n```");
+        assert_eq!(
+            article_urls(&document).unwrap(),
+            ["https://example.com/story", "https://example.com/second"]
+        );
+        assert!(article_ids(&document).unwrap().is_empty());
+        for kind in ["audio", "video"] {
+            let html = render(
+                MEDIA,
+                &format!("type: {kind}\nsrc: https://example.com/media\nalign: {align}"),
+                &data,
+            )
+            .unwrap()
+            .unwrap();
+            assert!(html.contains(&format!("content-embed-{align}")));
+        }
+    }
+    for source in [
+        "align: narrow",
+        "align: center\nhttps://example.com",
+        "align: narrow\nalign: left\nhttps://example.com",
+        "id: article-123\nalign: center",
+    ] {
+        assert!(render(ARTICLE, source, &data).is_err(), "{source}");
+    }
+}
+
+#[test]
+fn embed_styles_never_escape_into_visible_document_text() {
+    let mut html = render(ARTICLE, "id: article-123\nalign: narrow", &Data::default())
+        .unwrap()
+        .unwrap();
+    let body = html.clone();
+    add_styles(&mut html);
+    let (styles, after) = html.split_once("</style>").unwrap();
+    assert!(styles.contains(".content-embed.content-embed-narrow"));
+    assert_eq!(after.trim(), body.trim());
+}
+
+#[test]
+fn manual_article_metadata_still_requires_index_resolution() {
+    let source = "```embed:article\nid: article-123\ntitle: Custom\ndescription: Summary\n```";
+    assert_eq!(article_ids(source).unwrap(), ["article-123"]);
 }

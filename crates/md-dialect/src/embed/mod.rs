@@ -47,16 +47,13 @@ pub fn article_ids(source: &str) -> Result<Vec<String>, EmbedError> {
         if language != ARTICLE {
             continue;
         }
-        if article::urls(&source)?.is_some() {
+        if article::list(&source)?.is_some() {
             continue;
         }
         let article = article::parse(fields(&language, &source)?)?;
         let Some(id) = article.id else {
             continue;
         };
-        if article.title.is_some() && article.description.is_some() {
-            continue;
-        }
         if seen.insert(id.to_owned()) {
             ids.push(id.to_owned());
         }
@@ -72,8 +69,8 @@ pub fn article_urls(source: &str) -> Result<Vec<String>, EmbedError> {
         if language != ARTICLE {
             continue;
         }
-        let entries = match article::urls(&source)? {
-            Some(urls) => urls,
+        let entries = match article::list(&source)? {
+            Some((_, urls)) => urls,
             None => {
                 let item = article::parse(fields(&language, &source)?)?;
                 if item.id.is_some() {
@@ -108,7 +105,7 @@ pub enum EmbedError {
     },
     #[error("invalid GitHub repository `{0}`; expected `owner/name`")]
     InvalidRepository(String),
-    #[error("invalid embed alignment `{0}`; expected `left`, `right`, or `wide`")]
+    #[error("invalid embed alignment `{0}`; expected `left`, `right`, `wide`, or `narrow`")]
     InvalidAlignment(String),
     #[error("invalid media field `{field}`: {message}")]
     InvalidMedia {
@@ -140,7 +137,7 @@ pub async fn load(source: &str) -> Result<Data, EmbedError> {
     load_with_articles(source, HashMap::new()).await
 }
 
-/// Host-resolved article metadata takes precedence over anonymous website previews.
+/// Article cards resolve exclusively from the host-provided article index.
 pub async fn load_with_articles(
     source: &str,
     articles: HashMap<String, ArticleMetadata>,
@@ -148,7 +145,6 @@ pub async fn load_with_articles(
     let mut repositories = HashSet::new();
     let mut stocks = HashSet::new();
     let mut links = HashSet::new();
-    let mut article_urls = HashSet::new();
     for (language, source) in parse_fences(source) {
         match language.as_str() {
             GITHUB => {
@@ -172,18 +168,8 @@ pub async fn load_with_articles(
                 }
                 stocks.insert(code);
             }
-            ARTICLE => {
-                if let Some(urls) = article::urls(&source)? {
-                    article_urls.extend(urls.into_iter().filter(|url| !articles.contains_key(url)));
-                    continue;
-                }
-                let item = article::parse(fields(&language, &source)?)?;
-                if item.id.is_none()
-                    && !articles.contains_key(&item.destination)
-                    && (item.title.is_none() || item.description.is_none())
-                {
-                    article_urls.insert(item.destination);
-                }
+            ARTICLE if article::list(&source)?.is_none() => {
+                article::parse(fields(&language, &source)?)?;
             }
             MEDIA => {
                 media::parse(fields(&language, &source)?)?;
@@ -215,22 +201,6 @@ pub async fn load_with_articles(
     .try_collect()
     .await
     .map_err(EmbedError::Data)?;
-    let previews: HashMap<_, _> = stream::iter(article_urls.into_iter().map(|url| async move {
-        let metadata = quotes::opengraph::read(&url).await.ok()?;
-        Some((
-            url,
-            ArticleMetadata {
-                href: None,
-                title: metadata.title,
-                description: metadata.description,
-            },
-        ))
-    }))
-    .buffer_unordered(DATA_CONCURRENCY)
-    .filter_map(async |item| item)
-    .collect()
-    .await;
-    data.articles.extend(previews);
     if !stocks.is_empty() {
         let report = quotes::stocks::read(stocks.into_iter().collect())
             .await

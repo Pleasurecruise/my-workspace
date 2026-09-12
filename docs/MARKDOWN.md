@@ -53,6 +53,7 @@ An explicit `embed:article` fence accepts 1–50 URL-only lines, optionally pref
 
 ````markdown
 ```embed:article
+align: narrow
 https://knowledge.you-find.me/articles/first-article
 https://knowledge.you-find.me/articles/second-article
 ```
@@ -62,16 +63,18 @@ The Knowledge consumer resolves Knowledge URLs against the authenticated, pagina
 The index includes both ordinary articles and all daily pages, including historical editions.
 It decodes the URL path segment once and matches the web slug to the record’s real ID and supplies title, description, and the desktop
 `/articles/<id>` destination without reading or compiling target bodies. Clicking reads the selected
-article through the ID-based detail endpoint. The desktop reader opens these cards inside the application, including targets absent from the index. Stale requests cannot replace a later selection; editing blocks navigation. The web adapter authorizes the same URL against D1 and renders its canonical web route. Missing or unauthorized web targets remain non-clickable.
+article through the ID-based detail endpoint. The desktop reader opens these cards inside the application, only when resolved from the article index. Stale requests cannot replace a later selection; editing blocks navigation. The web adapter authorizes the same URL against D1 and renders its canonical web route. Missing or unauthorized web targets remain non-clickable.
 
-Other public sites use the Open Graph provider without credentials. Failed preview entries remain explicit unavailable cards without removing successful siblings. Legacy single-entry `id`/`url` fields with independent title/description overrides remain supported. Static publication without a host-resolved route retains the original web destination. URL navigation uses the same summary-to-ID resolution and does not require a slug-based detail API.
+`embed:article` resolves only articles present in the host's article index. It never fetches other websites or falls back to Open Graph. Missing, external, or unauthorized targets render a non-clickable unavailable card without removing valid siblings. Single-entry `id`/`url` fields and title/description overrides remain supported, but overrides cannot make an unindexed target clickable. Static publication must supply an article index to render navigable article cards. URL navigation uses the same summary-to-ID resolution and does not require a slug-based detail API.
 
 Existing article visibility is a draft property alongside body metadata. Switching it does not persist or navigate; Save sends content and visibility in one request, Cancel discards it, and failures retain the draft. Creation remains public.
+
+Article lists and single-entry cards accept `align: left`, `right`, `wide` (default), or `narrow`. Left and right align a card or the entire list to that side with a maximum width of 32rem; narrow uses the same maximum width and centers it. All fit within the available container. Link, media, GitHub, stock, and SVG embeds accept the same alignment values. Alignment does not change metadata resolution or navigation.
 
 ## Audio and video
 
 Use `embed:media` between paragraphs. `type` and `src` are required; `title` supplies the player's
-accessible name, `caption` adds visible text, and `align` accepts `left`, `right`, or `wide` (default).
+accessible name, `caption` adds visible text, and `align` accepts `left`, `right`, `wide` (default), or `narrow`.
 Video accepts an optional `poster`; omit it to preview the video’s opening frame automatically. Field values are plain text, with optional surrounding quotes.
 
 ````markdown

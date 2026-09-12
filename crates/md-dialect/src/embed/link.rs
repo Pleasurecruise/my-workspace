@@ -8,7 +8,7 @@ pub(super) fn parse<'a>(
     let url = required(&mut fields, "link", "url")?;
     quotes::opengraph::validate_url(url).map_err(EmbedError::Data)?;
     let align = fields.remove("align").unwrap_or("wide");
-    if !matches!(align, "left" | "right" | "wide") {
+    if !matches!(align, "left" | "right" | "wide" | "narrow") {
         return Err(EmbedError::InvalidAlignment(align.to_owned()));
     }
     Ok((url, align))

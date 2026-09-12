@@ -1,4 +1,4 @@
-use super::{ArticleMetadata, Data, EmbedError, escape_html, reject_unknown};
+use super::{Data, EmbedError, escape_html, reject_unknown};
 use std::collections::HashMap;
 
 pub(super) struct Article<'a> {
@@ -6,14 +6,19 @@ pub(super) struct Article<'a> {
     pub destination: String,
     pub title: Option<&'a str>,
     pub description: Option<&'a str>,
+    pub align: &'a str,
 }
 
 pub(super) fn parse<'a>(mut fields: HashMap<&str, &'a str>) -> Result<Article<'a>, EmbedError> {
     reject_unknown(
         "embed:article",
         &fields,
-        &["title", "id", "url", "description"],
+        &["title", "id", "url", "description", "align"],
     )?;
+    let align = fields.remove("align").unwrap_or("wide");
+    if !matches!(align, "left" | "right" | "wide" | "narrow") {
+        return Err(EmbedError::InvalidAlignment(align.to_owned()));
+    }
     let id = fields.remove("id");
     let destination = match (id, fields.remove("url")) {
         (Some(id), None) if valid_id(id) => format!("/articles/{id}"),
@@ -32,6 +37,7 @@ pub(super) fn parse<'a>(mut fields: HashMap<&str, &'a str>) -> Result<Article<'a
         _ => return Err(EmbedError::InvalidArticleTarget),
     };
     Ok(Article {
+        align,
         id,
         destination,
         title: fields.remove("title"),
@@ -42,14 +48,14 @@ pub(super) fn parse<'a>(mut fields: HashMap<&str, &'a str>) -> Result<Article<'a
 pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String, EmbedError> {
     let item = parse(fields)?;
     let key = item.id.unwrap_or(&item.destination);
-    let metadata = data.articles.get(key);
-    let title = item
-        .title
-        .or_else(|| metadata.map(|item| item.title.as_str()))
-        .unwrap_or("Article unavailable");
-    let description = item
-        .description
-        .or_else(|| metadata.map(|item: &ArticleMetadata| item.description.as_str()));
+    let Some(metadata) = data.articles.get(key) else {
+        return Ok(format!(
+            "<div class=\"content-embed content-embed-article content-embed-{}\" aria-disabled=\"true\"><span class=\"content-embed-copy\"><strong>Article unavailable</strong><span class=\"content-embed-description\">Article not found in the article list</span></span></div>\n",
+            item.align,
+        ));
+    };
+    let title = item.title.unwrap_or(&metadata.title);
+    let description = item.description.or(Some(metadata.description.as_str()));
     let description = description
         .filter(|value| !value.is_empty())
         .map(|description| {
@@ -59,23 +65,17 @@ pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String,
             )
         })
         .unwrap_or_default();
-    let href = metadata
-        .and_then(|item| item.href.as_deref())
-        .unwrap_or(&item.destination);
+    let href = metadata.href.as_deref().unwrap_or(&item.destination);
     let target = if item.id.is_some() || href.starts_with("/articles/") {
         ""
     } else {
         " target=\"_blank\" rel=\"noopener noreferrer\""
     };
-    let unavailable = if item.title.is_none() && metadata.is_none() {
-        "<span class=\"content-embed-description\">Preview unavailable</span>"
-    } else {
-        ""
-    };
     Ok(format!(
-        "<a class=\"content-embed content-embed-article content-embed-wide\" href=\"{}\"{target}><span class=\"content-article-icon\" aria-hidden=\"true\"></span><span class=\"content-embed-copy\"><strong>{}</strong>{description}{unavailable}</span></a>\n",
+        "<a class=\"content-embed content-embed-article content-embed-{align}\" href=\"{}\"{target}><span class=\"content-article-icon\" aria-hidden=\"true\"></span><span class=\"content-embed-copy\"><strong>{}</strong>{description}</span></a>\n",
         escape_html(href),
         escape_html(title),
+        align = item.align,
     ))
 }
 
@@ -87,46 +87,61 @@ fn valid_id(id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
-/// URL-only lines belong to explicit article-list fences, never ordinary Markdown links.
-pub(super) fn urls(source: &str) -> Result<Option<Vec<String>>, EmbedError> {
-    let source = source.trim();
-    if source
-        .split_once(':')
-        .is_some_and(|(field, _)| ["id", "url", "title", "description"].contains(&field.trim()))
-    {
-        return Ok(None);
-    }
+/// A list may carry one alignment field; single-card fields use the normal field parser.
+pub(super) fn list(source: &str) -> Result<Option<(&str, Vec<String>)>, EmbedError> {
     let lines: Vec<_> = source
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .collect();
-    if lines.is_empty() || lines.len() > 50 {
+    if lines.iter().any(|line| {
+        line.split_once(':')
+            .is_some_and(|(field, _)| ["id", "url", "title", "description"].contains(&field.trim()))
+    }) {
+        return Ok(None);
+    }
+    let mut align = None;
+    let mut urls = Vec::new();
+    for line in lines {
+        if let Some(("align", value)) = line
+            .split_once(':')
+            .map(|(key, value)| (key.trim(), value.trim()))
+        {
+            if align.is_some() {
+                return Err(EmbedError::DuplicateField {
+                    kind: "embed:article".to_owned(),
+                    field: "align".to_owned(),
+                });
+            }
+            let value = super::unquote(value);
+            if !matches!(value, "left" | "right" | "wide" | "narrow") {
+                return Err(EmbedError::InvalidAlignment(value.to_owned()));
+            }
+            align = Some(value);
+            continue;
+        }
+        let value = match line.as_bytes() {
+            [b'-' | b'*' | b'+', space, ..] if space.is_ascii_whitespace() => {
+                line[2..].trim_start()
+            }
+            _ => line,
+        };
+        if value.chars().any(char::is_whitespace) {
+            return Err(EmbedError::InvalidArticleUrl);
+        }
+        urls.push(parse(HashMap::from([("url", value)]))?.destination);
+    }
+    if urls.is_empty() || urls.len() > 50 {
         return Err(EmbedError::InvalidArticleList);
     }
-    let urls = lines
-        .into_iter()
-        .map(|line| {
-            let value = match line.as_bytes() {
-                [b'-' | b'*' | b'+', space, ..] if space.is_ascii_whitespace() => {
-                    line[2..].trim_start()
-                }
-                _ => line,
-            };
-            if value.chars().any(char::is_whitespace) {
-                return Err(EmbedError::InvalidArticleUrl);
-            }
-            parse(HashMap::from([("url", value)])).map(|article| article.destination)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(Some(urls))
+    Ok(Some((align.unwrap_or("wide"), urls)))
 }
 
 pub(super) fn render_source(source: &str, data: &Data) -> Result<String, EmbedError> {
-    let Some(urls) = urls(source)? else {
+    let Some((align, urls)) = list(source)? else {
         return render(super::fields("embed:article", source)?, data);
     };
-    let mut html = String::from("<ul class=\"content-article-list\">\n");
+    let mut html = format!("<ul class=\"content-article-list content-embed-{align}\">\n");
     for url in urls {
         html.push_str("<li>");
         html.push_str(&render(HashMap::from([("url", url.as_str())]), data)?);

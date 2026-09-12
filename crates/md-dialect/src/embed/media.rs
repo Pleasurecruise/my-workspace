@@ -51,7 +51,7 @@ pub(super) fn parse<'a>(mut fields: HashMap<&str, &'a str>) -> Result<Media<'a>,
         });
     }
     let align = fields.remove("align").unwrap_or("wide");
-    if !matches!(align, "left" | "right" | "wide") {
+    if !matches!(align, "left" | "right" | "wide" | "narrow") {
         return Err(EmbedError::InvalidAlignment(align.to_owned()));
     }
     Ok(Media {

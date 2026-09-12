@@ -12,7 +12,7 @@ pub(super) fn render(kind: &'static str, source: &str) -> Result<String, EmbedEr
             };
             let align = unquote(value.trim());
             match align {
-                "left" | "right" | "wide" => {}
+                "left" | "right" | "wide" | "narrow" => {}
                 value => return Err(EmbedError::InvalidAlignment(value.to_owned())),
             }
             (align, source[line.len()..].trim_start_matches(['\r', '\n']))

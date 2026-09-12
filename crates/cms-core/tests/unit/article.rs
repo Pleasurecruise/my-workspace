@@ -106,7 +106,7 @@ fn rejects_invalid_content_embeds() {
     )
     .unwrap_err()
     .to_string();
-    assert!(bad_alignment.contains("expected `left`, `right`, or `wide`"));
+    assert!(bad_alignment.contains("expected `left`, `right`, `wide`, or `narrow`"));
 }
 
 #[test]
@@ -283,13 +283,13 @@ async fn ignores_embeds_in_knowledge_front_matter() {
 }
 
 #[tokio::test]
-async fn article_shortcuts_compile_in_lists_for_both_hosts() {
+async fn unindexed_article_shortcuts_are_disabled_in_both_hosts() {
     let source = "# Reading\n\n- First\n\n  ```embed:article\n  id: first-article\n  title: First article\n  ```\n\n- Second\n\n  ```embed:article\n  url: https://example.com/story\n  title: External story\n  description: External summary\n  ```";
     let publication = render_publication_enriched(source).await.unwrap();
     let knowledge = compile_knowledge_enriched(source).await.unwrap();
     for html in [&publication, &knowledge.html] {
-        assert!(html.contains("href=\"/articles/first-article\""));
-        assert!(html.contains("href=\"https://example.com/story\""));
+        assert!(!html.contains("href="));
+        assert_eq!(html.matches("aria-disabled=\"true\"").count(), 2);
         assert_eq!(html.matches("<style data-md-dialect").count(), 1);
         assert_eq!(html.matches("<li>").count(), 2);
         assert!(!html.contains("language-embed:article"));
@@ -345,4 +345,11 @@ async fn compiles_url_list_cards_with_host_metadata_and_in_app_routes() {
             .contains(&format!("href=\"{url}\">ordinary</a>"))
     );
     assert!(!compiled.html.contains("target=\"_blank\""));
+}
+
+#[tokio::test]
+async fn article_loading_never_fetches_unknown_websites() {
+    let source = "```embed:article\nhttps://127.0.0.1:1/private\n```\n\n```embed:article\nurl: https://example.invalid/story\n```";
+    let data = md_dialect::load_embeds(source).await.unwrap();
+    assert!(data.articles.is_empty());
 }
