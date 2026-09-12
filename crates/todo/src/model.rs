@@ -4,6 +4,11 @@ use thiserror::Error;
 
 pub(crate) const MAX_TEXT_LENGTH: usize = 120;
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+pub struct Subscription {
+    pub enabled: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {

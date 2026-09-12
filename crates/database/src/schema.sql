@@ -7,6 +7,10 @@ CREATE TABLE IF NOT EXISTS dashboard_layout (
     id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
     island_widget_id TEXT REFERENCES dashboard_widgets(id) DEFERRABLE INITIALLY DEFERRED
 );
+CREATE TABLE IF NOT EXISTS todo_sources (
+    name TEXT PRIMARY KEY NOT NULL,
+    enabled BOOLEAN NOT NULL CHECK (enabled IN (0, 1))
+);
 CREATE TABLE IF NOT EXISTS todo_items (
     date TEXT NOT NULL,
     id TEXT NOT NULL,

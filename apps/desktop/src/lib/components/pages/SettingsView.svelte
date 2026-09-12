@@ -231,10 +231,8 @@
 				knowledgeApiKey = initial.api.knowledge.data;
 				saved.api.knowledge = knowledgeApiKey;
 			}
-			if (initial.codexResets.status === "ready") {
-				codexResetsEnabled = initial.codexResets.data.enabled;
-				saved.codexResets = codexResetsEnabled;
-			}
+			codexResetsEnabled = initial.codexResets.enabled;
+			saved.codexResets = codexResetsEnabled;
 			if (initial.notionCalendar.status === "ready") {
 				notionViewUrl = initial.notionCalendar.data.viewUrl;
 				saved.notion = notionViewUrl.trim();
@@ -627,7 +625,7 @@
 		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="settings-icon"><CalendarDays size={16} /></span>
 			<div><CardTitle class="settings-card-title">Codex Resets</CardTitle><CardDescription class="settings-card-description">Show public Codex reset announcements in your calendar.</CardDescription></div>
-			{#if configuration?.codexResets.status === "ready" && configuration.codexResets.data.enabled}<ConfigurationBadge />{/if}
+			{#if configuration?.codexResets.enabled}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveCodexResets}>
 			<CardContent class="settings-card-content">

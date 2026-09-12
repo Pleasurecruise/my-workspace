@@ -169,30 +169,26 @@ async fn notes_survive_reopening_and_invalid_edits_are_atomic() {
 }
 
 #[tokio::test]
-async fn upgrades_existing_expenses_without_reclassifying_them() {
+async fn rejects_old_schema() {
     use diesel::connection::SimpleConnection;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("ledger.sqlite3");
     let mut connection = SqliteConnection::establish(path.to_str().unwrap()).unwrap();
     connection.batch_execute("CREATE TABLE ledger_entries (id TEXT PRIMARY KEY NOT NULL, date TEXT NOT NULL, amount_pence BIGINT NOT NULL, category TEXT NOT NULL, created_at BIGINT NOT NULL); INSERT INTO ledger_entries VALUES ('old', '2026-09-11', 1234, 'Dining', 0);").unwrap();
-    drop(connection);
-    let store = Store::new(path.clone());
-    let other = Store::new(path);
-    let (first, second) = tokio::join!(store.read("2026-09-11"), other.read("2026-09-11"));
-    for snapshot in [first.unwrap(), second.unwrap()] {
-        assert_eq!(snapshot.entries[0].description, None);
-        assert_eq!(snapshot.entries[0].category, "Dining");
-        assert_eq!(snapshot.month_total_pence, 1234);
-        for category in [
-            "Coffee",
-            "Subscriptions",
-            "Shopping",
-            "Eating out",
-            "Dining",
-        ] {
-            assert!(snapshot.suggestions.iter().any(|name| name == category));
-        }
+    assert!(Store::new(path).read("2026-09-11").await.is_err());
+    #[derive(QueryableByName)]
+    struct Record {
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        category: String,
+        #[diesel(sql_type = diesel::sql_types::BigInt)]
+        amount_pence: i64,
     }
+    let record =
+        diesel::sql_query("SELECT category, amount_pence FROM ledger_entries WHERE id = 'old'")
+            .get_result::<Record>(&mut connection)
+            .unwrap();
+    assert_eq!(record.category, "Dining");
+    assert_eq!(record.amount_pence, 1234);
 }
 
 #[tokio::test]

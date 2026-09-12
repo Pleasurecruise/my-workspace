@@ -245,6 +245,7 @@ pub fn run() {
             ledger::delete_expense,
             todo::read_todos,
             todo::read_planner_date,
+            todo::read_planner_days,
             todo::read_check_ins,
             todo::set_check_in,
             todo::add_todo,

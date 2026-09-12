@@ -1,59 +1,36 @@
 # Local-to-Consumer Workflow
 
-Vesper has two delivery paths. Static publication uploads a complete local build to R2. Consumer
-operations update one deployed application through its authenticated API, with direct R2 access only
-where binary transfer is intentionally owned by the local client.
-
-## Infrastructure map
-
-```mermaid
-flowchart TD
-    Source[Local Markdown and assets] --> Build[build.rs]
-    Build --> Stage[Temporary build directory]
-    Stage --> Publish[publish.rs]
-    Publish -->|S3-compatible SDK| BlogR2[(R2 blog/)]
-    BlogR2 --> StaticConsumer[Static consumer]
-
-    Vesper[Vesper desktop or CLI] --> MemoAPI[my-memos REST API]
-    MemoAPI --> MemoD1[(D1 metadata)]
-    MemoAPI --> MemoKV[(KV cache)]
-    MemoAPI --> MemoR2[(R2 memo bodies)]
-
-    Vesper --> KnowledgeAPI[my-knowledge REST API]
-    KnowledgeAPI --> KnowledgeD1[(D1 metadata and authorization)]
-    KnowledgeAPI --> KnowledgeKV[(KV projection)]
-    KnowledgeAPI --> KnowledgeR2[(R2 article bodies)]
-
-    Vesper -->|image bytes through R2 SDK| MomentR2[(R2 images)]
-    Vesper -->|image keys and metadata| MomentAPI[my-moment REST API]
-    MomentAPI --> MomentD1[(D1 photo metadata)]
-    MomentD1 --> MomentConsumer[my-moment]
-    MomentR2 --> MomentConsumer
-```
+Vesper either publishes a complete local build to R2 or operates on individual records through a
+consumer's authenticated API. Direct R2 access is reserved for static artifacts and explicit binary
+transfer. [Architecture](ARCHITECTURE.md) defines package ownership; [Development](DEVELOPMENT.md)
+covers credentials and build commands. Use `vesper --help` for the complete command surface.
 
 ## Static publication
 
-`vesper build` delegates to `build.rs`. The builder walks `content/`, renders Markdown through
-`cms-core::markdown`, highlights fenced code with Syntect, renders `mermaid` fences to SVG, delegates
-custom content embeds to `md-dialect`, copies regular assets, rejects symbolic links and output
-collisions, and writes `content.json` into an operating-system temporary directory. Generated styles
-are embedded in the HTML artifact. Invalid Markdown dialect input fails before an upload plan exists.
+Place Markdown and assets in `content/`, then preview the build and upload plan:
 
-Namespaced GitHub and stock fences resolve their data locally through `quotes`. Architecture and
-storyboard fences accept accessible authored SVG and sanitize it with `svg-hush`. The complete
-syntax, alignment options, and authoring examples live in `.agents/skills/vesper-cli/SKILL.md`.
+```sh
+vesper build
+vesper publish
+vesper publish --live
+```
 
-`vesper publish` builds the same directory and reports the planned object count. It does not mutate
-remote state. `vesper publish --live` passes the staged files to `publish.rs`, which uploads them
-through `r2.rs` below the `blog/` prefix. The temporary directory is removed when its Rust guard is
-dropped. Publication is additive and does not delete destination-only objects.
+The builder renders Markdown, highlighted code, Mermaid, and custom `md-dialect` embeds, copies
+assets, and writes `content.json` in a disposable temporary directory. It rejects symbolic links,
+output collisions, and invalid dialect input before publication. Authored SVG is sanitized;
+GitHub and stock embeds resolve through `quotes`. Syntax and examples belong to the
+[Vesper CLI skill](../.agents/skills/vesper-cli/SKILL.md).
+
+Only `--live` uploads, under R2's `blog/` prefix. Publication is additive: destination-only objects
+are not deleted. Removing obsolete objects is a separate explicit maintenance operation. A failed
+upload can leave a partial remote build; correct the error and republish the intended content.
 
 ## CLI input
 
-Content commands accept inline Markdown or JSON, `--file <path>`, or `--stdin` in the payload's
-position. File and standard-input reads preserve newlines and require UTF-8; read and parse errors
-stop before consumer requests. This applies to Memo create/update/page/patch, Knowledge
-page/create/update-draft/update-documents/visibility, and Moment query/create/update/upload-photo.
+Content payloads accept inline Markdown or JSON, `--file <path>`, or `--stdin` in the payload position.
+File and stdin reads preserve newlines, require UTF-8, and fail before requests if parsing fails.
+This applies to Memo create/update/page/patch, Knowledge page/create/update-draft/update-documents/
+visibility, and Moment query/create/update/upload-photo.
 
 ```sh
 vesper memo create --file note.md
@@ -62,207 +39,135 @@ cat filters.json | vesper moment query --stdin
 vesper moment upload-photo --file metadata.json photo.heic
 ```
 
+Successful operations return JSON; errors use stderr and a failing exit code. Desktop and CLI use
+the same Rust business operations and validation.
+
 ## Memos
 
-Memo metadata operations use the my-memos REST API. Create, update, and delete requests must pass
-through the Worker so R2 bodies, D1 metadata, and KV invalidation remain one server-coordinated
-transaction. List and search return the D1 body mirror with each `r2Key`; Vesper renders that body
-locally without a second R2 read.
+Memo writes pass through the my-memos Worker, coordinating R2 bodies, D1 metadata, and KV invalidation.
+Lists and searches return the D1 body mirror; Vesper renders it without a second R2 read.
 
-CLI surface:
-
-```text
+```sh
 vesper memo get <id>
-vesper memo tags
-vesper memo list [limit]
-vesper memo page <json>
 vesper memo search <query>
-vesper memo create <markdown>
-vesper memo import-x <url> [public|private]
-vesper memo update <id> <markdown>
-vesper memo patch <id> <json>
-vesper memo visibility <id> <public|private>
-vesper memo pin <id>
-vesper memo unpin <id>
-vesper memo favorite <id>
-vesper memo unfavorite <id>
-vesper memo archive <id>
-vesper memo restore <id>
-vesper memo delete <id>
+vesper memo page --file filters.json
+vesper memo patch <id> --file changes.json
+vesper memo import-x <url> private
 ```
 
-`memo page` accepts `cursor`, `limit`, `search`, `tags`, `sortByUpdated`, `archivedOnly`, and
-`favoritesOnly`, matching desktop feed reads. The two final filters are mutually exclusive. `memo
-patch` accepts the same optional `content`, `visibility`, `tags`, `pinned`, `favorite`, and
-`archived` fields as the desktop command contract and rejects an empty object.
-`memo import-x` uses the same Rust FxTwitter import and favorite-creation flow as the desktop. It
-creates a private favorite by default; pass `public` explicitly to publish it.
+`page` accepts `cursor`, `limit`, `search`, `tags`, `sortByUpdated`, `archivedOnly`, and `favoritesOnly`;
+the final two filters are mutually exclusive. `patch` accepts optional `content`, `visibility`,
+`tags`, `pinned`, `favorite`, and `archived`, and rejects an empty object. Dedicated commands also
+cover tags, visibility, pinning, favorites, archive/restore, and deletion.
+
+`import-x` shares the desktop FxTwitter import and creates a private favorite by default.
+Pass `public` explicitly for a public Memo. Social publication setup belongs to
+[Development](DEVELOPMENT.md#memo-social-publication-configuration).
 
 ## Knowledge
 
-Knowledge always enters through the authenticated my-knowledge REST API. The Worker performs D1
-authorization before resolving KV or R2 data. Updates and deletion include the current
-`expectedHash`; a stale local copy fails instead of overwriting a newer article.
-The desktop Knowledge editor creates drafts and sends edits through the same API, preserving the
-loaded content hash for conflict detection.
+The my-knowledge Worker authorizes against D1 before reading KV or R2. Updates and deletion require
+the current `expectedHash`; a stale copy fails instead of overwriting a newer article. Desktop
+preserves that hash while editing. Complex payloads use the API's JSON contract.
 
-Complex create and update payloads are passed as one quoted JSON argument. This keeps multilingual
-documents and optional fields aligned with the API contract rather than inventing a second CLI
-schema.
-
-```text
-vesper knowledge list [cursor]
-vesper knowledge page <json>
+```sh
+vesper knowledge page --file filters.json
 vesper knowledge get <id>
-vesper knowledge create <json>
-vesper knowledge update-draft <id> <json>
-vesper knowledge update-documents <id> <json>
-vesper knowledge visibility <id> <json>
+vesper knowledge create --file article.json
+vesper knowledge update-documents <id> --file changes.json
 vesper knowledge delete <id> <expected-hash>
 ```
 
-`knowledge page` exposes the compact listing capability used by the consumer's `listArticles` MCP
-tool through the same REST service. It accepts `cursor`, `limit` (1–100), `tags` (up to five), and
-`visibility` (`public` or `private`), returning `{ articles, cursor }` without fetching or rendering
-article bodies. `knowledge list` retains its existing rendered-document projection; use `get` when
-an edit needs the complete source and current content hash.
+`page` accepts `cursor`, `limit` (1–100), up to five `tags`, and `visibility`, returning
+`{ articles, cursor }` without bodies. `list` returns rendered projections; use `get` for complete
+source and its hash before editing. `update-draft` and `visibility` also accept JSON payloads.
 
 ## Moment
 
-Moment separates local image preparation, binary transfer, and metadata coordination. The shared
-Rust path prepares one source image, uploads its normalized original and thumbnail to R2, then
-registers their exact object keys with the REST API. The consumer resolves metadata from D1 and reads
-the image objects from R2.
+`upload-photo` is the coordinated desktop and CLI path: Rust normalizes an image, uploads its original
+and thumbnail to R2, then registers their exact keys with the my-moment API. D1 owns photo metadata.
 
-```text
-vesper moment upload-photo <json> <source-image>
-vesper moment upload <r2-key> <local-path>
-vesper moment create '<json-with-r2Key-and-thumbnailR2Key>'
-```
-
-`moment upload-photo` is the coordinated path shared with the desktop. Its JSON uses the `Upload`
-contract and the source may be PNG, JPEG, WebP, AVIF, or HEIC up to 20 MB. Rust applies camera
-orientation, uses available EXIF time and coordinates when the JSON omits them, derives the normalized
-PNG, JPEG thumbnail, and ThumbHash, then uploads both objects and registers metadata. Objects written
-by the operation are removed if a later step fails. The lower-level `upload` and `create` commands
-remain available for explicit recovery workflows.
-
-If metadata registration fails, the uploaded objects are orphans. Inspect the error, retry the same
-metadata request, or explicitly remove the orphan with `vesper moment remove-object <r2-key>`. Do not
-remove an object referenced by an existing photo record. `moment delete <id>` is the normal metadata
-deletion path; raw object removal is an explicit maintenance operation.
-
-The remaining Moment commands cover tags, listing, search, metadata updates, downloads, and deletion:
-
-```text
-vesper moment get <id>
-vesper moment query <json>
-vesper moment tags
-vesper moment list
-vesper moment search <query>
-vesper moment update <id> <json>
-vesper moment download <r2-key> <local-path>
+```sh
+vesper moment upload-photo --file metadata.json photo.heic
+vesper moment query --file filters.json
+vesper moment update <id> --file changes.json
 vesper moment delete <id>
 ```
 
-`moment list` returns the latest bounded batch (at most 100 photos), with no cursor. Use `moment
-query` for date/tag filters. In `moment update`, omitting `date` or `geo` leaves it unchanged; an
-explicit JSON `null` clears it.
+The upload JSON uses the `Upload` contract. PNG, JPEG, WebP, AVIF, and HEIC sources are limited to
+20 MB. Rust applies orientation, fills omitted date/coordinates from EXIF where available, and
+produces normalized PNG, JPEG thumbnail, and ThumbHash. A later failure triggers cleanup of objects
+written by that operation. Inspect cleanup failures before retrying or removing remaining objects.
 
-`moment query` exposes MCP-style metadata browsing through REST: `fromDate` and `toDate` use
-`YYYY-MM-DD`, `tags` filters the photo list, and `limit` is 1–100 (the service defaults to 20).
-Alternatively, `search` queries titles, descriptions and tags. Search cannot be combined with dates
-or tags because the service does not apply those filters in search mode. The result is `{ photos }`
-with no invented pagination cursor. `moment get` reads one photo directly by ID.
+Low-level `upload <r2-key> <local-path>` and `create <json>` separate transfer from registration for
+explicit recovery. An upload alone does not create metadata. If registration fails, retry it or
+remove the unreferenced object with `remove-object <r2-key>`. Never remove an object referenced by an
+existing photo. Normal `delete <id>` delegates metadata and image removal to the consumer API.
 
-The desktop sends the original image and user-entered metadata into the same Rust workflow. Its
-viewer sends title, description, and tag edits to the authenticated Moment update endpoint and sends
-confirmed deletion through the Moment delete endpoint, which remains responsible for coordinating
-metadata and stored-image removal.
+`query` accepts `fromDate`/`toDate` as `YYYY-MM-DD`, `tags`, and `limit` (1–100, default 20), or `search`.
+Search cannot combine with date/tag filters. It returns `{ photos }` without a cursor; `list` returns
+at most 100 recent photos. `get <id>` reads one record. In updates, omitted `date`/`geo` preserves the
+value and explicit JSON `null` clears it. Tags, search, and object download have dedicated commands.
 
 ## Todo
 
-Desktop and CLI share dated tasks in `vesper.sqlite3`. Commands default to the local date;
-`todo --date YYYY-MM-DD` selects another date. The existing managed `ics/` directory remains active; legacy Todo JSON is not read.
+Desktop and CLI share dated tasks. Commands default to today; `todo --date YYYY-MM-DD` selects a day.
+Storage, ordering, daily carry-forward, and derived calendar completion belong to
+[Persistence](PERSISTENCE.md#planner).
 
-```text
+```sh
 vesper todo list
-vesper todo get <id>
-vesper todo create <text>
-vesper todo update <id> <text>
+vesper todo create "Buy groceries"
+vesper todo update <id> "Buy groceries and milk"
 vesper todo complete <id>
 vesper todo reopen <id>
 vesper todo delete <id>
-vesper todo check-ins <habit-id>...
-vesper todo check-in <habit-id>
-vesper todo undo-check-in <habit-id>
-vesper todo database-path
-vesper todo schedule-path
-vesper todo sync-ics
 vesper todo import-ics <path>...
 vesper todo sync
-vesper todo notion status
 vesper todo notion connect <calendar-view-url>
-vesper todo notion disconnect
 ```
 
-`import-ics` validates all sources before atomically replacing each file in the managed directory.
-`schedule-path` prints that directory; `sync-ics` reads its calendars without requesting Notion. Recurrences materialize
-once per source, UID and date; local deletion suppresses the occurrence. Replacing an ICS source is
-additive and does not remove existing tasks. Rust validates recurrence semantics and converts zoned
-times into the device time zone.
+`database-path` and `schedule-path` print storage locations. `import-ics` validates every source
+before atomically replacing each managed file; an installation failure may leave earlier files
+installed and reports that partial result. `sync-ics` reads only ICS files. Recurrences materialize
+once per source, UID, and date; local deletion suppresses recreation. Replacing a source is additive
+and retains existing tasks. Zoned events use the device time zone.
 
-Run `ntn login` before connecting a view. `notion connect` saves only the link, which must include
-the calendar view ID. `list` and `sync` invoke `ntn api` and preserve the view filters; local completion
-survives successful refreshes. Notion pages are never modified. `notion status` prints configuration
-presence and the view URL; authentication remains owned by `ntn`.
+Run `ntn login` before connecting Notion. The saved view link must include its view ID; `list` and
+`sync` preserve view filters and local completion without modifying Notion pages. `notion status`
+reports configuration; `notion disconnect` clears it. Public Codex Resets subscriptions are enabled
+in Desktop Settings and synchronize through the same Todo boundary without credentials.
 
-Habit commands use stable habit IDs from the saved Planner configuration, not display names or the
-Planner placement ID. `check-ins` returns each requested habit's dated completion, editability,
-streak, total and 28-day history. `check-in` and `undo-check-in` target the same selected date and
-reject future writes. These commands only access local habit records and never synchronize calendars;
-habit names and membership remain managed by Desktop.
+`check-ins <habit-id>...` returns dated completion, editability, streak, total, and 28-day history.
+`check-in <habit-id>` and `undo-check-in <habit-id>` write the selected date and reject future days.
+Use stable habit IDs from Planner configuration, not display names or placement IDs. These commands
+never synchronize calendars; Desktop owns habit names and membership.
 
 ## Ledger
 
-Ledger shares Desktop's local GBP expense store. Commands default to today; `ledger --date YYYY-MM-DD`
-selects the expense day. Amounts are decimal GBP strings and categories with spaces must be quoted.
+Ledger shares Desktop's local GBP store. Use `ledger --date YYYY-MM-DD` for another day. Amounts are
+decimal GBP strings; quote categories containing spaces.
 
-```text
+```sh
 vesper ledger list
-vesper ledger create 12.34 "Coffee shop"
+vesper ledger create 12.34 "Coffee shop" "Lunch"
 vesper ledger update <id> 8.50 Dining
 vesper ledger delete <id>
-vesper ledger --date 2024-02-29 list
 ```
 
-Every command returns the same JSON snapshot: the selected day's entries and total, calendar-month
-total, category totals, all daily totals, and category suggestions. Read any day in a month to inspect
-that month's statistics. Update and delete require the entry's own date; a missing entry or incorrect
-date fails without changing records. The Ledger crate owns validation and atomic writes, including
-integer-pence arithmetic. CLI errors use stderr and a failing exit code. No provider or credential is
-required. Desktop observes CLI writes on its next focus or periodic refresh.
+Create/update accept an optional description. Omitting it on update preserves the note; an empty
+string clears it. Each response includes the day's entries and total, month total, category totals,
+daily totals, and category suggestions. Update/delete require the entry's own date. Validation and
+integer-pence aggregation are transactional. Desktop observes CLI writes on focus or periodic refresh.
 
 ## Additional read commands
 
-`status` also accepts weather and astronomy locations, stock symbols, exchange rates, GitHub
-repository activity, quotations and service status IDs. `status service-catalog` lists valid services.
-`game notes <game>`, `game archive <game>` and `game sync <game>` use existing saved accounts; `game steam` reads Steam.
-Game verification and interactive sign-in remain in Desktop. Window layout, the native island and
-local media playback remain Desktop features.
+`vesper status` reads UGOS and AI sources concurrently with independent success/failure results.
+`status <source>` reads only that source and fails its exit code on error. Sources include `ugos`,
+`claude`, `codex`, `copilot`, `grok`, `opencode`, `deepseek`, and `cherryin`; output excludes credentials.
+Additional status commands cover weather, astronomy, stocks, exchange, GitHub, quotations, and
+services. `status service-catalog` lists valid service IDs.
 
-## Credentials and failure boundaries
-
-`vesper status` reads UGOS and seven AI providers concurrently. Its JSON keeps each source's success
-or failure independent and does not expose credentials. `status <source>` queries only the selected
-source and prints its data, returning a failing exit code if that read fails. Sources are `ugos`,
-`claude`, `codex`, `copilot`, `grok`, `opencode`, `deepseek`, and `cherryin`.
-
-The CLI shares consumer business operations through Rust APIs. Consumer-specific chat memory,
-web-search tools, interactive visuals, desktop layout, and media-player state remain outside its
-command surface. Existing GitHub CLI commands cover GitHub account automation.
-
-Release builds read consumer API keys and R2 credentials from the operating-system credential store.
-Debug builds can use the variables listed in `.env.example` to avoid repeated macOS Keychain prompts
-from ad-hoc-signed development binaries. Provider failure is isolated: an API metadata failure does
-not silently become an R2 success, and an R2 upload does not imply that consumer metadata exists.
+`game notes <game>`, `game archive <game>`, `game sync <game>`, and `game steam` use saved accounts.
+Interactive game verification, window layout, native island, and local playback remain in Desktop.
+See [Dashboard](DASHBOARD.md) and [Games](GAMES.md) for provider behavior and failure handling.

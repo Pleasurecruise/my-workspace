@@ -424,7 +424,7 @@ fn cancelled_calendar_commit_retains_lock() {
 }
 
 #[tokio::test]
-async fn descriptions_persist_and_edit_preserves_completion_and_date() {
+async fn edits_preserve_task_state() {
     let (directory, store) = test_store();
     let date = "2026-09-10";
     let list = store
@@ -468,7 +468,7 @@ async fn descriptions_persist_and_edit_preserves_completion_and_date() {
 }
 
 #[tokio::test]
-async fn calendar_snapshot_serves_other_dates_without_provider_io() {
+async fn reuses_calendar_snapshot() {
     // This URL cannot reach the provider: a cache miss must fail validation.
     let configuration = vesper_credentials::NotionCalendar {
         view_url: "invalid".into(),
@@ -532,7 +532,7 @@ async fn calendar_snapshot_serves_other_dates_without_provider_io() {
 }
 
 #[tokio::test]
-async fn persists_order_and_rejects_stale_or_invalid_lists() {
+async fn validates_saved_order() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join(vesper_database::FILE_NAME);
     let store = Store::new(path.clone());
@@ -575,7 +575,7 @@ async fn persists_order_and_rejects_stale_or_invalid_lists() {
 }
 
 #[tokio::test]
-async fn notion_refresh_preserves_reordered_positions_and_appends_new_tasks() {
+async fn notion_preserves_order() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
     let date = "2026-09-12";
@@ -617,7 +617,7 @@ async fn notion_refresh_preserves_reordered_positions_and_appends_new_tasks() {
 }
 
 #[tokio::test]
-async fn rolls_unfinished_opted_in_tasks_forward_until_completed_or_disabled() {
+async fn rollover_respects_opt_out() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
     let first = "2026-09-12";
@@ -663,7 +663,7 @@ async fn rolls_unfinished_opted_in_tasks_forward_until_completed_or_disabled() {
 }
 
 #[tokio::test]
-async fn concurrent_rollovers_move_a_task_once_and_failed_commits_preserve_both_dates() {
+async fn rollover_is_atomic() {
     use diesel::connection::SimpleConnection;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join(vesper_database::FILE_NAME);
@@ -695,7 +695,7 @@ async fn concurrent_rollovers_move_a_task_once_and_failed_commits_preserve_both_
 }
 
 #[tokio::test]
-async fn consolidates_multiday_notion_rollovers_and_never_recreates_cached_projections() {
+async fn rollover_consolidates() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
     let remote = Item {
@@ -764,7 +764,7 @@ async fn consolidates_multiday_notion_rollovers_and_never_recreates_cached_proje
 }
 
 #[tokio::test]
-async fn rollover_preserves_completed_multiday_calendar_history() {
+async fn rollover_keeps_history() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
     let remote = Item {
@@ -812,7 +812,7 @@ async fn rollover_preserves_completed_multiday_calendar_history() {
 }
 
 #[tokio::test]
-async fn codex_refresh_preserves_other_sources_and_local_choices() {
+async fn codex_preserves_local_state() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
     let date = "2026-09-12";
@@ -901,7 +901,7 @@ async fn codex_refresh_preserves_other_sources_and_local_choices() {
 }
 
 #[tokio::test]
-async fn codex_carry_forward_does_not_recreate_the_announcement() {
+async fn codex_rollover_is_unique() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
     let remote = Item {
@@ -940,7 +940,7 @@ async fn codex_carry_forward_does_not_recreate_the_announcement() {
 }
 
 #[tokio::test]
-async fn calendar_failure_retains_its_source_while_another_refreshes() {
+async fn isolates_source_failures() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
     let date = "2026-09-12";
@@ -999,4 +999,137 @@ async fn calendar_failure_retains_its_source_while_another_refreshes() {
         .unwrap();
     assert!(list.items.is_empty());
     assert!(list.sync_error.is_none());
+}
+
+#[tokio::test]
+async fn codex_setting_is_local() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join(vesper_database::FILE_NAME);
+    let store = Store::new(path.clone());
+    assert!(!store.read_codex().await.unwrap().enabled);
+    store
+        .save_codex(Subscription { enabled: true })
+        .await
+        .unwrap();
+    let reopened = Store::new(path);
+    assert!(reopened.read_codex().await.unwrap().enabled);
+    reopened
+        .save_codex(Subscription { enabled: false })
+        .await
+        .unwrap();
+    assert!(!store.read_codex().await.unwrap().enabled);
+}
+
+#[tokio::test]
+async fn codex_save_waits_for_sync() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join(vesper_database::FILE_NAME);
+    let store = Store::new(path.clone());
+    let lock = store.calendar_lock().await.unwrap();
+    let writer = Store::new(path);
+    let pending =
+        tokio::spawn(async move { writer.save_codex(Subscription { enabled: true }).await });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(!pending.is_finished());
+    drop(lock);
+    pending.await.unwrap().unwrap();
+    assert!(store.read_codex().await.unwrap().enabled);
+}
+
+#[tokio::test]
+async fn cancelled_codex_save_keeps_lock() {
+    use diesel::connection::SimpleConnection;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join(vesper_database::FILE_NAME);
+    let store = Store::new(path.clone());
+    store
+        .save_codex(Subscription { enabled: false })
+        .await
+        .unwrap();
+    let mut connection = vesper_database::open(&path).unwrap();
+    connection.batch_execute("BEGIN IMMEDIATE").unwrap();
+    let competing = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path.with_extension("calendar.lock"))
+        .unwrap();
+    let writer = Store::new(path);
+    let pending =
+        tokio::spawn(async move { writer.save_codex(Subscription { enabled: true }).await });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert!(!pending.is_finished());
+    pending.abort();
+    assert!(pending.await.unwrap_err().is_cancelled());
+    let locked = competing.try_lock();
+    connection.batch_execute("COMMIT").unwrap();
+    drop(connection);
+    let lock = store.calendar_lock().await.unwrap();
+    assert!(matches!(locked, Err(std::fs::TryLockError::WouldBlock)));
+    assert!(store.read_codex().await.unwrap().enabled);
+    drop(lock);
+}
+
+#[tokio::test]
+async fn derives_completed_days() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let date = "2024-02-29";
+    let ids = vec!["read".to_owned(), "walk".to_owned()];
+    assert!(store.read_days(vec![], date).await.unwrap().is_empty());
+    let list = store.create(date, "Finish report", None).await.unwrap();
+    let id = &list.items[0].id;
+    store.set_check_in("read", date, true).await.unwrap();
+    store.set_check_in("walk", date, true).await.unwrap();
+    assert!(store.read_days(ids.clone(), date).await.unwrap().is_empty());
+    store.set_completed(date, id, true).await.unwrap();
+    assert_eq!(
+        store.read_days(ids.clone(), "2024-02-01").await.unwrap(),
+        vec![date]
+    );
+    store.set_check_in("walk", date, false).await.unwrap();
+    assert!(store.read_days(ids.clone(), date).await.unwrap().is_empty());
+    assert_eq!(
+        store
+            .read_days(vec!["read".into(), "read".into()], date)
+            .await
+            .unwrap(),
+        vec![date]
+    );
+    store.delete(date, id).await.unwrap();
+    assert_eq!(
+        store.read_days(vec!["read".into()], date).await.unwrap(),
+        vec![date]
+    );
+    assert!(store.read_days(vec![], date).await.unwrap().is_empty());
+    assert!(store.read_days(ids, "2024-03-01").await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn completed_days_exclude_future() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let list = store
+        .create("9999-12-31", "Future task", None)
+        .await
+        .unwrap();
+    store
+        .set_completed("9999-12-31", &list.items[0].id, true)
+        .await
+        .unwrap();
+    assert!(
+        store
+            .read_days(vec![], "9999-12-31")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let list = store.create("2024-02-01", "Done", None).await.unwrap();
+    store
+        .set_completed("2024-02-01", &list.items[0].id, true)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.read_days(vec![], "2024-02-29").await.unwrap(),
+        vec!["2024-02-01"]
+    );
 }

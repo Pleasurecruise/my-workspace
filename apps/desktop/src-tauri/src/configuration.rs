@@ -16,7 +16,7 @@ pub(crate) struct ConfigurationStatus {
     api: ApiConfiguration,
     ntfy: StoredConfiguration<vesper_credentials::NtfyConfig>,
     ntfy_dev: bool,
-    codex_resets: StoredConfiguration<vesper_credentials::CodexResets>,
+    codex_resets: todo_core::Subscription,
     notion_calendar: StoredConfiguration<vesper_credentials::NotionCalendar>,
     app_lock: StoredConfiguration<String>,
     app_lock_dev: bool,
@@ -54,7 +54,9 @@ struct ApiConfiguration {
 }
 
 #[tauri::command]
-pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
+pub(crate) async fn read_configuration(
+    app: tauri::AppHandle,
+) -> CommandResponse<ConfigurationStatus> {
     let ugos = match vesper_credentials::ugos() {
         Ok(vesper_credentials::Stored::Ready(credentials)) => {
             StoredConfiguration::Ready(UgosConfiguration {
@@ -106,11 +108,8 @@ pub(crate) fn read_configuration() -> CommandResponse<ConfigurationStatus> {
             };
         }
     };
-    let codex_resets = match vesper_credentials::codex_resets() {
-        Ok(vesper_credentials::Stored::Ready(configuration)) => {
-            StoredConfiguration::Ready(configuration)
-        }
-        Ok(vesper_credentials::Stored::Missing) => StoredConfiguration::Missing,
+    let codex_resets = match app.state::<todo_core::Store>().read_codex().await {
+        Ok(configuration) => configuration,
         Err(error) => {
             return CommandResponse::Failed {
                 message: error.to_string(),
@@ -482,12 +481,12 @@ pub(crate) async fn save_notion_calendar(
 
 #[tauri::command]
 pub(crate) async fn save_codex_resets(
-    configuration: vesper_credentials::CodexResets,
+    configuration: todo_core::Subscription,
     app: tauri::AppHandle,
 ) -> CommandResponse<String> {
     match app
         .state::<todo_core::Store>()
-        .configure_codex(configuration)
+        .save_codex(configuration)
         .await
     {
         Ok(()) => CommandResponse::Ready {

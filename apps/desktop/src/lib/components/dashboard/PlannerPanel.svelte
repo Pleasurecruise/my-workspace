@@ -20,7 +20,7 @@
 </script>
 
 <section class="planner" class:compact={embedded} aria-label="Daily Planner">
-	<div class="planner-calendar"><CalendarPanel {todayDate} {selectedDate} onselect={session.selectDate} /></div>
+	<div class="planner-calendar"><CalendarPanel {todayDate} {selectedDate} {habits} todos={session.todos.data} onselect={session.selectDate} /></div>
 	<div class="planner-todos"><Todo {embedded} todos={session.todos.data?.date === selectedDate ? session.todos.data : null} error={session.todos.error} loading={session.todos.loading} {selectedDate} onadd={session.addTodo} onedit={session.editTodo} ontoggle={session.toggleTodo} ondelete={session.deleteTodo} onreorder={session.reorderTodos} onrollover={session.setTodoRollover} /></div>
 	<HabitsPanel {selectedDate} habits={habits} onchange={onchange} />
 </section>

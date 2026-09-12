@@ -3,7 +3,7 @@ use jiff::{Timestamp, civil::Date, tz::TimeZone};
 use serde::Deserialize;
 use std::{collections::BTreeSet, time::Duration};
 
-const ENDPOINT: &str = "https://codex-resets.com/api/v1/resets";
+pub(crate) const ENDPOINT: &str = "https://codex-resets.com/api/v1/resets";
 
 #[derive(Deserialize)]
 struct Page {
@@ -40,11 +40,7 @@ enum Source {
     Observed { url: Option<String> },
 }
 
-pub(crate) async fn read(date: &str) -> Result<Vec<Item>, Error> {
-    read_from(date, TimeZone::system(), ENDPOINT).await
-}
-
-async fn read_from(date: &str, zone: TimeZone, endpoint: &str) -> Result<Vec<Item>, Error> {
+pub(crate) async fn read(date: &str, zone: TimeZone, endpoint: &str) -> Result<Vec<Item>, Error> {
     crate::validate_date(date)?;
     let (start, end) = bounds(date, &zone)?;
     let client = reqwest::Client::builder()

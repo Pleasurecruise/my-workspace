@@ -238,3 +238,17 @@ pub(crate) fn read_planner_date() -> CommandResponse<String> {
         },
     }
 }
+
+#[tauri::command]
+pub(crate) async fn read_planner_days(
+    ids: Vec<String>,
+    date: String,
+    app: tauri::AppHandle,
+) -> CommandResponse<Vec<String>> {
+    match app.state::<todo_core::Store>().read_days(ids, &date).await {
+        Ok(data) => CommandResponse::Ready { data },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}

@@ -8,7 +8,7 @@ mod schedule;
 mod store;
 
 pub use date::{current_date, validate_date};
-pub use model::{Details, Error, Item, List};
+pub use model::{Details, Error, Item, List, Subscription};
 pub use store::Store;
 
 pub(crate) use date::parse_date;

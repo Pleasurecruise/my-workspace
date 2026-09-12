@@ -1,8 +1,14 @@
-use crate::{Details, Error, Item, List, MAX_TEXT_LENGTH, parse_date, validate_date};
+use crate::{Details, Error, Item, List, MAX_TEXT_LENGTH, Subscription, parse_date, validate_date};
 use diesel::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+diesel::table! {
+    todo_sources (name) {
+        name -> Text,
+        enabled -> Bool,
+    }
+}
 diesel::table! {
     todo_items (date, id) {
         date -> Text,
@@ -197,13 +203,36 @@ impl Store {
         Ok(())
     }
 
-    pub async fn configure_codex(
-        &self,
-        configuration: vesper_credentials::CodexResets,
-    ) -> Result<(), Error> {
+    pub async fn read_codex(&self) -> Result<Subscription, Error> {
+        self.transaction(|connection| {
+            let enabled = todo_sources::table
+                .find("codex-resets")
+                .select(todo_sources::enabled)
+                .first::<bool>(connection)
+                .optional()?
+                .unwrap_or(false);
+            Ok(Subscription { enabled })
+        })
+        .await
+    }
+
+    pub async fn save_codex(&self, configuration: Subscription) -> Result<(), Error> {
         let mut cache = self.calendar_read.lock().await;
-        let _file = self.calendar_lock().await?;
-        vesper_credentials::save_codex_resets(configuration)?;
+        let file = self.calendar_lock().await?;
+        self.transaction(move |connection| {
+            let _file = file;
+            diesel::insert_into(todo_sources::table)
+                .values((
+                    todo_sources::name.eq("codex-resets"),
+                    todo_sources::enabled.eq(configuration.enabled),
+                ))
+                .on_conflict(todo_sources::name)
+                .do_update()
+                .set(todo_sources::enabled.eq(configuration.enabled))
+                .execute(connection)?;
+            Ok(())
+        })
+        .await?;
         cache.codex.clear();
         Ok(())
     }
@@ -242,8 +271,7 @@ impl Store {
             Ok::<_, Error>(remote)
         };
         let codex_read = async {
-            let enabled = matches!(vesper_credentials::codex_resets()?,
-                vesper_credentials::Stored::Ready(configuration) if configuration.enabled);
+            let enabled = self.read_codex().await?.enabled;
             if !enabled {
                 codex.clear();
                 return Ok(Vec::new());
@@ -253,7 +281,9 @@ impl Store {
                     loaded.elapsed() < std::time::Duration::from_secs(300)
                 });
             if !reusable {
-                let items = crate::codex::read(date).await?;
+                let items =
+                    crate::codex::read(date, jiff::tz::TimeZone::system(), crate::codex::ENDPOINT)
+                        .await?;
                 if codex.len() >= 32 {
                     codex.clear();
                 }
@@ -478,6 +508,58 @@ impl Store {
             schedules.push((path, content));
         }
         Ok(schedules)
+    }
+
+    pub async fn read_days(&self, ids: Vec<String>, date: &str) -> Result<Vec<String>, Error> {
+        let selected = parse_date(date)?;
+        let start = selected
+            .replace_day(1)
+            .map_err(|_| Error::InvalidDate(date.into()))?
+            .to_string();
+        let end = selected
+            .replace_day(selected.month().length(selected.year()))
+            .map_err(|_| Error::InvalidDate(date.into()))?
+            .to_string();
+        let ids: BTreeSet<String> = ids.into_iter().collect();
+        let path = self.path.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut connection = vesper_database::open(&path)?;
+            connection.transaction::<_, Error, _>(|connection| {
+                let today = crate::current_date()?;
+                let end = std::cmp::min(end, today);
+                let tasks = todo_items::table
+                    .filter(todo_items::date.ge(&start))
+                    .filter(todo_items::date.le(&end))
+                    .select((todo_items::date, todo_items::completed))
+                    .load::<(String, bool)>(connection)?;
+                let mut days: BTreeMap<String, (bool, BTreeSet<String>)> = BTreeMap::new();
+                for (date, completed) in tasks {
+                    let day = days.entry(date).or_insert_with(|| (true, BTreeSet::new()));
+                    day.0 &= completed;
+                }
+                use crate::checkin::check_ins;
+                let checks = check_ins::table
+                    .filter(check_ins::date.ge(&start))
+                    .filter(check_ins::date.le(&end))
+                    .filter(check_ins::id.eq_any(&ids))
+                    .select((check_ins::date, check_ins::id))
+                    .load::<(String, String)>(connection)?;
+                for (date, id) in checks {
+                    days.entry(date)
+                        .or_insert_with(|| (true, BTreeSet::new()))
+                        .1
+                        .insert(id);
+                }
+                Ok(days
+                    .into_iter()
+                    .filter_map(|(date, (tasks_done, checked))| {
+                        (tasks_done && checked == ids).then_some(date)
+                    })
+                    .collect())
+            })
+        })
+        .await
+        .map_err(|error| Error::Task(error.to_string()))?
     }
 
     pub async fn get(&self, date: &str, id: &str) -> Result<Item, Error> {

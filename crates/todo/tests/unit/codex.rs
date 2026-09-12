@@ -38,7 +38,7 @@ fn page(data: Vec<serde_json::Value>, cursor: Option<&str>) -> serde_json::Value
 }
 
 #[test]
-fn local_day_bounds_cover_dst_changes() {
+fn handles_dst() {
     let zone = TimeZone::get("Europe/London").unwrap();
     for (date, start, end) in [
         ("2026-03-29", "2026-03-29T00:00:00Z", "2026-03-29T23:00:00Z"),
@@ -50,7 +50,7 @@ fn local_day_bounds_cover_dst_changes() {
 }
 
 #[tokio::test]
-async fn paginates_and_projects_local_announcements() {
+async fn projects_pages() {
     let mut banked = reset("credit", "2026-09-11T23:10:00Z");
     banked["reset_type"] = "banked".into();
     banked["source"] = serde_json::json!({"type":"observed"});
@@ -70,7 +70,7 @@ async fn paginates_and_projects_local_announcements() {
             ),
         ),
     ]);
-    let items = read_from(
+    let items = read(
         "2026-09-12",
         TimeZone::get("Europe/London").unwrap(),
         &endpoint,
@@ -96,7 +96,7 @@ async fn paginates_and_projects_local_announcements() {
 }
 
 #[tokio::test]
-async fn rejects_partial_or_malformed_results() {
+async fn rejects_invalid_pages() {
     for responses in [
         vec![(503, serde_json::json!({"secret":"not displayed"}))],
         vec![(200, page(vec![reset("bad", "invalid")], None))],
@@ -124,7 +124,7 @@ async fn rejects_partial_or_malformed_results() {
         )],
     ] {
         let (endpoint, server) = server(responses);
-        let error = read_from("2026-09-12", TimeZone::UTC, &endpoint)
+        let error = read("2026-09-12", TimeZone::UTC, &endpoint)
             .await
             .unwrap_err();
         server.join().unwrap();
@@ -133,9 +133,9 @@ async fn rejects_partial_or_malformed_results() {
 }
 
 #[tokio::test]
-async fn rate_limit_keeps_retry_guidance_without_response_body() {
+async fn reports_retry_delay() {
     let (endpoint, server) = server(vec![(429, serde_json::json!({"detail":"private body"}))]);
-    let error = read_from("2026-09-12", TimeZone::UTC, &endpoint)
+    let error = read("2026-09-12", TimeZone::UTC, &endpoint)
         .await
         .unwrap_err();
     server.join().unwrap();

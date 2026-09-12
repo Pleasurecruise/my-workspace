@@ -721,7 +721,7 @@ export interface ConfigurationStatus {
 	ntfy: StoredConfiguration<NtfyConfig>;
 	ntfyDev: boolean;
 	notionCalendar: StoredConfiguration<NotionCalendar>;
-	codexResets: StoredConfiguration<CodexResets>;
+	codexResets: CodexResets;
 	appLock: StoredConfiguration<string>;
 	appLockDev: boolean;
 	spotify: StoredConfiguration<string>;

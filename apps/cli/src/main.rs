@@ -175,7 +175,7 @@ fn print_help() {
          todo database-path            print the Todo database path\n  \
          todo sync-ics                 synchronize local ICS schedules\n  \
          todo import-ics <path>...      validate and install one or more ICS schedules\n  \
-         todo sync                     synchronize ICS and Notion calendars\n  \
+         todo sync                     synchronize configured calendars\n  \
          todo list                      list today's Todos as JSON\n  \
          todo get <id>                  read one Todo as JSON\n  \
          todo create <text>             create a Todo\n  \

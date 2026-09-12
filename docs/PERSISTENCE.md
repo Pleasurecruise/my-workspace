@@ -22,17 +22,14 @@ only the affected local tables once using the current schema, outside applicatio
 records where compatible, and keep the rebuild transactional; never reset the whole shared database
 for a change confined to one feature. Normal reopen must not erase saved data.
 
-Corrupt
-databases are reported without replacing their contents. Legacy JSON files, temporary-file recovery
-and the separate game database are not imported or used as fallback storage. When upgrading from the retired file-based storage, the shared
-database starts with empty tasks, archives and Inbox, default layout, and no Telegram
-session or debug credentials. Old files remain on disk; re-saving credentials or syncing provider
-history does not recover records that are no longer available remotely.
+Corrupt databases fail without replacing their contents. Application startup neither imports retired
+file stores nor falls back to them; normal reads and writes use the shared database.
 
 | Tables                                        | Feature owner           | Contents                                                            |
 | --------------------------------------------- | ----------------------- | ------------------------------------------------------------------- |
 | `dashboard_widgets`, `dashboard_layout`       | Desktop widgets         | Ordered placements and nullable island selection                    |
 | `todo_items`, `todo_occurrences`              | Todo                    | Dated tasks and suppressed/imported occurrence keys                 |
+| `todo_sources`                                | Todo                    | Public calendar source enable preferences keyed by source name      |
 | `check_ins`                                   | Todo                    | Habit completions keyed by stable habit ID and selected date        |
 | `ledger_entries`                              | Ledger                  | Dated GBP expenses in integer pence with category and creation time |
 | `notifications`, `notification_cursor`        | Desktop Inbox           | Pending messages and SSE replay cursor                              |
@@ -51,28 +48,47 @@ Layout replacement validates references before writing and commits placements an
 Invalid widget configurations retain their original JSON through unrelated layout edits; structural
 errors fail the layout read. The bundled default initializes or explicitly resets only the layout,
 never Todo, habit, or expense records.
-Todo mutations reload the selected day inside an immediate transaction. Read-only lists use a read
-transaction and can return committed data while another connection holds a pending write. ICS files remain in the
-existing `ics/` directory and are read on each calendar sync. Imports validate every source before
-replacing any file, then stage and atomically replace each file. A later installation failure may
-leave earlier files installed and is reported explicitly. Calendar occurrence keys in SQLite prevent
-repeated imports and keep deleted occurrences from reappearing.
 
-Notion reads the configured calendar view through `ntn api` before replacing that day's Notion
-projection. A failed CLI read leaves the stored projection untouched. Stable page IDs preserve local
-completion, while remote title/date changes and removals are reflected by a successful refresh.
-Todo completion and deletion do not edit the Notion page. Imported titles and descriptions are
-source-owned; manual title edits preserve descriptions when the CLI omits that field. A feature lock coordinates configuration changes with reads and commits across Desktop and CLI. See [Dashboard](DASHBOARD.md#calendar-and-todo) for the request lifecycle.
-
-Habit mutations validate their explicit date under the write lock, permit historical changes, and
-reject future check-ins. Ledger independently validates decimal amounts and categories, then commits
-each expense mutation and its selected-month projection in one immediate transaction. Ledger reads
+Ledger validates decimal amounts and categories, then commits each expense mutation and its selected-month projection in one immediate transaction. Ledger reads
 use a consistent transaction; failed validation or aggregation leaves the stored entries intact.
-Removing either widget preserves its feature records.
+Removing a widget preserves its feature records.
 
 Inbox commits its messages and replay cursor together before publishing the new in-memory state.
 Game imports validate provider records and reject conflicts with archived identity before committing
 an entire batch. Existing records survive a failed transaction.
+
+## Planner
+
+`todo_items` stores tasks keyed by date and ID, with explicit position, completion, and default-off
+`rollover` fields. Source metadata belongs to the task projection. `todo_occurrences` records
+imported or suppressed occurrence identities: deleting an imported task does not allow the next
+sync to recreate it. Remote IDs are source-prefixed; a dated `rollover:<source ID>` marker suppresses
+that event from its source date onward after it becomes a local follow-up.
+
+`todo_sources` stores public calendar source preferences as `name` and `enabled`; an absent
+`codex-resets` row means disabled. It contains no credentials or API payloads. Notion's existing
+view-link configuration and CLI authentication remain separate. Provider response caches are
+memory-only, while successfully reconciled tasks survive restart and failed provider reads.
+
+Task mutations reload the day in an immediate transaction. Reordering validates the entire dated
+ID set before rewriting positions. Carry-forward moves all eligible dates in one transaction,
+retains destination order, and consolidates remote projections without moving completed history.
+Repeated or concurrent runs cannot create duplicate follow-ups. Remote reconciliation preserves
+completion, ordering, and carry-forward preferences while replacing source-owned content. Failed
+reads do not replace a provider's saved projection. Configuration changes and reconciliation retain
+a feature lock through commit across Desktop and CLI.
+
+ICS source files remain in `ics/` and are read on synchronization. Imports validate every file
+before staging and atomically replacing each one; a later installation failure can leave earlier
+files installed and is reported explicitly. SQLite occurrence keys retain local deletion history.
+
+`check_ins` is keyed by stable habit ID and date; the Dashboard layout owns the current habit IDs
+and names. Historical writes are allowed, and future writes are rejected inside the transaction.
+Removing or reordering habits does not delete or reassign history. A newly added habit gets a new ID.
+Monthly completion is calculated from tasks and the current configured habit IDs in a consistent
+read: every task complete, every configured habit checked, at least one task or habit, and no future
+date. No completion table or persisted summary can drift from those records. The calculation uses
+stored task projections, without fetching additional calendar dates.
 
 ## Credentials and sessions
 
@@ -97,5 +113,4 @@ credentials, the `ics/` directory or WebView preferences. Back up ICS files sepa
 the database. Preserve corrupt data for inspection instead of silently replacing it with defaults.
 
 Functional tests cover concurrent Todo writes, transaction rollback, layout consistency, duplicate
-calendar imports, notification persistence, credential isolation and game-history conflicts. Current
-verification scope is recorded in [Documentation](README.md#release-review).
+calendar imports, notification persistence, credential isolation, and game-history conflicts.

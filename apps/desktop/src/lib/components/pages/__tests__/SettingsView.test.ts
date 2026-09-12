@@ -36,7 +36,7 @@ const initial: ConfigurationStatus = {
 	ntfy: { status: "ready", data: { token: "ntfy-token", development: false } },
 	ntfyDev: false,
 	notionCalendar: { status: "missing" },
-	codexResets: { status: "missing" },
+	codexResets: { enabled: false },
 	appLock: { status: "ready", data: "lock-password" },
 	appLockDev: false,
 	spotify: { status: "missing" },
@@ -314,7 +314,7 @@ it("preserves a Codex Resets draft changed during saving and configuration refre
 	checkbox.checked = !checkbox.checked;
 	checkbox.dispatchEvent(new Event("change", { bubbles: true }));
 	await tick();
-	configuration.set({ ...initial, codexResets: { status: "ready", data: { enabled: true } } });
+	configuration.set({ ...initial, codexResets: { enabled: true } });
 	finish({ status: "ready", data: "codex-resets" });
 	await tick();
 	expect(checkbox.checked).toBe(false);
@@ -326,7 +326,7 @@ it("preserves a Codex Resets draft changed during saving and configuration refre
 it("prefills an enabled Codex Resets subscription without marking it dirty", async () => {
 	const { field, button } = await setup({
 		...initial,
-		codexResets: { status: "ready", data: { enabled: true } },
+		codexResets: { enabled: true },
 	});
 	expect(field("codex-resets-enabled").checked).toBe(true);
 	expect(button("codex-resets-enabled").disabled).toBe(true);

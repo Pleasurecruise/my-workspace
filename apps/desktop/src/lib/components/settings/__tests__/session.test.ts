@@ -19,7 +19,7 @@ it.each<"ready" | "failed">(["ready", "failed"])(
 			ntfy: { status: "missing" },
 			ntfyDev: false,
 			notionCalendar: { status: "missing" },
-			codexResets: { status: "missing" },
+			codexResets: { enabled: false },
 			appLock: { status: "missing" },
 			appLockDev: false,
 			spotify: { status: "missing" },

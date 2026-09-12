@@ -37,7 +37,7 @@ const configuration: ConfigurationStatus = {
 	ntfy: { status: "ready", data: { token: "test-ntfy", development: false } },
 	ntfyDev: false,
 	notionCalendar: { status: "missing" },
-	codexResets: { status: "missing" },
+	codexResets: { enabled: false },
 	appLock: { status: "missing" },
 	appLockDev: false,
 	spotify: { status: "missing" },
