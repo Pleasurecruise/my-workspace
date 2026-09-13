@@ -1,7 +1,9 @@
 use super::{Data, EmbedError, escape_html, reject_unknown, required};
 use std::collections::HashMap;
 
-pub(super) fn render(mut fields: HashMap<&str, &str>, data: &Data) -> Result<String, EmbedError> {
+pub(super) fn parse<'a>(
+    mut fields: HashMap<&str, &'a str>,
+) -> Result<(String, &'a str), EmbedError> {
     reject_unknown("embed:stock", &fields, &["code", "align"])?;
     let code = required(&mut fields, "stock", "code")?.to_ascii_uppercase();
     if !valid(&code) {
@@ -12,6 +14,11 @@ pub(super) fn render(mut fields: HashMap<&str, &str>, data: &Data) -> Result<Str
         "left" | "right" | "wide" | "narrow" => {}
         value => return Err(EmbedError::InvalidAlignment(value.to_owned())),
     }
+    Ok((code, align))
+}
+
+pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String, EmbedError> {
+    let (code, align) = parse(fields)?;
     let stock = match data.stocks.get(&code) {
         Some(stock) => stock,
         None => {

@@ -16,6 +16,7 @@ mime_guess.workspace = true
 percent-encoding.workspace = true
 mermaid-svg.workspace = true
 pulldown-cmark.workspace = true
+regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 syntect.workspace = true

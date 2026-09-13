@@ -11,7 +11,7 @@ mod style;
 mod tests;
 
 use futures_util::stream::{self, StreamExt, TryStreamExt};
-use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use std::collections::{HashMap, HashSet};
 
 const GITHUB: &str = "embed:github";
@@ -148,11 +148,8 @@ pub async fn load_with_articles(
     for (language, source) in parse_fences(source) {
         match language.as_str() {
             GITHUB => {
-                let mut parsed = fields(&language, &source)?;
-                let repo = required(&mut parsed, "github", "repo")?;
-                if !github::valid(repo) {
-                    return Err(EmbedError::InvalidRepository(repo.to_owned()));
-                }
+                let parsed = fields(&language, &source)?;
+                let (repo, _) = github::parse(parsed)?;
                 repositories.insert(repo.to_owned());
             }
             LINK => {
@@ -161,18 +158,29 @@ pub async fn load_with_articles(
                 links.insert(url.to_owned());
             }
             STOCK => {
-                let mut parsed = fields(&language, &source)?;
-                let code = required(&mut parsed, "stock", "code")?.to_ascii_uppercase();
-                if !stock::valid(&code) {
-                    return Err(EmbedError::InvalidStockCode(code));
-                }
+                let parsed = fields(&language, &source)?;
+                let (code, _) = stock::parse(parsed)?;
                 stocks.insert(code);
             }
-            ARTICLE if article::list(&source)?.is_none() => {
-                article::parse(fields(&language, &source)?)?;
+            ARTICLE => {
+                let list = article::list(&source)?;
+                if list.is_none() {
+                    let parsed = fields(&language, &source)?;
+                    article::parse(parsed)?;
+                }
             }
             MEDIA => {
-                media::parse(fields(&language, &source)?)?;
+                let parsed = fields(&language, &source)?;
+                media::parse(parsed)?;
+            }
+            ARCHITECTURE => {
+                architecture::render(&source)?;
+            }
+            STORYBOARD => {
+                storyboard::render(&source)?;
+            }
+            kind if kind.starts_with("embed:") => {
+                return Err(EmbedError::UnsupportedKind(kind.to_owned()));
             }
             _ => {}
         }
@@ -342,7 +350,7 @@ pub fn collect_media_paths(source: &str) -> Result<Vec<String>, EmbedError> {
 fn parse_fences(source: &str) -> Vec<(String, String)> {
     let mut blocks = Vec::new();
     let mut block: Option<(String, String)> = None;
-    for event in Parser::new(source) {
+    for event in Parser::new_ext(source, Options::ENABLE_FOOTNOTES) {
         match event {
             Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) => {
                 let language = info

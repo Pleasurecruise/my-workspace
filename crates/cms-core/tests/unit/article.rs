@@ -353,3 +353,36 @@ async fn article_loading_never_fetches_unknown_websites() {
     let data = md_dialect::load_embeds(source).await.unwrap();
     assert!(data.articles.is_empty());
 }
+
+#[test]
+fn reading_statistics_count_prose_without_markdown_configuration() {
+    let source = "---\ntitle: metadata not counted\n---\n# 标题 Hello\n\n正文 **world** [链接](https://example.com/long/path)\n\nhttps://example.com/bare/url\n\n![Image description](https://example.com/image.png)\n\n`inline code` $x+y$\n\n```rust\nlet code = 123;\n```\n\n```embed:media\ntype: audio\nsrc: https://example.com/audio.mp3\ncaption: hidden configuration\n```";
+    let compiled = compile_knowledge_plain(source);
+    assert_eq!(compiled.stats.word_count, 8);
+    assert_eq!(compiled.stats.reading_minutes, 1);
+    let plain = compile_knowledge_plain("co**op**erate café naïve don't 中文 e\u{301}cole");
+    assert_eq!(plain.stats.word_count, 7);
+}
+
+#[tokio::test]
+async fn reading_statistics_survive_embed_fallback() {
+    let source = "# Example\n\n中文 text\n\n```embed:media\ntype: audio\nsrc: https://example.com/audio.mp3\n```";
+    let enriched = compile_knowledge_enriched(source).await.unwrap();
+    let plain = compile_knowledge_plain(source);
+    assert_eq!(enriched.stats.word_count, 4);
+    assert_eq!(plain.stats.word_count, enriched.stats.word_count);
+    assert_eq!(plain.stats.reading_minutes, enriched.stats.reading_minutes);
+}
+
+#[test]
+fn reading_time_uses_mixed_language_rates() {
+    let source = format!("{} {}", "字".repeat(350), "word ".repeat(200));
+    let compiled = compile_knowledge_plain(&source);
+    assert_eq!(compiled.stats.word_count, 550);
+    assert_eq!(compiled.stats.reading_minutes, 2);
+    let minute = format!("{} {}", "字".repeat(175), "word ".repeat(100));
+    assert_eq!(compile_knowledge_plain(&minute).stats.reading_minutes, 1);
+    let longer = format!("字{minute}");
+    assert_eq!(compile_knowledge_plain(&longer).stats.reading_minutes, 2);
+    assert_eq!(compile_knowledge_plain("").stats.word_count, 0);
+}

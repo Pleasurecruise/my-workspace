@@ -58,11 +58,8 @@ pub enum CredentialError {
     #[error("development credential {0} is not valid Unicode")]
     InvalidDevelopment(&'static str),
     #[cfg(debug_assertions)]
-    #[error("could not load development credentials from {}: {source}", path.display())]
-    DevelopmentFile {
-        path: std::path::PathBuf,
-        source: dotenvy::Error,
-    },
+    #[error("could not load development credentials from {}; check the file syntax and permissions", path.display())]
+    DevelopmentFile { path: std::path::PathBuf },
 }
 
 #[cfg(test)]

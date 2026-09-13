@@ -13,6 +13,8 @@ use md_dialect::{
 };
 
 const CODE_THEME: &str = "InspiredGitHub";
+const CJK_PER_MINUTE: usize = 350;
+const WORDS_PER_MINUTE: usize = 200;
 
 struct CodeBlock {
     language: String,
@@ -34,6 +36,14 @@ pub struct CompiledKnowledge {
     pub html: String,
     pub toc: Vec<TocEntry>,
     pub excerpt: String,
+    pub stats: ReadingStats,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadingStats {
+    pub word_count: usize,
+    pub reading_minutes: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -122,19 +132,21 @@ pub async fn compile_knowledge_with_articles(
 /// This keeps the article readable when an optional embed provider is unavailable.
 pub fn compile_knowledge_plain(source: &str) -> CompiledKnowledge {
     let source = knowledge_body(source);
-    let events = Parser::new_ext(source, knowledge_options())
-        .map(normalize_knowledge)
-        .collect();
-    compile_knowledge_events(events)
+    let parsed: Vec<_> = Parser::new_ext(source, knowledge_options()).collect();
+    let stats = reading_stats(&parsed);
+    let events = parsed.into_iter().map(normalize_knowledge).collect();
+    compile_knowledge_events(events, stats)
 }
 
 fn compile_knowledge_with(source: &str, data: &EmbedData) -> Result<CompiledKnowledge, EmbedError> {
     let source = knowledge_body(source);
-    let events = knowledge_events(source, data)?;
-    Ok(compile_knowledge_events(events))
+    let parsed: Vec<_> = Parser::new_ext(source, knowledge_options()).collect();
+    let stats = reading_stats(&parsed);
+    let events = knowledge_events(parsed, data)?;
+    Ok(compile_knowledge_events(events, stats))
 }
 
-fn compile_knowledge_events(events: Vec<Event<'_>>) -> CompiledKnowledge {
+fn compile_knowledge_events(events: Vec<Event<'_>>, stats: ReadingStats) -> CompiledKnowledge {
     let mut heading_text: Option<String> = None;
     let mut headings: Vec<(HeadingLevel, String)> = Vec::new();
     let mut excerpt = String::new();
@@ -228,14 +240,22 @@ fn compile_knowledge_events(events: Vec<Event<'_>>) -> CompiledKnowledge {
         .chars()
         .take(240)
         .collect();
-    CompiledKnowledge { html, toc, excerpt }
+    CompiledKnowledge {
+        html,
+        toc,
+        excerpt,
+        stats,
+    }
 }
 
-fn knowledge_events<'a>(source: &'a str, data: &EmbedData) -> Result<Vec<Event<'a>>, EmbedError> {
+fn knowledge_events<'a>(
+    parsed: Vec<Event<'a>>,
+    data: &EmbedData,
+) -> Result<Vec<Event<'a>>, EmbedError> {
     let mut events = Vec::new();
     let mut embed_block: Option<CodeBlock> = None;
 
-    for event in Parser::new_ext(source, knowledge_options()) {
+    for event in parsed {
         match event {
             Event::Start(Tag::CodeBlock(kind)) => {
                 let language = code_language(&kind);
@@ -316,6 +336,70 @@ fn normalize_knowledge(event: Event<'_>) -> Event<'_> {
 
 pub(super) fn knowledge_options() -> Options {
     super::options() | Options::ENABLE_GFM | Options::ENABLE_MATH | Options::ENABLE_WIKILINKS
+}
+
+fn reading_stats(events: &[Event<'_>]) -> ReadingStats {
+    let mut text = String::new();
+    let mut excluded = 0;
+    for event in events {
+        match event {
+            Event::Start(Tag::CodeBlock(_) | Tag::Image { .. }) => {
+                excluded += 1;
+                text.push(' ');
+            }
+            Event::End(TagEnd::CodeBlock | TagEnd::Image) => {
+                excluded -= 1;
+                text.push(' ');
+            }
+            Event::Text(value) if excluded == 0 => text.push_str(value),
+            Event::SoftBreak
+            | Event::HardBreak
+            | Event::Code(_)
+            | Event::InlineMath(_)
+            | Event::DisplayMath(_)
+            | Event::Html(_)
+            | Event::InlineHtml(_)
+            | Event::End(
+                TagEnd::Paragraph
+                | TagEnd::Heading(_)
+                | TagEnd::Item
+                | TagEnd::TableCell
+                | TagEnd::TableRow,
+            ) => text.push(' '),
+            _ => {}
+        }
+    }
+    let mut finder = linkify::LinkFinder::new();
+    finder.kinds(&[linkify::LinkKind::Url]);
+    let mut prose = String::new();
+    let mut cursor = 0;
+    for link in finder.links(&text) {
+        prose.push_str(&text[cursor..link.start()]);
+        prose.push(' ');
+        cursor = link.end();
+    }
+    prose.push_str(&text[cursor..]);
+    static WORDS: OnceLock<(regex::Regex, regex::Regex)> = OnceLock::new();
+    let (cjk_pattern, word_pattern) = WORDS.get_or_init(|| {
+        (
+            regex::Regex::new(r"[\p{Han}\p{Hiragana}\p{Katakana}\p{Hangul}]")
+                .expect("valid CJK pattern"),
+            regex::Regex::new(
+                r"[\p{L}\p{N}][\p{L}\p{N}\p{M}]*(?:['’-][\p{L}\p{N}][\p{L}\p{N}\p{M}]*)*",
+            )
+            .expect("valid word pattern"),
+        )
+    });
+    let cjk_count = cjk_pattern.find_iter(&prose).count();
+    let separated = cjk_pattern.replace_all(&prose, " ");
+    let word_count = word_pattern.find_iter(&separated).count();
+    let weighted_count = cjk_count * WORDS_PER_MINUTE + word_count * CJK_PER_MINUTE;
+    let minute_capacity = CJK_PER_MINUTE * WORDS_PER_MINUTE;
+    let reading_minutes = weighted_count.div_ceil(minute_capacity).max(1);
+    ReadingStats {
+        word_count: cjk_count + word_count,
+        reading_minutes,
+    }
 }
 
 fn heading_id(text: &str) -> String {

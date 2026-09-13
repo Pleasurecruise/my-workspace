@@ -231,7 +231,7 @@
 	</section>
 {:else if selected}
 	<section class="reader" id="knowledge-article">
-		<KnowledgeHeader title={selected.title} text={selected.source}>
+		<KnowledgeHeader title={selected.title} stats={selected.stats}>
 			{#snippet actions()}
 		<div class="article-actions" aria-label="Article actions">
 			{#if selected !== null}<KnowledgeToc entries={selected.toc} content={articleElement} />{/if}

@@ -24,6 +24,7 @@ edition = "2024"
 rust-version = "1.95"
 
 [workspace.dependencies]
+regex = "1.13.1"
 url = "2.5"
 aws-config = { version = "1", default-features = false, features = [
   "default-https-client",

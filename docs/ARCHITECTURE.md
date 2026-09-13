@@ -74,6 +74,7 @@ in-flight request sharing. A changed index content hash bypasses cached content.
 keyboard focus and touch request prefetch through Tauri, with at most two speculative reads and six
 reads overall. Writes and credential resets clear cached documents and invalidate pending results.
 Svelte owns loading/error presentation and discards detail responses after switching or leaving.
+The Rust compiler supplies prose word counts and estimated reading minutes with each document detail.
 
 Compiled external links open in the system browser; fragment links remain in the reader. Internal
 article shortcuts read authorized details by ID and open Knowledge, preserving unsaved drafts.

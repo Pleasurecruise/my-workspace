@@ -3,7 +3,7 @@ mod article;
 pub use md_dialect::{ArticleMetadata, article_ids, article_urls};
 
 pub use article::{
-    CompiledKnowledge, PublicationError, TocEntry, compile_knowledge_enriched,
+    CompiledKnowledge, PublicationError, ReadingStats, TocEntry, compile_knowledge_enriched,
     compile_knowledge_plain, compile_knowledge_with_articles, knowledge_body,
     render_publication_enriched,
 };

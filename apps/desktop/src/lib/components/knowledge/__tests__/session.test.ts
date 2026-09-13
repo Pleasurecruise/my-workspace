@@ -24,6 +24,7 @@ const document: KnowledgeDocument = {
 	source: "Body",
 	html: "<p>Body</p>",
 	toc: [],
+	stats: { wordCount: 1, readingMinutes: 1 },
 };
 function page(article: KnowledgeDocument): CommandResponse<ChannelView> {
 	return {

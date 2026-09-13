@@ -508,7 +508,13 @@ it("keeps one newspaper loading surface from index lookup through article compil
 	expect(target.querySelectorAll('[aria-label="Loading newspaper"]')).toHaveLength(1);
 	detail.resolve({
 		status: "ready",
-		data: { ...entry, source: "Daily body", html: "<p>Daily body</p>", toc: [] },
+		data: {
+			...entry,
+			source: "Daily body",
+			html: "<p>Daily body</p>",
+			toc: [],
+			stats: { wordCount: 1, readingMinutes: 1 },
+		},
 	});
 	await vi.waitFor(() => expect(target.querySelector(".copy")?.textContent).toBe("Daily body"));
 	expect(target.querySelector('[aria-label="Loading newspaper"]')).toBeNull();

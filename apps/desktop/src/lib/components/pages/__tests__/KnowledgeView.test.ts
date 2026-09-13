@@ -49,7 +49,16 @@ it("renders the index without reading bodies and ignores detail completion after
 		findElement<HTMLButtonElement>(target, '[data-knowledge-id="lazy"]').getAttribute("aria-busy"),
 	).toBe("true");
 	await unmount(view);
-	complete({ status: "ready", data: { ...entry, source: "Body", html: "<p>Body</p>", toc: [] } });
+	complete({
+		status: "ready",
+		data: {
+			...entry,
+			source: "Body",
+			html: "<p>Body</p>",
+			toc: [],
+			stats: { wordCount: 1, readingMinutes: 1 },
+		},
+	});
 	await tick();
 	const returned = mount(KnowledgeView, {
 		target,
@@ -77,6 +86,7 @@ it("returns from a related article to its source before returning to the index",
 		source: "Body",
 		html: '<a href="/articles/related">Related</a>',
 		toc: [],
+		stats: { wordCount: 450, readingMinutes: 3 },
 	};
 	const related = {
 		...source,
@@ -92,6 +102,8 @@ it("returns from a related article to its source before returning to the index",
 		props: { documents: [], loading: false, onread: vi.fn(), oncreate: vi.fn(), onupdate: vi.fn() },
 	});
 	await tick();
+	expect(findElement<HTMLElement>(target, ".stats").textContent).toContain("450");
+	expect(findElement<HTMLElement>(target, ".stats").textContent).toContain("3 min");
 	invoke.mockResolvedValueOnce({ status: "ready", data: related });
 	findElement<HTMLAnchorElement>(target, ".prose a").click();
 	await vi.waitFor(() => expect(target.querySelector("h1")?.textContent).toBe("Related article"));
@@ -126,6 +138,7 @@ it("copies the canonical article link and reports clipboard failures", async () 
 		source: "Body",
 		html: "<p>Body</p>",
 		toc: [],
+		stats: { wordCount: 1, readingMinutes: 1 },
 	};
 	expect(selectKnowledgeArticle(article)).toBeNull();
 	const target = document.createElement("div");
@@ -175,6 +188,7 @@ it("restores an article draft after navigation and preserves changes made during
 		source: "Other",
 		html: "<p>Other</p>",
 		toc: [],
+		stats: { wordCount: 1, readingMinutes: 1 },
 	};
 	const props = {
 		documents: [],
@@ -210,6 +224,8 @@ it("restores an article draft after navigation and preserves changes made during
 		body: "Draft body",
 		tags: [],
 	});
+	body.value = "Revised body\n\n```embed:stock\ncode: MSFT\n```";
+	body.dispatchEvent(new Event("input", { bubbles: true }));
 	title.value = "Revised title";
 	title.dispatchEvent(new Event("input", { bubbles: true }));
 	await tick();
@@ -235,6 +251,7 @@ it("restores an article draft after navigation and preserves changes made during
 			source: "Draft body",
 			html: "<p>Draft body</p>",
 			toc: [],
+			stats: { wordCount: 1, readingMinutes: 1 },
 		},
 	});
 	await vi.waitFor(() =>
@@ -243,6 +260,9 @@ it("restores an article draft after navigation and preserves changes made during
 	expect(findElement<HTMLInputElement>(target, '[placeholder="Untitled knowledge"]').value).toBe(
 		"Revised title",
 	);
+	expect(
+		findElement<HTMLTextAreaElement>(target, '[aria-label="Article Markdown source"]').value,
+	).toBe("Revised body\n\n```embed:stock\ncode: MSFT\n```");
 	expect(target.querySelector(".reader")).toBeNull();
 	findElement<HTMLButtonElement>(target, ".editor-actions button").click();
 	await tick();

@@ -1,7 +1,9 @@
 use super::{Data, EmbedError, escape_html, reject_unknown, required};
 use std::collections::HashMap;
 
-pub(super) fn render(mut fields: HashMap<&str, &str>, data: &Data) -> Result<String, EmbedError> {
+pub(super) fn parse<'a>(
+    mut fields: HashMap<&str, &'a str>,
+) -> Result<(&'a str, &'a str), EmbedError> {
     reject_unknown("embed:github", &fields, &["repo", "align"])?;
     let repo = required(&mut fields, "github", "repo")?;
     if !valid(repo) {
@@ -12,6 +14,11 @@ pub(super) fn render(mut fields: HashMap<&str, &str>, data: &Data) -> Result<Str
         "left" | "right" | "wide" | "narrow" => {}
         value => return Err(EmbedError::InvalidAlignment(value.to_owned())),
     }
+    Ok((repo, align))
+}
+
+pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String, EmbedError> {
+    let (repo, align) = parse(fields)?;
     let item = match data.repositories.get(repo) {
         Some(item) => item,
         None => {

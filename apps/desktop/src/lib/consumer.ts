@@ -111,10 +111,16 @@ export interface KnowledgeEntry {
 	newspaperEdition: "developer" | "personal" | null;
 }
 
+export interface ReadingStats {
+	wordCount: number;
+	readingMinutes: number;
+}
+
 export interface KnowledgeDocument extends KnowledgeEntry {
 	source: string;
 	html: string;
 	toc: TocEntry[];
+	stats: ReadingStats;
 }
 
 export interface NewspaperIssues {

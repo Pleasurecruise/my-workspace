@@ -6,13 +6,14 @@ use std::path::PathBuf;
 
 const MAX_PENCE: i64 = 99_999_999;
 const MAX_TOTAL: i64 = 9_007_199_254_740_991;
-const CATEGORIES: [&str; 8] = [
+const CATEGORIES: [&str; 9] = [
     "Coffee",
     "Subscriptions",
     "Eating out",
     "Groceries",
     "Meal deal",
     "Transport",
+    "Travel",
     "Shopping",
     "Other",
 ];

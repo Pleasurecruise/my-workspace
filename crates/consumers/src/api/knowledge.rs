@@ -1,6 +1,6 @@
 use super::ApiError;
 use cms_core::markdown::{
-    ArticleMetadata, TocEntry, article_ids, article_urls, compile_knowledge_plain,
+    ArticleMetadata, ReadingStats, TocEntry, article_ids, article_urls, compile_knowledge_plain,
     compile_knowledge_with_articles, knowledge_body,
 };
 use reqwest::StatusCode;
@@ -44,6 +44,7 @@ pub struct Document {
     pub source: String,
     pub html: String,
     pub toc: Vec<TocEntry>,
+    pub stats: ReadingStats,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -494,6 +495,7 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
         source,
         html: compiled.html,
         toc: compiled.toc,
+        stats: compiled.stats,
     })
 }
 

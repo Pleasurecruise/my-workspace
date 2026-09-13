@@ -443,3 +443,51 @@ fn manual_article_metadata_still_requires_index_resolution() {
     let source = "```embed:article\nid: article-123\ntitle: Custom\ndescription: Summary\n```";
     assert_eq!(article_ids(source).unwrap(), ["article-123"]);
 }
+
+#[test]
+fn discovers_article_fences_inside_footnotes() {
+    let source = "Text[^note]\n\n[^note]:\n    ```embed:article\n    https://knowledge.you-find.me/articles/example\n    ```\n";
+    assert_eq!(
+        super::article_urls(source).unwrap(),
+        ["https://knowledge.you-find.me/articles/example"]
+    );
+}
+
+#[test]
+fn discovers_media_assets_inside_footnotes() {
+    let source = "Text[^note]\n\n[^note]:\n    ```embed:media\n    type: audio\n    src: ../recording.mp3\n    ```\n";
+    assert_eq!(
+        super::collect_media_paths(source).unwrap(),
+        ["../recording.mp3"]
+    );
+}
+
+#[test]
+fn rejects_invalid_fences_before_provider_reads() {
+    use futures_util::FutureExt;
+    for source in [
+        "```embed:github\nrepo: owner/repo\nalign: invalid\n```",
+        "```embed:github\nrepo: owner/repo\nextra: invalid\n```",
+        "```embed:stock\ncode: MSFT\nextra: invalid\n```",
+        "```embed:stock\ncode: MSFT\nalign: invalid\n```",
+        "```embed:unknown\n```",
+    ] {
+        let result = super::load(source)
+            .now_or_never()
+            .expect("validation must finish before I/O");
+        assert!(matches!(
+            result,
+            Err(EmbedError::InvalidAlignment(_))
+                | Err(EmbedError::UnknownField { .. })
+                | Err(EmbedError::UnsupportedKind(_))
+        ));
+    }
+    let source =
+        "```embed:github\nrepo: owner/repo\n```\n\n```embed:architecture\nnot a diagram\n```";
+    assert!(
+        super::load(source)
+            .now_or_never()
+            .expect("validate the whole document first")
+            .is_err()
+    );
+}

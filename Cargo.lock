@@ -1202,6 +1202,7 @@ dependencies = [
  "mime_guess",
  "percent-encoding",
  "pulldown-cmark",
+ "regex",
  "serde",
  "serde_json",
  "syntect",

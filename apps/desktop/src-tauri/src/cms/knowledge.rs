@@ -169,6 +169,10 @@ mod tests {
             source: "Body".into(),
             html: "<p>Body</p>".into(),
             toc: vec![],
+            stats: cms_core::markdown::ReadingStats {
+                word_count: 1,
+                reading_minutes: 1,
+            },
         }
     }
 

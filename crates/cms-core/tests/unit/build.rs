@@ -170,18 +170,21 @@ async fn rejects_missing_or_unpublished_media() {
         "other.md",
         ".",
     ] {
-        fs::write(
-            content.join("article.md"),
+        for source in [
             format!("```embed:media\ntype: audio\nsrc: {src}\n```"),
-        )
-        .unwrap();
-        assert!(
-            matches!(
-                build(&repository).await.unwrap_err(),
-                BuildError::Media { .. }
+            format!(
+                "Text[^note]\n\n[^note]:\n    ```embed:media\n    type: audio\n    src: {src}\n    ```\n"
             ),
-            "{src}"
-        );
+        ] {
+            fs::write(content.join("article.md"), source).unwrap();
+            assert!(
+                matches!(
+                    build(&repository).await.unwrap_err(),
+                    BuildError::Media { .. }
+                ),
+                "{src}"
+            );
+        }
     }
     fs::remove_dir_all(repository).unwrap();
 }

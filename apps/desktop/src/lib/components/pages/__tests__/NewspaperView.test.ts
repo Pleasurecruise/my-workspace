@@ -19,6 +19,7 @@ const issue: KnowledgeDocument = {
 	newspaperEdition: "developer",
 	source: "",
 	toc: [],
+	stats: { wordCount: 1, readingMinutes: 1 },
 	html: '<a href="https://example.com/news"><strong>Story</strong></a><a href="#section">Section</a><h2 id="section">Section</h2>',
 };
 

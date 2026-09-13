@@ -209,6 +209,7 @@ async fn suggestions_keep_other_last_after_custom_categories() {
             "Shopping",
             "Subscriptions",
             "Transport",
+            "Travel",
             "Zebra",
             "Other"
         ]

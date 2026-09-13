@@ -1,24 +1,16 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
 	import { Clock, Type } from "@lucide/svelte";
+	import type { ReadingStats } from "../../consumer";
 
-	let { title, text, actions }: { title: string; text: string; actions: Snippet } = $props();
-
-	let stats = $derived.by(() => {
-		const cjk = Array.from(text.matchAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)).length;
-		const latinMatches = text
-			.replaceAll(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu, " ")
-			.match(/[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)*/g);
-		const latin = latinMatches === null ? 0 : latinMatches.length;
-		return { count: cjk + latin, minutes: Math.max(1, Math.ceil(cjk / 350 + latin / 200)) };
-	});
+	let { title, stats, actions }: { title: string; stats: ReadingStats; actions: Snippet } = $props();
 </script>
 
 <header class="page-header"><div>
 	<h1>{title}</h1>
-	{#if stats.count > 0}
+	{#if stats.wordCount > 0}
 		<div class="stats">
-			<span><Type size={13} />{stats.count}</span><i>·</i><span><Clock size={13} />{stats.minutes} min</span>
+			<span><Type size={13} />{stats.wordCount}</span><i>·</i><span><Clock size={13} />{stats.readingMinutes} min</span>
 		</div>
 	{/if}
 </div>
@@ -26,7 +18,7 @@
 </header>
 
 <style>
-	header { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 1rem; }
+	header.page-header { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 1rem; }
 	header > div { display: contents; }
 	header > :global(:last-child) { grid-column: 2; grid-row: 1; align-self: center; }
 	h1 { margin: 0; grid-column: 1; grid-row: 1; }
