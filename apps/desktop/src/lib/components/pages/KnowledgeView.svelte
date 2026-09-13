@@ -2,6 +2,7 @@
 	import type { KnowledgeDocument } from "../../consumer";
 
 	let selected = $state<KnowledgeDocument | null>(null);
+	let destination = $state<{ id: string; fragment: string } | null>(null);
 	let articleTrail = $state<KnowledgeDocument[]>([]);
 	let editing = $state(false);
 	let draftTitle = $state("");
@@ -12,8 +13,9 @@
 	let saving = $state(false);
 	let error = $state("");
 
-	export function selectKnowledgeArticle(document: KnowledgeDocument): string | null {
+	export function selectKnowledgeArticle(document: KnowledgeDocument, fragment = ""): string | null {
 		if (editing || saving) return "Finish or cancel the current article draft before opening another article.";
+		destination = { id: document.id, fragment };
 		if (document.id === selected?.id) return null;
 		const index = articleTrail.findIndex((article) => article.id === document.id);
 		articleTrail = index >= 0 ? articleTrail.slice(0, index) : selected !== null ? [...articleTrail, selected].slice(-8) : [];
@@ -22,6 +24,7 @@
 	}
 
 	function returnToArticle() {
+		destination = null;
 		selected = articleTrail.at(-1) ?? null;
 		articleTrail = articleTrail.slice(0, -1);
 	}
@@ -39,6 +42,15 @@
 
 	let linkError = $state<string | null>(null);
 	let articleElement = $state<HTMLElement | null>(null);
+	$effect(() => {
+		if (!destination || !articleElement || articleElement.dataset.articleId !== destination.id) return;
+		let fragment = destination.fragment;
+		try { fragment = decodeURIComponent(fragment); } catch { /* Malformed fragments can still match a literal heading ID. */ }
+		const heading = fragment ? Array.from(articleElement.querySelectorAll<HTMLElement>("[id]")).find((element) => element.id === fragment) : undefined;
+		if (heading) heading.scrollIntoView({ behavior: "instant", block: "start" });
+		else articleElement.closest("main")?.scrollTo({ top: 0, behavior: "instant" });
+		destination = null;
+	});
 	let copiedArticle = $state<string | null>(null);
 	let copyError = $state<string | null>(null);
 	let copyRequest = 0;
@@ -50,7 +62,7 @@
 		const request = ++copyRequest;
 		copiedArticle = null;
 		copyError = null;
-		await navigator.clipboard.writeText(`https://knowledge.you-find.me/articles/${encodeURIComponent(article.slug)}`).then(() => {
+		await navigator.clipboard.writeText(`https://knowledge.you-find.me/articles/${encodeURIComponent(article.id)}`).then(() => {
 			if (request === copyRequest) copiedArticle = article.id;
 		}, () => {
 			if (request === copyRequest) copyError = "Could not copy the article link. Please try again.";
@@ -242,7 +254,7 @@
 			{/snippet}
 		</KnowledgeHeader>
 		{#key selected.id}
-			<article bind:this={articleElement} use:mediaPlayers={selected.html} class="prose" use:openArticleLinks={{ onError: (message) => { linkError = message; }, onOpen: selectKnowledgeArticle }}>{@html selected.html}</article>
+			<article data-article-id={selected.id} bind:this={articleElement} use:mediaPlayers={selected.html} class="prose" use:openArticleLinks={{ onError: (message) => { linkError = message; }, onOpen: selectKnowledgeArticle }}>{@html selected.html}</article>
 		{/key}
 		{#if linkError !== null}<p role="alert">{linkError}</p>{/if}
 		{#if copyError !== null}<p role="alert">{copyError}</p>{/if}

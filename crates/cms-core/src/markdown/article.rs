@@ -59,10 +59,11 @@ pub async fn render_publication_enriched(source: &str) -> Result<String, Publica
 }
 
 fn render_publication_with(source: &str, data: &EmbedData) -> Result<String, PublicationError> {
+    let source = md_dialect::normalize_embed_examples(source);
     let mut events = Vec::new();
     let mut code_block: Option<CodeBlock> = None;
 
-    for event in Parser::new_ext(source, super::options()) {
+    for event in Parser::new_ext(&source, super::options()) {
         match event {
             Event::Start(Tag::CodeBlock(kind)) => {
                 let language = code_language(&kind);
@@ -78,15 +79,18 @@ fn render_publication_with(source: &str, data: &EmbedData) -> Result<String, Pub
             }
             Event::End(TagEnd::CodeBlock) => {
                 let block = code_block.take().expect("code block start precedes end");
-                let rendered =
-                    if let Some(rendered) = render_embed(&block.language, &block.source, data)? {
-                        rendered
-                    } else if block.language == "mermaid" {
-                        let svg = mermaid_svg::render(&block.source)?;
-                        format!("<figure class=\"mermaid-diagram\">{svg}</figure>\n")
-                    } else {
-                        highlight_code(&block.source, &block.language)?
-                    };
+                let rendered = if let Some(rendered) = render_embed(
+                    &block.language,
+                    block.source.strip_suffix('\n').unwrap_or(&block.source),
+                    data,
+                )? {
+                    rendered
+                } else if block.language == "mermaid" {
+                    let svg = mermaid_svg::render(&block.source)?;
+                    format!("<figure class=\"mermaid-diagram\">{svg}</figure>\n")
+                } else {
+                    highlight_code(&block.source, &block.language)?
+                };
                 events.push(Event::Html(CowStr::Boxed(rendered.into_boxed_str())));
             }
             event if code_block.is_none() => events.push(super::normalize(event, false)),
@@ -131,16 +135,16 @@ pub async fn compile_knowledge_with_articles(
 ///
 /// This keeps the article readable when an optional embed provider is unavailable.
 pub fn compile_knowledge_plain(source: &str) -> CompiledKnowledge {
-    let source = knowledge_body(source);
-    let parsed: Vec<_> = Parser::new_ext(source, knowledge_options()).collect();
+    let source = md_dialect::normalize_embed_examples(knowledge_body(source));
+    let parsed: Vec<_> = Parser::new_ext(&source, knowledge_options()).collect();
     let stats = reading_stats(&parsed);
     let events = parsed.into_iter().map(normalize_knowledge).collect();
     compile_knowledge_events(events, stats)
 }
 
 fn compile_knowledge_with(source: &str, data: &EmbedData) -> Result<CompiledKnowledge, EmbedError> {
-    let source = knowledge_body(source);
-    let parsed: Vec<_> = Parser::new_ext(source, knowledge_options()).collect();
+    let source = md_dialect::normalize_embed_examples(knowledge_body(source));
+    let parsed: Vec<_> = Parser::new_ext(&source, knowledge_options()).collect();
     let stats = reading_stats(&parsed);
     let events = knowledge_events(parsed, data)?;
     Ok(compile_knowledge_events(events, stats))
@@ -275,8 +279,12 @@ fn knowledge_events<'a>(
             }
             Event::End(TagEnd::CodeBlock) if embed_block.is_some() => {
                 let block = embed_block.take().expect("embed block start precedes end");
-                let rendered = render_embed(&block.language, &block.source, data)?
-                    .expect("embed namespace is recognized before buffering");
+                let rendered = render_embed(
+                    &block.language,
+                    block.source.strip_suffix('\n').unwrap_or(&block.source),
+                    data,
+                )?
+                .expect("embed namespace is recognized before buffering");
                 events.push(Event::Html(CowStr::Boxed(rendered.into_boxed_str())));
             }
             event => events.push(normalize_knowledge(event)),

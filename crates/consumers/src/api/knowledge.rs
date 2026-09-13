@@ -434,7 +434,7 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
     let urls: Vec<_> = article_urls(&source)
         .unwrap_or_default()
         .into_iter()
-        .filter(|url| article_slug(url).is_some())
+        .filter(|url| article_identity(url).is_some())
         .collect();
     let own = Summary {
         id: article.id.clone(),
@@ -543,7 +543,7 @@ fn is_newer(candidate: &Entry, current: &Entry) -> bool {
     }
 }
 
-fn article_slug(value: &str) -> Option<String> {
+fn article_identity(value: &str) -> Option<String> {
     let url = reqwest::Url::parse(value).ok()?;
     if url.origin().ascii_serialization() != "https://knowledge.you-find.me"
         || !url.username().is_empty()
@@ -570,14 +570,25 @@ fn resolve_card_metadata(
     let Some(edition) = summary.editions.get("zh") else {
         return;
     };
-    for key in ids.iter().filter(|id| *id == &summary.id).chain(
-        urls.iter()
-            .filter(|url| article_slug(url).as_deref() == Some(summary.slug.as_str())),
-    ) {
+    for key in ids
+        .iter()
+        .filter(|id| *id == &summary.id)
+        .chain(urls.iter().filter(|url| {
+            article_identity(url)
+                .is_some_and(|identity| identity == summary.id || identity == summary.slug)
+        }))
+    {
         metadata.insert(
             key.clone(),
             ArticleMetadata {
-                href: Some(format!("/articles/{}", summary.id)),
+                href: Some(format!(
+                    "/articles/{}{}",
+                    summary.id,
+                    reqwest::Url::parse(key)
+                        .ok()
+                        .and_then(|url| url.fragment().map(|fragment| format!("#{fragment}")))
+                        .unwrap_or_default()
+                )),
                 title: edition.title.clone(),
                 description: edition.summary.clone(),
             },
@@ -633,11 +644,11 @@ where
 }
 
 pub async fn get(reference: &str) -> Result<Article, ApiError> {
-    let id = if let Some(slug) = article_slug(reference) {
+    let id = if let Some(slug) = article_identity(reference) {
         reference_summaries()
             .await?
             .into_iter()
-            .find(|summary| summary.slug == slug)
+            .find(|summary| summary.id == slug || summary.slug == slug)
             .map(|summary| summary.id)
             .ok_or(ApiError::Status {
                 operation: "resolve knowledge article",
@@ -833,12 +844,60 @@ mod tests {
             ("a%2520b", "a%20b"),
         ] {
             assert_eq!(
-                article_slug(&format!("https://knowledge.you-find.me/articles/{path}")).as_deref(),
+                article_identity(&format!("https://knowledge.you-find.me/articles/{path}"))
+                    .as_deref(),
                 Some(slug)
             );
         }
-        assert!(article_slug("https://knowledge.you-find.me/articles/%FF").is_none());
-        assert!(article_slug("https://example.com/articles/alpha").is_none());
+        assert!(article_identity("https://knowledge.you-find.me/articles/%FF").is_none());
+        assert!(article_identity("https://example.com/articles/alpha").is_none());
+    }
+
+    #[tokio::test]
+    async fn uuid_and_legacy_urls_resolve_current_article_metadata() {
+        let id = "11111111-1111-4111-8111-111111111111";
+        let source = format!(
+            "```embed:article\nhttps://knowledge.you-find.me/articles/{id}\nhttps://knowledge.you-find.me/articles/legacy-title\nhttps://knowledge.you-find.me/articles/{id}#section\nhttps://example.com/articles/{id}\n```"
+        );
+        let document = project_article(Article {
+            id: id.to_owned(),
+            slug: "legacy-title".to_owned(),
+            editions: HashMap::from([(
+                "zh".to_owned(),
+                Edition {
+                    title: "Current title".to_owned(),
+                    summary: "Current summary".to_owned(),
+                    markdown: source,
+                },
+            )]),
+            tags: vec![],
+            visibility: Visibility::Private,
+            content_hash: "hash".to_owned(),
+            created_at: "2026-09-13".to_owned(),
+            updated_at: "2026-09-13".to_owned(),
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            document
+                .html
+                .matches(&format!("href=\"/articles/{id}\""))
+                .count(),
+            2
+        );
+        assert_eq!(
+            document
+                .html
+                .matches("<strong>Current title</strong>")
+                .count(),
+            3
+        );
+        assert!(
+            document
+                .html
+                .contains(&format!("href=\"/articles/{id}#section\""))
+        );
+        assert!(!document.html.contains("href=\"https://example.com"));
     }
 
     #[tokio::test]
@@ -924,7 +983,10 @@ mod tests {
         );
         assert_eq!(metadata[&url].title, "Actual title");
         assert_eq!(metadata[&url].description, "Actual description");
-        assert_eq!(metadata[&url].href.as_deref(), Some("/articles/real-id"));
+        assert_eq!(
+            metadata[&url].href.as_deref(),
+            Some("/articles/real-id#section")
+        );
         assert_eq!(
             metadata["real-id"].href.as_deref(),
             Some("/articles/real-id")

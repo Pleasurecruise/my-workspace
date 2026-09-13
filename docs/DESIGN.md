@@ -115,29 +115,49 @@ Tags and filters remain removable independently of refreshed indexes. Pinned ent
 section in the unfiltered feed. Internal Memo links locate and reveal the target in the application;
 external links use the system browser. Archive uses a month-grouped reading view; Favorites retains
 regular cards and editing. Only public cards expose outbound Telegram and X actions.
+Memo editors constrain content-sized textareas to their container and wrap unbroken URLs.
 
 ## Knowledge interaction
 
-Index, reader, and editor share the page frame. The index renders from metadata before article
-bodies load. Visible entries preload after the index renders; hover, focus and touch also warm destinations.
-Pending clicks keep titles stable and expose busy state to assistive technology. Detail failures keep the index available for retry.
-Newspaper loads only the active edition and preloads the other edition on arrow intent. Switching
-editions cancels stale presentation updates; loading and failure states are distinct from unpublished
-editions. The reader toolbar groups table-of-contents navigation, copying the canonical article URL, editing
-and returning to the index. Contents entries scroll the current main reader with heading clearance
-and respect Reduce Motion. Pointer selection survives menu focus changes; outside clicks and Escape
-close the menu. Copying shows success only after the clipboard write completes and reports failures.
+Index, reader, and editor share the page frame. The index renders metadata before article bodies
+load. Visible entries, hover, focus and touch warm destinations; pending clicks keep titles stable
+and expose busy state. Detail failures preserve the index for retry. Newspaper loads the active
+edition and preloads the other on arrow intent, rejecting stale presentation updates.
 
-Article shortcuts use compact, keyboard-accessible title links and automatically resolved summaries.
-Internal references open Knowledge and retain a bounded reading history; Back returns to the
-previous article before returning to the index. External targets open the system browser. Failed navigation
-preserves the current article. Rich editing includes explicit Markdown mode; unsupported syntax
-opens there without rewriting it. Session drafts survive navigation, saving preserves edits made
-during the request, and unfinished edits block switching articles.
-Compiled embeds use restrained paper, outlines, shadows, and accents. Audio and video embeds use
-responsive native controls, optional captions and video posters, and never autoplay. Videos without
-a supplied poster request an opening-frame preview; playback starts through the play control. Architecture and storyboard
-SVG remain transparent and frame-free, with their authored semantic hierarchy intact.
+The reader toolbar groups contents, copying the canonical UUID URL, editing, and returning. Actions
+align with the article title. Contents entries scroll the main reader with heading clearance and
+respect Reduce Motion; pointer selection survives menu focus changes. Outside clicks and Escape
+close the menu. Copying reports success only after the clipboard write completes and shows failures.
+
+Article-list rows pair document thumbnails with resolved titles and summaries. Internal references
+open Knowledge and retain a bounded reading history; Back returns to the previous article before
+the index. Chapter links locate headings after the destination mounts. Failed navigation preserves
+the current article. Ordinary external links open the system browser.
+
+Rich editing includes explicit Markdown mode; unsupported syntax opens there without rewriting it.
+Session drafts survive navigation, saving preserves edits made during the request, and unfinished
+edits block switching articles. Existing-article visibility is staged with content until Save;
+Cancel discards it. Changing the select alone never writes to the server.
+
+## Markdown presentation
+
+Compiled embeds use restrained paper, outlines, shadows and accents. Alignment applies to individual
+cards or whole article lists: left/right cap width at 32rem and align to that edge, narrow centers
+the same bounded width, and wide fills the available container subject to type-specific caps.
+
+Attributed quotes preserve multiline text with a source footer. Git diffs use a keyboard-scrollable
+code region, visible plus/minus markers and semantic success/error colors; headers remain muted.
+Annotations retain the sentence with a semantic-color highlight and a visible note below it. The
+note has a matching border and may link to a source; text wraps without script-driven positioning.
+
+Audio and video use responsive native controls, optional captions and video posters, and never
+autoplay. Videos without a poster request an opening-frame preview; playback starts with Play.
+
+Architecture and storyboard canvases remain transparent and frame-free. Structured engineering
+diagrams group parallel nodes into dependency columns. At most 640px of actual diagram width,
+including narrow alignment, selects a vertical layout with at most two nodes per row. Generated
+engineering diagrams have no maximum height. Authored SVG retains its geometry and a 42rem display
+height cap. Syntax and compiler rules belong to [Markdown](MARKDOWN.md).
 
 ## Moment interaction
 
@@ -170,8 +190,9 @@ skeleton; the finished edition replaces it directly. Background refresh retains 
 without adding a second loading indicator. Edition changes start at the top; background refresh
 preserves reading position.
 Page-turn motion respects Reduce Motion. Editions stay out of the Knowledge index and Inbox.
-Newspaper and Knowledge article web links open in the default browser, preserving the reader;
-fragment links remain within the article. Opening failures appear beside the article.
+Article cards open Knowledge through the shared reader navigation; ordinary external links open
+the default browser and same-article fragments stay in the reader. Opening failures appear beside
+the article.
 
 Inbox is independent of Dashboard. Unreadable storage displays an error, never a false empty state.
 Replayed notifications populate history; only new live messages may trigger system notifications.
@@ -183,7 +204,3 @@ Toggles expose state; progress exposes a name and numeric bounds. Immediate erro
 Keep muted text readable in both themes, and communicate status beyond color. Dialogs contain focus
 and return it when dismissed. Skeletons hide decorative content while the region announces loading.
 Use shared motion durations and disable nonessential animation for reduced-motion preferences.
-
-Embed alignment applies to individual cards or whole article lists: left/right cap width at 32rem and align to that edge, narrow centers the same bounded width, and wide retains the existing full-width behavior and type-specific caps. Memo editors constrain content-sized textareas to their container and wrap unbroken URLs.
-
-Article-list rows pair document thumbnails with resolved titles and descriptions, following workspace’s reading layout. Return and edit actions align vertically with the article title. The bounded reading trail records article navigation in order. The Knowledge reader handles their internal article destinations without opening the system browser. Existing-article editors stage the Visibility select until Save; switching or cancelling never writes it immediately.

@@ -125,7 +125,13 @@ vesper publish --live
 Only `publish --live` uploads the staged artifacts through the R2 SDK. Publication is additive and
 does not remove destination-only objects.
 
-For locally compiled article cards, use only the registered namespaced fences:
+## Markdown authoring
+
+Read `docs/MARKDOWN.md` for the compiler contract. Supported kinds are `github`, `stock`, `link`,
+`article`, `media`, `architecture`, `storyboard`, `annotation`, `quote`, and `diff`. Keep semantic
+fences in Knowledge payloads; do not submit compiled HTML or Vesper-generated SVG.
+
+Use registered namespaced fences:
 
 ````markdown
 ```embed:github
@@ -177,13 +183,16 @@ align: wide
 Use a GitHub card when a named repository is part of the explanation, and a stock card when a ticker
 is discussed as an entity. Do not add them as decoration or repeat a nearby ordinary link. GitHub
 and stock data are resolved locally during compilation through the shared `quotes` providers. Every
-embed accepts `align: left`, `right`, or `wide`; omit it for `wide`. Do not invent embed kinds or
-fields.
+embed accepts `align: left`, `right`, `narrow` (centered), or `wide`; omit it for `wide`.
+Do not invent embed kinds or fields.
 
-Architecture and storyboard canvases are authored SVG, not Mermaid. Every canvas must include a
-meaningful `<title>` and `<desc>` and use a `viewBox`; the compiler sanitizes the SVG before emitting
-HTML. Architecture canvases remain transparent and follow the Claude-style vocabulary used by
-`canmi21/press`: rounded
+Architecture accepts `flowchart LR` or `graph LR` with one `node --> node` edge per line and
+optional `[labels]`. Storyboard accepts one `title` and two to six repeated
+`step: heading | description` fields. Engineering diagrams group parallel nodes by dependency
+and select a vertical layout when their container, after alignment, is at most 640px wide.
+Both kinds also accept authored SVG. Each authored SVG must include a meaningful `<title>`, `<desc>`
+and `viewBox`; the compiler sanitizes it before emitting HTML. Architecture canvases remain
+transparent and follow the Claude-style vocabulary used by `canmi21/press`: rounded
 `.node` groups, restrained curved `.arr` or dashed `.leader` paths, `.th`/`.t`/`.ts` text, and the
 semantic color groups `.c-purple`, `.c-teal`, `.c-coral`, `.c-blue`, `.c-green`, `.c-amber`,
 `.c-red`, or `.c-gray`.
@@ -193,6 +202,50 @@ outer frame or white/dark canvas fill. Use irregular quadratic or cubic paths, r
 `.scribble`, `.arrow`, and `.arrow-shadow` strokes, an offset `.sketch-shadow`, `.hand` text, and
 the restrained `.fill-blue`, `.fill-violet`, `.fill-green`, or `.fill-orange` groups. Run
 `vesper build` before publication so invalid dialect input and unsafe SVG fail locally.
+
+````markdown
+```embed:article
+align: narrow
+https://knowledge.you-find.me/articles/11111111-1111-4111-8111-111111111111
+```
+
+```embed:annotation
+mark: 内容优先
+note: 让文字成为主角
+color: red
+---
+我的博客坚持内容优先。
+```
+
+```embed:quote
+author: Project notes
+---
+Keep the knowledge and its context.
+```
+
+```embed:diff
+title: Default visibility
+---
+--- a/config.rs
++++ b/config.rs
+@@ -1 +1 @@
+-private
++public
+```
+````
+
+Article lists accept 1–50 URLs and preserve their order. Use UUIDs returned by authorized
+`knowledge page`/`get`, never derive an address from a title. Existing legacy slug URLs remain
+aliases. Missing/external targets render disabled cards. Vesper's single-card `id`, `title`, and
+`description` extensions are local-only; do not send them to my-knowledge. Use URL lines or a single
+`url` field for shared content.
+
+Annotation requires a `mark` occurring exactly once in its plain-text body and a `note`; optional
+colors are blue (default), red, green, amber, and purple. Annotation and quote accept an optional
+credential-free HTTP(S) `url`; quote also accepts `title`. Diff requires a complete unified text
+patch with matching hunk counts. These three blocks separate metadata and body with an exact `---`.
+Use four backticks or tildes around source examples containing triple-backtick embeds. The compiler
+also recognizes the upstream bare triple-backtick wrapper around one embed with adjacent closers.
 
 ## Memo
 
@@ -235,7 +288,7 @@ must fail rather than overwrite a newer article.
 ```sh
 vesper knowledge list [cursor]
 vesper knowledge page '<json>'
-vesper knowledge get <id>
+vesper knowledge get <id-or-url>
 vesper knowledge create '<json>'
 vesper knowledge update-draft <id> '<json-with-expectedHash>'
 vesper knowledge update-documents <id> '<json-with-expectedHash>'
@@ -243,8 +296,15 @@ vesper knowledge visibility <id> '<json-with-expectedHash>'
 vesper knowledge delete <id> <expected-hash>
 ```
 
+`knowledge get` accepts a UUID or a complete `https://knowledge.you-find.me/articles/{uuid}`
+URL, including existing legacy slug aliases. Updates and deletion require the returned UUID, not a
+URL or title. Canonical URLs survive title edits; `slug` remains legacy metadata.
+New articles start public on my-knowledge; a subsequent visibility change requires user intent.
+
 `knowledge page` accepts `cursor`, `limit` (1–100), `tags` (up to five), and `visibility`. It returns
 compact `{ articles, cursor }` summaries through REST, corresponding to MCP `listArticles`.
+`knowledge list` returns `{ documents, cursor }` summary projections without bodies; use `get` for
+source and `contentHash`.
 
 Inspect an existing article with `knowledge get` before constructing an update. Do not invent fields;
 use the Rust input types in `crates/consumers/src/api/knowledge.rs` as the local contract.
@@ -277,8 +337,9 @@ reads one photo directly by ID.
 
 `upload-photo` uses the desktop's coordinated Rust workflow. Its JSON follows
 `consumers::api::moment::Upload`. Rust accepts PNG, JPEG, WebP, AVIF, or HEIC up to 20 MB, applies
-camera orientation and available EXIF defaults, derives the normalized PNG, JPEG thumbnail, and
-ThumbHash, then rolls back objects written by the operation when a later step fails.
+camera orientation and available EXIF defaults, and derives the normalized PNG, JPEG thumbnail, and
+ThumbHash. Failures before metadata registration clean up objects written by the operation; once
+registration starts, retain them for reconciliation because the server may already have committed.
 
 If metadata creation fails after an upload, retry metadata creation before removing anything.
 `remove-object` is only for a verified orphan and can break an existing photo if its key is still

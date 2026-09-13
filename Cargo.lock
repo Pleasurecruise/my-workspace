@@ -4153,6 +4153,7 @@ dependencies = [
  "percent-encoding",
  "pulldown-cmark",
  "quotes",
+ "serde_json",
  "svg-hush",
  "thiserror 2.0.20",
  "url",

@@ -387,7 +387,7 @@
 						</div>
 					</section>
 				{:else if selected === "newspaper"}
-					<NewspaperView onread={knowledge.readArticle} documents={knowledge.content?.knowledge ?? []} issues={knowledge.content?.newspaper ?? { developer: null, personal: null }} loading={knowledge.content === null || knowledge.loading} onopenarticle={(document) => { const error = selectKnowledgeArticle(document); if (error === null) selected = "knowledge"; return error; }} />
+					<NewspaperView onread={knowledge.readArticle} documents={knowledge.content?.knowledge ?? []} issues={knowledge.content?.newspaper ?? { developer: null, personal: null }} loading={knowledge.content === null || knowledge.loading} onopenarticle={(document, fragment) => { const error = selectKnowledgeArticle(document, fragment); if (error === null) selected = "knowledge"; return error; }} />
 				{:else if content !== null}
 					{#if content.channel === "memos"}
 						<MemosView memos={content.memos} tags={memos.tags.tags} display={memos.memoDisplay} onfilter={memos.filterMemos} onopenmemo={memos.revealMemo} oncreate={memos.createMemo} onimportx={memos.importXMemo} onupdate={memos.updateMemo} ondelete={memos.deleteMemo} onpublishtelegram={memos.publishMemoToTelegram} onpublishx={memos.publishMemoToX}>

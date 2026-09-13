@@ -1,132 +1,161 @@
 # Markdown Pipeline
 
-Vesper compiles Markdown in Rust. The Svelte layer receives rendered HTML and display metadata; it
-does not own parsing rules. This keeps Desktop and CLI behavior aligned and prevents consumer-specific
-frontend parsers from producing different output for the same Markdown source.
+Rust owns Markdown compilation; Svelte receives HTML and display metadata. Consumers call
+`cms-core::markdown`, which parses documents and assembles HTML. `md-dialect` validates and renders
+custom `embed:*` fences, resolves provider snapshots, sanitizes SVG, and supplies embed styles.
 
-## Compilation contract
+## Compilation
 
-```text
-API or local Markdown
-  -> cms-core::markdown
-  -> pulldown-cmark events
-  -> md-dialect for custom embed:* fences
-  -> HTML (plus table of contents and excerpt for Knowledge)
-  -> typed Tauri response
-  -> Svelte presentation
-```
+| Profile            | Output                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| Publication        | Syntect-highlighted code, Mermaid SVG, enriched embeds                             |
+| Knowledge          | Ordinary code/Mermaid fences, enriched embeds, stable heading IDs, TOC and excerpt |
+| Knowledge fallback | Embeds remain visible as source code                                               |
+| Memo               | Soft line breaks become hard breaks                                                |
 
-`cms-core::markdown` owns document parsing, HTML assembly, raw-HTML/link policy, and article
-metadata. Its article module implements publication and Knowledge compilation. `md-dialect` owns
-only custom `embed:*` syntax: field validation, provider snapshot resolution, SVG sanitization,
-rendered embeds, and their styles. It returns `None` for ordinary code languages so the caller can
-handle them. Consumers access compilation through `cms-core::markdown`.
+Knowledge strips one leading frontmatter block without using it as metadata. Publication does not.
+Embed validation precedes provider reads. Rust counts prose at 350 CJK characters or 200 other words
+per minute, excluding frontmatter, URLs, code, math, image descriptions and embed configuration.
+Consumers own storage and metadata; Vesper keeps no second Markdown mirror.
 
-The existing output profiles remain distinct: publication highlights code with Syntect and renders
-Mermaid to SVG; Knowledge preserves ordinary code and Mermaid fences as code, and adds heading IDs,
-a table of contents, and an excerpt. Both enriched article paths render custom embeds. Knowledge's
-plain fallback preserves all embed fences as code when enrichment fails. Knowledge removes one leading front matter block before resolving embeds, without interpreting
-it as metadata; publication does not apply that stripping.
+Rich/source switching compares Markdown semantics: formatting differences are allowed, content
+changes are not. Source stays authoritative until edited. Loading, cache invalidation and navigation
+belong to [Architecture](ARCHITECTURE.md#desktop-boundary); draft visibility and Save behavior belong
+to [Design](DESIGN.md).
 
-`render_memo` converts soft line breaks into hard line breaks to preserve the compact writing style
-used by my-memos. `compile_knowledge_enriched` assigns stable, de-duplicated heading IDs and produces the table
-of contents and excerpt in the same pass boundary as HTML compilation. Consumers continue to own
-storage and metadata; Vesper does not retain a second Markdown mirror.
+## Shared embed rules
 
-Rust computes reading statistics from prose events, excluding front matter, URLs, code, math, image descriptions and embed configuration; CJK characters use 350/minute and other words use 200/minute. Plain fallback and enriched rendering share these statistics. Embed syntax is validated before external enrichment reads.
+Fields use `name: value`, optionally quoted. Unknown, duplicate or invalid fields fail compilation;
+text is escaped. Sources require credential-free HTTP(S), except media also accepts document-relative
+assets. Ordinary links and code languages remain unchanged.
 
-The Desktop rich editor compares source and reserialized Markdown through the same Rust parser options used for Knowledge rendering.
-Formatting differences such as bullet markers are allowed; changed text, tables, images, raw HTML,
-and custom fence languages or bodies prevent switching. Source remains authoritative until an edit.
+All embeds accept `align`: `wide` fills the container; `left`/`right` cap width at 32rem and align to
+that edge; `narrow` centers the same width. Alignment never changes authorization or navigation.
 
-## Loading and navigation
+## Provider cards
 
-Knowledge and Newspaper receive a metadata-only index: titles, summaries, tags, dates, edition
-classification and content hashes. Listing never reads or compiles article bodies. Opening an article
-reads and compiles that document. Visible index entries preload after rendering, with two requests at a time. Pointer intent
-(60 ms), keyboard focus and touch also start reads early. Rust shares in-flight reads and caches at most 16 compiled documents for 30 seconds; a changed
-content hash forces a new read. Speculative reads are limited to two of six reader slots. Writes and
-credential changes invalidate the cache, including results still in flight. A failed preload does
-not prevent clicking to retry. These policies apply to Vesper; they are not a static web build.
+| Fence          | Required field             | Resolved content    |
+| -------------- | -------------------------- | ------------------- |
+| `embed:github` | `repo: owner/name`         | Repository metadata |
+| `embed:stock`  | `code: AAPL`               | Stock price series  |
+| `embed:link`   | `url: https://example.com` | Website preview     |
 
-## Article lists
+The shared `quotes` providers resolve these cards during compilation. Author text fields as plain
+text; provider data never rewrites the stored Markdown. An enrichment failure invokes the host's
+fallback policy described above.
 
-An explicit `embed:article` fence accepts 1–50 URL-only lines, optionally prefixed with Markdown list bullets. Each entry renders a compact card containing the resolved article title and description. URLs identify destinations and never become card labels. Ordinary Markdown links outside these fences remain ordinary links. Order and repeated entries are retained; metadata reads are deduplicated and bounded.
+## Article cards
+
+`embed:article` accepts 1–50 URL lines, optionally prefixed with list bullets. Order and duplicates
+are preserved; metadata reads are deduplicated. Cards display resolved titles and descriptions.
 
 ````markdown
 ```embed:article
 align: narrow
-https://knowledge.you-find.me/articles/first-article
-https://knowledge.you-find.me/articles/second-article
+https://knowledge.you-find.me/articles/11111111-1111-4111-8111-111111111111
+https://knowledge.you-find.me/articles/22222222-2222-4222-8222-222222222222
 ```
 ````
 
-The Knowledge consumer resolves Knowledge URLs against the authenticated, paginated summary index.
-The index includes both ordinary articles and all daily pages, including historical editions.
-It decodes the URL path segment once and matches the web slug to the record’s real ID and supplies title, description, and the desktop
-`/articles/<id>` destination without reading or compiling target bodies. Clicking reads the selected
-article through the ID-based detail endpoint. The desktop reader opens these cards inside the application, only when resolved from the article index. Stale requests cannot replace a later selection; editing blocks navigation. The web adapter authorizes the same URL against D1 and renders its canonical web route. Missing or unauthorized web targets remain non-clickable.
+Only the host's authorized article index can resolve cards; there are no external previews or
+Open Graph fallbacks. Missing, external or unauthorized entries remain non-clickable without hiding
+valid siblings. Vesper also accepts single-entry `id`/`url` fields and title/description overrides;
+overrides cannot authorize a target. Static publication must supply an index.
 
-`embed:article` resolves only articles present in the host's article index. It never fetches other websites or falls back to Open Graph. Missing, external, or unauthorized targets render a non-clickable unavailable card without removing valid siblings. Single-entry `id`/`url` fields and title/description overrides remain supported, but overrides cannot make an unindexed target clickable. Static publication must supply an article index to render navigable article cards. URL navigation uses the same summary-to-ID resolution and does not require a slug-based detail API.
-
-Existing article visibility is a draft property alongside body metadata. Switching it does not persist or navigate; Save sends content and visibility in one request, Cancel discards it, and failures retain the draft. Creation remains public.
-
-Article lists and single-entry cards accept `align: left`, `right`, `wide` (default), or `narrow`. Left and right align a card or the entire list to that side with a maximum width of 32rem; narrow uses the same maximum width and centers it. All fit within the available container. Link, media, GitHub, stock, and SVG embeds accept the same alignment values. Alignment does not change metadata resolution or navigation.
+Knowledge resolves UUIDs and legacy slug aliases through the authenticated, paginated summary
+index, including historical daily editions, then opens details by real ID. Links retain chapter
+fragments, which the destination reader decodes after mounting. Card rendering never reads target
+bodies. The web adapter separately authorizes against D1. Editing blocks navigation; stale responses
+cannot replace a later selection. Shared Knowledge submissions use URL lines or a single `url`
+field; `id`, title and description overrides are Vesper-only extensions.
 
 ## Audio and video
 
-Use `embed:media` between paragraphs. `type` and `src` are required; `title` supplies the player's
-accessible name, `caption` adds visible text, and `align` accepts `left`, `right`, `wide` (default), or `narrow`.
-Video accepts an optional `poster`; omit it to preview the video’s opening frame automatically. Field values are plain text, with optional surrounding quotes.
+`embed:media` requires `type: audio|video` and `src`. Optional fields are `title` (accessible name),
+`caption`, `align`, and video-only `poster`.
 
 ````markdown
-A recording from the session:
-
-```embed:media
-type: audio
-src: ./media/interview.mp3
-title: Interview recording
-caption: The full conversation.
-```
-
-A demonstration from a remote source:
-
 ```embed:media
 type: video
 src: https://cdn.example.com/demo.mp4
-poster: ./media/demo-cover.jpg
 title: Product demonstration
 caption: A short walkthrough.
-align: wide
 ```
-
-Continue the article here.
 ````
 
-For static publication, local paths are relative to the Markdown file: `content/posts/story.md`
-can reference `../media/interview.mp3` in `content/media/`. Files must exist inside `content/` and
-remain regular copied assets; missing files, outside-root paths, symlinks, and Markdown references
-fail the build. Spaces and non-ASCII names are URL-encoded. Use `%23` or `%3F` for literal `#` or `?`
-in filenames. Absolute filesystem paths, `~/`, `file:` URLs, and protocol-relative URLs are rejected.
-The generated HTML retains relative URLs, so the serving application must preserve the document's
-published directory when resolving them, including when rendering `content.json`.
+Playback is manual and video stays inline. Without a poster, video requests an opening-frame preview
+using `preload="metadata"` and `#t=0.001`, preserving authored fragments. Audio and explicit posters
+use `preload="none"`. Preview availability and codecs depend on the browser. Desktop adds seeking,
+volume, errors and fullscreen; leaving stops playback. No transcoding or preview image is stored.
 
-HTTP(S) sources must be playable resources; GitHub file links resolve to raw URLs. Resources are
-neither downloaded nor checked for availability during compilation. Knowledge and Newspaper can
-render remote media with the same syntax; local assets belong to the `content/` publication workflow,
-not the desktop application's filesystem. No upload or local file access is triggered by rendering.
+Local assets resolve relative to the Markdown file and must be regular files inside `content/`.
+Missing files, symlinks, outside-root paths and Markdown targets fail the build. Absolute filesystem
+paths, `~/`, `file:` and protocol-relative URLs are rejected. Spaces/non-ASCII names are encoded;
+use `%23`/`%3F` for literal filename characters. Serving applications must preserve published path
+resolution, including for `content.json`. Uploads stream with extension-based MIME types, defaulting
+to `application/octet-stream`.
 
-Desktop readers add seeking, volume, errors and video fullscreen; leaving stops playback.
-Static output retains native controls: click play to start, with no autoplay
-and inline video. A video without `poster` uses `preload="metadata"` and an opening-time fragment
-(`#t=0.001`) to request a frame preview; an authored URL fragment is preserved. No image is extracted,
-uploaded, or stored. Explicit posters and audio retain `preload="none"`. Browser loading preferences
-can defer a preview, and an unavailable or unsupported source cannot provide a frame; controls remain
-available. Remote poster images may load with the article. Playback formats and codecs
-must be supported by the reader's browser. Published files receive extension-based MIME types
-(unknown extensions use `application/octet-stream`), and R2 uploads stream from disk. There is no
-transcoding. Keep subtitles or transcripts alongside the media in the article when needed.
+Remote media is not downloaded or availability-checked during compilation; GitHub file pages become
+raw URLs. Local paths belong to static publication, not desktop filesystem access or an upload flow.
 
-Invalid types, duplicate or unsupported fields, unsafe URL schemes, and credential-bearing URLs
-fail dialect compilation. Titles and captions are escaped. Knowledge's existing plain fallback
-keeps an invalid or unavailable embed visible as source code.
+## Quotes and Git diffs
+
+Both use metadata, an exact `---` separator, then plain text. Quote requires `author`; `title` and
+HTTP(S) `url` are optional. It preserves whitespace without parsing nested Markdown or fetching
+source metadata.
+
+````markdown
+```embed:quote
+author: Project notes
+url: https://example.com/source
+---
+Keep the knowledge and its context.
+```
+
+```embed:diff
+title: Publication default
+---
+--- a/config.ts
++++ b/config.ts
+@@ -1 +1 @@
+-const visibility = "private";
++const visibility = "public";
+```
+````
+
+Diff requires `title` and a complete unified text patch with matching hunk counts. Multiple files,
+hunks, new/deleted text files and no-final-newline markers are supported; binary/mode-only patches
+and extra blank patch lines are rejected. Git never runs. Colored rows retain plus/minus markers
+and keyboard scrolling. Ordinary `diff` fences remain code.
+
+Both profiles compile these blocks without provider reads. Knowledge submissions retain semantic
+fences for the web compiler. [Shared fixtures](../crates/md-dialect/tests/fixtures/document-embeds.json)
+specify the contract with my-knowledge.
+
+## Annotations
+
+`embed:annotation` uses `mark`, `note`, optional `color` and HTTP(S) `url`, followed by an exact
+`---` and a plain-text body. The mark must occur exactly once, including overlapping occurrences.
+Colors are blue (default), red, green, amber, and purple. The compiler preserves the sentence,
+highlights the mark, and places the note below it with a matching border; it does not inject scripts
+or reproduce the web reader's measured arrow. Text remains readable without JavaScript.
+
+## Engineering diagrams and storyboards
+
+Architecture supports `flowchart LR`/`graph LR`, one two-endpoint edge per line, and optional
+`[labels]`. Structured engineering diagrams group nodes by dependency; siblings share a column.
+Containers at most 640px wide use a vertical layout with at most two nodes per row. Cycles and
+skipped layers route around nodes. Generated diagrams grow in height without the authored SVG
+height cap. The query measures the diagram container after alignment, so left/right/narrow diagrams
+also select the compact layout when the article itself is wide.
+
+Storyboard supports one title and two to six `step: heading | description` fields. Both kinds also
+accept authored SVG with a viewBox, title and description. SVG is sanitized without rearranging its
+geometry; authored canvases retain a 42rem display height cap.
+
+## Showing source
+
+Use longer backtick fences or tildes to show dialect source. For compatibility with Knowledge,
+a bare triple-backtick wrapper immediately around one embed, with adjacent inner/outer closers,
+is normalized to a Markdown code example. Provider collection uses the same normalization, so
+examples never trigger enrichment and following live embeds still compile.

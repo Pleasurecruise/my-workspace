@@ -491,3 +491,94 @@ fn rejects_invalid_fences_before_provider_reads() {
             .is_err()
     );
 }
+
+#[test]
+fn document_embed_contract_matches_knowledge() {
+    let cases: serde_json::Value =
+        serde_json::from_str(include_str!("../../tests/fixtures/document-embeds.json")).unwrap();
+    for case in cases.as_array().unwrap() {
+        let kind = case["kind"].as_str().unwrap();
+        let source = case["source"].as_str().unwrap();
+        let valid = case["valid"].as_bool().unwrap();
+        let rendered = super::render(kind, source, &super::Data::default());
+        assert_eq!(rendered.is_ok(), valid, "{kind}: {source}: {rendered:?}");
+        if valid {
+            let html = rendered.unwrap().unwrap();
+            assert!(!html.contains("<script>"));
+            assert!(html.contains("content-embed-"));
+        }
+    }
+}
+
+#[test]
+fn quote_and_diff_preserve_plain_text() {
+    let quote = super::render(
+        "embed:quote",
+        "author: A & B\nurl: https://example.com\n---\nFirst\n\n<script>text</script>",
+        &super::Data::default(),
+    )
+    .unwrap()
+    .unwrap();
+    assert!(quote.contains("First\n\n&lt;script&gt;text&lt;/script&gt;"));
+    assert!(quote.contains("cite=\"https://example.com/\""));
+    let diff = super::render(
+        "embed:diff",
+        "title: Markers\n---\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n--- old\n+++ new",
+        &super::Data::default(),
+    )
+    .unwrap()
+    .unwrap();
+    assert!(diff.contains("class=\"diff-remove\">--- old"));
+    assert!(diff.contains("class=\"diff-add\">+++ new"));
+}
+
+#[test]
+fn annotation_preserves_text_and_rejects_ambiguous_marks() {
+    let source = "mark: 内容优先\nnote: <说明>\ncolor: red\nurl: https://example.com/source\n---\n我的博客坚持内容优先。";
+    let html = render("embed:annotation", source, &Data::default())
+        .unwrap()
+        .unwrap();
+    assert!(html.contains("我的博客坚持<mark>内容优先</mark>。"));
+    assert!(html.contains("&lt;说明&gt;</a>"));
+    for source in [
+        "mark: aa\nnote: note\n---\naaa",
+        "mark: missing\nnote: note\n---\ntext",
+        "mark: a\nnote: note\ncolor: pink\n---\na",
+        "mark: a\nnote: note\nurl: javascript:alert(1)\n---\na",
+        "mark: a\nnote: note\nurl: https://user:pass@example.com\n---\na",
+        "mark: a\nnote: note\nnote: duplicate\n---\na",
+    ] {
+        assert!(
+            render("embed:annotation", source, &Data::default()).is_err(),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn semantic_canvases_validate_like_knowledge() {
+    for source in [
+        "flowchart LR\na --> b --> c",
+        "flowchart LR\na[x[y]] --> b",
+        "flowchart LR\na] --> b",
+    ] {
+        assert!(render("embed:architecture", source, &Data::default()).is_err());
+    }
+    for source in [
+        "title: t\nalign: wide\nalign: left\nstep: a | b\nstep: c | d",
+        "title: t\nstep: a |\nstep: c | d",
+        "title: \nstep: a | b\nstep: c | d",
+    ] {
+        assert!(render("embed:storyboard", source, &Data::default()).is_err());
+    }
+    let source = "title: t\n".to_owned() + &"step: a | b\n".repeat(7);
+    assert!(render("embed:storyboard", &source, &Data::default()).is_err());
+    let html = render(
+        "embed:storyboard",
+        "title: \"Board\"\nstep: \"One | First\"\nstep: Two | Second",
+        &Data::default(),
+    )
+    .unwrap()
+    .unwrap();
+    assert!(!html.contains("&quot;"));
+}

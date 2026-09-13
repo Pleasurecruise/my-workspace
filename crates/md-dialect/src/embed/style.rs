@@ -17,5 +17,26 @@ pub(super) const CSS: &str = r#"<style data-md-dialect="embeds">
 .content-embed.content-embed-right,.content-article-list.content-embed-right{width:min(100%,32rem);margin-left:auto;margin-right:0}
 .content-embed.content-embed-narrow,.content-article-list.content-embed-narrow{width:min(100%,32rem);margin-left:auto;margin-right:auto}
 .content-embed-wide{width:100%}
+.content-embed-quote blockquote{margin:0;padding:.25rem 0 .25rem 1rem;border-inline-start:3px solid var(--color-accent,currentColor)}
+.content-embed-quote blockquote p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.content-embed-quote figcaption,.content-embed-diff figcaption{margin:.75rem 0;color:var(--color-muted-foreground,inherit);font-size:.82rem;overflow-wrap:anywhere}
+.content-embed-diff pre{margin:0;padding:.75rem 0;max-height:32rem;overflow:auto}
+.content-embed-diff pre:focus-visible{outline:2px solid var(--color-accent,currentColor);outline-offset:2px}
+.content-embed-diff code{display:block;min-width:max-content}
+.content-embed-diff code span{display:block;padding:0 1rem;white-space:pre}
+.content-embed-diff .diff-add{color:var(--color-success,inherit);background:color-mix(in srgb,var(--color-success,currentColor) 9%,transparent)}
+.content-embed-diff .diff-remove{color:var(--color-error,inherit);background:color-mix(in srgb,var(--color-error,currentColor) 9%,transparent)}
+.content-embed-diff .diff-header{color:var(--color-muted-foreground,inherit)}
+.content-embed-annotation{--annotation-color:var(--color-chart-3,currentColor)}
+.content-embed-annotation.annotation-red{--annotation-color:var(--color-error,currentColor)}
+.content-embed-annotation.annotation-green{--annotation-color:var(--color-success,currentColor)}
+.content-embed-annotation.annotation-amber{--annotation-color:var(--color-warning,currentColor)}
+.content-embed-annotation.annotation-purple{--annotation-color:var(--color-chart-5,currentColor)}
+.content-embed-annotation p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.content-embed-annotation mark{color:inherit;background:color-mix(in srgb,var(--annotation-color) 18%,transparent);text-decoration:underline;text-decoration-color:var(--annotation-color);text-underline-offset:.2em}
+.content-embed-annotation figcaption{margin-top:.75rem;padding-inline-start:.75rem;border-inline-start:2px solid var(--annotation-color);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--color-muted-foreground,inherit)}
+.architecture-flow.content-embed-left,.architecture-flow.content-embed-right,.architecture-flow.content-embed-narrow{width:min(100%,32rem)}.architecture-flow.content-embed-left{margin-left:0;margin-right:auto}.architecture-flow.content-embed-right{margin-left:auto;margin-right:0}.architecture-flow.content-embed-narrow{margin-left:auto;margin-right:auto}
+.architecture-flow{container-type:inline-size;min-width:0;max-width:100%}.architecture-flow .svg-canvas>svg{max-height:none}.architecture-flow .architecture-compact{display:none}
+@container(max-width:640px){.architecture-flow .architecture-wide{display:none}.architecture-flow .architecture-compact{display:block}}
 </style>
 "#;

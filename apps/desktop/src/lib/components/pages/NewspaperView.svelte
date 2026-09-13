@@ -7,7 +7,7 @@
 
 	let linkError = $state<string | null>(null);
 
-	let { documents, issues, loading, onread, onopenarticle }: { documents: KnowledgeEntry[]; issues: NewspaperIssues; loading: boolean; onread: (id: string, expectedHash: string | null) => Promise<CommandResponse<KnowledgeDocument>>; onopenarticle: (document: KnowledgeDocument) => string | null } = $props();
+	let { documents, issues, loading, onread, onopenarticle }: { documents: KnowledgeEntry[]; issues: NewspaperIssues; loading: boolean; onread: (id: string, expectedHash: string | null) => Promise<CommandResponse<KnowledgeDocument>>; onopenarticle: (document: KnowledgeDocument, fragment?: string) => string | null } = $props();
 
 	type EditionKind = "developer" | "personal";
 	const editionLabels: Record<EditionKind, string> = {

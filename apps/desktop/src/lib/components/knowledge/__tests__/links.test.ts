@@ -202,3 +202,17 @@ it("opens an unresolved Knowledge URL card inside the application", async () => 
 	expect(opener.openUrl).not.toHaveBeenCalled();
 	action.destroy();
 });
+
+it("passes UUID chapter navigation to the destination reader", async () => {
+	const node = document.createElement("article");
+	node.innerHTML = '<a href="/articles/11111111-1111-4111-8111-111111111111#section">Chapter</a>';
+	const onOpen = vi.fn(() => null);
+	const action = openArticleLinks(node, { onError: vi.fn(), onOpen });
+	const data = { id: "11111111-1111-4111-8111-111111111111" };
+	invoke.mockResolvedValueOnce({ status: "ready", data });
+	node.querySelector("a")?.click();
+	await vi.waitFor(() => expect(onOpen).toHaveBeenCalledWith(data, "section"));
+	expect(invoke).toHaveBeenCalledWith("read_knowledge", { id: data.id, expectedHash: null });
+	expect(opener.openUrl).not.toHaveBeenCalled();
+	action.destroy();
+});

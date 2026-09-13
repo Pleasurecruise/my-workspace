@@ -386,3 +386,39 @@ fn reading_time_uses_mixed_language_rates() {
     assert_eq!(compile_knowledge_plain(&longer).stats.reading_minutes, 2);
     assert_eq!(compile_knowledge_plain("").stats.word_count, 0);
 }
+
+#[tokio::test]
+async fn document_embeds_keep_fence_newlines_consistent() {
+    let patch = "title: Changes\n---\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-<old>\n+<new>";
+    let source = format!(
+        "~~~embed:quote\nauthor: A & B\nurl: https://example.com\n---\nFirst\n\n<script>plain text</script>\n\n~~~\n\n~~~embed:diff\n{patch}\n~~~"
+    );
+    let knowledge = super::compile_knowledge_enriched(&source).await.unwrap();
+    let publication = super::render_publication_enriched(&source).await.unwrap();
+    for html in [&knowledge.html, &publication] {
+        assert!(html.contains("First\n\n&lt;script&gt;plain text&lt;/script&gt;\n</p>"));
+        assert!(html.contains("class=\"diff-remove\">-&lt;old&gt;\n</span>"));
+        assert!(html.contains("class=\"diff-add\">+&lt;new&gt;\n</span>"));
+    }
+    let invalid = format!("~~~embed:diff\n{patch}\n\n~~~");
+    assert!(super::compile_knowledge_enriched(&invalid).await.is_err());
+    assert!(super::render_publication_enriched(&invalid).await.is_err());
+}
+
+#[tokio::test]
+async fn bare_embed_examples_do_not_swallow_following_live_blocks() {
+    let source = "```\n```embed:github\nrepo: example/source-only\n```\n```\n\n```embed:annotation\nmark: text\nnote: note\n---\nLive text.\n```";
+    let knowledge = compile_knowledge_enriched(source).await.unwrap();
+    assert!(knowledge.html.contains("language-markdown"));
+    assert!(knowledge.html.contains("```embed:github"));
+    assert!(knowledge.html.contains("Live <mark>text</mark>."));
+    let publication = render_publication_enriched(source).await.unwrap();
+    assert!(publication.contains("Live <mark>text</mark>."));
+    assert!(
+        md_dialect::article_urls(
+            "```\n```embed:article\nhttps://knowledge.you-find.me/articles/example\n```\n```"
+        )
+        .unwrap()
+        .is_empty()
+    );
+}

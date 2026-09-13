@@ -79,8 +79,11 @@ vesper knowledge delete <id> <expected-hash>
 ```
 
 `page` accepts `cursor`, `limit` (1–100), up to five `tags`, and `visibility`, returning
-`{ articles, cursor }` without bodies. `list` returns rendered projections; use `get` for complete
-source and its hash before editing. `update-draft` and `visibility` also accept JSON payloads.
+`{ articles, cursor }` without bodies. `list` returns `{ documents, cursor }` summary projections.
+Use `get` for complete source and `contentHash` before editing; it accepts a UUID or a complete
+canonical article URL, including legacy slug aliases. Writes use the returned UUID, never a URL or
+a title. `update-draft` and `visibility` also accept JSON payloads. New articles start public on the
+Knowledge server. Shared Markdown syntax belongs to [Markdown](MARKDOWN.md).
 
 ## Moment
 
@@ -96,8 +99,10 @@ vesper moment delete <id>
 
 The upload JSON uses the `Upload` contract. PNG, JPEG, WebP, AVIF, and HEIC sources are limited to
 20 MB. Rust applies orientation, fills omitted date/coordinates from EXIF where available, and
-produces normalized PNG, JPEG thumbnail, and ThumbHash. A later failure triggers cleanup of objects
-written by that operation. Inspect cleanup failures before retrying or removing remaining objects.
+produces normalized PNG, JPEG thumbnail, and ThumbHash. Upload failures before metadata registration
+trigger cleanup of objects written by the operation. Once registration starts, retain uploaded
+objects for reconciliation because the server may already have committed. Inspect partial results
+before retrying or removing objects.
 
 Low-level `upload <r2-key> <local-path>` and `create <json>` separate transfer from registration for
 explicit recovery. An upload alone does not create metadata. If registration fails, retry it or

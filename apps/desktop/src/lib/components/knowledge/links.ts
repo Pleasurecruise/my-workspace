@@ -2,10 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import type { CommandResponse, KnowledgeDocument } from "../../consumer";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
-// Desktop article routes carry IDs; the web adapter resolves its canonical slugs.
+// Desktop routes carry IDs; Rust resolves canonical web URLs and legacy aliases.
 type ArticleNavigation = {
 	onError: (message: string | null) => void;
-	onOpen: (document: KnowledgeDocument) => string | null;
+	onOpen: (document: KnowledgeDocument, fragment?: string) => string | null;
 };
 export function openArticleLinks(node: HTMLElement, navigation: ArticleNavigation) {
 	let generation = 0;
@@ -24,7 +24,7 @@ export function openArticleLinks(node: HTMLElement, navigation: ArticleNavigatio
 		event.preventDefault();
 		const request = ++generation;
 		navigation.onError(null);
-		const article = /^\/articles\/([^/?#]+)$/.exec(href);
+		const article = /^\/articles\/([^/?#]+)(?:#[^\s]*)?$/.exec(href);
 		const cardUrl =
 			anchor.classList.contains("content-embed-article") &&
 			URL.canParse(href) &&
@@ -40,10 +40,11 @@ export function openArticleLinks(node: HTMLElement, navigation: ArticleNavigatio
 					if (request !== generation) return;
 					if (response.status === "failed") navigation.onError(response.message);
 					else {
-						const scroller = node.closest("main");
-						const error = navigation.onOpen(response.data);
+						const fragment = new URL(href, "https://knowledge.you-find.me").hash.slice(1);
+						const error = fragment
+							? navigation.onOpen(response.data, fragment)
+							: navigation.onOpen(response.data);
 						navigation.onError(error);
-						if (error === null) scroller?.scrollTo({ top: 0, behavior: "instant" });
 					}
 				})
 				.catch(() => {
@@ -143,7 +144,7 @@ export function preloadArticles(node: HTMLElement, visible = false) {
 		if (target === null || !node.contains(target)) return;
 		const id =
 			target.dataset.knowledgeId ??
-			/^\/articles\/([^/?#]+)$/.exec(target.getAttribute("href") ?? "")?.[1];
+			/^\/articles\/([^/?#]+)(?:#[^\s]*)?$/.exec(target.getAttribute("href") ?? "")?.[1];
 		if (!id) return;
 		cancel();
 		const expectedHash = target.dataset.contentHash ?? null;

@@ -150,9 +150,9 @@ fn print_help() {
          memo archive <id>             archive a memo\n  \
          memo restore <id>             restore an archived memo\n  \
          memo delete <id>             permanently delete a memo\n  \
-         knowledge list [cursor]       list Knowledge articles\n  \
+         knowledge list [cursor]       list Knowledge summaries\n  \
          knowledge page <json>         list compact summaries by tags, visibility and cursor\n  \
-         knowledge get <id>            read one Knowledge article\n  \
+         knowledge get <id-or-url>     read by UUID or article URL\n  \
          knowledge create <json>       create an article from a typed JSON payload\n  \
          knowledge update-draft <id> <json>      update draft fields with expectedHash\n  \
          knowledge update-documents <id> <json>  update editions with expectedHash\n  \

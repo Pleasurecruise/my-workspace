@@ -1,6 +1,8 @@
 mod architecture;
 mod article;
 mod canvas;
+mod diff;
+mod document;
 mod github;
 mod link;
 mod media;
@@ -18,6 +20,9 @@ const GITHUB: &str = "embed:github";
 const ARTICLE: &str = "embed:article";
 const LINK: &str = "embed:link";
 const MEDIA: &str = "embed:media";
+const ANNOTATION: &str = "embed:annotation";
+const QUOTE: &str = "embed:quote";
+const DIFF: &str = "embed:diff";
 const STOCK: &str = "embed:stock";
 const ARCHITECTURE: &str = "embed:architecture";
 const STORYBOARD: &str = "embed:storyboard";
@@ -32,7 +37,7 @@ pub struct Data {
     pub articles: HashMap<String, ArticleMetadata>,
 }
 
-/// Metadata resolved by the authorized host or a public webpage preview.
+/// Metadata resolved exclusively by the authorized host article index.
 pub struct ArticleMetadata {
     pub href: Option<String>,
     pub title: String,
@@ -103,6 +108,8 @@ pub enum EmbedError {
         kind: &'static str,
         field: &'static str,
     },
+    #[error("invalid document embed: {0}")]
+    InvalidDocument(&'static str),
     #[error("invalid GitHub repository `{0}`; expected `owner/name`")]
     InvalidRepository(String),
     #[error("invalid embed alignment `{0}`; expected `left`, `right`, `wide`, or `narrow`")]
@@ -169,6 +176,9 @@ pub async fn load_with_articles(
                     article::parse(parsed)?;
                 }
             }
+            ANNOTATION | QUOTE | DIFF => {
+                document::render(&language, &source)?;
+            }
             MEDIA => {
                 let parsed = fields(&language, &source)?;
                 media::parse(parsed)?;
@@ -232,6 +242,7 @@ pub fn render(language: &str, source: &str, data: &Data) -> Result<Option<String
         GITHUB => github::render(fields(language, source)?, data).map(Some),
         ARTICLE => article::render_source(source, data).map(Some),
         LINK => link::render(fields(language, source)?, data).map(Some),
+        ANNOTATION | QUOTE | DIFF => document::render(language, source).map(Some),
         MEDIA => media::render(fields(language, source)?).map(Some),
         STOCK => stock::render(fields(language, source)?, data).map(Some),
         ARCHITECTURE => architecture::render(source).map(Some),
@@ -348,9 +359,10 @@ pub fn collect_media_paths(source: &str) -> Result<Vec<String>, EmbedError> {
 }
 
 fn parse_fences(source: &str) -> Vec<(String, String)> {
+    let source = crate::normalize_embed_examples(source);
     let mut blocks = Vec::new();
     let mut block: Option<(String, String)> = None;
-    for event in Parser::new_ext(source, Options::ENABLE_FOOTNOTES) {
+    for event in Parser::new_ext(&source, Options::ENABLE_FOOTNOTES) {
         match event {
             Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) => {
                 let language = info
@@ -366,8 +378,10 @@ fn parse_fences(source: &str) -> Vec<(String, String)> {
                 }
             }
             Event::End(TagEnd::CodeBlock) => {
-                if let Some(block) = block.take() {
-                    blocks.push(block);
+                if let Some((language, source)) = block.take() {
+                    // pulldown-cmark includes the line ending before the closing fence.
+                    let source = source.strip_suffix('\n').unwrap_or(&source).to_owned();
+                    blocks.push((language, source));
                 }
             }
             _ => {}

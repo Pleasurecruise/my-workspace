@@ -1,6 +1,7 @@
 use super::{EmbedError, canvas, escape_html, unquote};
 
 pub(super) fn render(source: &str) -> Result<String, EmbedError> {
+    let source = source.trim();
     let board = match source.lines().next() {
         Some(line) if line.trim_start().starts_with("align:") => {
             source[line.len()..].trim_start_matches(['\r', '\n'])
@@ -13,6 +14,7 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
 
     let mut title = None;
     let mut align = "wide";
+    let mut has_align = false;
     let mut steps = Vec::new();
     for (index, raw) in source
         .lines()
@@ -25,9 +27,22 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
                 line: index + 1,
             });
         };
+        let value = unquote(value.trim());
+        if value.is_empty() {
+            return Err(EmbedError::InvalidDocument(
+                "storyboard fields must not be empty",
+            ));
+        }
         match field.trim() {
             "align" => {
-                align = unquote(value.trim());
+                if has_align {
+                    return Err(EmbedError::DuplicateField {
+                        kind: "embed:storyboard".to_owned(),
+                        field: "align".to_owned(),
+                    });
+                }
+                has_align = true;
+                align = value;
                 match align {
                     "left" | "right" | "wide" | "narrow" => {}
                     value => return Err(EmbedError::InvalidAlignment(value.to_owned())),
@@ -41,6 +56,11 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
                         message: "each `step:` must use `heading | description`".to_owned(),
                     });
                 };
+                if heading.trim().is_empty() || body.trim().is_empty() {
+                    return Err(EmbedError::InvalidDocument(
+                        "storyboard steps require heading and description",
+                    ));
+                }
                 steps.push((heading.trim(), body.trim()));
             }
             _ => {
@@ -57,33 +77,12 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
             message: "the storyboard requires one `title:`".to_owned(),
         });
     };
-    if steps.len() < 2 {
+    if !(2..=6).contains(&steps.len()) {
         return Err(EmbedError::InvalidCanvas {
             kind: "storyboard",
             message: "the storyboard requires between two and six `step:` lines".to_owned(),
         });
     }
-    if steps.len() > 6 {
-        return Err(EmbedError::InvalidCanvas {
-            kind: "storyboard",
-            message: "the storyboard requires between two and six `step:` lines".to_owned(),
-        });
-    }
-    for (heading, body) in &steps {
-        if heading.is_empty() {
-            return Err(EmbedError::InvalidCanvas {
-                kind: "storyboard",
-                message: "storyboard headings cannot be empty".to_owned(),
-            });
-        }
-        if body.is_empty() {
-            return Err(EmbedError::InvalidCanvas {
-                kind: "storyboard",
-                message: "storyboard descriptions cannot be empty".to_owned(),
-            });
-        }
-    }
-
     let width = 48 + steps.len() * 174 + steps.len().saturating_sub(1) * 54;
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {width} 250\" role=\"img\"><title>{}</title><desc>An Excalidraw-style sequence of {} notes.</desc>",

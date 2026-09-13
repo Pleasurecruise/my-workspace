@@ -2,6 +2,8 @@
 //! The calling Markdown compiler owns document parsing, HTML assembly, and metadata.
 
 mod embed;
+mod source;
+pub use source::normalize_embed_examples;
 
 pub use embed::{
     ArticleMetadata, Data as EmbedData, EmbedError, add_styles as add_embed_styles, article_ids,

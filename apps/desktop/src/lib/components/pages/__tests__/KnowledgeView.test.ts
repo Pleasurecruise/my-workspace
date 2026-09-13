@@ -84,7 +84,7 @@ it("returns from a related article to its source before returning to the index",
 		updatedAt: "2026-09-12",
 		newspaperEdition: null,
 		source: "Body",
-		html: '<a href="/articles/related">Related</a>',
+		html: '<a href="/articles/related#%63hapter">Related</a>',
 		toc: [],
 		stats: { wordCount: 450, readingMinutes: 3 },
 	};
@@ -92,7 +92,7 @@ it("returns from a related article to its source before returning to the index",
 		...source,
 		id: "related",
 		title: "Related article",
-		html: "<p>Related body</p>",
+		html: '<h2 id="chapter">Related body</h2>',
 	};
 	expect(selectKnowledgeArticle(source)).toBeNull();
 	const target = document.createElement("div");
@@ -104,9 +104,14 @@ it("returns from a related article to its source before returning to the index",
 	await tick();
 	expect(findElement<HTMLElement>(target, ".stats").textContent).toContain("450");
 	expect(findElement<HTMLElement>(target, ".stats").textContent).toContain("3 min");
+	const scroll = vi.fn();
+	const previousScroll = HTMLElement.prototype.scrollIntoView;
+	HTMLElement.prototype.scrollIntoView = scroll;
 	invoke.mockResolvedValueOnce({ status: "ready", data: related });
 	findElement<HTMLAnchorElement>(target, ".prose a").click();
 	await vi.waitFor(() => expect(target.querySelector("h1")?.textContent).toBe("Related article"));
+	expect(scroll).toHaveBeenCalledWith({ behavior: "instant", block: "start" });
+	HTMLElement.prototype.scrollIntoView = previousScroll;
 	findElement<HTMLButtonElement>(target, '[aria-label="Back to previous article"]').click();
 	await tick();
 	expect(target.querySelector("h1")?.textContent).toBe("Source article");
@@ -152,7 +157,7 @@ it("copies the canonical article link and reports clipboard failures", async () 
 	await vi.waitFor(() =>
 		expect(target.querySelector('[aria-label="Article link copied"]')).not.toBeNull(),
 	);
-	expect(writeText).toHaveBeenCalledWith("https://knowledge.you-find.me/articles/article%20slug");
+	expect(writeText).toHaveBeenCalledWith(`https://knowledge.you-find.me/articles/${article.id}`);
 	writeText.mockRejectedValueOnce(new Error("Denied"));
 	findElement<HTMLButtonElement>(target, '[aria-label="Article link copied"]').click();
 	await vi.waitFor(() =>

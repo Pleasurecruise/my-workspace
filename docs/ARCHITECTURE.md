@@ -76,11 +76,12 @@ reads overall. Writes and credential resets clear cached documents and invalidat
 Svelte owns loading/error presentation and discards detail responses after switching or leaving.
 The Rust compiler supplies prose word counts and estimated reading minutes with each document detail.
 
-Compiled external links open in the system browser; fragment links remain in the reader. Internal
-article shortcuts read authorized details by ID and open Knowledge, preserving unsaved drafts.
-Before compiling a selected article, the consumer resolves shortcut titles, summaries and real IDs
-from the authorized paginated summary index. Card rendering does not fetch target bodies; clicking
-reads the ID-based detail endpoint. Web slugs are resolved through that same index. Article blocks never request external website previews. The dialect receives authorized metadata snapshots and renders unmatched references as disabled cards.
+Compiled external links open in the system browser; same-article fragments remain in the reader.
+Internal article cards resolve UUID URLs, legacy slug aliases and metadata through the authorized
+paginated summary index. Rendering never reads target bodies or external previews; unresolved
+references become disabled cards. Clicking reads the ID-based detail endpoint and opens Knowledge
+while preserving unsaved drafts. Chapter navigation is consumed by the destination after it mounts,
+so replacing the source reader cannot discard it. Copied web links use canonical UUID addresses.
 
 App Lock is an in-memory privacy screen backed by a stored password. Reload preserves the lock;
 restart starts unlocked. It blocks developer tools while locked and does not encrypt content.
@@ -89,9 +90,12 @@ The updater verifies signed artifacts before installation; setup belongs in
 
 ## Content production
 
-`cms-core::markdown` owns document and Memo compilation. `md-dialect` handles custom `embed:*`
-fences. Article cards resolve exclusively from host-provided article-index metadata; unresolved references render disabled cards. `quotes` supplies provider data for other embeds, including generic website previews for `embed:link`. [Markdown](MARKDOWN.md) specifies syntax and
-rendering safety; [Workflow](WORKFLOW.md) owns operations and recovery.
+`cms-core::markdown` owns document and Memo compilation. `md-dialect` validates and renders custom
+`embed:*` fences, lays out structured diagrams, and normalizes source examples consistently for
+provider discovery and compilation. Annotation, quote and diff rendering require no provider reads.
+Article cards use host-provided index metadata; `quotes` supplies GitHub, stock and generic website
+preview data for other embeds. [Markdown](MARKDOWN.md) owns syntax and rendering safety;
+[Workflow](WORKFLOW.md) owns operations and recovery.
 
 `vesper build` compiles Markdown under `content/` to HTML in a temporary directory, copies other
 regular assets, and emits `content.json`. It rejects symlinks and output collisions. A Rust guard
