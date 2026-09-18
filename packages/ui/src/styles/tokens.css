@@ -26,6 +26,18 @@
   --color-image-scrim: color-mix(in srgb, var(--palette-black) 78%, transparent);
   --color-on-dark: var(--palette-white);
   --color-island-background: var(--palette-black);
+  --color-terminal-background: var(--palette-dark-base);
+  --color-terminal-foreground: var(--palette-dark-text);
+  --color-terminal-selection: var(--palette-dark-border-strong);
+  --color-terminal-muted: var(--palette-dark-text-dim);
+  --color-terminal-black: var(--palette-black);
+  --color-terminal-white: var(--palette-white);
+  --color-terminal-red: var(--palette-error-dark);
+  --color-terminal-green: var(--palette-success-dark);
+  --color-terminal-yellow: var(--palette-warning-dark);
+  --color-terminal-blue: var(--palette-chart-blue-dark);
+  --color-terminal-magenta: var(--palette-chart-purple-dark);
+  --color-terminal-cyan: var(--palette-chart-teal-dark);
 
   --font-sans:
     "Geist", "Inter", system-ui, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;

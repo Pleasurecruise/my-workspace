@@ -48,6 +48,10 @@ Local builds need no private key. Releases include archives, `.sig` files, and `
 Startup and Check for Updates read the published stable release's `latest.json` from this repository.
 Update requests honor the operating-system HTTP(S) proxy.
 
+On macOS 27, `mis-aligned LINKEDIT string pool` or a missing `tauri_macros` proc-macro can indicate
+a toolchain stripping issue. Use `CARGO_PROFILE_RELEASE_STRIP=none pnpm build:desktop` for that local
+build; see [Rust issue 157750](https://github.com/rust-lang/rust/issues/157750).
+
 ## Credential resolution
 
 Debug builds exclude the OS credential backend and use the shared database for saved credentials.
@@ -82,6 +86,14 @@ remain outside Vesper; App Lock verification stays in Rust.
 Settings accepts bucket-scoped R2 credentials and separate Bearer keys generated in my-memos,
 my-moment, and my-knowledge. Memo and Knowledge use their APIs; direct R2 access cannot bypass
 server metadata and cache coordination. [Workflow](WORKFLOW.md) covers publication and recovery.
+
+Embedded SSH requires a signed-in Tailscale CLI and system OpenSSH. Enable Tailscale SSH on
+`tag:server` devices and authorize the remote account in the tailnet policy. Tailscale does not
+supply a remote OS username; Vesper defaults to the local OS user with a temporary header override.
+The terminal handles authentication and host-key prompts and opens the account's login shell.
+Host-key checking stays enabled; SSH configuration files, agent forwarding and port forwarding
+are disabled. Sessions disconnect after five minutes without user interaction; use tmux for
+unattended commands.
 
 For ntfy, save a token with read access to `mail-summary`. Vesper consumes the fixed
 `https://ntfy.you-find.me/mail-summary/sse` endpoint only while Inbox is active. It does not configure
@@ -157,6 +169,9 @@ Run formatting, lint, checks, tests, and the relevant build. Frontend tests use 
 Tauri commands; controlled promises and clocks exercise failure and response ordering. UI changes
 also require a desktop production build. Provider parsing should be testable without credentials;
 live authenticated tests stay explicitly ignored. Inspect publication plans before live uploads.
+
+`cargo test -p vesper ssh::` covers discovery and native PTY lifecycle with a synthetic local shell.
+Real Tailscale login still needs an interactive check against a permitted device.
 
 `pnpm test:coverage:frontend` writes `coverage/index.html` and `coverage/coverage-summary.json`.
 Keep `@vitest/coverage-v8` aligned with Vite Plus's Vitest. Coverage guides missing branches but

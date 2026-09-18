@@ -51,7 +51,8 @@ escaped configuration with expandable errors, while valid cards remain usable.
 Daily Planner fills one row with Calendar, Todo, and habits. Fixed-height content scrolls within
 lists or details; compact surfaces stack the sections. The Sunday-first calendar controls the
 shared date. Today's indicator, selection, and the small completed-day check remain visually distinct.
-The check has an accessible description; empty and future days stay unmarked.
+The check has an accessible description; future days stay unmarked. A past or current day with
+no tasks or configured habits counts as complete.
 
 Todo titles open details without changing card size. Completion uses the row checkbox; sorting uses
 a separate handle. Manual items support editing with Save and Cancel; imported content is read-only.
@@ -73,11 +74,16 @@ settled content during background refresh; initial placeholders belong only to t
 The macOS island uses a continuous black surface with outward shoulders and rounded lower corners,
 following the [Atoll](https://github.com/Ebullioscopic/Atoll) reference. It adapts to the notch,
 anchors at the screen's top center, and uses scoped dark semantic tokens independently of the app.
-Expanded content is bounded and scrollable; embedded widgets omit their outer card frame.
+Compact wings show the selected widget's icon and Planner's open-task count when available.
+Expanded widgets omit their outer card frame; bounded content scrolls with hidden scrollbars.
+The Dashboard's pinned-widget strip appears only while editing. Embedded Planner uses Tasks,
+Calendar and Habits tabs, preserving input when switching; the selected date stays visible.
 
-Pinning selects a saved Dashboard placement. Pointer or keyboard activation expands; Escape, Close,
-or leaving without pointer/focus collapses. Frame changes preserve the top anchor and respect Reduce
-Motion. Losing focus must not reactivate the window. App Lock closes it; other platforms omit pinning.
+Pinning selects a saved Dashboard placement. Hover expands after a short dwell; pointer exit allows
+brief re-entry, while focused controls keep it open. Click or keyboard activation opens immediately
+and focuses Close. Escape, Close and focus loss dismiss; Escape and Close restore trigger focus.
+Frame changes preserve the top anchor and respect Reduce Motion. Losing focus must not reactivate
+the window. App Lock closes it; other platforms omit pinning.
 
 ## Window and theme
 
@@ -89,6 +95,11 @@ The sidebar keeps navigation primary, with Settings as a full destination. Confi
 gate consumer destinations; removing the active destination's configuration returns to Dashboard.
 Its resizable desktop rail retains accessible icon names when collapsed; mobile keeps the labeled
 drawer. The local profile editor stores presentation only and does not imply an authenticated account.
+
+Sidebar Tailscale devices show accessible connection statuses. Selecting one opens a terminal
+filling the main pane, with username and reconnect/disconnect controls; navigation preserves its
+contents. xterm.js handles input and screen-reader support, using semantic `--color-terminal-*`
+roles for theme-consistent canvas and ANSI colors.
 
 App Lock makes the entire shell inert behind an opaque focused unlock surface. Settings describes
 it as a privacy screen, not encryption. Update installation requires an explicit action after showing
@@ -165,6 +176,9 @@ The masonry gallery uses one column below 640px, two below 1024px, and three oth
 resizing changes widths without regrouping. Filters retain visible removable selections and settled
 indexes. Photo viewing is application-modal with keyboard navigation and contained focus; the
 preview remains until the original decodes. Upload errors preserve the active form and gallery.
+Selecting a photo prefills capture time and GPS from local EXIF; missing or invalid GPS stays empty
+with an explanation. Reads preserve edited fields and discard results after removal or closing.
+Publish waits for metadata. Unedited capture time retains the camera's wall clock and offset.
 
 ## Music interaction
 

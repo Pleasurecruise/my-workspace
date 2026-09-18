@@ -23,6 +23,28 @@ pub struct Geo {
     pub lng: f64,
 }
 
+/// Local photo metadata; inspecting a source performs no upload or credential reads.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoMetadata {
+    pub captured_at: Option<String>,
+    pub geo: Option<Geo>,
+}
+
+pub async fn read_metadata(source: Vec<u8>) -> Result<PhotoMetadata, ApiError> {
+    let task = tokio::task::spawn_blocking(move || {
+        let heif = media::is_heif_source(&source)?;
+        let metadata = exif::read(&source, heif);
+        Ok::<_, MediaError>(PhotoMetadata {
+            captured_at: metadata.captured_at,
+            geo: metadata.geo,
+        })
+    })
+    .await
+    .map_err(|_| ApiError::Protocol("photo metadata reader stopped unexpectedly".to_owned()))?;
+    task.map_err(ApiError::Media)
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Photo {
@@ -74,6 +96,11 @@ pub struct Create {
     pub format: Option<String>,
 }
 
+pub enum MetadataPolicy {
+    SourceDefaults,
+    Reviewed,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Upload {
@@ -82,6 +109,15 @@ pub struct Upload {
     pub tags: Vec<String>,
     pub date: Option<String>,
     pub geo: Option<Geo>,
+}
+
+impl Upload {
+    fn apply_metadata(&mut self, metadata: PhotoMetadata, policy: MetadataPolicy) {
+        if matches!(policy, MetadataPolicy::SourceDefaults) {
+            self.date = self.date.take().or(metadata.captured_at);
+            self.geo = self.geo.take().or(metadata.geo);
+        }
+    }
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -343,7 +379,12 @@ pub async fn create(input: &Create) -> Result<Photo, ApiError> {
     Ok(result.photo)
 }
 
-pub async fn upload(store: &Store, input: Upload, source: Vec<u8>) -> Result<Photo, ApiError> {
+pub async fn upload(
+    store: &Store,
+    mut input: Upload,
+    source: Vec<u8>,
+    metadata_policy: MetadataPolicy,
+) -> Result<Photo, ApiError> {
     const INVALID_METADATA: &str = "photo upload metadata is invalid";
     if input.title.trim().is_empty() || input.title.chars().count() > 120 {
         return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
@@ -373,6 +414,7 @@ pub async fn upload(store: &Store, input: Upload, source: Vec<u8>) -> Result<Pho
         .await
         .map_err(|_| ApiError::Protocol("photo processor stopped unexpectedly".to_owned()))?;
     let prepared = prepare_task.map_err(ApiError::Media)?;
+    input.apply_metadata(prepared.metadata, metadata_policy);
     let id = uuid::Uuid::new_v4();
     let r2_key = format!("img/{id}.png");
     let thumbnail_r2_key = format!("img/thumbnails/{id}.jpg");
@@ -398,8 +440,8 @@ pub async fn upload(store: &Store, input: Upload, source: Vec<u8>) -> Result<Pho
             .into_iter()
             .map(|tag| tag.trim().to_lowercase())
             .collect(),
-        date: input.date.or(prepared.captured_at),
-        geo: input.geo.or(prepared.geo),
+        date: input.date,
+        geo: input.geo,
         thumb_hash: Some(prepared.thumb_hash),
         width: prepared.width,
         height: prepared.height,

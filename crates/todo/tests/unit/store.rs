@@ -1075,7 +1075,7 @@ async fn derives_completed_days() {
     let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
     let date = "2024-02-29";
     let ids = vec!["read".to_owned(), "walk".to_owned()];
-    assert!(store.read_days(vec![], date).await.unwrap().is_empty());
+    assert_eq!(store.read_days(vec![], date).await.unwrap().len(), 29);
     let list = store.create(date, "Finish report", None).await.unwrap();
     let id = &list.items[0].id;
     store.set_check_in("read", date, true).await.unwrap();
@@ -1100,7 +1100,7 @@ async fn derives_completed_days() {
         store.read_days(vec!["read".into()], date).await.unwrap(),
         vec![date]
     );
-    assert!(store.read_days(vec![], date).await.unwrap().is_empty());
+    assert_eq!(store.read_days(vec![], date).await.unwrap().len(), 29);
     assert!(store.read_days(ids, "2024-03-01").await.unwrap().is_empty());
 }
 
@@ -1130,6 +1130,41 @@ async fn completed_days_exclude_future() {
         .unwrap();
     assert_eq!(
         store.read_days(vec![], "2024-02-29").await.unwrap(),
-        vec!["2024-02-01"]
+        (1..=29)
+            .map(|day| format!("2024-02-{day:02}"))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn completes_empty_days() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let today = crate::current_date().unwrap();
+    let days = store.read_days(vec![], &today).await.unwrap();
+    assert_eq!(days.last(), Some(&today));
+    assert_eq!(days.len(), usize::from(parse_date(&today).unwrap().day()));
+    let list = store.create(&today, "Pending", None).await.unwrap();
+    assert!(
+        !store
+            .read_days(vec![], &today)
+            .await
+            .unwrap()
+            .contains(&today)
+    );
+    store.delete(&today, &list.items[0].id).await.unwrap();
+    assert!(
+        store
+            .read_days(vec![], &today)
+            .await
+            .unwrap()
+            .contains(&today)
+    );
+    assert!(
+        store
+            .read_days(vec!["walk".into()], &today)
+            .await
+            .unwrap()
+            .is_empty()
     );
 }

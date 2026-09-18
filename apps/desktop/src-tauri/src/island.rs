@@ -142,7 +142,7 @@ mod macos {
             212.0_f64.max(notch_width + 104.0)
         };
         let height = if expanded {
-            (top_inset + 300.0).min(frame.size.height - 48.0)
+            (top_inset + 360.0).min(frame.size.height - 48.0)
         } else {
             top_inset.max(32.0)
         };

@@ -20,6 +20,7 @@
 	const layoutSaving = $derived(layoutSession.saving);
 	const layoutError = $derived(layoutSession.error);
 	$effect(() => { if (layoutSession.layout !== null) layout = layoutSession.layout.widgets; });
+	const pinnedWidget = $derived(layout.find((item) => item.id === layoutSession.layout?.islandWidgetId) ?? null);
 	let editing = $state(false);
 	let widgetLibraryOpen = $state(false);
 	let selectedCategory = $state<WidgetCategory>("personal");
@@ -246,6 +247,14 @@
 			</div>
 		{/if}
 	</header>
+	{#if editing && layoutSession.islandAvailable && !layoutLoading}
+		<div class="island-shortcut">
+			<span class="island-preview" aria-hidden="true"><Pin size={12} /><span></span><span class="preview-dot"></span></span>
+			<div><strong>Pinned to Dynamic Island</strong><span>{pinnedWidget ? widgets[pinnedWidget.widget.kind].label : "No widget pinned"}</span></div>
+			<button type="button" onclick={() => (editing = false)}>Done<ChevronRight size={12} /></button>
+		</div>
+	{/if}
+
 	{#if editing}
 		<div class="edit-hint"><span>Drag widgets to reorder them. Pin a widget to the Dynamic Island or remove it with the upper-right controls.</span></div>
 	{/if}
@@ -271,7 +280,7 @@
 					onpointermove={moveDraggedWidget}
 				>
 					{#if editing}
-						{#if layoutSession.islandAvailable}<button type="button" class="widget-pin" class:active={layoutSession.layout?.islandWidgetId === placement.id} disabled={layoutSaving} aria-label={`Pin ${widget.label} to Dynamic Island`} aria-pressed={layoutSession.layout?.islandWidgetId === placement.id} title="Pin to Dynamic Island" onpointerdown={(event) => event.stopPropagation()} onclick={() => void layoutSession.save({ widgets: layout, islandWidgetId: layoutSession.layout?.islandWidgetId === placement.id ? null : placement.id })}><Pin size={11} /></button>{/if}
+						{#if layoutSession.islandAvailable}<button type="button" class="widget-pin" class:active={layoutSession.layout?.islandWidgetId === placement.id} disabled={layoutSaving} aria-label={layoutSession.layout?.islandWidgetId === placement.id ? `Unpin ${widget.label} from Dynamic Island` : `Pin ${widget.label} to Dynamic Island`} aria-pressed={layoutSession.layout?.islandWidgetId === placement.id} title={layoutSession.layout?.islandWidgetId === placement.id ? "Unpin from Dynamic Island" : "Pin to Dynamic Island"} onpointerdown={(event) => event.stopPropagation()} onclick={() => void layoutSession.save({ widgets: layout, islandWidgetId: layoutSession.layout?.islandWidgetId === placement.id ? null : placement.id })}><Pin size={11} /></button>{/if}
 						<button
 							type="button"
 							class="widget-delete"
@@ -422,6 +431,15 @@
 		font-size: 0.8rem;
 	}
 	.layout-error { padding: 0.7rem 0.85rem; margin-bottom: 0.75rem; border: 1px solid var(--color-error); border-radius: var(--radius-md); color: var(--color-error); font-size: 0.72rem; }
+	.island-shortcut { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-xl); background: var(--color-muted); }
+	.island-preview { display: flex; align-items: center; justify-content: space-between; flex: 0 0 76px; height: 28px; padding: 0 10px; border-radius: 0 0 var(--radius-xl) var(--radius-xl); background: var(--color-island-background); color: var(--color-on-dark); }
+	.preview-dot { width: 4px; height: 4px; border-radius: var(--radius-full); background: currentColor; }
+	.island-shortcut > div { display: grid; gap: 4px; min-width: 0; }
+	.island-shortcut strong { font-size: 0.75rem; font-weight: 500; }
+	.island-shortcut > div > span { color: var(--color-muted-foreground); font-size: 0.68rem; }
+	.island-shortcut > button { display: flex; align-items: center; gap: 5px; margin-left: auto; flex-shrink: 0; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-background); font-size: 0.68rem; cursor: pointer; }
+	.island-shortcut > button:hover { border-color: var(--color-accent); }
+	@media (max-width: 480px) { .island-preview { display: none; } }
 	.edit-hint { display: flex; align-items: center; gap: 0.4rem; padding: 0.55rem 0.7rem; margin: -0.75rem 0 1rem; border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-muted-foreground); font-size: 0.68rem; }
 
 	.widget-grid {

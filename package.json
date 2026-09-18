@@ -32,12 +32,12 @@
     "test:coverage:frontend": "vp test --run --coverage"
   },
   "devDependencies": {
-    "@types/node": "26.4.1",
+    "@types/node": "26.6.1",
     "@typescript/native": "npm:typescript@7.0.2",
     "@vitest/coverage-v8": "4.1.11",
     "simple-git-hooks": "2.14.0",
     "typescript": "6.0.3",
-    "vite-plus": "0.3.1"
+    "vite-plus": "0.3.2"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm run precommit"

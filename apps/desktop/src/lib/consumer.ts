@@ -60,6 +60,11 @@ export interface PhotoItem {
 	geo: { lat: number; lng: number } | null;
 }
 
+export interface PhotoMetadata {
+	capturedAt: string | null;
+	geo: { lat: number; lng: number } | null;
+}
+
 export interface PhotoUpload {
 	title: string;
 	description: string | null;
@@ -791,3 +796,21 @@ export interface ExpenseSnapshot {
 	days: Array<{ date: string; amountPence: number }>;
 	suggestions: string[];
 }
+
+export interface SshDevice {
+	id: string;
+	name: string;
+	dnsName: string;
+	address: string;
+	os: string;
+	online: boolean | null;
+	username: string;
+}
+export interface SshSnapshot {
+	devices: SshDevice[];
+	error: string | null;
+}
+export type SshOutput =
+	| { kind: "data"; bytes: number[] }
+	| { kind: "exit"; code: number | null }
+	| { kind: "error"; message: string };

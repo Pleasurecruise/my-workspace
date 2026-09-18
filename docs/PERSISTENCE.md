@@ -86,9 +86,9 @@ files installed and is reported explicitly. SQLite occurrence keys retain local 
 and names. Historical writes are allowed, and future writes are rejected inside the transaction.
 Removing or reordering habits does not delete or reassign history. A newly added habit gets a new ID.
 Monthly completion is calculated from tasks and the current configured habit IDs in a consistent
-read: every task complete, every configured habit checked, at least one task or habit, and no future
-date. No completion table or persisted summary can drift from those records. The calculation uses
-stored task projections, without fetching additional calendar dates.
+read: every task complete, every configured habit checked, and no future date. Days with no tasks or
+configured habits are complete. No completion table or persisted summary can drift from those records.
+The calculation uses stored task projections, without fetching additional calendar dates.
 
 ## Credentials and sessions
 
@@ -102,6 +102,9 @@ CherryIN retains its session in Cherry Studio's existing database. Vesper reads 
 conditionally writes renewed tokens back after a successful OAuth refresh, preserving concurrent
 account changes and unrelated fields. It creates no separate CherryIN credential record or database.
 [Dashboard](DASHBOARD.md#cherryin) owns the refresh and retry protocol.
+
+SSH discovery, remote username overrides, terminal input/output and sessions remain in memory.
+Vesper stores no SSH credentials or preferences; system OpenSSH owns known-host trust.
 
 Provider output and logs exclude access tokens, cookies, login codes and passwords. The trusted
 Settings prefill response is the narrow exception for fields the user edits locally.

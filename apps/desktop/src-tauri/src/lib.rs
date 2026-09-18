@@ -11,6 +11,7 @@ mod island;
 mod ledger;
 mod music;
 mod notifications;
+mod ssh;
 mod status;
 mod storage;
 mod telegram;
@@ -172,7 +173,27 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .menu(updater::menu)
         .on_menu_event(|app, event| updater::handle_menu_event(app, &event))
+        .on_page_load(|window, payload| {
+            if window.label() != "main"
+                || !matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+            {
+                return;
+            }
+            if let Some(runtime) = window.app_handle().try_state::<ssh::Runtime>() {
+                runtime.suspend();
+            }
+        })
+        .on_window_event(|window, event| {
+            if window.label() != "main" || !matches!(event, tauri::WindowEvent::Destroyed) {
+                return;
+            }
+            if let Some(runtime) = window.app_handle().try_state::<ssh::Runtime>() {
+                runtime.suspend();
+            }
+        })
         .setup(|app| {
+            app.manage(ssh::Runtime::default());
+            ssh::start_monitoring(app.handle().clone());
             app.manage(games::Runtime::new(
                 app.path()
                     .app_local_data_dir()?
@@ -211,6 +232,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            ssh::set_ssh_active,
+            ssh::read_ssh_devices,
+            ssh::connect_ssh,
+            ssh::write_ssh,
+            ssh::record_ssh_activity,
+            ssh::resize_ssh,
+            ssh::acknowledge_ssh,
+            ssh::disconnect_ssh,
             consumer::initialize_views,
             consumer::read_channel,
             consumer::read_memo_tags,
@@ -221,6 +250,7 @@ pub fn run() {
             consumer::delete_memo,
             consumer::publish_telegram,
             consumer::publish_x,
+            consumer::read_photo_metadata,
             consumer::create_photo,
             consumer::update_photo,
             consumer::delete_photo,
@@ -304,8 +334,15 @@ pub fn run() {
             music::set_music_playback_order,
             music::read_music_lyrics
         ])
-        .run(tauri::generate_context!());
-    if let Err(error) = result {
-        panic!("error while running tauri application: {error}");
-    }
+        .build(tauri::generate_context!());
+    let app =
+        result.unwrap_or_else(|error| panic!("error while building tauri application: {error}"));
+    app.run(|app, event| {
+        if !matches!(event, tauri::RunEvent::Exit) {
+            return;
+        }
+        if let Some(runtime) = app.try_state::<ssh::Runtime>() {
+            runtime.suspend();
+        }
+    });
 }

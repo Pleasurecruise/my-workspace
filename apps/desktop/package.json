@@ -16,7 +16,7 @@
     "test": "vp test --run"
   },
   "dependencies": {
-    "@lucide/svelte": "1.45.0",
+    "@lucide/svelte": "1.46.0",
     "@my-workspace/ui": "workspace:*",
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-notification": "2.4.0",
@@ -24,6 +24,8 @@
     "@tiptap/core": "3.31.3",
     "@tiptap/markdown": "3.31.3",
     "@tiptap/starter-kit": "3.31.3",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
     "thumbhash": "0.1.1"
   },
   "devDependencies": {
@@ -31,7 +33,7 @@
     "@sveltejs/vite-plugin-svelte": "7.3.0",
     "@tailwindcss/vite": "4.3.3",
     "@tauri-apps/cli": "2.11.4",
-    "happy-dom": "20.14.3",
+    "happy-dom": "20.14.5",
     "svelte": "5.57.0",
     "svelte-check": "4.7.6",
     "tailwindcss": "4.3.3"

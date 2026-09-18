@@ -277,6 +277,18 @@ pub(crate) async fn publish_x(
 }
 
 #[tauri::command]
+pub(crate) async fn read_photo_metadata(
+    source: Vec<u8>,
+) -> CommandResponse<consumers::api::moment::PhotoMetadata> {
+    match consumers::api::moment::read_metadata(source).await {
+        Ok(data) => CommandResponse::Ready { data },
+        Err(error) => CommandResponse::Failed {
+            message: error.to_string(),
+        },
+    }
+}
+
+#[tauri::command]
 pub(crate) async fn create_photo(
     input: consumers::api::moment::Upload,
     source: Vec<u8>,
@@ -287,7 +299,14 @@ pub(crate) async fn create_photo(
         Ok(repository) => repository,
         Err(message) => return CommandResponse::Failed { message },
     };
-    match consumers::api::moment::upload(repository.store(), input, source).await {
+    match consumers::api::moment::upload(
+        repository.store(),
+        input,
+        source,
+        consumers::api::moment::MetadataPolicy::Reviewed,
+    )
+    .await
+    {
         Ok(data) => {
             state
                 .invalidate_view(consumers::view::Channel::Moment)

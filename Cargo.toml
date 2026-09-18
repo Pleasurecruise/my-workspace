@@ -99,6 +99,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 ] }
 openssl = { version = "0.10", features = ["vendored"] }
 percent-encoding = "2.3"
+portable-pty = "0.9"
 mime_guess = "2.0"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 serde = { version = "1", features = ["derive"] }

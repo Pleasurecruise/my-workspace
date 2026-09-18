@@ -533,6 +533,16 @@ impl Store {
                     .select((todo_items::date, todo_items::completed))
                     .load::<(String, bool)>(connection)?;
                 let mut days: BTreeMap<String, (bool, BTreeSet<String>)> = BTreeMap::new();
+                for day in 1..=selected.month().length(selected.year()) {
+                    let date = selected
+                        .replace_day(day)
+                        .map_err(|_| Error::InvalidDate(selected.to_string()))?
+                        .to_string();
+                    if date > end {
+                        break;
+                    }
+                    days.insert(date, (true, BTreeSet::new()));
+                }
                 for (date, completed) in tasks {
                     let day = days.entry(date).or_insert_with(|| (true, BTreeSet::new()));
                     day.0 &= completed;

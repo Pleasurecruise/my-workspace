@@ -14,8 +14,7 @@ pub(super) struct Prepared {
     pub width: u32,
     pub height: u32,
     pub thumb_hash: String,
-    pub captured_at: Option<String>,
-    pub geo: Option<super::Geo>,
+    pub metadata: super::PhotoMetadata,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -32,7 +31,7 @@ pub enum Error {
     Encode(#[source] image::ImageError),
 }
 
-pub(super) fn prepare(source: &[u8]) -> Result<Prepared, Error> {
+pub(super) fn is_heif_source(source: &[u8]) -> Result<bool, Error> {
     if source.is_empty() {
         return Err(Error::Empty);
     }
@@ -65,6 +64,11 @@ pub(super) fn prepare(source: &[u8]) -> Result<Prepared, Error> {
             break;
         }
     }
+    Ok(heif)
+}
+
+pub(super) fn prepare(source: &[u8]) -> Result<Prepared, Error> {
+    let heif = is_heif_source(source)?;
     let metadata = super::exif::read(source, heif);
     let mut image = if heif {
         let mut limits = heic::Limits::default();
@@ -138,8 +142,10 @@ pub(super) fn prepare(source: &[u8]) -> Result<Prepared, Error> {
         width,
         height,
         thumb_hash,
-        captured_at: metadata.captured_at,
-        geo: metadata.geo,
+        metadata: super::PhotoMetadata {
+            captured_at: metadata.captured_at,
+            geo: metadata.geo,
+        },
     })
 }
 

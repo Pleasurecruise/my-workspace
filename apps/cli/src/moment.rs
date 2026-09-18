@@ -69,9 +69,14 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             let store = cms_core::r2::Store::from_credentials()
                 .await
                 .map_err(|error| error.to_string())?;
-            let photo = consumers::api::moment::upload(&store, input, source)
-                .await
-                .map_err(|error| error.to_string())?;
+            let photo = consumers::api::moment::upload(
+                &store,
+                input,
+                source,
+                consumers::api::moment::MetadataPolicy::SourceDefaults,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
             print_json(&photo)
         }
         ("update", [id, input @ ..]) => {

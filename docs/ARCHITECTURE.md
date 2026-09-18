@@ -64,6 +64,12 @@ polling and per-source request locks; the WebView holds typed projections. Openi
 only its selected source. Layout records preserve invalid widget configurations for repair while
 rejecting dangling references. [Dashboard](DASHBOARD.md) owns scheduling and source contracts.
 
+`apps/desktop/src-tauri/src/ssh` owns Tailscale discovery and system OpenSSH sessions through
+`portable-pty`; xterm.js renders typed byte channels. The renderer selects discovered node IDs.
+Rust bounds session resources and expires idle connections independently of the WebView. Navigation
+preserves terminals; App Lock, window reload/destruction and shutdown close them and cancel pending
+launches. [Development](DEVELOPMENT.md#service-setup) describes authentication and idle limits.
+
 Music and game runtimes outlive route mounts. Their authentication, cancellation, cache and playback
 rules belong in [Music](MUSIC.md) and [Games](GAMES.md); NAS protocols belong in [UGOS](UGOS.md).
 Inbox independently activates its ntfy stream while its route is active.
@@ -121,6 +127,10 @@ restoring invalidated content. Writes retain each consumer's server-side coordin
 | Memos     | API records include Markdown; Rust compiles it without another R2 read. CRUD and X imports use the Memo API.                                                                                        |
 | Moment    | API owns metadata; Rust prepares image variants, uploads them to R2, then registers them. The list is a bounded batch without a synthetic cursor.                                                   |
 | Knowledge | API summaries form the metadata-only index and classify Newspaper editions. Opening a document performs an authorized detail read and Rust compilation. Writes use content-hash conflict detection. |
+
+Moment shares a Rust EXIF reader between desktop preview and CLI upload, without decoding pixels.
+Desktop publication uses reviewed form values, including cleared metadata; CLI upload uses EXIF
+for unspecified fields.
 
 Moment upload cleanup depends on whether metadata registration has started: before registration,
 failed partial uploads can be removed; afterward objects are retained for reconciliation because the

@@ -23,6 +23,12 @@ credentials, CLI processes, or OAuth renewal; structural layout errors fail befo
 Dashboard entry and refresh also read the selected Todo date. Provider failures preserve settled
 content and remain local to the affected source.
 
+While unlocked, the sidebar polls `tailscale status --json` every 30 seconds and on refresh,
+independently of the active route. It lists `tag:server` peers, including offline servers, and excludes
+the local device. Names prefer the short MagicDNS alias, then hostname, then IP. Online indicates
+tailnet connectivity, not SSH readiness. Discovery failures retain peers with unknown status and
+block new connections until recovery. A local tailnet identity change closes existing terminals.
+
 ## Widget layout
 
 The twelve-track layout stores typed placements and a nullable Dynamic Island selection. Rust
@@ -90,8 +96,8 @@ occurrence markers prevent source recreation. An already completed related proje
 original date and prevents a new follow-up. Future browsing never advances tasks.
 
 A non-future day is marked complete when all stored tasks and all currently configured habits are
-complete, with at least one task or habit. This monthly projection uses saved data without fetching
-all remote dates or persisting another completion flag. See [Persistence](PERSISTENCE.md#planner).
+complete, including days with no tasks or habits. This monthly projection uses saved data without
+fetching all remote dates or persisting another completion flag. See [Persistence](PERSISTENCE.md#planner).
 
 ### Calendar sources
 

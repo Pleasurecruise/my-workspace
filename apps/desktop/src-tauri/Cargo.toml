@@ -34,6 +34,8 @@ my-workspace-logger.workspace = true
 music.workspace = true
 ledger.workspace = true
 percent-encoding.workspace = true
+portable-pty.workspace = true
+uuid.workspace = true
 reqwest = { workspace = true, features = ["system-proxy"] }
 quotes.workspace = true
 serde.workspace = true

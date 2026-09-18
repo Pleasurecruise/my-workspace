@@ -76,6 +76,8 @@ function setupCommands() {
 	invoke.mockImplementation(async (command: string) => {
 		if (command === "initialize_views") return new Promise(() => {});
 		if (command === "read_app_lock") return false;
+		if (command === "read_photo_metadata")
+			return { status: "ready", data: { capturedAt: null, geo: null } };
 		if (command === "read_configuration") return { status: "ready", data: configuration };
 		if (command === "check_for_update") return { status: "ready", data: null };
 		if (command === "read_notifications") return { status: "ready", data: [] };
@@ -272,7 +274,10 @@ it.each([false, true])(
 		upload.click();
 		await tick();
 		const file = new File(["photo"], "photo.png", { type: "image/png" });
-		const read = vi.spyOn(file, "arrayBuffer").mockReturnValue(bytes.promise);
+		const read = vi
+			.spyOn(file, "arrayBuffer")
+			.mockResolvedValueOnce(new ArrayBuffer(4))
+			.mockReturnValue(bytes.promise);
 		const input = target.querySelector<HTMLInputElement>('input[type="file"]');
 		if (!input) throw new Error("File input missing");
 		Object.defineProperty(input, "files", {
@@ -281,8 +286,9 @@ it.each([false, true])(
 		});
 		input.dispatchEvent(new Event("change", { bubbles: true }));
 		await tick();
+		await vi.waitFor(() => expect(button(target, "Publish").disabled).toBe(false));
 		button(target, "Publish").click();
-		await vi.waitFor(() => expect(read).toHaveBeenCalled());
+		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
 		button(target, changeCredentials ? "Settings" : "Dashboard", "nav button").click();
 		await tick();
 		if (changeCredentials) {

@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { ArrowLeft, Upload, X } from "@lucide/svelte";
 	import { Button, Input, Label, Textarea } from "@my-workspace/ui";
+	import { invoke } from "@tauri-apps/api/core";
 	import { onDestroy } from "svelte";
-	import type { CommandResponse, PhotoItem, PhotoUpload } from "../../consumer";
+	import type { CommandResponse, PhotoItem, PhotoUpload, PhotoMetadata } from "../../consumer";
 
 	let { onupload, onuploaded, onclose }: { onupload: (input: PhotoUpload, file: File) => Promise<CommandResponse<PhotoItem>>; onuploaded: () => void; onclose: () => void } = $props();
 
@@ -15,6 +16,15 @@
 	let date = $state("");
 	let latitude = $state("");
 	let longitude = $state("");
+	let metadataLoading = $state(false);
+	let metadataMessage = $state("");
+	let metadataFailed = $state(false);
+	let metadataRequest = 0;
+	let dateEdited = false;
+	let latitudeEdited = false;
+	let longitudeEdited = false;
+	let capturedAt: string | null = null;
+	let autofilledDate = "";
 	let uploading = $state(false);
 	let dragging = $state(false);
 	let error = $state("");
@@ -22,6 +32,42 @@
 	const sourceLimit = 20 * 1024 * 1024;
 	const acceptedTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/avif", "image/heic", "image/heif"]);
 	const acceptedExtensions = [".png", ".jpg", ".jpeg", ".webp", ".avif", ".heic", ".heif"];
+
+	async function readMetadata(selected: File) {
+		const version = ++metadataRequest;
+		metadataLoading = true;
+		metadataMessage = "Reading photo metadata…";
+		metadataFailed = false;
+		let response: CommandResponse<PhotoMetadata>;
+		try {
+			const source = Array.from(new Uint8Array(await selected.arrayBuffer()));
+			if (version !== metadataRequest) return;
+			response = await invoke<CommandResponse<PhotoMetadata>>("read_photo_metadata", { source });
+		} catch {
+			response = { status: "failed", message: "Could not read photo metadata. You can enter it manually." };
+		}
+		if (version !== metadataRequest) return;
+		metadataLoading = false;
+		if (response.status === "failed") {
+			metadataFailed = true;
+			metadataMessage = response.message;
+			return;
+		}
+		const metadata = response.data;
+		if (metadata.capturedAt !== null && !dateEdited) {
+			capturedAt = metadata.capturedAt;
+			// Show the camera's wall-clock time and preserve its original offset on publish.
+			autofilledDate = metadata.capturedAt.slice(0, 19);
+			date = autofilledDate;
+		}
+		if (metadata.geo !== null) {
+			if (!latitudeEdited) latitude = metadata.geo.lat.toFixed(6);
+			if (!longitudeEdited) longitude = metadata.geo.lng.toFixed(6);
+		}
+		metadataMessage = metadata.capturedAt === null && metadata.geo === null
+			? "No capture time or GPS coordinates found. You can enter them manually."
+			: "Photo metadata loaded. You can edit the fields below.";
+	}
 
 	function selectFile(selected: File) {
 		const name = selected.name.toLowerCase();
@@ -39,6 +85,7 @@
 		previewFailed = false;
 		title = selected.name.replace(/\.[^.]+$/, "");
 		error = "";
+		void readMetadata(selected);
 	}
 
 	function selectInputFile(input: HTMLInputElement) {
@@ -66,6 +113,15 @@
 	}
 
 	function clearFile() {
+		metadataRequest += 1;
+		metadataLoading = false;
+		metadataMessage = "";
+		metadataFailed = false;
+		dateEdited = false;
+		latitudeEdited = false;
+		longitudeEdited = false;
+		capturedAt = null;
+		autofilledDate = "";
 		if (preview !== null) URL.revokeObjectURL(preview);
 		file = null;
 		preview = null;
@@ -80,7 +136,7 @@
 	}
 
 	async function publish() {
-		if (file === null || uploading || title.trim() === "") return;
+		if (file === null || uploading || metadataLoading || title.trim() === "") return;
 		if (tags.length > 10 || tags.some((tag) => tag.length > 50)) {
 			error = "Use at most 10 tags, each no longer than 50 characters.";
 			return;
@@ -97,6 +153,14 @@
 			error = "Coordinates are outside the valid latitude or longitude range.";
 			return;
 		}
+		let publicationDate: string | null = null;
+		if (date !== "") {
+			if (!dateEdited && date === autofilledDate && capturedAt !== null) {
+				publicationDate = capturedAt;
+			} else {
+				publicationDate = new Date(date).toISOString();
+			}
+		}
 		const selected = file;
 		uploading = true;
 		error = "";
@@ -104,7 +168,7 @@
 			title: title.trim(),
 			description: description.trim() === "" ? null : description.trim(),
 			tags,
-			date: date === "" ? null : new Date(date).toISOString(),
+			date: publicationDate,
 			geo: hasLatitude ? { lat, lng } : null,
 		};
 		const response = await onupload(input, selected);
@@ -118,6 +182,7 @@
 	}
 
 	onDestroy(() => {
+		metadataRequest += 1;
 		if (preview !== null) URL.revokeObjectURL(preview);
 	});
 </script>
@@ -127,7 +192,7 @@
 		<h1>Upload photo</h1>
 		<div class="upload-actions">
 			<button type="button" disabled={uploading} onclick={onclose} aria-label="Back to gallery" title="Back to gallery"><ArrowLeft size={16} /></button>
-			{#if file !== null}<Button size="sm" disabled={uploading || title.trim() === ""} onclick={publish}>{uploading ? "Publishing…" : "Publish"}</Button>{/if}
+			{#if file !== null}<Button size="sm" disabled={uploading || metadataLoading || title.trim() === ""} onclick={publish}>{uploading ? "Publishing…" : "Publish"}</Button>{/if}
 		</div>
 	</header>
 
@@ -157,10 +222,11 @@
 						{#each tags as tag (tag)}<span>#{tag}</span>{/each}
 					</div>
 				{/if}
-				<Label>Date<Input bind:value={date} type="datetime-local" /></Label>
+				<p class="metadata-status" class:failed={metadataFailed} role={metadataFailed ? "alert" : "status"}>{metadataMessage}</p>
+				<Label>Capture time<Input bind:value={date} oninput={() => (dateEdited = true)} type="datetime-local" step="1" /></Label>
 				<div class="coordinates">
-					<Label>Latitude<Input bind:value={latitude} type="number" min="-90" max="90" step="0.000001" /></Label>
-					<Label>Longitude<Input bind:value={longitude} type="number" min="-180" max="180" step="0.000001" /></Label>
+					<Label>Latitude<Input value={latitude} oninput={(event: Event & { currentTarget: HTMLInputElement }) => { latitudeEdited = true; latitude = event.currentTarget.value; }} type="number" min="-90" max="90" step="0.000001" /></Label>
+					<Label>Longitude<Input value={longitude} oninput={(event: Event & { currentTarget: HTMLInputElement }) => { longitudeEdited = true; longitude = event.currentTarget.value; }} type="number" min="-180" max="180" step="0.000001" /></Label>
 				</div>
 			</div>
 		</div>
@@ -191,5 +257,7 @@
 	.upload-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; color: var(--color-accent); font-size: 0.68rem; }
 	.upload-tags span { padding: 0.2rem 0.45rem; border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent); border-radius: var(--radius-full); }
 	.coordinates { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+	.metadata-status { margin: 0.25rem 0 0; color: var(--color-muted-foreground); font-size: 0.72rem; }
+	.metadata-status.failed { color: var(--color-error); }
 	.error { margin: 1rem 0 0; color: var(--color-error); font-size: 0.75rem; }
 </style>
