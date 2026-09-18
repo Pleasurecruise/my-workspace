@@ -128,6 +128,10 @@ time = { version = "0.3", features = ["formatting", "local-offset", "macros", "p
 uuid = { version = "1", features = ["v4", "serde"] }
 walkdir = "2.5"
 
+# Keep build-time dylibs loadable with the macOS 27 linker (rust-lang/rust#157750).
+[profile.release.build-override]
+strip = "none"
+
 [patch.crates-io]
 librespot-audio = { git = "https://github.com/crmne/librespot", branch = "fastpotify-0.8" }
 librespot-core = { git = "https://github.com/crmne/librespot", branch = "fastpotify-0.8" }

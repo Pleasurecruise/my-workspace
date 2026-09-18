@@ -48,9 +48,9 @@ Local builds need no private key. Releases include archives, `.sig` files, and `
 Startup and Check for Updates read the published stable release's `latest.json` from this repository.
 Update requests honor the operating-system HTTP(S) proxy.
 
-On macOS 27, `mis-aligned LINKEDIT string pool` or a missing `tauri_macros` proc-macro can indicate
-a toolchain stripping issue. Use `CARGO_PROFILE_RELEASE_STRIP=none pnpm build:desktop` for that local
-build; see [Rust issue 157750](https://github.com/rust-lang/rust/issues/157750).
+The workspace disables stripping for release build dependencies so proc-macro libraries remain
+loadable on macOS 27 with affected Rust toolchains ([Rust issue 157750](https://github.com/rust-lang/rust/issues/157750)).
+Use the standard `pnpm build:desktop` command; no local environment override is needed.
 
 ## Credential resolution
 
