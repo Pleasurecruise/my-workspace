@@ -1,7 +1,6 @@
 use crate::cache::Cache;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -18,16 +17,6 @@ pub struct CodexUsage {
     pub plan_type: Option<String>,
     pub primary: Option<RateLimitWindow>,
     pub secondary: Option<RateLimitWindow>,
-    pub spark: Option<CodexLimit>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodexLimit {
-    pub limit_id: Option<String>,
-    pub limit_name: Option<String>,
-    pub primary: Option<RateLimitWindow>,
-    pub secondary: Option<RateLimitWindow>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -42,8 +31,6 @@ pub struct RateLimitWindow {
 #[serde(rename_all = "camelCase")]
 struct RateLimitsResult {
     rate_limits: RateLimits,
-    #[serde(default)]
-    rate_limits_by_limit_id: HashMap<String, CodexLimit>,
 }
 
 #[derive(Deserialize)]
@@ -192,27 +179,10 @@ async fn read_result(
 fn parse_usage(value: Value) -> Result<CodexUsage, String> {
     let response: RateLimitsResult = serde_json::from_value(value)
         .map_err(|error| format!("Codex returned an unsupported usage payload: {error}"))?;
-    let mut spark = None;
-    for (id, limit) in response.rate_limits_by_limit_id {
-        let names = [
-            Some(id.as_str()),
-            limit.limit_id.as_deref(),
-            limit.limit_name.as_deref(),
-        ];
-        if names
-            .into_iter()
-            .flatten()
-            .any(|name| name.to_lowercase().contains("spark"))
-        {
-            spark = Some(limit);
-            break;
-        }
-    }
     Ok(CodexUsage {
         plan_type: response.rate_limits.plan_type,
         primary: response.rate_limits.primary,
         secondary: response.rate_limits.secondary,
-        spark,
     })
 }
 
@@ -258,14 +228,6 @@ mod tests {
                 "planType": "plus",
                 "primary": { "usedPercent": 12, "windowDurationMins": 300, "resetsAt": 1_800_000_000 },
                 "secondary": { "usedPercent": 34, "windowDurationMins": 10_080, "resetsAt": 1_800_100_000 }
-            },
-            "rateLimitsByLimitId": {
-                "codex_spark": {
-                    "limitId": "gpt-5.3-codex-spark",
-                    "limitName": "Codex Spark",
-                    "primary": { "usedPercent": 8, "windowDurationMins": 300, "resetsAt": 1_800_000_000 },
-                    "secondary": { "usedPercent": 19, "windowDurationMins": 10_080, "resetsAt": 1_800_100_000 }
-                }
             }
         }))
         .expect("valid usage response");
@@ -276,9 +238,6 @@ mod tests {
             usage.secondary.expect("secondary").window_duration_mins,
             Some(10_080)
         );
-        let spark = usage.spark.expect("spark limit");
-        assert_eq!(spark.limit_id.as_deref(), Some("gpt-5.3-codex-spark"));
-        assert_eq!(spark.primary.expect("spark primary").used_percent, 8.0);
     }
 
     #[tokio::test]

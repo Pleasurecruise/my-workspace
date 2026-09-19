@@ -314,7 +314,7 @@
 	.music.player-visible { display: flex; flex: 1; flex-direction: column; }
 	.provider-switch { display: inline-flex; padding: 0.2rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-muted); }
 	.provider-switch button { padding: 0.38rem 0.65rem; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; font: inherit; font-size: 0.68rem; }
-	.provider-switch button.active { background: var(--color-card); color: var(--color-foreground); box-shadow: var(--shadow-sm); }
+	.provider-switch button.active { background: var(--color-background); color: var(--color-foreground); box-shadow: var(--shadow-sm); }
 	.provider-switch button:disabled { cursor: default; opacity: 0.55; }
 	.provider-switch button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 	.notice { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; padding: 0.7rem 0.85rem; border: 1px solid var(--color-error); border-radius: var(--radius-md); color: var(--color-error); font-size: 0.72rem; }
@@ -323,7 +323,7 @@
 	.empty h2, .empty p { margin: 0; }
 	.empty p { max-width: 18rem; font-size: 0.72rem; }
 	.heart-mark { display: grid; width: 4rem; height: 4rem; place-items: center; border-radius: var(--radius-lg); background: var(--color-accent); color: var(--color-accent-foreground); font-size: 2rem; }
-	.track-list { overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-card); }
+	.track-list { overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); }
 	.track-list > button { display: grid; width: 100%; grid-template-columns: 1.5rem 2.6rem minmax(9rem, 1.2fr) minmax(8rem, 0.8fr) 2.5rem; align-items: center; gap: 0.65rem; padding: 0.5rem 0.7rem; border: 0; border-bottom: 1px solid var(--color-border); background: transparent; color: var(--color-foreground); cursor: pointer; text-align: left; }
 	.track-list > button:last-child { border-bottom: 0; }
 	.track-list > button:not(:disabled):hover { background: var(--color-muted); }
@@ -337,13 +337,13 @@
 	.track-title strong, .track-title small, .album { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.track-title strong { font-size: 0.72rem; font-weight: 600; }
 	.player-page { display: grid; flex: 1; width: 100%; min-height: 34rem; grid-template-columns: minmax(0, 1fr); gap: 1rem; margin: 0 auto; }
-	.record-column { display: flex; min-width: 0; align-items: center; flex-direction: column; justify-content: center; padding: 2rem 1.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-card); box-shadow: var(--shadow-sm); }
+	.record-column { display: flex; min-width: 0; align-items: center; flex-direction: column; justify-content: center; padding: 2rem 1.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); box-shadow: var(--shadow-sm); }
 	.record-wrap { display: grid; width: 100%; min-height: 19rem; flex: 1; place-items: center; }
 	.record { position: relative; display: grid; width: min(18rem, 100%); box-sizing: border-box; aspect-ratio: 1; place-items: center; overflow: hidden; border: 1rem solid var(--color-image-scrim); border-radius: 50%; background: repeating-radial-gradient(circle, var(--color-image-scrim) 0 0.35rem, var(--color-background) 0.38rem, var(--color-image-scrim) 0.42rem); box-shadow: var(--shadow-lg); }
 	.record::before { position: absolute; inset: 8%; border: 1px solid var(--color-border); border-radius: 50%; content: ""; box-shadow: 0 0 0 0.7rem var(--color-image-scrim), 0 0 0 0.75rem var(--color-border), 0 0 0 1.4rem var(--color-image-scrim); }
 	.record img { z-index: 1; width: 58%; aspect-ratio: 1; border-radius: 50%; object-fit: cover; }
-	.record > span { position: absolute; z-index: 2; width: 0.7rem; aspect-ratio: 1; border-radius: 50%; background: var(--color-card); }
-	.record.spinning { animation: record-spin 12s linear infinite; }
+	.record > span { position: absolute; z-index: 2; width: 0.7rem; aspect-ratio: 1; border-radius: 50%; background: var(--color-background); }
+	.record.spinning { animation: record-spin var(--duration-record-spin) linear infinite; }
 	.subtitle { display: grid; width: min(100%, 38rem); min-height: 3.8rem; place-items: center; overflow: hidden; padding: 0.5rem 1rem; box-sizing: border-box; text-align: center; }
 	.subtitle p { margin: 0; color: var(--color-foreground); font-family: var(--font-serif); font-size: 1.05rem; font-weight: 600; line-height: 1.55; animation: subtitle-in var(--duration-base) ease-out; }
 	.now-playing { display: grid; width: 100%; gap: 0.22rem; margin: 1rem 0 0.9rem; text-align: center; }

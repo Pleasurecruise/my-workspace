@@ -51,6 +51,8 @@
 		<UsagePanel provider="openCode" state={session.dashboard.openCode} />
 	{:else if kind === "claude"}
 		<UsagePanel provider="claude" state={session.dashboard.claude} />
+	{:else if kind === "codexClaude"}
+		<UsagePanel provider="codexClaude" codex={session.dashboard.codex} claude={session.dashboard.claude} />
 	{:else if kind === "grok"}
 		<UsagePanel provider="grok" state={session.dashboard.grok} />
 	{:else if kind === "copilot"}
@@ -59,6 +61,10 @@
 		<UsagePanel provider="deepSeek" state={session.dashboard.deepSeek} />
 	{:else if kind === "cherryIn"}
 		<UsagePanel provider="cherryIn" state={session.dashboard.cherryIn} />
+	{:else if kind === "tokenFlux"}
+		<UsagePanel provider="tokenFlux" state={session.dashboard.tokenFlux} />
+	{:else if kind === "dimAgent"}
+		<UsagePanel provider="dimAgent" state={session.dashboard.dimAgent} />
 	{:else if kind === "quotation"}
 		<QuotationPanel quotation={session.dashboard.quotation.data} error={session.dashboard.quotation.error} />
 	{:else if placement.widget.kind === "game"}

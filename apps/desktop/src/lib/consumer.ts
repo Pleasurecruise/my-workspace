@@ -226,14 +226,6 @@ export interface CodexUsage {
 	planType: string | null;
 	primary: RateLimitWindow | null;
 	secondary: RateLimitWindow | null;
-	spark: CodexLimit | null;
-}
-
-export interface CodexLimit {
-	limitId: string | null;
-	limitName: string | null;
-	primary: RateLimitWindow | null;
-	secondary: RateLimitWindow | null;
 }
 
 export interface RateLimitWindow {
@@ -308,6 +300,75 @@ export interface DeepSeekBalance {
 
 export interface CherryInBalance {
 	balance: number;
+}
+
+export interface DimAgentUsage {
+	planName: string | null;
+	credits: {
+		totalUnits: number;
+		usedUnits: number;
+		remainingUnits: number;
+		expiresAt: string | null;
+	};
+	featureMeters: Array<{
+		featureKey: string;
+		totalRemaining: number;
+		unit: string | null;
+		unlimited: boolean;
+		totalAllowance: number;
+		totalUsed: number;
+		periodEnd: string | null;
+	}>;
+}
+
+export interface TokenFluxUsage {
+	remaining: number;
+	unit: string;
+	planName: string;
+	isValid: boolean;
+	mode: string;
+	billing: {
+		available: boolean;
+		mode: string;
+		planId: number;
+		planName: string;
+		preferredSubscriptionId: number | null;
+		remaining: number;
+		source: string | null;
+		subscriptionId: number;
+		unit: string;
+	};
+	subscription: {
+		dailyLimitUsd: number;
+		dailyUsageUsd: number;
+		expiresAt: string | null;
+		id: number;
+		monthlyLimitUsd: number;
+		monthlyUsageUsd: number;
+		planId: number;
+		status: string;
+		weeklyLimitUsd: number | null;
+		weeklyUsageUsd: number;
+		weeklyWindowStart: string | null;
+	};
+	usage: {
+		averageDurationMs: number;
+		rpm: number;
+		tpm: number;
+		today: TokenFluxUsageWindow;
+		total: TokenFluxUsageWindow;
+	};
+}
+
+export interface TokenFluxUsageWindow {
+	actualCost: number;
+	cacheCreationTokens: number;
+	cacheReadTokens: number;
+	cost: number;
+	inputTokens: number;
+	outputTokens: number;
+	requests: number;
+	totalTokens: number;
 }
 
 export interface Weather {
@@ -460,6 +521,8 @@ export interface DashboardState {
 	copilot: QueryState<CopilotUsage>;
 	deepSeek: QueryState<DeepSeekBalance>;
 	cherryIn: QueryState<CherryInBalance>;
+	tokenFlux: QueryState<TokenFluxUsage>;
+	dimAgent: QueryState<DimAgentUsage>;
 	weather: QueryState<WeatherReport>;
 	stocks: QueryState<StockReport>;
 	exchange: QueryState<ExchangeReport>;
@@ -488,10 +551,13 @@ export type WidgetKind =
 	| "codex"
 	| "openCode"
 	| "claude"
+	| "codexClaude"
 	| "grok"
 	| "copilot"
 	| "deepSeek"
 	| "cherryIn"
+	| "tokenFlux"
+	| "dimAgent"
 	| "quotation"
 	| "game"
 	| "steam";
@@ -529,6 +595,8 @@ export type DashboardEvent =
 	| { source: "copilot"; result: CommandResponse<CopilotUsage | null> }
 	| { source: "deepSeek"; result: CommandResponse<DeepSeekBalance | null> }
 	| { source: "cherryIn"; result: CommandResponse<CherryInBalance | null> }
+	| { source: "tokenFlux"; result: CommandResponse<TokenFluxUsage | null> }
+	| { source: "dimAgent"; result: CommandResponse<DimAgentUsage | null> }
 	| { source: "weather"; result: CommandResponse<WeatherReport> }
 	| { source: "stocks"; result: CommandResponse<StockReport> }
 	| { source: "exchange"; result: CommandResponse<ExchangeReport | null> }

@@ -64,10 +64,13 @@ pub(crate) enum Widget {
     Codex,
     OpenCode,
     Claude,
+    CodexClaude,
     Grok,
     Copilot,
     DeepSeek,
     CherryIn,
+    TokenFlux,
+    DimAgent,
     Quotation,
     Game {
         game: games::Game,
@@ -99,6 +102,8 @@ pub(crate) enum ProviderWidget {
     Claude,
     Grok,
     Copilot,
+    TokenFlux,
+    DimAgent,
 }
 
 impl Layout {
@@ -196,10 +201,13 @@ impl Layout {
                 Widget::Codex => "codex".to_owned(),
                 Widget::OpenCode => "open-code".to_owned(),
                 Widget::Claude => "claude".to_owned(),
+                Widget::CodexClaude => "codex-claude".to_owned(),
                 Widget::Grok => "grok".to_owned(),
                 Widget::Copilot => "copilot".to_owned(),
                 Widget::DeepSeek => "deep-seek".to_owned(),
                 Widget::CherryIn => "cherry-in".to_owned(),
+                Widget::TokenFlux => "token-flux".to_owned(),
+                Widget::DimAgent => "dim-agent".to_owned(),
                 Widget::Quotation => "quotation".to_owned(),
                 Widget::Game { game } => format!("game-{}", game.key()),
                 Widget::Steam => "steam".to_owned(),
@@ -480,8 +488,12 @@ impl Layout {
                     | (ProviderWidget::CherryIn, Widget::CherryIn)
                     | (ProviderWidget::Github, Widget::Github)
                     | (ProviderWidget::Claude, Widget::Claude)
+                    | (ProviderWidget::Codex, Widget::CodexClaude)
+                    | (ProviderWidget::Claude, Widget::CodexClaude)
                     | (ProviderWidget::Grok, Widget::Grok)
                     | (ProviderWidget::Copilot, Widget::Copilot)
+                    | (ProviderWidget::TokenFlux, Widget::TokenFlux)
+                    | (ProviderWidget::DimAgent, Widget::DimAgent)
             )
         })
     }
@@ -595,10 +607,14 @@ mod tests {
             (ProviderWidget::Codex, Widget::Codex),
             (ProviderWidget::OpenCode, Widget::OpenCode),
             (ProviderWidget::Claude, Widget::Claude),
+            (ProviderWidget::Codex, Widget::CodexClaude),
+            (ProviderWidget::Claude, Widget::CodexClaude),
             (ProviderWidget::Grok, Widget::Grok),
             (ProviderWidget::Copilot, Widget::Copilot),
             (ProviderWidget::DeepSeek, Widget::DeepSeek),
             (ProviderWidget::CherryIn, Widget::CherryIn),
+            (ProviderWidget::TokenFlux, Widget::TokenFlux),
+            (ProviderWidget::DimAgent, Widget::DimAgent),
             (ProviderWidget::Github, Widget::Github),
         ] {
             let directory = tempfile::tempdir().unwrap();

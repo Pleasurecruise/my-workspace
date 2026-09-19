@@ -12,6 +12,37 @@ those roles to utilities. Components consume only `--color-*`, `--font-*`, `--ra
 Do not embed raw colors or framework palettes in views. Static decisions belong in styles;
 computed dimensions and progress values may use inline styles.
 
+## Style contracts
+
+Apply these rules to Svelte templates, scoped styles, shared CSS, and class helpers. They adapt
+the design-system checks from [shadcn lint](https://github.com/shadcn-ui/lint) to this workspace;
+the plugin is not installed and these are review requirements, not automated lint coverage.
+
+- **Semantic colors:** use declared `--color-*` tokens, including for SVG and focus indicators.
+  `transparent`, `currentColor`, inheritance, and `color-mix` with semantic colors are valid.
+  Do not copy another system's token names: this theme uses `accent`, `error`, and `background`,
+  not `primary`, `destructive`, or `card`. Raw color values belong in `palette.css`.
+- **Component appearance:** select a shared component's variant and size before overriding its
+  classes. Callers may position components with margin, width, alignment, and grid placement.
+  Repeated color, border, weight, or padding overrides belong in the component's typed contract.
+  Badge's `accent-outline` variant owns the outlined accent treatment; `size="sm"` owns its compact
+  date-label sizing. Interaction-specific hover states may stay with the caller.
+- **Static styles:** keep fixed appearance in scoped CSS or complete class literals. Use inline
+  styles for measured positions, progress, media aspect ratios, and data-selected semantic chart
+  colors. Local CSS custom properties carrying these values are not global design tokens.
+- **Intentional values:** reuse radius, shadow, font-family, heading, and duration tokens.
+  Layout dimensions, responsive breakpoints, chart geometry, circular `50%` radii, and decorative
+  rings may remain explicit. Do not create a global token for every one-off measurement or round
+  existing dimensions merely to eliminate arbitrary values. Preserve animation timing when
+  replacing literals with named duration tokens.
+- **Resolvable classes and tokens:** Tailwind utilities must be complete strings or a finite map
+  of complete strings, never fragments such as `bg-${color}`. Scoped class names may be computed
+  when their selectors are explicitly defined. Every referenced design token must exist in the
+  theme; a plausible name does not make an undefined custom property valid.
+
+Review exceptions at their owning component, preserve light/dark contrast and reduced-motion
+behavior, and avoid broad `!important` or descendant overrides of shared component internals.
+
 ## Component ownership
 
 `packages/ui` owns reusable primitives and tokens; desktop features own composition. Promote a

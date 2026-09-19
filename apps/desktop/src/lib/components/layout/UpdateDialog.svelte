@@ -181,8 +181,8 @@
 	.update-notes { max-height: 10rem; overflow: auto; white-space: pre-wrap; font-size: 0.78rem; line-height: 1.6; }
 	.update-progress { height: 0.35rem; overflow: hidden; border-radius: var(--radius-full); background: var(--color-muted); }
 	.update-progress span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); }
-	.update-progress.indeterminate span { animation: update-pulse 1.2s ease-in-out infinite alternate; }
-	.update-error { color: var(--color-destructive); font-size: 0.75rem; }
+	.update-progress.indeterminate span { animation: update-pulse var(--duration-pulse) ease-in-out infinite alternate; }
+	.update-error { color: var(--color-error); font-size: 0.75rem; }
 	.update-actions { display: flex; justify-content: flex-end; gap: 0.5rem; padding-top: 0.25rem; }
 	.update-actions button { height: 2rem; padding: 0 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-foreground); cursor: pointer; font-size: 0.72rem; }
 	.update-actions button.primary { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-foreground); }

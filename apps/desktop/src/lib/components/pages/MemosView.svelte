@@ -516,7 +516,7 @@
 							</span>
 						{/if}
 					{/if}
-					<Badge variant="outline" class="ml-auto rounded-full border-accent/30 bg-transparent px-2.5 font-normal text-[0.68rem] text-accent">{dateBadge(memo.createdAt)}</Badge>
+					<Badge variant="accent-outline" size="sm" class="ml-auto">{dateBadge(memo.createdAt)}</Badge>
 				</header>
 
 				{#if editingId === memo.id}
@@ -540,7 +540,7 @@
 									(selectedTags = selectedTags.includes(tag)
 										? selectedTags.filter((name) => name !== tag)
 										: [...selectedTags, tag])}
-							><Badge variant="outline" class="rounded-full font-normal border-accent/25 text-accent hover:bg-accent/8">#{tag}</Badge></button>{/each}
+							><Badge variant="accent-outline" class="hover:bg-accent/8">#{tag}</Badge></button>{/each}
 					</div>
 				{/if}
 
@@ -587,7 +587,7 @@
 							<article id="memo-{memo.id}" class="collection-entry" class:highlighted={highlightedId === memo.id}>
 								<header><time datetime={memo.createdAt}>{new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" }).format(new Date(memo.createdAt))}</time>{#if memo.visibility === "private"}<Lock size={10} />{/if}</header>
 								<div class="memo-content">{@html memo.html}</div>
-								{#if memo.tags.length > 0}<div class="tags">{#each memo.tags as tag (tag)}<Badge variant="outline" class="rounded-full font-normal border-accent/25 text-accent">#{tag}</Badge>{/each}</div>{/if}
+								{#if memo.tags.length > 0}<div class="tags">{#each memo.tags as tag (tag)}<Badge variant="accent-outline">#{tag}</Badge>{/each}</div>{/if}
 								<footer>
 										<Button variant="outline" size="sm" class="gap-1.5 font-normal text-muted-foreground" disabled={mutatingId === memo.id} onclick={() => toggleArchive(memo)}><RotateCcw size={12} />{mutatingId === memo.id ? "Restoring..." : "Restore"}</Button>
 										<Button variant="outline" size="sm" class="ml-auto gap-1.5 rounded-md border-error/35 bg-transparent font-normal text-error hover:border-error/70 hover:bg-transparent focus-visible:ring-error" onclick={() => (confirmingDelete = memo.id)}><Trash2 size={12} /> Delete</Button>
@@ -900,7 +900,7 @@
 	}
 
 	article.highlighted {
-		animation: memo-highlight 2.5s ease-out forwards;
+		animation: memo-highlight var(--duration-highlight) ease-out forwards;
 	}
 
 	@keyframes memo-highlight {
@@ -1124,5 +1124,8 @@
 		article footer {
 			opacity: 1;
 		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		article.highlighted { animation: none; }
 	}
 </style>

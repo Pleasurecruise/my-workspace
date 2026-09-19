@@ -37,7 +37,7 @@
     "@vitest/coverage-v8": "4.1.11",
     "simple-git-hooks": "2.14.0",
     "typescript": "6.0.3",
-    "vite-plus": "0.3.2"
+    "vite-plus": "0.3.3"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm run precommit"

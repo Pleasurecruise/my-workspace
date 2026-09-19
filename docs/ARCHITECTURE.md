@@ -61,8 +61,8 @@ only the affected feature.
 
 Dashboard and Dynamic Island share `WidgetContent` and feature panels. The Rust runtime owns source
 polling and per-source request locks; the WebView holds typed projections. Opening the island reads
-only its selected source. Layout records preserve invalid widget configurations for repair while
-rejecting dangling references. [Dashboard](DASHBOARD.md) owns scheduling and source contracts.
+only the sources required by its pinned widget, concurrently for composite widgets. Layout records
+preserve invalid widget configurations for repair while rejecting dangling references. [Dashboard](DASHBOARD.md) owns scheduling and source contracts.
 
 `apps/desktop/src-tauri/src/ssh` owns Tailscale discovery and system OpenSSH sessions through
 `portable-pty`; xterm.js renders typed byte channels. The renderer selects discovered node IDs.

@@ -192,6 +192,13 @@ export const widgets: Record<WidgetKind, WidgetDef> = {
 		category: "ai",
 		span: { columns: 4 },
 	},
+	codexClaude: {
+		id: "codexClaude",
+		label: "Codex & Claude",
+		description: "View Codex and Claude Code quotas and reset times",
+		category: "ai",
+		span: { columns: 4 },
+	},
 	grok: {
 		id: "grok",
 		label: "Grok",
@@ -220,6 +227,20 @@ export const widgets: Record<WidgetKind, WidgetDef> = {
 		category: "ai",
 		span: { columns: 4 },
 	},
+	tokenFlux: {
+		id: "tokenFlux",
+		label: "TokenFlux",
+		description: "View TokenFlux quota and account balance",
+		category: "ai",
+		span: { columns: 4 },
+	},
+	dimAgent: {
+		id: "dimAgent",
+		label: "DimAgent",
+		description: "View DimAgent plan credits and feature allowances",
+		category: "ai",
+		span: { columns: 4 },
+	},
 	quotation: {
 		id: "quotation",
 		label: "Random Quotation",
@@ -244,13 +265,14 @@ const singletonKinds: Array<
 	"localNetwork",
 	"exchange",
 	"github",
-	"codex",
+	"codexClaude",
 	"openCode",
-	"claude",
 	"grok",
 	"copilot",
 	"deepSeek",
 	"cherryIn",
+	"tokenFlux",
+	"dimAgent",
 	"quotation",
 ];
 

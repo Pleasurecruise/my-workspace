@@ -82,6 +82,10 @@
   --duration-progress: 500ms;
   --duration-spinner: 800ms;
   --duration-skeleton: 1500ms;
+  --duration-pulse: 1200ms;
+  --duration-page-turn: 460ms;
+  --duration-highlight: 2500ms;
+  --duration-record-spin: 12000ms;
 }
 
 .dark {

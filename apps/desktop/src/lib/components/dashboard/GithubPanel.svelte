@@ -155,10 +155,10 @@
 	.week { display: grid; grid-template-rows: repeat(7, 9px); gap: 3px; }
 	.week span,
 	.legend i { width: 9px; height: 9px; border-radius: var(--radius-xs); background: var(--color-muted); }
-	.level-1 { background: color-mix(in srgb, var(--color-success) 30%, var(--color-muted)) !important; }
-	.level-2 { background: color-mix(in srgb, var(--color-success) 52%, var(--color-muted)) !important; }
-	.level-3 { background: color-mix(in srgb, var(--color-success) 76%, var(--color-muted)) !important; }
-	.level-4 { background: var(--color-success) !important; }
+	.week .level-1, .legend .level-1 { background: color-mix(in srgb, var(--color-success) 30%, var(--color-muted)); }
+	.week .level-2, .legend .level-2 { background: color-mix(in srgb, var(--color-success) 52%, var(--color-muted)); }
+	.week .level-3, .legend .level-3 { background: color-mix(in srgb, var(--color-success) 76%, var(--color-muted)); }
+	.week .level-4, .legend .level-4 { background: var(--color-success); }
 	.legend { display: flex; align-items: center; justify-content: flex-end; gap: 3px; margin-top: 0.55rem; color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 0.48rem; }
 	.legend span:first-child { margin-right: 0.2rem; }
 	.legend span:last-child { margin-left: 0.2rem; }

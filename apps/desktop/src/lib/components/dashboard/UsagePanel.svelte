@@ -1,16 +1,23 @@
 <script lang="ts">
-	import type { QueryState, CherryInBalance, ClaudeUsage, CodexUsage, CopilotQuota, CopilotUsage, DeepSeekBalance, GrokUsage, OpenCodeUsage, RateLimitWindow } from "../../consumer";
+	import type { QueryState, CherryInBalance, ClaudeUsage, CodexUsage, CopilotQuota, CopilotUsage, DeepSeekBalance, DimAgentUsage, GrokUsage, OpenCodeUsage, RateLimitWindow, TokenFluxUsage } from "../../consumer";
+
+	type RateWindow = { label: string; usedPercent: number; resetsAt: number | string | null };
+	type RateSection = { title: string; planType: string | null; windows: RateWindow[]; hasData: boolean; error: string | null };
 
 	let source:
 		| { provider: "codex"; state: QueryState<CodexUsage> }
 		| { provider: "openCode"; state: QueryState<OpenCodeUsage> }
 		| { provider: "claude"; state: QueryState<ClaudeUsage> }
+		| { provider: "codexClaude"; codex: QueryState<CodexUsage>; claude: QueryState<ClaudeUsage> }
 		| { provider: "grok"; state: QueryState<GrokUsage> }
 		| { provider: "copilot"; state: QueryState<CopilotUsage> }
 		| { provider: "deepSeek"; state: QueryState<DeepSeekBalance> }
-		| { provider: "cherryIn"; state: QueryState<CherryInBalance> } = $props();
+		| { provider: "cherryIn"; state: QueryState<CherryInBalance> }
+		| { provider: "tokenFlux"; state: QueryState<TokenFluxUsage> }
+		| { provider: "dimAgent"; state: QueryState<DimAgentUsage> } = $props();
 
 	const percentFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+	const creditFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 	const usdFormatter = new Intl.NumberFormat("en-US", { currency: "USD", currencyDisplay: "narrowSymbol", maximumFractionDigits: 2, minimumFractionDigits: 2, style: "currency" });
 	let panelLabel = $derived(providerLabel(source.provider));
 	let openCodeWindows = $derived(source.provider !== "openCode" || source.state.data === null ? [] : [
@@ -28,15 +35,79 @@
 		];
 		return quotas.filter((item): item is { label: string; quota: CopilotQuota } => item.quota !== null && item.quota.unlimited !== true);
 	});
+	let rateSections = $derived.by((): RateSection[] => {
+		if (source.provider === "codex") return [codexSection(source.state)];
+		if (source.provider === "claude") return [claudeSection(source.state)];
+		if (source.provider === "codexClaude") return [codexSection(source.codex), claudeSection(source.claude)];
+		return [];
+	});
+	let tokenFluxMeters = $derived.by((): Array<{ label: string; percent: number; remaining: number; limit: number }> => {
+		if (source.provider !== "tokenFlux" || source.state.data === null) return [];
+		const subscription = source.state.data.subscription;
+		const windows: Array<{ label: string; used: number; limit: number }> = [
+			{ label: "Daily", used: subscription.dailyUsageUsd, limit: subscription.dailyLimitUsd },
+			{ label: "Monthly", used: subscription.monthlyUsageUsd, limit: subscription.monthlyLimitUsd },
+		];
+		if (subscription.weeklyLimitUsd !== null) {
+			windows.push({ label: "Weekly", used: subscription.weeklyUsageUsd, limit: subscription.weeklyLimitUsd });
+		}
+		return windows
+			.filter((window) => window.limit > 0)
+			.map((window) => {
+				const remaining = Math.max(0, window.limit - window.used);
+				return {
+					label: window.label,
+					percent: Math.max(0, Math.min(100, remaining / window.limit * 100)),
+					remaining,
+					limit: window.limit,
+				};
+			});
+	});
+	let tokenFluxBalance = $derived.by(() => {
+		if (source.provider !== "tokenFlux" || source.state.data === null) return null;
+		const usage = source.state.data;
+		return {
+			remaining: usage.billing.remaining,
+			unit: usage.billing.unit,
+			planName: usage.billing.planName,
+		};
+	});
+	let dimAgentMeter = $derived.by(() => {
+		if (source.provider !== "dimAgent" || source.state.data === null) return null;
+		const credits = source.state.data.credits;
+		if (credits.totalUnits <= 0) return null;
+		return {
+			percent: Math.max(0, Math.min(100, credits.remainingUnits / credits.totalUnits * 100)),
+			remaining: credits.remainingUnits,
+			used: credits.usedUnits,
+			total: credits.totalUnits,
+			expiresAt: credits.expiresAt,
+		};
+	});
+	let dimAgentFeatures = $derived.by((): Array<{ label: string; percent: number; used: number; allowance: number; unit: string }> => {
+		if (source.provider !== "dimAgent" || source.state.data === null) return [];
+		return source.state.data.featureMeters
+			.filter((feature) => !feature.unlimited && feature.totalAllowance > 0)
+			.map((feature) => ({
+				label: feature.featureKey.replace(/_/g, " "),
+				percent: Math.max(0, Math.min(100, feature.totalRemaining / feature.totalAllowance * 100)),
+				used: feature.totalUsed,
+				allowance: feature.totalAllowance,
+				unit: feature.unit ?? "",
+			}));
+	});
 
 	function remaining(window: { usedPercent: number }): number { return Math.max(0, Math.min(100, 100 - window.usedPercent)); }
 	function providerLabel(value: typeof source.provider): string {
 		if (value === "codex") return "Codex quota";
 		if (value === "openCode") return "OpenCode Go quota";
 		if (value === "claude") return "Claude quota";
+		if (value === "codexClaude") return "Codex & Claude quota";
 		if (value === "grok") return "Grok quota";
 		if (value === "copilot") return "Copilot quota";
 		if (value === "deepSeek") return "DeepSeek balance";
+		if (value === "tokenFlux") return "TokenFlux usage";
+		if (value === "dimAgent") return "DimAgent credits";
 		return "Cherry balance";
 	}
 	function windowLabel(window: RateLimitWindow, fallback: string): string {
@@ -44,6 +115,24 @@
 		if (window.windowDurationMins === 10_080) return "Weekly";
 		if (window.windowDurationMins !== null) return `${window.windowDurationMins} minutes`;
 		return fallback;
+	}
+	function codexSection(state: QueryState<CodexUsage>): RateSection {
+		const codex = state.data;
+		const windows: RateWindow[] = [];
+		if (codex !== null) {
+			if (codex.primary !== null) windows.push({ label: windowLabel(codex.primary, "Primary"), usedPercent: codex.primary.usedPercent, resetsAt: codex.primary.resetsAt });
+			if (codex.secondary !== null) windows.push({ label: windowLabel(codex.secondary, "Secondary"), usedPercent: codex.secondary.usedPercent, resetsAt: codex.secondary.resetsAt });
+		}
+		return { title: "Codex", planType: codex?.planType ?? null, windows, hasData: codex !== null, error: state.error };
+	}
+	function claudeSection(state: QueryState<ClaudeUsage>): RateSection {
+		const claude = state.data;
+		const windows: RateWindow[] = [];
+		if (claude !== null) {
+			if (claude.fiveHour !== null) windows.push({ label: "5 hours", usedPercent: claude.fiveHour.usedPercent, resetsAt: claude.fiveHour.resetsAt });
+			if (claude.sevenDay !== null) windows.push({ label: "Weekly", usedPercent: claude.sevenDay.usedPercent, resetsAt: claude.sevenDay.resetsAt });
+		}
+		return { title: "Claude", planType: claude?.planType ?? null, windows, hasData: claude !== null, error: state.error };
 	}
 	function resetLabel(timestamp: number | string | null): string {
 		if (timestamp === null) return "Reset time unavailable";
@@ -60,26 +149,30 @@
 	}
 </script>
 
+{#snippet providerSection(section: RateSection)}
+	<div class="provider-section">
+		<div class="provider-heading"><strong>{section.title}</strong>{#if section.planType !== null}<span>{section.planType}</span>{/if}</div>
+		{#if section.windows.length > 0}
+			<div class="meter-list">{#each section.windows as window}<div class="meter"><div><span>{window.label}</span><strong>{percentFormatter.format(remaining(window))}%</strong></div><div class="progress" role="progressbar" aria-label={`${section.title} ${window.label} quota`} aria-valuenow={remaining(window)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(window)}%`}></span></div><small>{resetLabel(window.resetsAt)}</small></div>{/each}</div>
+		{:else if section.hasData}
+			<p>No metered quota is available.</p>
+		{:else if section.error === null}
+			<p>Loading…</p>
+		{/if}
+		{#if section.error !== null}<p role="alert">{section.error}</p>{/if}
+	</div>
+{/snippet}
+
 <section class="usage-panel" aria-label={panelLabel}>
 	<article>
-		{#if source.provider === "codex"}
-			{@const codex = source.state.data}
-			<div class="provider-heading"><strong>Codex</strong>{#if codex !== null && codex.planType !== null}<span>{codex.planType}</span>{/if}</div>
-			{#if codex !== null}
-				<div class="meter-list">
-					{#if codex.primary !== null}<div class="meter"><div><span>{windowLabel(codex.primary, "Primary")}</span><strong>{percentFormatter.format(remaining(codex.primary))}%</strong></div><div class="progress" role="progressbar" aria-label="Codex primary quota" aria-valuenow={remaining(codex.primary)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(codex.primary)}%`}></span></div><small>{resetLabel(codex.primary.resetsAt)}</small></div>{/if}
-					{#if codex.secondary !== null}<div class="meter"><div><span>{windowLabel(codex.secondary, "Secondary")}</span><strong>{percentFormatter.format(remaining(codex.secondary))}%</strong></div><div class="progress" role="progressbar" aria-label="Codex secondary quota" aria-valuenow={remaining(codex.secondary)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(codex.secondary)}%`}></span></div><small>{resetLabel(codex.secondary.resetsAt)}</small></div>{/if}
-					{#if codex.spark !== null && codex.spark.primary !== null}<div class="meter"><div><span>GPT-5.3 Codex Spark</span><strong>{percentFormatter.format(remaining(codex.spark.primary))}%</strong></div><div class="progress spark" role="progressbar" aria-label="GPT-5.3 Codex Spark quota" aria-valuenow={remaining(codex.spark.primary)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(codex.spark.primary)}%`}></span></div><small>{resetLabel(codex.spark.primary.resetsAt)}</small></div>{/if}
-				</div>
-			{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
+		{#if source.provider === "codex" || source.provider === "claude" || source.provider === "codexClaude"}
+			{#each rateSections as section}
+				{@render providerSection(section)}
+			{/each}
 		{:else if source.provider === "openCode"}
 			{@const openCode = source.state.data}
 			<div class="provider-heading"><strong>OpenCode Go</strong><span>Go</span></div>
 			{#if openCode !== null}<div class="meter-list">{#each openCodeWindows as item}<div class="meter"><div><span>{item.label}</span><strong>{percentFormatter.format(item.available)}%</strong></div><div class:limited={item.window.status === "rate-limited"} class="progress" role="progressbar" aria-label={`OpenCode Go ${item.label} quota`} aria-valuenow={item.available} aria-valuemin="0" aria-valuemax="100"><span style:width={`${item.available}%`}></span></div><small>{resetLabel(item.window.resetsAt)}</small></div>{/each}</div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
-		{:else if source.provider === "claude"}
-			{@const claude = source.state.data}
-			<div class="provider-heading"><strong>Claude</strong>{#if claude !== null}<span>{claude.planType}</span>{/if}</div>
-			{#if claude !== null}<div class="meter-list">{#if claude.fiveHour !== null}<div class="meter"><div><span>5 hours</span><strong>{percentFormatter.format(remaining(claude.fiveHour))}%</strong></div><div class="progress" role="progressbar" aria-label="Claude 5-hour quota" aria-valuenow={remaining(claude.fiveHour)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(claude.fiveHour)}%`}></span></div><small>{resetLabel(claude.fiveHour.resetsAt)}</small></div>{/if}{#if claude.sevenDay !== null}<div class="meter"><div><span>Weekly</span><strong>{percentFormatter.format(remaining(claude.sevenDay))}%</strong></div><div class="progress" role="progressbar" aria-label="Claude weekly quota" aria-valuenow={remaining(claude.sevenDay)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(claude.sevenDay)}%`}></span></div><small>{resetLabel(claude.sevenDay.resetsAt)}</small></div>{/if}</div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
 		{:else if source.provider === "grok"}
 			{@const grok = source.state.data}
 			<div class="provider-heading"><strong>Grok</strong>{#if grok !== null && grok.planType !== null}<span>{grok.planType}</span>{/if}</div>
@@ -92,6 +185,31 @@
 			{@const deepSeek = source.state.data}
 			<div class="provider-heading"><strong>DeepSeek</strong>{#if deepSeek !== null}<span class:unavailable={!deepSeek.isAvailable}>{deepSeek.isAvailable ? "Available" : "Unavailable"}</span>{/if}</div>
 			{#if deepSeek !== null && deepSeek.balanceInfos.length > 0}<div class="account-balances">{#each deepSeek.balanceInfos as balance}<div class="account-balance"><div><strong>{balance.currency === "CNY" ? "¥" : "$"}{balance.totalBalance}</strong><span>{balance.currency === "CNY" ? "RMB" : balance.currency}</span></div><small>Available balance</small></div>{/each}</div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
+		{:else if source.provider === "tokenFlux"}
+			{@const tokenFlux = source.state.data}
+			{@const meters = tokenFluxMeters}
+			{@const balance = tokenFluxBalance}
+			<div class="provider-heading"><strong>TokenFlux</strong>{#if balance !== null}<span>{balance.planName}</span>{/if}</div>
+			{#if tokenFlux !== null}
+				{#if source.state.error !== null}<p role="alert">{source.state.error}</p>{/if}
+				{#if meters.length > 0}<div class="meter-list">{#each meters as meter}<div class="meter"><div><span>{meter.label}</span><strong>{percentFormatter.format(meter.percent)}%</strong></div><div class="progress" role="progressbar" aria-label={`TokenFlux ${meter.label} quota`} aria-valuenow={meter.percent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${meter.percent}%`}></span></div><small>{usdFormatter.format(meter.remaining)} / {usdFormatter.format(meter.limit)} USD remaining</small></div>{/each}</div>{/if}
+				{#if balance !== null}<div class="account-balances"><div class="account-balance"><div><strong>{creditFormatter.format(balance.remaining)}</strong><span>{balance.unit}</span></div><small>Available balance</small></div></div>{/if}
+			{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
+		{:else if source.provider === "dimAgent"}
+			{@const dimAgent = source.state.data}
+			{@const meter = dimAgentMeter}
+			{@const features = dimAgentFeatures}
+			<div class="provider-heading"><strong>DimAgent</strong>{#if dimAgent !== null && dimAgent.planName !== null}<span>{dimAgent.planName}</span>{/if}</div>
+			{#if dimAgent !== null}
+				{#if source.state.error !== null}<p role="alert">{source.state.error}</p>{/if}
+				<div class="meter-list">
+					{#if meter !== null}
+					<div class="meter"><div><span>Credits</span><strong>{percentFormatter.format(meter.percent)}%</strong></div><div class="progress" role="progressbar" aria-label="DimAgent credits" aria-valuenow={meter.percent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${meter.percent}%`}></span></div><small>{creditFormatter.format(meter.used)} / {creditFormatter.format(meter.total)} used{#if meter.expiresAt !== null} · resets {resetLabel(meter.expiresAt)}{/if}</small></div>
+					{/if}
+					{#each features as feature}<div class="meter"><div><span>{feature.label}</span><strong>{percentFormatter.format(feature.percent)}%</strong></div><div class="progress" role="progressbar" aria-label={`DimAgent ${feature.label}`} aria-valuenow={feature.percent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${feature.percent}%`}></span></div><small>{creditFormatter.format(feature.used)} / {creditFormatter.format(feature.allowance)} {feature.unit} used</small></div>{/each}
+					{#if meter === null && features.length === 0}<p>No metered quota is available.</p>{/if}
+				</div>
+			{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
 		{:else}
 			{@const cherryIn = source.state.data}
 			<div class="provider-heading"><strong>Cherry</strong>{#if cherryIn !== null}<span>Available</span>{/if}</div>
@@ -107,6 +225,7 @@
 	.provider-heading strong,
 	.meter > div { display: flex; align-items: center; }
 	.provider-heading { min-height: 1.2rem; justify-content: space-between; gap: 0.4rem; margin-bottom: 0.4rem; }
+	.provider-section + .provider-section { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border); }
 	.provider-heading strong { gap: 0.25rem; font-size: 0.68rem; }
 	.provider-heading > span { padding: 0.1rem 0.3rem; border-radius: var(--radius-full); background: var(--color-muted); color: var(--color-muted-foreground); font-size: 0.55rem; text-transform: uppercase; }
 	.provider-heading > span.unavailable { color: var(--color-error); }
@@ -120,10 +239,10 @@
 	.meter strong { font-family: var(--font-mono); }
 	.progress { height: 0.28rem; overflow: hidden; border-radius: var(--radius-full); background: var(--color-muted); }
 	.progress span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); transition: width var(--duration-progress) cubic-bezier(0.16, 1, 0.3, 1); }
-	.progress.spark span { background: var(--color-warning); }
 	.progress.limited span { background: var(--color-error); }
 	small,
 	p { margin: 0; color: var(--color-muted-foreground); font-size: 0.55rem; line-height: 1.4; }
+	p[role="alert"] { margin-top: 0.4rem; color: var(--color-error); }
 	.account-balances { grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr)); gap: 0.4rem; }
 	.account-balance { display: grid; min-width: 0; min-height: 3.4rem; align-content: center; gap: 0.25rem; padding: 0.55rem 0.65rem; border-radius: var(--radius-md); background: var(--color-muted); }
 	.account-balance > div { display: flex; align-items: baseline; justify-content: space-between; gap: 0.4rem; }

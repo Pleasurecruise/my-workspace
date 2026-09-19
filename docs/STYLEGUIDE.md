@@ -127,6 +127,11 @@ early returns. Do not create a one-call helper merely to avoid ordinary Rust syn
 - Prefer inferred types and explicit narrowing. Do not use type assertions, non-null assertions,
   or definite-assignment assertions to bypass missing validation or initialization.
 - Use semantic CSS tokens and reusable UI primitives.
+- Apply [Style contracts](DESIGN.md#style-contracts) to Svelte templates and CSS as well as class
+  helpers. Check token definitions, complete Tailwind class names, and shared variant/size contracts.
+  `vp lint` passing does not validate Svelte template styling or CSS token existence. For style
+  changes, also run Svelte checks and the production frontend build; inspect affected light/dark
+  states and reduced motion when appearance or animation changes.
 - Shared UI components are self-owned in `packages/ui`, following shadcn-svelte's Svelte 5 snippet,
   bindable ref, native-attribute, variant, data-slot, and accessibility conventions. Implement their
   interaction behavior locally; do not mix a packaged component/headless runtime into individual

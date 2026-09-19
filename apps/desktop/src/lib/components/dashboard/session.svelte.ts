@@ -31,6 +31,8 @@ export function createDashboardSession(
 		copilot: { data: null, error: null, loading: false },
 		deepSeek: { data: null, error: null, loading: false },
 		cherryIn: { data: null, error: null, loading: false },
+		tokenFlux: { data: null, error: null, loading: false },
+		dimAgent: { data: null, error: null, loading: false },
 		weather: { data: null, error: null, loading: false },
 		stocks: { data: null, error: null, loading: false },
 		exchange: { data: null, error: null, loading: false },
@@ -292,6 +294,12 @@ export function createDashboardSession(
 					break;
 				case "cherryIn":
 					applySource(dashboard.cherryIn, update.result);
+					break;
+				case "tokenFlux":
+					applySource(dashboard.tokenFlux, update.result);
+					break;
+				case "dimAgent":
+					applySource(dashboard.dimAgent, update.result);
 					break;
 				case "weather":
 					applySource(dashboard.weather, update.result);

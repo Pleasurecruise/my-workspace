@@ -227,6 +227,8 @@ it("clears disabled provider failures independently when Rust emits an absent-wi
 		copilot: session.dashboard.copilot,
 		deepSeek: session.dashboard.deepSeek,
 		cherryIn: session.dashboard.cherryIn,
+		tokenFlux: session.dashboard.tokenFlux,
+		dimAgent: session.dashboard.dimAgent,
 		github: session.dashboard.github,
 	};
 	for (const [source, state] of Object.entries(providers)) {

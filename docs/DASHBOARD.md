@@ -41,7 +41,8 @@ Database and placement-integrity failures affect the whole layout. Singleton con
 stable placement-ID order, independent of drag order.
 
 Dynamic Island shares rendering and Rust source locks in a separate trusted WebView. Expansion reads
-only the pinned source, without starting Dashboard polling. Expanded Planner refreshes once a minute.
+only the pinned widget's sources, without starting Dashboard polling. Composite widgets read their
+independent sources concurrently. Expanded Planner refreshes once a minute.
 App Lock closes the island; verification WebViews receive no account data.
 
 ## Current device
@@ -157,20 +158,26 @@ the stream and reconnect loop. Replays populate Inbox without producing new syst
 
 `crates/useage` owns account usage and balance integrations; the spelling is intentional.
 
-| Module        | Source and authentication                                     |
-| ------------- | ------------------------------------------------------------- |
-| `codex.rs`    | Local `codex app-server --stdio`; existing Codex login        |
-| `claude.rs`   | Anthropic usage endpoint; existing Claude Code OAuth          |
-| `copilot.rs`  | `gh api /copilot_internal/user`; existing GitHub CLI login    |
-| `grok.rs`     | Official Grok runtime billing JSON-RPC; existing device login |
-| `opencode.rs` | `opencode.ai/zen/go/v1/usage`; pi `opencode-go` API key       |
-| `deepseek.rs` | `api.deepseek.com/user/balance`; pi `deepseek` API key        |
-| `cherryin.rs` | CherryIN balance API; existing Cherry Studio OAuth            |
+| Module         | Source and authentication                                     |
+| -------------- | ------------------------------------------------------------- |
+| `codex.rs`     | Local `codex app-server --stdio`; existing Codex login        |
+| `claude.rs`    | Anthropic usage endpoint; existing Claude Code OAuth          |
+| `copilot.rs`   | `gh api /copilot_internal/user`; existing GitHub CLI login    |
+| `grok.rs`      | Official Grok runtime billing JSON-RPC; existing device login |
+| `opencode.rs`  | `opencode.ai/zen/go/v1/usage`; pi `opencode-go` API key       |
+| `deepseek.rs`  | `api.deepseek.com/user/balance`; pi `deepseek` API key        |
+| `cherryin.rs`  | CherryIN balance API; existing Cherry Studio OAuth            |
+| `tokenflux.rs` | `tokenflux.dev/v1/usage`; pi `tokenflux` API key              |
+| `dimagent.rs`  | Local `dim usage --json`; DimAgent Desktop or CLI login       |
 
-Codex, Grok, and Copilot coalesce requests and cache success and failure for five minutes; cancelled
-reads are not cached. CLI path overrides are `CODEX_BINARY`, `GROK_BINARY`, and `GITHUB_CLI_BINARY`.
+Codex, Grok, Copilot, and DimAgent coalesce requests and cache success and failure for five
+minutes; cancelled reads are not cached. CLI path overrides are `CODEX_BINARY`, `GROK_BINARY`,
+`GITHUB_CLI_BINARY`, and `DIM_BINARY`.
 Claude debug reads its local credential file; macOS release may also read Claude Code's Keychain item.
 Copilot preserves unlimited quotas and falls back to the account reset date when a row has none.
+
+OpenCode reports percentage used; remaining capacity is `100 - percent`. DeepSeek decimal balance
+strings preserve precision across Rust/TypeScript; label CNY as RMB without converting the currency.
 
 ### API-key resolution
 
@@ -178,14 +185,23 @@ Resolve case-insensitive provider IDs from pi `auth.json`, then custom providers
 under `${PI_CODING_AGENT_DIR}` or `~/.pi/agent`. Require `api_key` entries or nonempty `apiKey` values.
 Bearer secrets must never enter frontend projections, Vesper files, or logs.
 
-### Codex
+### Codex and Claude
 
-Initialize JSON-RPC with `experimentalApi`, call `account/rateLimits/read`, and terminate the child.
-Protocol I/O has a fifteen-second deadline. The main card uses `rateLimits`; Spark is optional and
-identified within `rateLimitsByLimitId`. This account integration is separate from Codex Resets.
+Codex initializes JSON-RPC with `experimentalApi`, calls `account/rateLimits/read`, and terminates the child.
+Protocol I/O has a fifteen-second deadline. The card uses the primary and secondary windows from
+`rateLimits`; additional model-specific limits are not projected. This account integration is
+separate from Codex Resets.
 
-OpenCode reports percentage used; remaining capacity is `100 - percent`. DeepSeek decimal balance
-strings preserve precision across Rust/TypeScript; label CNY as RMB without converting the currency.
+The widget picker offers a combined Codex & Claude card; saved standalone cards remain readable.
+Both providers retain independent data and error states, including when pinned to Dynamic Island.
+
+### TokenFlux and DimAgent
+
+TokenFlux reads the pi API key without storing another credential. DimAgent delegates authentication
+to its installed CLI; `DIM_BINARY` selects an explicit executable, otherwise discovery checks the
+Desktop bundle and PATH. Both reads have fifteen-second deadlines. DimAgent rejects missing or
+malformed credit totals; optional metadata may be absent. Provider error bodies and CLI stderr
+are not forwarded to the WebView.
 
 ### CherryIN
 

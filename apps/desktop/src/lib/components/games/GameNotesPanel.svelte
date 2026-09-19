@@ -87,11 +87,11 @@
 	.refresh { display: grid; place-items: center; width: 1.6rem; height: 1.6rem; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-muted-foreground); cursor: pointer; }
 	.refresh:hover { color: var(--color-foreground); background: var(--color-muted); }
 	.refresh:disabled { cursor: default; opacity: 0.5; }
-	.refresh:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+	.refresh:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 	.spinning :global(svg) { animation: spin var(--duration-spinner) linear infinite; }
 	@keyframes spin { to { transform: rotate(360deg); } }
 	@media (prefers-reduced-motion: reduce) { .spinning :global(svg) { animation: none; } }
-	.task-stars { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--color-primary); }
+	.task-stars { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--color-accent); }
 	h3 { margin: 0; font-size: 0.75rem; font-weight: 500; color: var(--color-muted-foreground); }
 	.compact .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem 1rem; margin: 0.75rem 0; }
 	.compact .metrics dl { grid-template-columns: 1fr; gap: 0.2rem; margin: 0; padding: 0; }

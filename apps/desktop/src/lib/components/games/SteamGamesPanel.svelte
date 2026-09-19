@@ -73,7 +73,7 @@
 <style>
 	.game-panel .refresh { display: grid; place-items: center; width: 1.6rem; height: 1.6rem; padding: 0; border: 0; background: transparent; color: var(--color-muted-foreground); }
 	.refresh:hover { background: var(--color-muted); color: var(--color-foreground); }
-	.refresh:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+	.refresh:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 	.spinning :global(svg) { animation: spin var(--duration-spinner) linear infinite; }
 	@keyframes spin { to { transform: rotate(360deg); } }
 	@media (prefers-reduced-motion: reduce) { .spinning :global(svg) { animation: none; } }

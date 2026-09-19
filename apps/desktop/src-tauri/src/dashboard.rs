@@ -11,7 +11,7 @@ use crate::{CommandResponse, telemetry, widgets};
 use quotes::{exchange, github, quotations, status, stocks, weather};
 
 const EVENT: &str = "dashboard-source-updated";
-const SOURCE_COUNT: usize = 16;
+const SOURCE_COUNT: usize = 18;
 
 #[derive(Clone, Copy)]
 #[repr(usize)]
@@ -25,6 +25,8 @@ enum Source {
     Copilot,
     DeepSeek,
     CherryIn,
+    TokenFlux,
+    DimAgent,
     Weather,
     Stocks,
     Exchange,
@@ -45,6 +47,8 @@ impl Source {
         Self::Copilot,
         Self::DeepSeek,
         Self::CherryIn,
+        Self::TokenFlux,
+        Self::DimAgent,
         Self::Weather,
         Self::Stocks,
         Self::Exchange,
@@ -67,6 +71,8 @@ enum DashboardEvent {
     Copilot(CommandResponse<Option<useage::copilot::CopilotUsage>>),
     DeepSeek(CommandResponse<Option<useage::deepseek::DeepSeekBalance>>),
     CherryIn(CommandResponse<Option<useage::cherryin::CherryInBalance>>),
+    TokenFlux(CommandResponse<Option<useage::tokenflux::TokenFluxUsage>>),
+    DimAgent(CommandResponse<Option<useage::dimagent::DimAgentUsage>>),
     Weather(Box<CommandResponse<weather::WeatherReport>>),
     Stocks(Box<CommandResponse<stocks::StockReport>>),
     Exchange(Box<CommandResponse<Option<exchange::ExchangeReport>>>),
@@ -153,6 +159,20 @@ impl DashboardEvent {
                 read_provider(
                     widgets::has_provider(app, widgets::ProviderWidget::CherryIn),
                     useage::cherryin::read(),
+                )
+                .await,
+            ),
+            Source::TokenFlux => Self::TokenFlux(
+                read_provider(
+                    widgets::has_provider(app, widgets::ProviderWidget::TokenFlux),
+                    useage::tokenflux::read(),
+                )
+                .await,
+            ),
+            Source::DimAgent => Self::DimAgent(
+                read_provider(
+                    widgets::has_provider(app, widgets::ProviderWidget::DimAgent),
+                    useage::dimagent::read(),
                 )
                 .await,
             ),
@@ -304,35 +324,38 @@ async fn read_while_active<T>(
     }
 }
 
-fn island_source(widget: &widgets::Widget) -> Option<Source> {
+fn island_sources(widget: &widgets::Widget) -> Vec<Source> {
     use widgets::Widget;
-    Some(match widget {
-        Widget::Cpu | Widget::Memory | Widget::Storage | Widget::Network => Source::TaskManager,
-        Widget::LocalCpu | Widget::LocalMemory | Widget::LocalStorage | Widget::LocalNetwork => {
-            Source::DeviceTelemetry
+    match widget {
+        Widget::Cpu | Widget::Memory | Widget::Storage | Widget::Network => {
+            vec![Source::TaskManager]
         }
-        Widget::Weather { .. } => Source::Weather,
-        Widget::Stock { .. } => Source::Stocks,
-        Widget::Exchange => Source::Exchange,
-        Widget::ServiceStatus { .. } => Source::ServiceStatus,
-        Widget::Github => Source::Github,
-        Widget::Codex => Source::Codex,
-        Widget::OpenCode => Source::OpenCode,
-        Widget::Claude => Source::Claude,
-        Widget::Grok => Source::Grok,
-        Widget::Copilot => Source::Copilot,
-        Widget::DeepSeek => Source::DeepSeek,
-        Widget::CherryIn => Source::CherryIn,
-        Widget::Quotation => Source::Quotation,
+        Widget::LocalCpu | Widget::LocalMemory | Widget::LocalStorage | Widget::LocalNetwork => {
+            vec![Source::DeviceTelemetry]
+        }
+        Widget::Weather { .. } => vec![Source::Weather],
+        Widget::Stock { .. } => vec![Source::Stocks],
+        Widget::Exchange => vec![Source::Exchange],
+        Widget::ServiceStatus { .. } => vec![Source::ServiceStatus],
+        Widget::Github => vec![Source::Github],
+        Widget::Codex => vec![Source::Codex],
+        Widget::OpenCode => vec![Source::OpenCode],
+        Widget::Claude => vec![Source::Claude],
+        Widget::CodexClaude => vec![Source::Codex, Source::Claude],
+        Widget::Grok => vec![Source::Grok],
+        Widget::Copilot => vec![Source::Copilot],
+        Widget::DeepSeek => vec![Source::DeepSeek],
+        Widget::CherryIn => vec![Source::CherryIn],
+        Widget::TokenFlux => vec![Source::TokenFlux],
+        Widget::DimAgent => vec![Source::DimAgent],
+        Widget::Quotation => vec![Source::Quotation],
         // Todo is read through its own session; game panels own their initial read.
         Widget::Invalid { .. }
         | Widget::Planner { .. }
         | Widget::Spending
         | Widget::Game { .. }
-        | Widget::Steam => {
-            return None;
-        }
-    })
+        | Widget::Steam => Vec::new(),
+    }
 }
 
 #[tauri::command]
@@ -342,11 +365,12 @@ pub(crate) async fn refresh_island(app: AppHandle) -> CommandResponse<()> {
         Ok(None) => return CommandResponse::Ready { data: () },
         Err(message) => return CommandResponse::Failed { message },
     };
-    if let Some(source) = island_source(&widget) {
-        let runtime = app.state::<DashboardRuntime>();
+    let runtime = app.state::<DashboardRuntime>();
+    futures_util::future::join_all(island_sources(&widget).into_iter().map(async |source| {
         let _guard = runtime.0.sources[source as usize].lock().await;
         DashboardEvent::read(source, &app, false).await.emit(&app);
-    }
+    }))
+    .await;
     CommandResponse::Ready { data: () }
 }
 
@@ -450,6 +474,8 @@ pub(crate) fn set_dashboard_active(
                     runtime.refresh_if_idle(app.clone(), Source::Copilot);
                     runtime.refresh_if_idle(app.clone(), Source::DeepSeek);
                     runtime.refresh_if_idle(app.clone(), Source::CherryIn);
+                    runtime.refresh_if_idle(app.clone(), Source::TokenFlux);
+                    runtime.refresh_if_idle(app.clone(), Source::DimAgent);
                     runtime.refresh_if_idle(app.clone(), Source::ServiceStatus);
                 }
             }

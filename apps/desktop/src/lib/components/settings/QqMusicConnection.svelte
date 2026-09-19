@@ -107,7 +107,7 @@
 	.qq-login-icon { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: var(--radius-full); background: var(--color-muted); color: var(--color-accent); }
 	.qq-login h2 { margin: 0.75rem 0 0; }
 	.qq-login > p { max-width: 17rem; margin: 0.4rem 0 1rem; color: var(--color-muted-foreground); font-size: 0.75rem; line-height: 1.5; }
-	.qq-code { display: grid; width: 12rem; height: 12rem; place-items: center; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); transition: opacity var(--duration-normal); }
+	.qq-code { display: grid; width: 12rem; height: 12rem; place-items: center; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); transition: opacity var(--duration-base); }
 	.qq-code.expired { opacity: 0.28; }
 	.qq-code img { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 	.qq-login-status { display: flex; min-height: 1.25rem; align-items: center; gap: 0.4rem; margin-top: 1rem; color: var(--color-muted-foreground); font-size: 0.7rem; }
