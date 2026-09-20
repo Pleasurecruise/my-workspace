@@ -87,6 +87,10 @@ Settings accepts bucket-scoped R2 credentials and separate Bearer keys generated
 my-moment, and my-knowledge. Memo and Knowledge use their APIs; direct R2 access cannot bypass
 server metadata and cache coordination. [Workflow](WORKFLOW.md) covers publication and recovery.
 
+The sidebar’s This device entry starts the current account’s default local shell (a login shell on
+Unix), using the native PTY. It does not require Tailscale and has no idle timeout; App Lock, window
+reload/close, and application shutdown end it.
+
 Embedded SSH requires a signed-in Tailscale CLI and system OpenSSH. Enable Tailscale SSH on
 `tag:server` devices and authorize the remote account in the tailnet policy. Tailscale does not
 supply a remote OS username; Vesper prefills the last username used for that device, defaulting to
@@ -172,7 +176,7 @@ Tauri commands; controlled promises and clocks exercise failure and response ord
 also require a desktop production build. Provider parsing should be testable without credentials;
 live authenticated tests stay explicitly ignored. Inspect publication plans before live uploads.
 
-`cargo test -p vesper ssh::` covers discovery and native PTY lifecycle with a synthetic local shell.
+`cargo test -p vesper terminal::` covers discovery and native PTY lifecycle with a synthetic local shell.
 Real Tailscale login still needs an interactive check against a permitted device.
 
 `pnpm test:coverage:frontend` writes `coverage/index.html` and `coverage/coverage-summary.json`.

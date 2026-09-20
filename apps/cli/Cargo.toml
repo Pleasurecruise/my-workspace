@@ -9,6 +9,7 @@ name = "vesper"
 path = "src/main.rs"
 
 [dependencies]
+clap.workspace = true
 quotes.workspace = true
 games.workspace = true
 ledger.workspace = true

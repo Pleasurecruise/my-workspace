@@ -64,9 +64,11 @@ polling and per-source request locks; the WebView holds typed projections. Openi
 only the sources required by its pinned widget, concurrently for composite widgets. Layout records
 preserve invalid widget configurations for repair while rejecting dangling references. [Dashboard](DASHBOARD.md) owns scheduling and source contracts.
 
-`apps/desktop/src-tauri/src/ssh` owns Tailscale discovery and system OpenSSH sessions through
+`apps/desktop/src-tauri/src/terminal` owns Tailscale discovery, local shells, and system OpenSSH sessions through
 `portable-pty`; xterm.js renders typed byte channels. The renderer selects discovered node IDs.
-Rust bounds session resources and expires idle connections independently of the WebView. Navigation
+Rust bounds session resources and expires idle SSH connections independently of the WebView.
+The local terminal launches the current account’s default shell without a Tailscale dependency,
+remains open while idle, and survives tailnet identity changes. Navigation
 preserves hidden terminals; selecting a sidebar device replaces its terminal with a fresh connection.
 Rust replaces same-device sessions atomically and rejects superseded launch requests. App Lock, window reload/destruction and shutdown close them and cancel pending
 launches. [Development](DEVELOPMENT.md#service-setup) describes authentication and idle limits.
@@ -174,6 +176,10 @@ records and request state. Navigation during a write cannot change the submitted
 mutations invalidate other views of that month. Removing a widget preserves its records.
 
 ## CLI surface
+
+Clap defines the command tree, options, generated help, version output, and usage errors before
+credential or runtime initialization. Parsed arguments are normalized for the existing feature
+adapters; the feature crates retain business validation and external I/O.
 
 The CLI groups commands by feature and reuses the same Rust providers, consumer APIs and stores.
 File/stdin parsing finishes before remote writes. Status reads can target one provider or all;

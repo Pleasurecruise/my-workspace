@@ -28,24 +28,24 @@ fn reads_json_from_stdin_before_consumer_requests() {
 
 #[test]
 fn help_lists_consumer_queries() {
-    let output = Command::new(env!("CARGO_BIN_EXE_vesper"))
-        .arg("help")
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    let help = String::from_utf8(output.stdout).unwrap();
-    for command in [
-        "memo get",
-        "knowledge page",
-        "moment query",
-        "moment get",
-        "status [source]",
-        "ledger create",
-        "ledger list",
-        "todo check-ins",
-        "todo undo-check-in",
-        "--stdin",
+    for (domain, commands) in [
+        ("memo", vec!["get", "list", "page", "patch", "import-x"]),
+        ("knowledge", vec!["page", "get", "update-documents"]),
+        ("moment", vec!["query", "get", "upload-photo"]),
+        ("todo", vec!["check-ins", "undo-check-in", "notion"]),
+        ("ledger", vec!["create", "list"]),
     ] {
-        assert!(help.contains(command), "missing command: {command}");
+        let output = Command::new(env!("CARGO_BIN_EXE_vesper"))
+            .args([domain, "--help"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let help = String::from_utf8(output.stdout).unwrap();
+        for command in commands {
+            assert!(
+                help.contains(command),
+                "missing command: {domain} {command}"
+            );
+        }
     }
 }

@@ -127,6 +127,8 @@ gate consumer destinations; removing the active destination's configuration retu
 Its resizable desktop rail retains accessible icon names when collapsed; mobile keeps the labeled
 drawer. The local profile editor stores presentation only and does not imply an authenticated account.
 
+A This device terminal entry sits immediately above the sidebar’s Tailscale list and stays available
+when discovery fails. It uses the same terminal frame without remote login controls.
 Sidebar Tailscale devices show accessible connection statuses. Selecting one opens a terminal
 filling the main pane, with username and reconnect/disconnect controls; navigation preserves its
 contents until that device is selected again. Each sidebar device click starts a fresh connection,

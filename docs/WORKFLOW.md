@@ -27,6 +27,15 @@ upload can leave a partial remote build; correct the error and republish the int
 
 ## CLI input
 
+`vesper --version` (or `-V`) prints the CLI package version. `vesper --help`, `-h`,
+`help`, and running without arguments print usage. Each command has its own help, for example
+`vesper memo --help`, `vesper memo list --help`, or `vesper help todo notion`.
+These informational commands exit successfully without loading development credentials,
+initializing logging, or accessing Keychain.
+Invalid command names, missing arguments, and conflicting options report usage on stderr and exit
+with status 2; operation failures exit with status 1. Todo and Ledger accept `--date` before or after
+their action. Use `--` to separate options from literal content that begins with a dash.
+
 Content payloads accept inline Markdown or JSON, `--file <path>`, or `--stdin` in the payload position.
 File and stdin reads preserve newlines, require UTF-8, and fail before requests if parsing fails.
 This applies to Memo create/update/page/patch, Knowledge page/create/update-draft/update-documents/

@@ -27,7 +27,8 @@ While unlocked, the sidebar polls `tailscale status --json` every 30 seconds and
 independently of the active route. It lists `tag:server` peers, including offline servers, and excludes
 the local device. Names prefer the short MagicDNS alias, then hostname, then IP. Online indicates
 tailnet connectivity, not SSH readiness. Discovery failures retain peers with unknown status and
-block new connections until recovery. A local tailnet identity change closes existing terminals.
+block new SSH connections until recovery. A local tailnet identity change closes remote terminals.
+The separate This device entry above the peer list opens a local terminal independently of discovery.
 
 ## Widget layout
 

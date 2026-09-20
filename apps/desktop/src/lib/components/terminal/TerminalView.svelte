@@ -5,12 +5,14 @@
 	import { Cable, RotateCcw, Square } from "@lucide/svelte";
 	import type { Terminal } from "@xterm/xterm";
 	import type { FitAddon } from "@xterm/addon-fit";
-	import type { CommandResponse, SshDevice, SshOutput } from "../../consumer";
+	import type { CommandResponse, TerminalTarget, TerminalConnection, TerminalOutput } from "../../consumer";
 
-	let { device, active, locked }: { device: SshDevice; active: boolean; locked: boolean } = $props();
-	const usernameKey = untrack(() => `vesper.ssh.username.${device.id}`);
+	let { target, active, locked }: { target: TerminalTarget; active: boolean; locked: boolean } = $props();
+	const device = $derived(target.kind === "ssh" ? target.device : null);
+	const usernameKey = untrack(() => device === null ? null : `vesper.ssh.username.${device.id}`);
 	let username = $state(
 		untrack(() => {
+			if (device === null || usernameKey === null) return "";
 			const remembered = localStorage.getItem(usernameKey);
 			return remembered === null ? device.username : remembered;
 		}),
@@ -35,12 +37,12 @@
 		phase = "closed";
 		if (id !== null) {
 			try {
-				const response = await invoke<CommandResponse<null>>("disconnect_ssh", { sessionId: id });
+				const response = await invoke<CommandResponse<null>>("disconnect_terminal", { sessionId: id });
 				if (!disposed && version === generation && response.status === "failed")
 					error = response.message;
 			} catch {
 				if (!disposed && version === generation)
-					error = "Could not confirm that the SSH process stopped.";
+					error = "Could not confirm that the terminal process stopped.";
 			}
 		}
 	}
@@ -49,11 +51,11 @@
 		if (terminal === null || locked || disposed || phase === "starting" || phase === "running")
 			return;
 		const login = username.trim();
-		if (login === "") {
+		if (device !== null && login === "") {
 			error = "Enter the remote device's login username.";
 			return;
 		}
-		if (/^(?!-)[A-Za-z0-9._-]{1,64}$/.test(login)) localStorage.setItem(usernameKey, login);
+		if (usernameKey !== null && /^(?!-)[A-Za-z0-9._-]{1,64}$/.test(login)) localStorage.setItem(usernameKey, login);
 		await disconnect();
 		if (locked || disposed) return;
 		const version = ++generation;
@@ -63,13 +65,13 @@
 		error = null;
 		terminal.reset();
 		fit?.fit();
-		const output = new Channel<SshOutput>();
+		const output = new Channel<TerminalOutput>();
 		output.onmessage = (message) => {
 			if (disposed || generation !== version || terminal === null) return;
 			if (message.kind === "data") {
 				terminal.write(new Uint8Array(message.bytes), () => {
 					if (!disposed && generation === version)
-						void invoke("acknowledge_ssh", { sessionId: id, bytes: message.bytes.length }).catch(
+						void invoke("acknowledge_terminal", { sessionId: id, bytes: message.bytes.length }).catch(
 							() => {},
 						);
 				});
@@ -77,7 +79,7 @@
 				sessionId = null;
 				phase = "closed";
 				terminal.write(
-					`\r\n[SSH session ended${message.code === null ? "" : ` · exit ${message.code}`} ]\r\n`,
+					`\r\n[Terminal session ended${message.code === null ? "" : ` · exit ${message.code}`} ]\r\n`,
 				);
 			} else if (sessionId === id) {
 				error = message.message;
@@ -86,18 +88,15 @@
 			}
 		};
 		try {
-			const response = await invoke<CommandResponse<null>>("connect_ssh", {
-				request: {
-					sessionId: id,
-					deviceId: device.id,
-					username: login,
-					cols: terminal.cols,
-					rows: terminal.rows,
-				},
+			const connection: TerminalConnection = device === null
+				? { kind: "local" }
+				: { kind: "ssh", deviceId: device.id, username: login };
+			const response = await invoke<CommandResponse<null>>("connect_terminal", {
+				request: { sessionId: id, target: connection, cols: terminal.cols, rows: terminal.rows },
 				output,
 			});
 			if (disposed || version !== generation) {
-				await invoke("disconnect_ssh", { sessionId: id });
+				await invoke("disconnect_terminal", { sessionId: id });
 				return;
 			}
 			if (response.status === "failed" && sessionId === id) {
@@ -110,11 +109,11 @@
 			}
 		} catch {
 			if (!disposed && version === generation && sessionId === id) {
-				error = "Could not start SSH. Refresh Tailscale and reconnect.";
+				error = device === null ? "Could not start the local terminal. Try reconnecting." : "Could not start SSH. Refresh Tailscale and reconnect.";
 				sessionId = null;
 				phase = "closed";
 			}
-			void invoke("disconnect_ssh", { sessionId: id }).catch(() => {});
+			void invoke("disconnect_terminal", { sessionId: id }).catch(() => {});
 		}
 	}
 
@@ -131,7 +130,7 @@
 			try {
 				for (let offset = 0; offset < bytes.length; offset += 4096) {
 					if (disposed || locked || version !== generation || sessionId !== id) return;
-					const response = await invoke<CommandResponse<null>>("write_ssh", {
+					const response = await invoke<CommandResponse<null>>("write_terminal", {
 						sessionId: id,
 						bytes: Array.from(bytes.subarray(offset, offset + 4096)),
 					});
@@ -151,7 +150,7 @@
 
 	function recordActivity(event: Event) {
 		if (!event.isTrusted || disposed || locked || sessionId === null) return;
-		void invoke("record_ssh_activity", { sessionId }).catch(() => {});
+		void invoke("record_terminal_activity", { sessionId }).catch(() => {});
 	}
 
 	function resize() {
@@ -161,7 +160,7 @@
 		if (sessionId !== null && dimensions !== lastSize) {
 			lastSize = dimensions;
 			const id = sessionId;
-			void invoke<CommandResponse<null>>("resize_ssh", {
+			void invoke<CommandResponse<null>>("resize_terminal", {
 				sessionId,
 				cols: terminal.cols,
 				rows: terminal.rows,
@@ -171,7 +170,7 @@
 						error = response.message;
 				})
 				.catch(() => {
-					if (!disposed && sessionId === id) error = "Could not resize the SSH terminal.";
+					if (!disposed && sessionId === id) error = "Could not resize the terminal.";
 				});
 		}
 	}
@@ -261,30 +260,30 @@
 	});
 </script>
 
-<section class="ssh-terminal" hidden={!active} aria-label={`${device.name} SSH terminal`}>
-	<header class="page-header"><div><h1>{device.name || device.address}</h1><p class="page-description">{device.dnsName || device.address} · {device.os || "Remote device"}</p></div></header>
+<section class="terminal-view" hidden={!active} aria-label={device === null ? "Local terminal" : `${device.name} SSH terminal`}>
+	<header class="page-header"><div><h1>{device === null ? "This device" : device.name || device.address}</h1><p class="page-description">{device === null ? "Local terminal" : `${device.dnsName || device.address} · ${device.os || "Remote device"}`}</p></div></header>
 	<div class="terminal-frame">
 		<div class="toolbar">
 			<form onsubmit={(event) => { event.preventDefault(); void connect(); }}>
-				<Cable size={14} /><label for={`ssh-user-${device.id}`}>Login as</label>
-				<input id={`ssh-user-${device.id}`} bind:value={username} spellcheck="false" autocomplete="off" maxlength="64" disabled={phase === "starting" || phase === "running"} placeholder="Remote username" />
+				{#if device !== null}<Cable size={14} /><label for={`ssh-user-${device.id}`}>Login as</label>
+				<input id={`ssh-user-${device.id}`} bind:value={username} spellcheck="false" autocomplete="off" maxlength="64" disabled={phase === "starting" || phase === "running"} placeholder="Remote username" />{/if}
 				{#if phase === "starting" || phase === "running"}<button type="button" onclick={() => void disconnect()}><Square size={11} /> Disconnect</button>{:else}<button type="submit" disabled={terminal === null || locked}><RotateCcw size={12} /> {phase === "idle" ? "Connect" : "Reconnect"}</button>{/if}
 			</form>
-			<span class="phase" role="status">{phase === "starting" ? "Starting SSH…" : phase === "running" ? "SSH running" : phase === "closed" ? "Disconnected" : "Ready"}</span>
+			<span class="phase" role="status">{phase === "starting" ? (device === null ? "Starting shell…" : "Starting SSH…") : phase === "running" ? (device === null ? "Shell running" : "SSH running") : phase === "closed" ? "Disconnected" : "Ready"}</span>
 		</div>
 		{#if error}<p class="terminal-error" role="alert">{error}</p>{/if}
 		<div class="terminal-host" bind:this={host}></div>
-		<footer><span>Tailscale SSH · {device.address}</span><span>Auto-disconnect after 5 min idle · Ctrl+C interrupts · exit disconnects</span></footer>
+		<footer><span>{device === null ? "Local shell" : `Tailscale SSH · ${device.address}`}</span><span>{device === null ? "" : "Auto-disconnect after 5 min idle · "}Ctrl+C interrupts · exit disconnects</span></footer>
 	</div>
-	<p class="terminal-help">Uses the remote account’s default shell. Enter host-key confirmation or authentication prompts in the terminal. Tailscale access rules still apply. Change the login name after disconnecting.</p>
+	<p class="terminal-help">{device === null ? "Runs your current account’s default shell on this device. Closing or locking Vesper ends the session." : "Uses the remote account’s default shell. Enter host-key confirmation or authentication prompts in the terminal. Tailscale access rules still apply. Change the login name after disconnecting."}</p>
 </section>
 
 <style>
-	.ssh-terminal { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--color-background); }
+	.terminal-view { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--color-background); }
 	.page-header { flex-shrink: 0; display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 14px; }
 	.page-header > div { flex: 1; min-width: 0; }
 	.page-header h1 { font-size: 1rem; }
-	.ssh-terminal[hidden] { display: none; }
+	.terminal-view[hidden] { display: none; }
 	.terminal-frame { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; border: 1px solid var(--color-border); border-radius: 0; background: var(--color-terminal-background); box-shadow: var(--shadow-sm); }
 	.toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 10px 14px; background: var(--color-muted); border-bottom: 1px solid var(--color-border); }
 	form { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--color-muted-foreground); font-size: 0.72rem; }

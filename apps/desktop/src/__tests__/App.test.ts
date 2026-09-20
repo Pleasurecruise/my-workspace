@@ -9,7 +9,7 @@ import type {
 	InitialViews,
 	MemoTagCount,
 	MemoView,
-	SshOutput,
+	TerminalOutput,
 } from "../lib/consumer";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
@@ -17,7 +17,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 	invoke,
 	convertFileSrc: (path: string) => path,
 	Channel: class {
-		onmessage = (_message: SshOutput) => {};
+		onmessage = (_message: TerminalOutput) => {};
 	},
 }));
 vi.mock("@xterm/xterm", () => ({
@@ -558,7 +558,7 @@ it("starts a fresh SSH connection on each sidebar click, including after idle ex
 	if (fallback === undefined) throw new Error("Missing command setup");
 	const launches: Array<{
 		request: { sessionId: string };
-		output: { onmessage: (message: SshOutput) => void };
+		output: { onmessage: (message: TerminalOutput) => void };
 	}> = [];
 	invoke.mockImplementation((command: string, args) => {
 		if (command === "read_ssh_devices")
@@ -579,8 +579,8 @@ it("starts a fresh SSH connection on each sidebar click, including after idle ex
 					error: null,
 				},
 			});
-		if (command === "connect_ssh") launches.push(args);
-		if (["set_ssh_active", "connect_ssh", "disconnect_ssh"].includes(command))
+		if (command === "connect_terminal") launches.push(args);
+		if (["set_terminal_active", "connect_terminal", "disconnect_terminal"].includes(command))
 			return Promise.resolve({ status: "ready", data: null });
 		return fallback(command, args);
 	});
@@ -605,7 +605,7 @@ it("starts a fresh SSH connection on each sidebar click, including after idle ex
 	await vi.waitFor(() => expect(launches).toHaveLength(2));
 	const [first, second] = launches;
 	if (first === undefined || second === undefined) throw new Error("Missing SSH connections");
-	expect(invoke).toHaveBeenCalledWith("disconnect_ssh", {
+	expect(invoke).toHaveBeenCalledWith("disconnect_terminal", {
 		sessionId: first.request.sessionId,
 	});
 	expect(second.request.sessionId).not.toBe(first.request.sessionId);
@@ -620,7 +620,7 @@ it("starts a fresh SSH connection on each sidebar click, including after idle ex
 	device.click();
 	await vi.waitFor(() => expect(launches).toHaveLength(3));
 	expect(target.textContent).not.toContain("Disconnected after 5 minutes");
-	expect(target.querySelectorAll(".ssh-terminal")).toHaveLength(1);
+	expect(target.querySelectorAll(".terminal-view")).toHaveLength(1);
 	first.output.onmessage({ kind: "error", message: "Late old-session failure" });
 	await tick();
 	expect(target.textContent).not.toContain("Late old-session failure");

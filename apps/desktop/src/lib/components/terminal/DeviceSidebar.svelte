@@ -1,23 +1,29 @@
 <script lang="ts">
 	import { RefreshCw, Terminal } from "@lucide/svelte";
-	import type { createSshSession } from "./session.svelte";
-	import type { SshDevice } from "../../consumer";
+	import type { createTerminalSession } from "./session.svelte";
+	import type { TerminalTarget } from "../../consumer";
 	let { session, compact, active, onopen }: {
-		session: ReturnType<typeof createSshSession>;
+		session: ReturnType<typeof createTerminalSession>;
 		compact: boolean;
 		active: boolean;
-		onopen: (device: SshDevice) => void;
+		onopen: (target: TerminalTarget) => void;
 	} = $props();
 </script>
 
-<section class="devices" class:compact aria-label="Tailscale devices">
+<section class="devices" class:compact aria-label="Terminals">
+	<div class="device-list local-device">
+		<button type="button" class:selected={active && session.selected?.kind === "local"} aria-current={active && session.selected?.kind === "local" ? "page" : "false"} aria-label="This device, open local terminal" title="This device · Local terminal" onclick={() => onopen({ kind: "local" })}>
+			<Terminal size={14} />
+			{#if !compact}<span class="device-name">This device<small>Local terminal</small></span>{/if}
+		</button>
+	</div>
 	<header><span>Tailscale</span><button type="button" disabled={session.loading} aria-label="Refresh Tailscale devices" title="Refresh Tailscale devices" onclick={() => void session.refresh()}><RefreshCw size={12} /></button></header>
 	{#if session.error}<p class="error" role="status" title={session.error}>{compact ? "!" : session.error}</p>{/if}
 	{#if session.devices.length === 0 && session.error === null}<p>{compact ? "…" : session.loading ? "Discovering devices…" : "No devices tagged tag:server in this tailnet."}</p>{/if}
 	<div class="device-list">
 		{#each session.devices as device (device.id)}
 			{@const status = device.online === null ? "Status unknown" : device.online ? "Online" : "Offline"}
-			<button type="button" class:selected={active && session.selectedId === device.id} aria-current={active && session.selectedId === device.id ? "page" : "false"} aria-label={`${device.name}, ${status}, open SSH terminal`} title={`${device.name} · ${status}\n${device.dnsName || device.address}`} onclick={() => onopen(device)}>
+			<button type="button" class:selected={active && session.selected?.kind === "ssh" && session.selected.device.id === device.id} aria-current={active && session.selected?.kind === "ssh" && session.selected.device.id === device.id ? "page" : "false"} aria-label={`${device.name}, ${status}, open SSH terminal`} title={`${device.name} · ${status}\n${device.dnsName || device.address}`} onclick={() => onopen({ kind: "ssh", device })}>
 				<span class="status-dot" class:online={device.online === true} class:offline={device.online === false} aria-hidden="true"></span>
 				{#if compact}<Terminal size={14} />{:else}<span class="device-name">{device.name || device.address}<small>{device.os || "Device"} · {status}</small></span><Terminal size={12} />{/if}
 			</button>
@@ -32,6 +38,7 @@
 	header button { display: grid; place-items: center; padding: 4px; border-radius: var(--radius-sm); }
 	button:disabled { opacity: 0.5; cursor: wait; }
 	.device-list { display: grid; gap: 2px; max-height: 35dvh; overflow-y: auto; }
+	.local-device { margin-bottom: 0.75rem; }
 	.device-list button { display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 2.6rem; padding: 0.45rem 0.75rem; text-align: left; border-radius: var(--radius-md); }
 	button:hover, button.selected { background: color-mix(in srgb, var(--color-accent) 10%, transparent); color: var(--color-accent); }
 	button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }

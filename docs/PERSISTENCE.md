@@ -103,7 +103,7 @@ conditionally writes renewed tokens back after a successful OAuth refresh, prese
 account changes and unrelated fields. It creates no separate CherryIN credential record or database.
 [Dashboard](DASHBOARD.md#cherryin) owns the refresh and retry protocol.
 
-SSH discovery, terminal input/output and sessions remain in memory. The last login username used
+Tailscale discovery, local and remote terminal input/output, and sessions remain in memory. The last login username used
 for each device is kept in WebView local storage as `vesper.ssh.username.<device ID>` and prefills
 the terminal; Vesper stores no SSH credentials or other SSH preferences, and system OpenSSH owns
 known-host trust.

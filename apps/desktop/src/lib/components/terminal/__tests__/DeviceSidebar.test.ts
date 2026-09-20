@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { mount, unmount } from "svelte";
 import DeviceSidebar from "../DeviceSidebar.svelte";
-import type { createSshSession } from "../session.svelte";
+import type { createTerminalSession } from "../session.svelte";
 
 const views: ReturnType<typeof mount>[] = [];
 afterEach(async () => {
@@ -20,10 +20,10 @@ it("distinguishes online, offline and unavailable status and opens the chosen de
 	}));
 	const onopen = vi.fn();
 	const refresh = vi.fn();
-	const session: ReturnType<typeof createSshSession> = {
+	const session: ReturnType<typeof createTerminalSession> = {
 		devices,
-		openDevices: [],
-		selectedId: null,
+		openTerminals: [],
+		selected: null,
 		loading: false,
 		error: null,
 		refresh,
@@ -46,7 +46,7 @@ it("distinguishes online, offline and unavailable status and opens the chosen de
 	);
 	if (deviceButton === undefined) throw new Error("Expected device button");
 	deviceButton.click();
-	expect(onopen).toHaveBeenCalledWith(devices[2]);
+	expect(onopen).toHaveBeenCalledWith({ kind: "ssh", device: devices[2] });
 	const refreshButton = buttons.find(
 		(button) => button.getAttribute("aria-label") === "Refresh Tailscale devices",
 	);

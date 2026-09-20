@@ -50,6 +50,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
         }
         ("upload-photo", arguments) => {
             let (input, source_path) = match arguments {
+                [separator, _, source] if separator == "--" => (&arguments[..2], source),
                 [flag, _, source] if flag == "--file" => (&arguments[..2], source),
                 [flag, source] if flag == "--stdin" => (&arguments[..1], source),
                 [input, source] if !input.starts_with("--") => (&arguments[..1], source),

@@ -1,18 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
-import SshTerminal from "../SshTerminal.svelte";
-import type { CommandResponse, SshOutput } from "../../../consumer";
+import TerminalView from "../TerminalView.svelte";
+import type { CommandResponse, TerminalOutput, TerminalConnection } from "../../../consumer";
 
 type CommandArguments =
 	| {
-			request: {
-				sessionId: string;
-				deviceId: string;
-				username: string;
-				cols: number;
-				rows: number;
-			};
-			output: { onmessage: (message: SshOutput) => void };
+			request: { sessionId: string; target: TerminalConnection; cols: number; rows: number };
+			output: { onmessage: (message: TerminalOutput) => void };
 	  }
 	| { sessionId: string; bytes: number[] | number }
 	| { sessionId: string; cols: number; rows: number }
@@ -29,7 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
 	invoke: mocks.invoke,
 	Channel: class {
-		onmessage = (_message: SshOutput) => {};
+		onmessage = (_message: TerminalOutput) => {};
 	},
 }));
 vi.mock("@xterm/xterm", () => ({
@@ -92,23 +86,26 @@ function deferResponse() {
 	return { promise, resolve, reject };
 }
 function readConnection() {
-	const call = mocks.invoke.mock.calls.filter(([name]) => name === "connect_ssh").at(-1);
+	const call = mocks.invoke.mock.calls.filter(([name]) => name === "connect_terminal").at(-1);
 	if (call === undefined || !("request" in call[1]))
 		throw new Error("Expected SSH connection request");
 	return call[1];
 }
 function setup() {
-	const view = mount(SshTerminal, {
+	const view = mount(TerminalView, {
 		target: document.body,
 		props: {
-			device: {
-				id: "node",
-				name: "NAS",
-				address: "100.64.0.2",
-				dnsName: "nas.test.ts.net",
-				os: "linux",
-				online: true,
-				username: "admin",
+			target: {
+				kind: "ssh",
+				device: {
+					id: "node",
+					name: "NAS",
+					address: "100.64.0.2",
+					dnsName: "nas.test.ts.net",
+					os: "linux",
+					online: true,
+					username: "admin",
+				},
 			},
 			active: true,
 			locked: false,
@@ -120,25 +117,25 @@ function setup() {
 it("transports typed terminal input and acknowledges rendered output, then closes on unmount", async () => {
 	const view = setup();
 	await vi.waitFor(() =>
-		expect(mocks.invoke).toHaveBeenCalledWith("connect_ssh", expect.anything()),
+		expect(mocks.invoke).toHaveBeenCalledWith("connect_terminal", expect.anything()),
 	);
 	const request = readConnection();
 	request.output.onmessage({ kind: "data", bytes: [104, 105] });
 	expect(mocks.write).toHaveBeenCalledWith(new Uint8Array([104, 105]), expect.any(Function));
-	expect(mocks.invoke).toHaveBeenCalledWith("acknowledge_ssh", {
+	expect(mocks.invoke).toHaveBeenCalledWith("acknowledge_terminal", {
 		sessionId: request.request.sessionId,
 		bytes: 2,
 	});
 	mocks.input("ls\r");
 	await vi.waitFor(() =>
-		expect(mocks.invoke).toHaveBeenCalledWith("write_ssh", {
+		expect(mocks.invoke).toHaveBeenCalledWith("write_terminal", {
 			sessionId: request.request.sessionId,
 			bytes: [108, 115, 13],
 		}),
 	);
 	await unmount(view);
 	views.splice(views.indexOf(view), 1);
-	expect(mocks.invoke).toHaveBeenCalledWith("disconnect_ssh", {
+	expect(mocks.invoke).toHaveBeenCalledWith("disconnect_terminal", {
 		sessionId: request.request.sessionId,
 	});
 	expect(mocks.dispose).toHaveBeenCalledOnce();
@@ -146,11 +143,13 @@ it("transports typed terminal input and acknowledges rendered output, then close
 it("keeps a fast-exiting SSH session closed when the launch response arrives later", async () => {
 	const pending = deferResponse();
 	mocks.invoke.mockImplementation((name) =>
-		name === "connect_ssh" ? pending.promise : Promise.resolve({ status: "ready", data: null }),
+		name === "connect_terminal"
+			? pending.promise
+			: Promise.resolve({ status: "ready", data: null }),
 	);
 	setup();
 	await vi.waitFor(() =>
-		expect(mocks.invoke).toHaveBeenCalledWith("connect_ssh", expect.anything()),
+		expect(mocks.invoke).toHaveBeenCalledWith("connect_terminal", expect.anything()),
 	);
 	const request = readConnection();
 	request.output.onmessage({ kind: "exit", code: 255 });
@@ -165,26 +164,28 @@ it("keeps a fast-exiting SSH session closed when the launch response arrives lat
 it("records user keyboard activity separately from automatic terminal replies", async () => {
 	setup();
 	await vi.waitFor(() =>
-		expect(mocks.invoke).toHaveBeenCalledWith("connect_ssh", expect.anything()),
+		expect(mocks.invoke).toHaveBeenCalledWith("connect_terminal", expect.anything()),
 	);
 	const request = readConnection();
 	mocks.input("\x1b[1;1R");
-	await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("write_ssh", expect.anything()));
-	expect(mocks.invoke.mock.calls.some(([name]) => name === "record_ssh_activity")).toBe(false);
+	await vi.waitFor(() =>
+		expect(mocks.invoke).toHaveBeenCalledWith("write_terminal", expect.anything()),
+	);
+	expect(mocks.invoke.mock.calls.some(([name]) => name === "record_terminal_activity")).toBe(false);
 	const host = document.querySelector(".terminal-host");
 	if (host === null) throw new Error("Expected terminal host");
 	host.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
-	expect(mocks.invoke.mock.calls.some(([name]) => name === "record_ssh_activity")).toBe(false);
+	expect(mocks.invoke.mock.calls.some(([name]) => name === "record_terminal_activity")).toBe(false);
 	const key = new KeyboardEvent("keydown", { key: "a", bubbles: true });
 	Object.defineProperty(key, "isTrusted", { value: true });
 	host.dispatchEvent(key);
 	const wheel = new WheelEvent("wheel", { deltaY: 10, bubbles: true });
 	Object.defineProperty(wheel, "isTrusted", { value: true });
 	host.dispatchEvent(wheel);
-	expect(mocks.invoke.mock.calls.filter(([name]) => name === "record_ssh_activity")).toHaveLength(
-		2,
-	);
-	expect(mocks.invoke).toHaveBeenCalledWith("record_ssh_activity", {
+	expect(
+		mocks.invoke.mock.calls.filter(([name]) => name === "record_terminal_activity"),
+	).toHaveLength(2);
+	expect(mocks.invoke).toHaveBeenCalledWith("record_terminal_activity", {
 		sessionId: request.request.sessionId,
 	});
 });
@@ -192,15 +193,17 @@ it("records user keyboard activity separately from automatic terminal replies", 
 it("preserves the idle timeout reason when pending input fails before exit", async () => {
 	const pending = deferResponse();
 	mocks.invoke.mockImplementation((name) =>
-		name === "write_ssh" ? pending.promise : Promise.resolve({ status: "ready", data: null }),
+		name === "write_terminal" ? pending.promise : Promise.resolve({ status: "ready", data: null }),
 	);
 	setup();
 	await vi.waitFor(() =>
-		expect(mocks.invoke).toHaveBeenCalledWith("connect_ssh", expect.anything()),
+		expect(mocks.invoke).toHaveBeenCalledWith("connect_terminal", expect.anything()),
 	);
 	const request = readConnection();
 	mocks.input("input");
-	await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("write_ssh", expect.anything()));
+	await vi.waitFor(() =>
+		expect(mocks.invoke).toHaveBeenCalledWith("write_terminal", expect.anything()),
+	);
 	const reason = "Disconnected after 5 minutes without terminal activity.";
 	request.output.onmessage({ kind: "error", message: reason });
 	pending.resolve({ status: "failed", message: "This SSH session is closed." });
@@ -217,11 +220,13 @@ it("preserves the idle timeout reason when pending input fails before exit", asy
 it("preserves a terminal failure reason when the pending launch transport rejects", async () => {
 	const pending = deferResponse();
 	mocks.invoke.mockImplementation((name) =>
-		name === "connect_ssh" ? pending.promise : Promise.resolve({ status: "ready", data: null }),
+		name === "connect_terminal"
+			? pending.promise
+			: Promise.resolve({ status: "ready", data: null }),
 	);
 	setup();
 	await vi.waitFor(() =>
-		expect(mocks.invoke).toHaveBeenCalledWith("connect_ssh", expect.anything()),
+		expect(mocks.invoke).toHaveBeenCalledWith("connect_terminal", expect.anything()),
 	);
 	const request = readConnection();
 	const reason = "The SSH terminal stopped accepting input.";
@@ -235,7 +240,9 @@ it("preserves a terminal failure reason when the pending launch transport reject
 it("ignores a previous disconnect failure after a new connection starts", async () => {
 	const pending = deferResponse();
 	mocks.invoke.mockImplementation((name) =>
-		name === "disconnect_ssh" ? pending.promise : Promise.resolve({ status: "ready", data: null }),
+		name === "disconnect_terminal"
+			? pending.promise
+			: Promise.resolve({ status: "ready", data: null }),
 	);
 	setup();
 	await vi.waitFor(() =>
@@ -251,7 +258,7 @@ it("ignores a previous disconnect failure after a new connection starts", async 
 	if (form === null) throw new Error("Expected connection form");
 	form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 	await vi.waitFor(() =>
-		expect(mocks.invoke.mock.calls.filter(([name]) => name === "connect_ssh")).toHaveLength(2),
+		expect(mocks.invoke.mock.calls.filter(([name]) => name === "connect_terminal")).toHaveLength(2),
 	);
 	pending.reject(new Error("Previous disconnect failed"));
 	await tick();
@@ -264,9 +271,13 @@ it("remembers the login username per device", async () => {
 	localStorage.setItem("vesper.ssh.username.node", "root");
 	setup();
 	await vi.waitFor(() =>
-		expect(mocks.invoke).toHaveBeenCalledWith("connect_ssh", expect.anything()),
+		expect(mocks.invoke).toHaveBeenCalledWith("connect_terminal", expect.anything()),
 	);
-	expect(readConnection().request.username).toBe("root");
+	expect(readConnection().request.target).toEqual({
+		kind: "ssh",
+		deviceId: "node",
+		username: "root",
+	});
 	const disconnect = [...document.querySelectorAll("button")].find((button) =>
 		button.textContent?.includes("Disconnect"),
 	);
@@ -281,8 +292,12 @@ it("remembers the login username per device", async () => {
 	if (form === null) throw new Error("Expected connection form");
 	form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 	await vi.waitFor(() =>
-		expect(mocks.invoke.mock.calls.filter(([name]) => name === "connect_ssh")).toHaveLength(2),
+		expect(mocks.invoke.mock.calls.filter(([name]) => name === "connect_terminal")).toHaveLength(2),
 	);
-	expect(readConnection().request.username).toBe("ubuntu");
+	expect(readConnection().request.target).toEqual({
+		kind: "ssh",
+		deviceId: "node",
+		username: "ubuntu",
+	});
 	expect(localStorage.getItem("vesper.ssh.username.node")).toBe("ubuntu");
 });

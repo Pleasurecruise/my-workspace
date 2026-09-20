@@ -54,12 +54,6 @@ async fn rejects_invalid_consumer_queries_before_authentication() {
 }
 
 #[tokio::test]
-async fn rejects_unknown_args() {
-    let error = run(["unknown".to_owned()].into_iter()).await.unwrap_err();
-    assert!(error.contains("invalid arguments"));
-}
-
-#[tokio::test]
 async fn rejects_bad_todo_date() {
     let error = run([
         "todo".to_owned(),

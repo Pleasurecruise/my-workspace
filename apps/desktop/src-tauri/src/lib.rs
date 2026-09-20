@@ -11,11 +11,11 @@ mod island;
 mod ledger;
 mod music;
 mod notifications;
-mod ssh;
 mod status;
 mod storage;
 mod telegram;
 mod telemetry;
+mod terminal;
 mod todo;
 mod updater;
 mod widgets;
@@ -179,7 +179,7 @@ pub fn run() {
             {
                 return;
             }
-            if let Some(runtime) = window.app_handle().try_state::<ssh::Runtime>() {
+            if let Some(runtime) = window.app_handle().try_state::<terminal::Runtime>() {
                 runtime.suspend();
             }
         })
@@ -187,13 +187,13 @@ pub fn run() {
             if window.label() != "main" || !matches!(event, tauri::WindowEvent::Destroyed) {
                 return;
             }
-            if let Some(runtime) = window.app_handle().try_state::<ssh::Runtime>() {
+            if let Some(runtime) = window.app_handle().try_state::<terminal::Runtime>() {
                 runtime.suspend();
             }
         })
         .setup(|app| {
-            app.manage(ssh::Runtime::default());
-            ssh::start_monitoring(app.handle().clone());
+            app.manage(terminal::Runtime::default());
+            terminal::start_monitoring(app.handle().clone());
             app.manage(games::Runtime::new(
                 app.path()
                     .app_local_data_dir()?
@@ -232,14 +232,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            ssh::set_ssh_active,
-            ssh::read_ssh_devices,
-            ssh::connect_ssh,
-            ssh::write_ssh,
-            ssh::record_ssh_activity,
-            ssh::resize_ssh,
-            ssh::acknowledge_ssh,
-            ssh::disconnect_ssh,
+            terminal::set_terminal_active,
+            terminal::read_ssh_devices,
+            terminal::connect_terminal,
+            terminal::write_terminal,
+            terminal::record_terminal_activity,
+            terminal::resize_terminal,
+            terminal::acknowledge_terminal,
+            terminal::disconnect_terminal,
             consumer::initialize_views,
             consumer::read_channel,
             consumer::read_memo_tags,
@@ -341,7 +341,7 @@ pub fn run() {
         if !matches!(event, tauri::RunEvent::Exit) {
             return;
         }
-        if let Some(runtime) = app.try_state::<ssh::Runtime>() {
+        if let Some(runtime) = app.try_state::<terminal::Runtime>() {
             runtime.suspend();
         }
     });

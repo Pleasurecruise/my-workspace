@@ -1,8 +1,8 @@
 <script lang="ts">
 	import "./lib/components/layout/page.css";
-	import DeviceSidebar from "./lib/components/ssh/DeviceSidebar.svelte";
-	import SshTerminal from "./lib/components/ssh/SshTerminal.svelte";
-	import { createSshSession } from "./lib/components/ssh/session.svelte";
+	import DeviceSidebar from "./lib/components/terminal/DeviceSidebar.svelte";
+	import TerminalView from "./lib/components/terminal/TerminalView.svelte";
+	import { createTerminalSession } from "./lib/components/terminal/session.svelte";
 	import ProfileEditor from "./lib/components/layout/ProfileEditor.svelte";
 	import UpdateDialog from "./lib/components/layout/UpdateDialog.svelte";
 	import PageSkeleton from "./lib/components/layout/PageSkeleton.svelte";
@@ -24,7 +24,7 @@
 		CommandResponse,
 		Channel,
 		InitialViews,
-		SshDevice,
+		TerminalTarget,
 	} from "./lib/consumer";
 	import { createDashboardSession } from "./lib/components/dashboard/session.svelte";
 	import { createInboxSession } from "./lib/components/inbox/session.svelte";
@@ -34,7 +34,7 @@
 	import { createKnowledgeSession } from "./lib/components/knowledge/session.svelte";
 	import { applyTheme, initTheme } from "./lib/theme";
 
-	type View = "ssh" | "dashboard" | "inbox" | "music" | "newspaper" | "settings" | Channel;
+	type View = "terminal" | "dashboard" | "inbox" | "music" | "newspaper" | "settings" | Channel;
 
 	const navigation: Array<{ id: View; label: string }> = [
 		{ id: "dashboard", label: "Dashboard" },
@@ -111,10 +111,10 @@
 	});
 	let updateModalOpen = $state(false);
 	let locked = $state(true);
-	const ssh = createSshSession(() => locked);
-	function openDevice(device: SshDevice) {
-		ssh.open(device);
-		void select("ssh");
+	const terminals = createTerminalSession(() => locked);
+	function openTerminal(target: TerminalTarget) {
+		terminals.open(target);
+		void select("terminal");
 	}
 	let unlockPassword = $state("");
 	let unlockError = $state<string | null>(null);
@@ -301,7 +301,7 @@
 			{/each}
 		</nav>
 
-		<DeviceSidebar session={ssh} compact={sidebarWidth < 160} active={selected === "ssh"} onopen={openDevice} />
+		<DeviceSidebar session={terminals} compact={sidebarWidth < 160} active={selected === "terminal"} onopen={openTerminal} />
 
 		<div class="sidebar-footer">
 			<ProfileEditor compact={sidebarWidth < 160} />
@@ -344,7 +344,7 @@
 	</aside>
 
 	<main
-		class:ssh-shell={selected === "ssh"}
+		class:terminal-shell={selected === "terminal"}
 		class:player-shell={selected === "music" && musicPlayerVisible}
 		bind:this={mainElement}
 		onscroll={() => {
@@ -362,11 +362,11 @@
 		</header>
 		<div class="canvas page-layout">
 			<div class="page-content" bind:clientWidth={contentWidth} data-stacked={contentWidth <= 640}>
-				{#each ssh.openDevices as device (device)}
-					<SshTerminal {device} active={selected === "ssh" && ssh.selectedId === device.id} {locked} />
+				{#each terminals.openTerminals as target (target)}
+					<TerminalView {target} active={selected === "terminal" && terminals.selected === target} {locked} />
 				{/each}
-				{#if selected === "ssh"}
-					{#if ssh.openDevices.length === 0}<section><header class="page-header"><div><h1>SSH terminals</h1><p class="page-description">Select a Tailscale device in the sidebar to open its terminal.</p></div></header></section>{/if}
+				{#if selected === "terminal"}
+					{#if terminals.openTerminals.length === 0}<section><header class="page-header"><div><h1>Terminals</h1><p class="page-description">Select this device or a Tailscale device in the sidebar to open its terminal.</p></div></header></section>{/if}
 				{:else if selected === "dashboard"}
 					<DashboardView session={dashboardSession} {layoutSession} />
 				{:else if selected === "settings"}
@@ -743,10 +743,10 @@
 	.topbar .menu-button,
 	.topbar strong { display: none; }
 
-	main.ssh-shell { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; scrollbar-gutter: auto; }
-	.ssh-shell .topbar { flex-shrink: 0; }
-	.ssh-shell .canvas { display: flex; flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; padding: 0; }
-	.ssh-shell .page-content { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; max-width: none; }
+	main.terminal-shell { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; scrollbar-gutter: auto; }
+	.terminal-shell .topbar { flex-shrink: 0; }
+	.terminal-shell .canvas { display: flex; flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; padding: 0; }
+	.terminal-shell .page-content { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; max-width: none; }
 
 	main.player-shell { display: flex; flex-direction: column; }
 	.player-shell .topbar { flex-shrink: 0; }

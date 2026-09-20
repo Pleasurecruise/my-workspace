@@ -69,7 +69,7 @@ impl Flow {
 }
 
 struct Session {
-    node_id: String,
+    node_id: Option<String>,
     last_activity: Mutex<Instant>,
     output: Channel<Output>,
     master: Mutex<Box<dyn MasterPty + Send>>,
@@ -163,16 +163,28 @@ impl Sessions {
     ) -> Result<(), String> {
         self.spawn(
             id,
-            &device.id,
+            Some(&device.id),
             build_command(device, username)?,
             dimensions,
             output,
         )
     }
+    pub(super) fn connect_local(
+        &self,
+        id: String,
+        dimensions: PtySize,
+        output: Channel<Output>,
+    ) -> Result<(), String> {
+        let mut command = CommandBuilder::new_default_prog();
+        command.env("TERM", "xterm-256color");
+        command.env("COLORTERM", "truecolor");
+        self.spawn(id, None, command, dimensions, output)
+    }
+
     fn spawn(
         &self,
         id: String,
-        node_id: &str,
+        node_id: Option<&str>,
         command: CommandBuilder,
         dimensions: PtySize,
         output: Channel<Output>,
@@ -185,7 +197,7 @@ impl Sessions {
             return Err("This terminal session ID is already in use.".into());
         }
         sessions.retain(|_, session| {
-            if session.node_id != node_id {
+            if session.node_id.as_deref() != node_id {
                 return true;
             }
             session.stop();
@@ -210,7 +222,7 @@ impl Sessions {
         let mut child = pair
             .slave
             .spawn_command(command)
-            .map_err(|error| format!("Could not start OpenSSH: {error}"))?;
+            .map_err(|error| format!("Could not start the terminal process: {error}"))?;
         drop(pair.slave);
         let killer = Arc::new(Mutex::new(child.clone_killer()));
         let flow = Arc::new(Flow::default());
@@ -218,7 +230,7 @@ impl Sessions {
         sessions.insert(
             id.clone(),
             Arc::new(Session {
-                node_id: node_id.to_owned(),
+                node_id: node_id.map(str::to_owned),
                 last_activity: Mutex::new(Instant::now()),
                 output: output.clone(),
                 master: Mutex::new(pair.master),
@@ -244,7 +256,7 @@ impl Sessions {
                         .unwrap_or_else(|error| error.into_inner());
                     if !pending.stopped {
                         let _ = input_output.send(Output::Error {
-                            message: "The SSH terminal stopped accepting input.".into(),
+                            message: "The terminal stopped accepting input.".into(),
                         });
                     }
                     drop(pending);
@@ -300,15 +312,15 @@ impl Sessions {
             .unwrap_or_else(|error| error.into_inner())
             .get(id)
             .cloned()
-            .ok_or("This SSH session is closed.")?;
+            .ok_or("This terminal session is closed.")?;
         session
             .input
             .send(bytes)
-            .map_err(|_| "This SSH session is closed.".into())
+            .map_err(|_| "This terminal session is closed.".into())
     }
     pub(super) fn record_activity(&self, id: &str) -> Result<(), String> {
         let sessions = self.0.lock().unwrap_or_else(|error| error.into_inner());
-        let session = sessions.get(id).ok_or("This SSH session is closed.")?;
+        let session = sessions.get(id).ok_or("This terminal session is closed.")?;
         *session
             .last_activity
             .lock()
@@ -322,7 +334,7 @@ impl Sessions {
             .unwrap_or_else(|error| error.into_inner())
             .get(id)
             .cloned()
-            .ok_or("This SSH session is closed.")?;
+            .ok_or("This terminal session is closed.")?;
         session
             .master
             .lock()
@@ -345,6 +357,9 @@ impl Sessions {
     pub(super) fn expire_idle(&self, now: Instant) {
         let mut sessions = self.0.lock().unwrap_or_else(|error| error.into_inner());
         sessions.retain(|_, session| {
+            if session.node_id.is_none() {
+                return true;
+            }
             let last_activity = *session
                 .last_activity
                 .lock()
@@ -380,6 +395,19 @@ impl Sessions {
         {
             session.stop();
         }
+    }
+
+    pub(super) fn close_remote(&self) {
+        self.0
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .retain(|_, session| {
+                if session.node_id.is_none() {
+                    return true;
+                }
+                session.stop();
+                false
+            });
     }
 }
 
@@ -464,7 +492,7 @@ mod tests {
         sessions
             .spawn(
                 id.clone(),
-                "test",
+                Some("test"),
                 command,
                 validate_size(80, 24).unwrap(),
                 output,
@@ -514,7 +542,7 @@ mod tests {
             sessions
                 .spawn(
                     id.clone(),
-                    "node",
+                    Some("node"),
                     command,
                     validate_size(80, 24).unwrap(),
                     Channel::new(|_| Ok(())),
@@ -526,6 +554,29 @@ mod tests {
         assert!(sessions.write(&new_id, b"new\n".to_vec()).is_ok());
         assert_eq!(sessions.0.lock().unwrap().len(), 1);
         sessions.close_all();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_terminal_survives_tailnet_changes_and_idle_but_closes_on_lock() {
+        let sessions = Sessions::default();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.args(["-c", "while read line; do :; done"]);
+        sessions
+            .spawn(
+                id.clone(),
+                None,
+                command,
+                validate_size(80, 24).unwrap(),
+                Channel::new(|_| Ok(())),
+            )
+            .unwrap();
+        sessions.expire_idle(Instant::now() + IDLE_TIMEOUT);
+        sessions.close_remote();
+        assert!(sessions.write(&id, b"still-running\n".to_vec()).is_ok());
+        sessions.close_all();
+        assert!(sessions.write(&id, b"closed\n".to_vec()).is_err());
     }
 
     #[cfg(unix)]
@@ -545,7 +596,7 @@ mod tests {
         sessions
             .spawn(
                 id.clone(),
-                "idle-test",
+                Some("idle-test"),
                 command,
                 validate_size(80, 24).unwrap(),
                 output,

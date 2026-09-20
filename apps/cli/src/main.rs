@@ -1,5 +1,6 @@
 use std::process::ExitCode;
 
+mod arguments;
 mod game;
 mod knowledge;
 mod ledger;
@@ -8,8 +9,22 @@ mod moment;
 mod status;
 mod todo;
 
+fn main() -> ExitCode {
+    let arguments = match arguments::parse(std::env::args_os()) {
+        Ok(arguments) => arguments,
+        Err(error) => {
+            let code = error.exit_code() as u8;
+            if error.print().is_err() {
+                return ExitCode::FAILURE;
+            }
+            return ExitCode::from(code);
+        }
+    };
+    execute(arguments)
+}
+
 #[tokio::main]
-async fn main() -> ExitCode {
+async fn execute(arguments: Vec<String>) -> ExitCode {
     #[cfg(debug_assertions)]
     if let Err(error) = vesper_credentials::load_dev_environment() {
         eprintln!("error: {error}");
@@ -19,7 +34,7 @@ async fn main() -> ExitCode {
         eprintln!("error: failed to initialize logging: {error}");
         return ExitCode::FAILURE;
     }
-    match run(std::env::args().skip(1)).await {
+    match run(arguments.into_iter()).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error: {error}");
@@ -33,14 +48,6 @@ async fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
     let repository = std::env::current_dir().map_err(|error| error.to_string())?;
 
     match arguments.as_slice() {
-        [] => {
-            print_help();
-            Ok(())
-        }
-        [command] if command == "help" || command == "--help" || command == "-h" => {
-            print_help();
-            Ok(())
-        }
         [command] if command == "build" => {
             let output = cms_core::build::build(&repository)
                 .await
@@ -120,90 +127,12 @@ async fn read_input(arguments: &[String]) -> Result<String, String> {
                 .map_err(|error| format!("could not read standard input: {error}"))?;
             Ok(content)
         }
+        [separator, content @ ..] if separator == "--" && !content.is_empty() => {
+            Ok(content.join(" "))
+        }
         [first, ..] if !first.starts_with("--") => Ok(arguments.join(" ")),
         _ => Err("expected content, --file <path>, or --stdin".to_owned()),
     }
-}
-
-fn print_help() {
-    println!(
-        "vesper\n\n\
-         Commands:\n  \
-         build             validate content using temporary output\n  \
-         publish           compile, then preview the SDK upload\n  \
-         publish --live    compile, upload with the SDK, then remove temporary output\n  \
-         status [source]   read all or one UGOS/AI source as JSON\n  \
-         memo get <id>               read one memo as JSON\n  \
-         memo tags                   list memo tags with counts\n  \
-         memo list [limit]            list newest memos as JSON\n  \
-         memo page <json>             list a filtered or paginated memo page\n  \
-         memo search <query>          search memo bodies as JSON\n  \
-         memo create <markdown>       create a private memo\n  \
-         memo import-x <url> [public|private]  import an X post as a favorite\n  \
-         memo update <id> <markdown>  replace a memo body\n  \
-         memo patch <id> <json>       update typed memo fields\n  \
-         memo visibility <id> <public|private>  change memo visibility\n  \
-         memo pin <id>                 pin a memo\n  \
-         memo unpin <id>               unpin a memo\n  \
-         memo favorite <id>            favorite a memo\n  \
-         memo unfavorite <id>          remove a memo from favorites\n  \
-         memo archive <id>             archive a memo\n  \
-         memo restore <id>             restore an archived memo\n  \
-         memo delete <id>             permanently delete a memo\n  \
-         knowledge list [cursor]       list Knowledge summaries\n  \
-         knowledge page <json>         list compact summaries by tags, visibility and cursor\n  \
-         knowledge get <id-or-url>     read by UUID or article URL\n  \
-         knowledge create <json>       create an article from a typed JSON payload\n  \
-         knowledge update-draft <id> <json>      update draft fields with expectedHash\n  \
-         knowledge update-documents <id> <json>  update editions with expectedHash\n  \
-         knowledge visibility <id> <json>        update visibility with expectedHash\n  \
-         knowledge delete <id> <hash>  delete an unchanged article\n  \
-         moment get <id>                read one photo\n  \
-         moment query <json>            filter photos by dates/tags or search\n  \
-         moment tags                   list Moment tags\n  \
-         moment list                   list the latest 100 photos\n  \
-         moment search <query>         search photo metadata\n  \
-         moment create <json>          register uploaded R2 image keys and metadata\n  \
-         moment upload-photo <json> <source>  prepare and upload PNG, JPEG, WebP, AVIF, or HEIC\n  \
-         moment update <id> <json>     update photo metadata\n  \
-         moment delete <id>            delete photo metadata\n  \
-         moment upload <key> <path>     upload an original or thumbnail through the R2 SDK\n  \
-         moment download <key> <path>   download an image through the R2 SDK\n  \
-         moment remove-object <key>     remove an orphaned image object from R2\n  \
-         todo --date <YYYY-MM-DD> <action> [...]  operate on another calendar day\n  \
-         todo schedule-path            print the managed ICS schedule directory\n  \
-         todo database-path            print the Todo database path\n  \
-         todo sync-ics                 synchronize local ICS schedules\n  \
-         todo import-ics <path>...      validate and install one or more ICS schedules\n  \
-         todo sync                     synchronize configured calendars\n  \
-         todo list                      list today's Todos as JSON\n  \
-         todo get <id>                  read one Todo as JSON\n  \
-         todo create <text>             create a Todo\n  \
-         todo update <id> <text>        replace a Todo's text\n  \
-         todo complete <id>             mark a Todo complete\n  \
-         todo reopen <id>               mark a Todo incomplete\n  \
-         todo delete <id>               delete a Todo\n  \
-         todo check-ins <habit-id>...   read dated habit states\n  \
-         todo check-in <habit-id>       check in on the selected date\n  \
-         todo undo-check-in <habit-id>  undo a dated check-in\n  \
-         ledger --date <YYYY-MM-DD> <action> [...]  select another expense date\n  \
-         ledger list                   read daily expenses and monthly totals\n  \
-         ledger create <amount> <category> [description]       add a GBP expense\n  \
-         ledger update <id> <amount> <category> [description]  edit an expense on the selected date\n  \
-         ledger delete <id>             delete an expense on the selected date\n\n\
-         Status sources: ugos, claude, codex, copilot, grok, opencode, deepseek, cherryin\n\n\
-         todo notion status | connect <calendar-view-url> | disconnect\n\
-         game <notes|archive|sync> <genshin|star-rail|zzz|arknights|endfield>\n\
-         game steam\n\
-         status weather [location...] | astronomy [location...] | stocks <symbol...>\n\
-         status exchange | github [owner/repository] | quotation | services [service-id...]\n\
-         status service-catalog\n\
-         Content input: replace Markdown or JSON with --file <path> or --stdin for\n\
-         memo create/update/page/patch, Knowledge page/create/update/visibility, and\n\
-         Moment query/create/update/upload-photo. Examples:\n  \
-         moment upload-photo --file <metadata.json> <source-image>\n  \
-         moment upload-photo --stdin <source-image>"
-    );
 }
 
 #[cfg(test)]
