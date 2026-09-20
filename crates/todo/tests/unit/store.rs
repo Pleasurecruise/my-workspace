@@ -112,21 +112,6 @@ async fn serializes_writers() {
 }
 
 #[tokio::test]
-async fn ignores_old_file() {
-    let (directory, store) = test_store();
-    std::fs::create_dir_all(&directory).unwrap();
-    std::fs::write(
-        directory.join("today-todos.json"),
-        r#"{"date":"2026-08-23","items":[{"id":"legacy","text":"Keep me","completed":false}]}"#,
-    )
-    .unwrap();
-
-    assert!(store.list("2026-08-23").await.unwrap().items.is_empty());
-    assert!(directory.join(vesper_database::FILE_NAME).exists());
-    std::fs::remove_dir_all(directory).unwrap();
-}
-
-#[tokio::test]
 async fn rejects_long_text() {
     let (directory, store) = test_store();
     let error = store

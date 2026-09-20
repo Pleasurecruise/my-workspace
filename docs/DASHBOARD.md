@@ -197,7 +197,10 @@ Both providers retain independent data and error states, including when pinned t
 
 ### TokenFlux and DimAgent
 
-TokenFlux reads the pi API key without storing another credential. DimAgent delegates authentication
+TokenFlux reads the pi API key without storing another credential. A null daily limit retains daily
+usage with an explicit unavailable-limit label instead of a percentage; a null weekly limit hides
+that window. Monthly quota and balance remain visible. Failed refreshes label retained values as
+the last successful data. DimAgent delegates authentication
 to its installed CLI; `DIM_BINARY` selects an explicit executable, otherwise discovery checks the
 Desktop bundle and PATH. Both reads have fifteen-second deadlines. DimAgent rejects missing or
 malformed credit totals; optional metadata may be absent. Provider error bodies and CLI stderr

@@ -89,11 +89,13 @@ server metadata and cache coordination. [Workflow](WORKFLOW.md) covers publicati
 
 Embedded SSH requires a signed-in Tailscale CLI and system OpenSSH. Enable Tailscale SSH on
 `tag:server` devices and authorize the remote account in the tailnet policy. Tailscale does not
-supply a remote OS username; Vesper defaults to the local OS user with a temporary header override.
-The terminal handles authentication and host-key prompts and opens the account's login shell.
+supply a remote OS username; Vesper prefills the last username used for that device, defaulting to
+the local OS user on first connect. The terminal handles authentication and host-key prompts and
+opens the account's login shell.
 Host-key checking stays enabled; SSH configuration files, agent forwarding and port forwarding
 are disabled. Sessions disconnect after five minutes without user interaction; use tmux for
-unattended commands.
+unattended commands. Selecting a device in the sidebar always starts a fresh connection with its
+remembered username, replacing any previous terminal for that device.
 
 For ntfy, save a token with read access to `mail-summary`. Vesper consumes the fixed
 `https://ntfy.you-find.me/mail-summary/sse` endpoint only while Inbox is active. It does not configure

@@ -89,9 +89,17 @@
 		});
 	}
 
+	let stripTags = $derived.by(() => {
+		const indexed = new Set(tags.map((tag) => tag.name));
+		const selectedOnly = selectedTags
+			.filter((name) => !indexed.has(name))
+			.map((name) => ({ name, count: 0 }));
+		return [...tags, ...selectedOnly];
+	});
+
 	$effect(() => {
 		const strip = tagStrip;
-		if (!strip || tags.length === 0) return;
+		if (!strip || stripTags.length === 0) return;
 		measureTags();
 		const observer = new ResizeObserver(measureTags);
 		observer.observe(strip);
@@ -440,23 +448,14 @@
 		</Alert>
 	{/if}
 
-	{#if display !== "archived" && selectedTags.length > 0}
-		<div class="tag-index" aria-label="Selected memo tags">
-			<span>selected</span>
-			{#each selectedTags as tag (tag)}
-				<button type="button" class="active" aria-label={`Remove ${tag} filter`} onclick={() => (selectedTags = selectedTags.filter((name) => name !== tag))}>#{tag}<X size={11} /></button>
-			{/each}
-		</div>
-	{/if}
-
-	{#if display !== "archived" && tags.length > 0}
+	{#if display !== "archived" && stripTags.length > 0}
 		<div class="tag-navigation">
 			{#if tagsBefore}
 				<button class="tag-scroll tag-start" type="button" aria-label="Scroll tags to start" title="Scroll tags to start" onclick={() => scrollTags("start")}><ChevronLeft size={14} /></button>
 			{/if}
 		<div class="tag-index" aria-label="Memo tags" bind:this={tagStrip} onscroll={measureTags}>
 			<span>tags</span>
-			{#each tags as tag (tag.name)}
+			{#each stripTags as tag (tag.name)}
 				<button
 					type="button"
 					class:active={selectedTags.includes(tag.name)}
@@ -743,11 +742,8 @@
 	}
 
 	.tag-navigation .tag-index {
-
 		min-width: 0;
-		margin: 0;
 		padding: 0 1.9rem 0 0;
-		border: 0;
 	}
 
 	.tag-start { left: 0; }
@@ -777,10 +773,7 @@
 	.tag-index {
 		display: flex;
 		gap: 0.4rem;
-		margin-bottom: 0.75rem;
-		padding-bottom: 0.75rem;
 		overflow-x: auto;
-		border-bottom: 1px solid var(--color-divider);
 	}
 
 	.tag-index > span {

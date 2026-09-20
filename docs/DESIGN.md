@@ -129,7 +129,8 @@ drawer. The local profile editor stores presentation only and does not imply an 
 
 Sidebar Tailscale devices show accessible connection statuses. Selecting one opens a terminal
 filling the main pane, with username and reconnect/disconnect controls; navigation preserves its
-contents. xterm.js handles input and screen-reader support, using semantic `--color-terminal-*`
+contents until that device is selected again. Each sidebar device click starts a fresh connection,
+including after an idle timeout. xterm.js handles input and screen-reader support, using semantic `--color-terminal-*`
 roles for theme-consistent canvas and ANSI colors.
 
 App Lock makes the entire shell inert behind an opaque focused unlock surface. Settings describes

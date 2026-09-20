@@ -89,3 +89,90 @@ it("shows an explicit empty state for an unmetered DimAgent account", async () =
 	expect(target.textContent).toContain("No metered quota is available.");
 	expect(target.textContent).not.toContain("Loading");
 });
+
+it.each([null, 100])("shows TokenFlux daily usage with daily limit %s", async (dailyLimitUsd) => {
+	view = mount(UsagePanel, {
+		target,
+		props: {
+			provider: "tokenFlux",
+			state: {
+				loading: false,
+				error: "Refresh failed",
+				data: {
+					remaining: 80,
+					unit: "credits",
+					planName: "Lite",
+					isValid: true,
+					mode: "auto",
+					billing: {
+						available: true,
+						mode: "auto",
+						planId: 2,
+						planName: "Lite",
+						preferredSubscriptionId: null,
+						remaining: 80,
+						source: "subscription",
+						subscriptionId: 1,
+						unit: "credits",
+					},
+					subscription: {
+						dailyLimitUsd,
+						dailyUsageUsd: 10,
+						expiresAt: null,
+						id: 1,
+						monthlyLimitUsd: 100,
+						monthlyUsageUsd: 20,
+						planId: 2,
+						status: "active",
+						weeklyLimitUsd: null,
+						weeklyUsageUsd: 0,
+						weeklyWindowStart: null,
+					},
+					usage: {
+						averageDurationMs: 0,
+						rpm: 0,
+						tpm: 0,
+						today: {
+							actualCost: 0,
+							cacheCreationTokens: 0,
+							cacheReadTokens: 0,
+							cost: 0,
+							inputTokens: 0,
+							outputTokens: 0,
+							requests: 0,
+							totalTokens: 0,
+						},
+						total: {
+							actualCost: 0,
+							cacheCreationTokens: 0,
+							cacheReadTokens: 0,
+							cost: 0,
+							inputTokens: 0,
+							outputTokens: 0,
+							requests: 0,
+							totalTokens: 0,
+						},
+					},
+				},
+			},
+		},
+	});
+	await tick();
+	if (dailyLimitUsd === null) {
+		expect(target.querySelector('[aria-label="TokenFlux Daily quota"]')).toBeNull();
+		expect(target.querySelector('[aria-label="TokenFlux daily usage"]')?.textContent).toContain(
+			"10.00 USD",
+		);
+		expect(target.textContent).toContain("Daily limit not provided");
+	} else {
+		expect(
+			target.querySelector('[aria-label="TokenFlux Daily quota"]')?.getAttribute("aria-valuenow"),
+		).toBe("90");
+		expect(target.textContent).not.toContain("Daily limit not provided");
+	}
+	expect(
+		target.querySelector('[aria-label="TokenFlux Monthly quota"]')?.getAttribute("aria-valuenow"),
+	).toBe("80");
+	expect(target.textContent).toContain("Available balance");
+	expect(target.textContent).toContain("Showing last successful data.");
+});

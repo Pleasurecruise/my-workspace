@@ -170,8 +170,8 @@ dependencies are distinct: Vesper retains its own view, credential, and request 
 
 ## Verification and limits
 
-Rust tests cover provider parsing, callback validation, personal Client ID authorization, legacy
-credential decoding, cache expiry, session renewal, lyrics, queue behavior, cancellation, worker
+Rust tests cover provider parsing, callback validation, personal Client ID authorization, credential validation,
+cache expiry, session renewal, lyrics, queue behavior, cancellation, worker
 recovery, stale events, runtime release, and media URL restrictions. Local HTTP tests exercise
 Spotify's long cooldowns, bounded retries, concurrent reads, quota errors, retained pagination,
 expired partial refreshes, and responses arriving after shutdown. Playback preflight tests reject

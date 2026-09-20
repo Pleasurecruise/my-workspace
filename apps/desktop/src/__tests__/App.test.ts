@@ -9,10 +9,36 @@ import type {
 	InitialViews,
 	MemoTagCount,
 	MemoView,
+	SshOutput,
 } from "../lib/consumer";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
-vi.mock("@tauri-apps/api/core", () => ({ invoke, convertFileSrc: (path: string) => path }));
+vi.mock("@tauri-apps/api/core", () => ({
+	invoke,
+	convertFileSrc: (path: string) => path,
+	Channel: class {
+		onmessage = (_message: SshOutput) => {};
+	},
+}));
+vi.mock("@xterm/xterm", () => ({
+	Terminal: class {
+		cols = 80;
+		rows = 24;
+		loadAddon() {}
+		open() {}
+		reset() {}
+		focus() {}
+		write() {}
+		dispose() {}
+		onData() {}
+		onBinary() {}
+	},
+}));
+vi.mock("@xterm/addon-fit", () => ({
+	FitAddon: class {
+		fit() {}
+	},
+}));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 vi.mock("../lib/theme", () => ({ initTheme: () => false, applyTheme: vi.fn() }));
 
@@ -524,4 +550,78 @@ it("keeps one newspaper loading surface from index lookup through article compil
 	});
 	await vi.waitFor(() => expect(target.querySelector(".copy")?.textContent).toBe("Daily body"));
 	expect(target.querySelector('[aria-label="Loading newspaper"]')).toBeNull();
+});
+
+it("starts a fresh SSH connection on each sidebar click, including after idle expiry", async () => {
+	setupCommands();
+	const fallback = invoke.getMockImplementation();
+	if (fallback === undefined) throw new Error("Missing command setup");
+	const launches: Array<{
+		request: { sessionId: string };
+		output: { onmessage: (message: SshOutput) => void };
+	}> = [];
+	invoke.mockImplementation((command: string, args) => {
+		if (command === "read_ssh_devices")
+			return Promise.resolve({
+				status: "ready",
+				data: {
+					devices: [
+						{
+							id: "node",
+							name: "NAS",
+							address: "100.64.0.2",
+							dnsName: "nas.test.ts.net",
+							os: "linux",
+							online: true,
+							username: "admin",
+						},
+					],
+					error: null,
+				},
+			});
+		if (command === "connect_ssh") launches.push(args);
+		if (["set_ssh_active", "connect_ssh", "disconnect_ssh"].includes(command))
+			return Promise.resolve({ status: "ready", data: null });
+		return fallback(command, args);
+	});
+	vi.stubGlobal(
+		"ResizeObserver",
+		class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		},
+	);
+	vi.stubGlobal("matchMedia", () => ({ matches: false }));
+	const target = document.createElement("div");
+	document.body.append(target);
+	views.push(mount(App, { target }));
+	await vi.waitFor(() => expect(target.querySelector('[aria-label^="NAS,"]')).not.toBeNull());
+	const device = target.querySelector<HTMLButtonElement>('[aria-label^="NAS,"]');
+	if (device === null) throw new Error("Missing SSH device");
+	device.click();
+	await vi.waitFor(() => expect(launches).toHaveLength(1));
+	device.click();
+	await vi.waitFor(() => expect(launches).toHaveLength(2));
+	const [first, second] = launches;
+	if (first === undefined || second === undefined) throw new Error("Missing SSH connections");
+	expect(invoke).toHaveBeenCalledWith("disconnect_ssh", {
+		sessionId: first.request.sessionId,
+	});
+	expect(second.request.sessionId).not.toBe(first.request.sessionId);
+	second.output.onmessage({
+		kind: "error",
+		message: "Disconnected after 5 minutes without terminal activity.",
+	});
+	await tick();
+	expect(target.textContent).toContain("Disconnected after 5 minutes");
+	button(target, "Dashboard", "nav button").click();
+	await tick();
+	device.click();
+	await vi.waitFor(() => expect(launches).toHaveLength(3));
+	expect(target.textContent).not.toContain("Disconnected after 5 minutes");
+	expect(target.querySelectorAll(".ssh-terminal")).toHaveLength(1);
+	first.output.onmessage({ kind: "error", message: "Late old-session failure" });
+	await tick();
+	expect(target.textContent).not.toContain("Late old-session failure");
 });

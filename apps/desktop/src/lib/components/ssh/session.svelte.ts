@@ -85,9 +85,8 @@ export function createSshSession(isLocked: () => boolean) {
 		},
 		refresh,
 		open(device: SshDevice) {
-			if (!openDevices.some((item) => item.id === device.id)) {
-				openDevices = [...openDevices, device];
-			}
+			const next = { ...device };
+			openDevices = [...openDevices.filter((item) => item.id !== device.id), next];
 			selectedId = device.id;
 		},
 	};

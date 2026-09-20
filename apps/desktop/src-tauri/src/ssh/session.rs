@@ -181,13 +181,16 @@ impl Sessions {
             return Err("Invalid terminal session ID.".into());
         }
         let mut sessions = self.0.lock().unwrap_or_else(|error| error.into_inner());
-        if sessions.contains_key(&id) || sessions.values().any(|session| session.node_id == node_id)
-        {
-            return Err(
-                "This device already has an open terminal. Disconnect it before reconnecting."
-                    .into(),
-            );
+        if sessions.contains_key(&id) {
+            return Err("This terminal session ID is already in use.".into());
         }
+        sessions.retain(|_, session| {
+            if session.node_id != node_id {
+                return true;
+            }
+            session.stop();
+            false
+        });
         if sessions.len() >= 4 {
             return Err(
                 "Disconnect another terminal before connecting (maximum four sessions).".into(),
@@ -499,6 +502,32 @@ mod tests {
         }
         assert!(sessions.write(&id, b"closed".to_vec()).is_err());
     }
+    #[cfg(unix)]
+    #[test]
+    fn replaces_same_device_before_old_disconnect_arrives() {
+        let sessions = Sessions::default();
+        let old_id = uuid::Uuid::new_v4().to_string();
+        let new_id = uuid::Uuid::new_v4().to_string();
+        for id in [&old_id, &new_id] {
+            let mut command = CommandBuilder::new("/bin/sh");
+            command.args(["-c", "while read line; do :; done"]);
+            sessions
+                .spawn(
+                    id.clone(),
+                    "node",
+                    command,
+                    validate_size(80, 24).unwrap(),
+                    Channel::new(|_| Ok(())),
+                )
+                .unwrap();
+        }
+        assert!(sessions.write(&old_id, b"old\n".to_vec()).is_err());
+        sessions.close(&old_id);
+        assert!(sessions.write(&new_id, b"new\n".to_vec()).is_ok());
+        assert_eq!(sessions.0.lock().unwrap().len(), 1);
+        sessions.close_all();
+    }
+
     #[cfg(unix)]
     #[test]
     fn expires_idle_sessions() {

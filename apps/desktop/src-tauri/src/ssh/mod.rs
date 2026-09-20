@@ -4,6 +4,7 @@ mod session;
 use crate::CommandResponse;
 use devices::Snapshot;
 use std::{
+    collections::HashMap,
     sync::{
         Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -17,6 +18,7 @@ pub(crate) struct Runtime {
     active: AtomicBool,
     generation: AtomicU64,
     lifecycle: Mutex<()>,
+    launches: Mutex<HashMap<String, String>>,
     refresh: tokio::sync::Mutex<()>,
     snapshot: Mutex<Snapshot>,
     sessions: session::Sessions,
@@ -30,6 +32,17 @@ impl Runtime {
         self.active.store(false, Ordering::SeqCst);
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.sessions.close_all();
+    }
+    fn claim_launch(&self, device_id: &str, session_id: &str) -> Result<(), String> {
+        let mut launches = self
+            .launches
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if launches.get(device_id).map(String::as_str) != Some(session_id) {
+            return Err("A newer connection replaced this SSH request.".into());
+        }
+        launches.remove(device_id);
+        Ok(())
     }
     fn check_generation(&self, generation: u64) -> Result<(), String> {
         if generation != self.generation.load(Ordering::SeqCst)
@@ -178,13 +191,23 @@ pub(crate) async fn connect_ssh(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
 ) -> CommandResponse<()> {
-    let generation = app.state::<Runtime>().generation.load(Ordering::SeqCst);
+    if let Err(message) = authorize(&app, &window) {
+        return CommandResponse::Failed { message };
+    }
+    let runtime = app.state::<Runtime>();
+    let generation = runtime.generation.load(Ordering::SeqCst);
+    runtime
+        .launches
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .insert(request.device_id.clone(), request.session_id.clone());
     let result = tauri::async_runtime::spawn_blocking(move || {
         let runtime = app.state::<Runtime>();
         let _gate = runtime
             .lifecycle
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        runtime.claim_launch(&request.device_id, &request.session_id)?;
         authorize(&app, &window)?;
         runtime.check_generation(generation)?;
         let snapshot = runtime
@@ -201,7 +224,6 @@ pub(crate) async fn connect_ssh(
             .cloned()
             .ok_or("This device is no longer in your tailnet. Refresh the device list.")?;
         drop(snapshot);
-        devices::validate_username(&request.username)?;
         let dimensions = session::validate_size(request.cols, request.rows)?;
         runtime.sessions.connect(
             request.session_id,
@@ -318,6 +340,25 @@ pub(crate) fn disconnect_ssh(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_latest_device_launch_can_start() {
+        let runtime = Runtime::default();
+        runtime
+            .launches
+            .lock()
+            .unwrap()
+            .insert("node".into(), "old".into());
+        runtime
+            .launches
+            .lock()
+            .unwrap()
+            .insert("node".into(), "new".into());
+        assert!(runtime.claim_launch("node", "old").is_err());
+        assert!(runtime.claim_launch("node", "new").is_ok());
+        assert!(runtime.claim_launch("node", "old").is_err());
+        assert!(runtime.launches.lock().unwrap().is_empty());
+    }
 
     #[test]
     fn rejects_stale_connections() {

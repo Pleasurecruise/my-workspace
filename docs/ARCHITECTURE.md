@@ -67,7 +67,8 @@ preserve invalid widget configurations for repair while rejecting dangling refer
 `apps/desktop/src-tauri/src/ssh` owns Tailscale discovery and system OpenSSH sessions through
 `portable-pty`; xterm.js renders typed byte channels. The renderer selects discovered node IDs.
 Rust bounds session resources and expires idle connections independently of the WebView. Navigation
-preserves terminals; App Lock, window reload/destruction and shutdown close them and cancel pending
+preserves hidden terminals; selecting a sidebar device replaces its terminal with a fresh connection.
+Rust replaces same-device sessions atomically and rejects superseded launch requests. App Lock, window reload/destruction and shutdown close them and cancel pending
 launches. [Development](DEVELOPMENT.md#service-setup) describes authentication and idle limits.
 
 Music and game runtimes outlive route mounts. Their authentication, cancellation, cache and playback

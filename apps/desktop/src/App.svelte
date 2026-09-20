@@ -362,7 +362,7 @@
 		</header>
 		<div class="canvas page-layout">
 			<div class="page-content" bind:clientWidth={contentWidth} data-stacked={contentWidth <= 640}>
-				{#each ssh.openDevices as device (device.id)}
+				{#each ssh.openDevices as device (device)}
 					<SshTerminal {device} active={selected === "ssh" && ssh.selectedId === device.id} {locked} />
 				{/each}
 				{#if selected === "ssh"}

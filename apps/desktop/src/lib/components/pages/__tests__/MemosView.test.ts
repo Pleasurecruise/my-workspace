@@ -204,7 +204,7 @@ it("can remove a selected tag after it disappears from the refreshed index", asy
 	await vi.waitFor(() => expect(onfilter).toHaveBeenLastCalledWith("", ["old"], false, "active"));
 	tags.set([]);
 	await tick();
-	const remove = target.querySelector<HTMLButtonElement>('[aria-label="Remove old filter"]');
+	const remove = target.querySelector<HTMLButtonElement>('[aria-label="Memo tags"] button');
 	if (!remove) throw new Error("Selected tag cannot be removed");
 	remove.click();
 	await vi.waitFor(() => expect(onfilter).toHaveBeenLastCalledWith("", [], false, "active"));

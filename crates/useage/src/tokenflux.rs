@@ -35,7 +35,7 @@ pub struct TokenFluxBilling {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all(serialize = "camelCase"))]
 pub struct TokenFluxSubscription {
-    pub daily_limit_usd: f64,
+    pub daily_limit_usd: Option<f64>,
     pub daily_usage_usd: f64,
     pub expires_at: Option<String>,
     pub id: i64,
@@ -211,7 +211,7 @@ mod tests {
                 "unit": "推理积分"
             },
             "subscription": {
-                "daily_limit_usd": 100,
+                "daily_limit_usd": null,
                 "daily_usage_usd": 10,
                 "expires_at": null,
                 "id": 13812,
@@ -227,6 +227,8 @@ mod tests {
         }))
         .expect("nullable subscription fields");
 
+        assert_eq!(usage.subscription.daily_limit_usd, None);
+        assert_eq!(usage.subscription.monthly_limit_usd, 500.0);
         assert_eq!(usage.billing.source, None);
         assert_eq!(usage.subscription.expires_at, None);
         assert_eq!(usage.usage.today.requests, 0);

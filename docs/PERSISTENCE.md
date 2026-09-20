@@ -2,8 +2,8 @@
 
 Rust owns durable application data. Diesel maps feature records into the shared `vesper.sqlite3`
 database; release credentials remain in the operating-system credential store. Svelte retains only
-presentation preferences in WebView local storage. Remote API JSON and publication artifacts are
-transport formats, not local database substitutes.
+presentation preferences and remembered SSH login names in WebView local storage. Remote API JSON
+and publication artifacts are transport formats, not local database substitutes.
 
 ## Location and schema
 
@@ -103,8 +103,10 @@ conditionally writes renewed tokens back after a successful OAuth refresh, prese
 account changes and unrelated fields. It creates no separate CherryIN credential record or database.
 [Dashboard](DASHBOARD.md#cherryin) owns the refresh and retry protocol.
 
-SSH discovery, remote username overrides, terminal input/output and sessions remain in memory.
-Vesper stores no SSH credentials or preferences; system OpenSSH owns known-host trust.
+SSH discovery, terminal input/output and sessions remain in memory. The last login username used
+for each device is kept in WebView local storage as `vesper.ssh.username.<device ID>` and prefills
+the terminal; Vesper stores no SSH credentials or other SSH preferences, and system OpenSSH owns
+known-host trust.
 
 Provider output and logs exclude access tokens, cookies, login codes and passwords. The trusted
 Settings prefill response is the narrow exception for fields the user edits locally.

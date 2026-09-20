@@ -219,13 +219,10 @@ fn official_zero_percent(config: &Value) -> Option<f64> {
 }
 
 fn amount_field(value: &Value, names: &[&str]) -> Option<f64> {
-    names
-        .iter()
-        .find_map(|name| value.get(name).and_then(amount))
-}
-
-fn amount(value: &Value) -> Option<f64> {
-    nonnegative_number(value.get("val").unwrap_or(value))
+    names.iter().find_map(|name| {
+        let amount = value.get(name)?;
+        nonnegative_number(amount.get("val").unwrap_or(amount))
+    })
 }
 
 fn nonnegative_number(value: &Value) -> Option<f64> {

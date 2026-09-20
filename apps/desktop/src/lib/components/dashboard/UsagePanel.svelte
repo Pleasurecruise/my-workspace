@@ -45,9 +45,11 @@
 		if (source.provider !== "tokenFlux" || source.state.data === null) return [];
 		const subscription = source.state.data.subscription;
 		const windows: Array<{ label: string; used: number; limit: number }> = [
-			{ label: "Daily", used: subscription.dailyUsageUsd, limit: subscription.dailyLimitUsd },
 			{ label: "Monthly", used: subscription.monthlyUsageUsd, limit: subscription.monthlyLimitUsd },
 		];
+		if (subscription.dailyLimitUsd !== null) {
+			windows.unshift({ label: "Daily", used: subscription.dailyUsageUsd, limit: subscription.dailyLimitUsd });
+		}
 		if (subscription.weeklyLimitUsd !== null) {
 			windows.push({ label: "Weekly", used: subscription.weeklyUsageUsd, limit: subscription.weeklyLimitUsd });
 		}
@@ -191,8 +193,8 @@
 			{@const balance = tokenFluxBalance}
 			<div class="provider-heading"><strong>TokenFlux</strong>{#if balance !== null}<span>{balance.planName}</span>{/if}</div>
 			{#if tokenFlux !== null}
-				{#if source.state.error !== null}<p role="alert">{source.state.error}</p>{/if}
-				{#if meters.length > 0}<div class="meter-list">{#each meters as meter}<div class="meter"><div><span>{meter.label}</span><strong>{percentFormatter.format(meter.percent)}%</strong></div><div class="progress" role="progressbar" aria-label={`TokenFlux ${meter.label} quota`} aria-valuenow={meter.percent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${meter.percent}%`}></span></div><small>{usdFormatter.format(meter.remaining)} / {usdFormatter.format(meter.limit)} USD remaining</small></div>{/each}</div>{/if}
+				{#if source.state.error !== null}<p role="alert">{source.state.error} Showing last successful data.</p>{/if}
+				{#if meters.length > 0 || tokenFlux.subscription.dailyLimitUsd === null}<div class="meter-list">{#if tokenFlux.subscription.dailyLimitUsd === null}<div class="meter" aria-label="TokenFlux daily usage"><div><span>Daily used</span><strong>{usdFormatter.format(tokenFlux.subscription.dailyUsageUsd)} USD</strong></div><small>Daily limit not provided</small></div>{/if}{#each meters as meter}<div class="meter"><div><span>{meter.label}</span><strong>{percentFormatter.format(meter.percent)}%</strong></div><div class="progress" role="progressbar" aria-label={`TokenFlux ${meter.label} quota`} aria-valuenow={meter.percent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${meter.percent}%`}></span></div><small>{usdFormatter.format(meter.remaining)} / {usdFormatter.format(meter.limit)} USD remaining</small></div>{/each}</div>{/if}
 				{#if balance !== null}<div class="account-balances"><div class="account-balance"><div><strong>{creditFormatter.format(balance.remaining)}</strong><span>{balance.unit}</span></div><small>Available balance</small></div></div>{/if}
 			{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
 		{:else if source.provider === "dimAgent"}

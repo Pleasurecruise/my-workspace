@@ -339,7 +339,7 @@ export interface TokenFluxUsage {
 		unit: string;
 	};
 	subscription: {
-		dailyLimitUsd: number;
+		dailyLimitUsd: number | null;
 		dailyUsageUsd: number;
 		expiresAt: string | null;
 		id: number;

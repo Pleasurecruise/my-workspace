@@ -54,10 +54,16 @@ vi.mock("@xterm/addon-fit", () => ({
 	},
 }));
 const views: ReturnType<typeof mount>[] = [];
+const savedLogins = new Map<string, string>();
 beforeEach(() => {
 	mocks.invoke.mockReset().mockResolvedValue({ status: "ready", data: null });
 	mocks.write.mockReset().mockImplementation((_data, callback) => callback?.());
 	mocks.dispose.mockClear();
+	savedLogins.clear();
+	vi.stubGlobal("localStorage", {
+		getItem: (key: string) => savedLogins.get(key) ?? null,
+		setItem: (key: string, value: string) => savedLogins.set(key, value),
+	});
 	vi.stubGlobal(
 		"ResizeObserver",
 		class {
@@ -86,7 +92,7 @@ function deferResponse() {
 	return { promise, resolve, reject };
 }
 function readConnection() {
-	const call = mocks.invoke.mock.calls.find(([name]) => name === "connect_ssh");
+	const call = mocks.invoke.mock.calls.filter(([name]) => name === "connect_ssh").at(-1);
 	if (call === undefined || !("request" in call[1]))
 		throw new Error("Expected SSH connection request");
 	return call[1];
@@ -252,4 +258,31 @@ it("ignores a previous disconnect failure after a new connection starts", async 
 	await tick();
 	expect(document.querySelector('[role="alert"]')).toBeNull();
 	expect(document.querySelector('[role="status"]')?.textContent).toBe("SSH running");
+});
+
+it("remembers the login username per device", async () => {
+	localStorage.setItem("vesper.ssh.username.node", "root");
+	setup();
+	await vi.waitFor(() =>
+		expect(mocks.invoke).toHaveBeenCalledWith("connect_ssh", expect.anything()),
+	);
+	expect(readConnection().request.username).toBe("root");
+	const disconnect = [...document.querySelectorAll("button")].find((button) =>
+		button.textContent?.includes("Disconnect"),
+	);
+	if (disconnect === undefined) throw new Error("Expected disconnect button");
+	disconnect.click();
+	await tick();
+	const input = document.querySelector<HTMLInputElement>("#ssh-user-node");
+	if (input === null) throw new Error("Expected username input");
+	input.value = "ubuntu";
+	input.dispatchEvent(new Event("input", { bubbles: true }));
+	const form = document.querySelector("form");
+	if (form === null) throw new Error("Expected connection form");
+	form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+	await vi.waitFor(() =>
+		expect(mocks.invoke.mock.calls.filter(([name]) => name === "connect_ssh")).toHaveLength(2),
+	);
+	expect(readConnection().request.username).toBe("ubuntu");
+	expect(localStorage.getItem("vesper.ssh.username.node")).toBe("ubuntu");
 });

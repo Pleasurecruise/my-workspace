@@ -8,7 +8,13 @@
 	import type { CommandResponse, SshDevice, SshOutput } from "../../consumer";
 
 	let { device, active, locked }: { device: SshDevice; active: boolean; locked: boolean } = $props();
-	let username = $state(untrack(() => device.username));
+	const usernameKey = untrack(() => `vesper.ssh.username.${device.id}`);
+	let username = $state(
+		untrack(() => {
+			const remembered = localStorage.getItem(usernameKey);
+			return remembered === null ? device.username : remembered;
+		}),
+	);
 	let phase = $state<"idle" | "starting" | "running" | "closed">("idle");
 	let error = $state<string | null>(null);
 	let host = $state<HTMLDivElement | null>(null);
@@ -42,10 +48,12 @@
 	async function connect() {
 		if (terminal === null || locked || disposed || phase === "starting" || phase === "running")
 			return;
-		if (!username.trim()) {
+		const login = username.trim();
+		if (login === "") {
 			error = "Enter the remote device's login username.";
 			return;
 		}
+		if (/^(?!-)[A-Za-z0-9._-]{1,64}$/.test(login)) localStorage.setItem(usernameKey, login);
 		await disconnect();
 		if (locked || disposed) return;
 		const version = ++generation;
@@ -82,7 +90,7 @@
 				request: {
 					sessionId: id,
 					deviceId: device.id,
-					username: username.trim(),
+					username: login,
 					cols: terminal.cols,
 					rows: terminal.rows,
 				},
