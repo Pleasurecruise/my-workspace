@@ -105,7 +105,6 @@ export interface TocEntry {
 
 export interface KnowledgeEntry {
 	id: string;
-	slug: string;
 	title: string;
 	summary: string;
 	tags: string[];
@@ -142,6 +141,7 @@ export interface KnowledgeDraft {
 
 export interface KnowledgeUpdate extends KnowledgeDraft {
 	expectedHash: string;
+	expectedUpdatedAt: string;
 	visibility?: KnowledgeDocument["visibility"];
 }
 

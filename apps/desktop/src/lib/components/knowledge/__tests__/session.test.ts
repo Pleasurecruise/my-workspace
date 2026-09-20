@@ -12,7 +12,6 @@ beforeEach(() => invoke.mockReset());
 
 const document: KnowledgeDocument = {
 	id: "article",
-	slug: "article",
 	title: "Original",
 	summary: "",
 	tags: [],
@@ -60,6 +59,7 @@ it.each([false, true])(
 			body: "Body",
 			tags: [],
 			expectedHash: document.contentHash,
+			expectedUpdatedAt: document.updatedAt,
 		});
 		session.leave();
 		if (reset) {
@@ -107,6 +107,7 @@ it("preserves a saved article when an older refresh completes", async () => {
 		body: "Body",
 		tags: [],
 		expectedHash: document.contentHash,
+		expectedUpdatedAt: document.updatedAt,
 	});
 	expect(session.content?.knowledge[0]?.title).toBe("Saved");
 	pending.resolve(page(document));

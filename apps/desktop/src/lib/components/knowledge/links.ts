@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { CommandResponse, KnowledgeDocument } from "../../consumer";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
-// Desktop routes carry IDs; Rust resolves canonical web URLs and legacy aliases.
+// Desktop routes carry IDs; Rust extracts article IDs from canonical web URLs.
 type ArticleNavigation = {
 	onError: (message: string | null) => void;
 	onOpen: (document: KnowledgeDocument, fragment?: string) => string | null;

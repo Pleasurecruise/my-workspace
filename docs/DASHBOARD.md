@@ -54,6 +54,12 @@ walk directories or estimate file categories. The storage card opens the operati
 settings on macOS and Windows for category details; other platforms report that users should open
 their disk utility. Opening settings is explicit and failures remain visible in the card.
 
+## Knowledge
+
+Knowledge reads authenticated summary and detail responses by article ID. Canonical links use
+UUIDs; opening one extracts its ID and reads the detail endpoint directly. Article cards resolve
+metadata through the authorized summary index.
+
 ## Public feeds
 
 `crates/quotes` owns these unauthenticated reads. Failed locations or symbols remain independent.

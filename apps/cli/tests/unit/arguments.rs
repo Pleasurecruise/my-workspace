@@ -54,3 +54,21 @@ fn preserves_feature_arguments_and_normalizes_options() {
         assert_eq!(parsed, expected, "{input:?}");
     }
 }
+
+#[test]
+fn knowledge_delete_requires_and_preserves_both_version_fields() {
+    let input = [
+        "vesper",
+        "knowledge",
+        "delete",
+        "019c1234-1234-7000-8000-123456789abc",
+        "hash",
+        "2026-09-20T11:00:00.000Z",
+    ];
+    assert_eq!(parse(input.map(OsString::from)).unwrap(), input[1..]);
+    let error = parse(input[..5].iter().map(OsString::from)).unwrap_err();
+    assert_eq!(
+        error.kind(),
+        clap::error::ErrorKind::MissingRequiredArgument
+    );
+}

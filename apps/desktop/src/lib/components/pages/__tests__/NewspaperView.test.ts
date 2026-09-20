@@ -8,7 +8,6 @@ vi.mock("@tauri-apps/plugin-opener", () => opener);
 
 const issue: KnowledgeDocument = {
 	id: "daily",
-	slug: "daily",
 	title: "Daily",
 	summary: "News",
 	tags: [],

@@ -62,8 +62,8 @@ Open Graph fallbacks. Missing, external or unauthorized entries remain non-click
 valid siblings. Vesper also accepts single-entry `id`/`url` fields and title/description overrides;
 overrides cannot authorize a target. Static publication must supply an index.
 
-Knowledge resolves UUIDs and legacy slug aliases through the authenticated, paginated summary
-index, including historical daily editions, then opens details by real ID. Links retain chapter
+Knowledge resolves UUIDs through the authenticated summary index, including historical daily
+editions, then opens details by ID. Links retain chapter
 fragments, which the destination reader decodes after mounting. Card rendering never reads target
 bodies. The web adapter separately authorizes against D1. Editing blocks navigation; stale responses
 cannot replace a later selection. Shared Knowledge submissions use URL lines or a single `url`
@@ -151,7 +151,11 @@ also select the compact layout when the article itself is wide.
 
 Storyboard supports one title and two to six `step: heading | description` fields. Both kinds also
 accept authored SVG with a viewBox, title and description. SVG is sanitized without rearranging its
-geometry; authored canvases retain a 42rem display height cap.
+geometry; authored canvases retain a 42rem display height cap. Keep canvases transparent and frame-free.
+Architecture SVG uses rounded `.node` groups, `.arr`/`.leader` paths, `.th`/`.t`/`.ts` text and
+`.c-purple`, `.c-teal`, `.c-coral`, `.c-blue`, `.c-green`, `.c-amber`, `.c-red`, `.c-gray` groups.
+Storyboard uses irregular paths, `.scribble`, `.arrow`/`.arrow-shadow`, `.sketch-shadow`, `.hand`
+text and `.fill-blue`, `.fill-violet`, `.fill-green`, `.fill-orange` groups.
 
 ## Showing source
 

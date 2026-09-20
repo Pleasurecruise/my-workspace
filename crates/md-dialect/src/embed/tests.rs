@@ -320,7 +320,7 @@ fn unresolved_articles_are_not_clickable() {
 
 #[test]
 fn article_url_lists_render_metadata_cards_and_preserve_order() {
-    let url = "https://knowledge.you-find.me/articles/real-slug";
+    let url = "https://knowledge.you-find.me/articles/11111111-1111-4111-8111-111111111111";
     let mut data = Data::default();
     data.articles.insert(
         url.to_owned(),

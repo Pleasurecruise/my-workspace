@@ -15,7 +15,6 @@ function findElement<T extends Element>(target: ParentNode, selector: string): T
 it("renders the index without reading bodies and ignores detail completion after leaving", async () => {
 	const entry = {
 		id: "lazy",
-		slug: "lazy",
 		title: "Lazy article",
 		summary: "Summary",
 		tags: [],
@@ -74,7 +73,6 @@ it("renders the index without reading bodies and ignores detail completion after
 it("returns from a related article to its source before returning to the index", async () => {
 	const source: KnowledgeDocument = {
 		id: "source",
-		slug: "source",
 		title: "Source article",
 		summary: "",
 		tags: [],
@@ -131,7 +129,6 @@ it("copies the canonical article link and reports clipboard failures", async () 
 	Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
 	const article: KnowledgeDocument = {
 		id: "copy",
-		slug: "article slug",
 		title: "Copy",
 		summary: "",
 		tags: [],
@@ -181,7 +178,6 @@ it("restores an article draft after navigation and preserves changes made during
 	});
 	const other: KnowledgeDocument = {
 		id: "other",
-		slug: "other",
 		title: "Other",
 		summary: "Other",
 		tags: [],
@@ -244,7 +240,6 @@ it("restores an article draft after navigation and preserves changes made during
 		status: "ready",
 		data: {
 			id: "article-1",
-			slug: "article-1",
 			title: "Draft title",
 			summary: "Draft summary",
 			tags: [],
@@ -273,4 +268,55 @@ it("restores an article draft after navigation and preserves changes made during
 	await tick();
 	await unmount(view);
 	target.remove();
+});
+
+it("sends both article version fields when saving and retains a rejected draft", async () => {
+	const article: KnowledgeDocument = {
+		id: "019c1234-1234-7000-8000-123456789abc",
+		title: "Versioned article",
+		summary: "Summary",
+		tags: [],
+		visibility: "private",
+		contentHash: "a".repeat(64),
+		createdAt: "2026-09-20T10:00:00.000Z",
+		updatedAt: "2026-09-20T11:00:00.000Z",
+		newspaperEdition: null,
+		source: "Body",
+		html: "<p>Body</p>",
+		toc: [],
+		stats: { wordCount: 1, readingMinutes: 1 },
+	};
+	const onupdate = vi
+		.fn()
+		.mockResolvedValue({ status: "failed", message: "Article changed while saving" });
+	expect(selectKnowledgeArticle(article)).toBeNull();
+	const target = document.createElement("div");
+	document.body.append(target);
+	const view = mount(KnowledgeView, {
+		target,
+		props: { documents: [article], loading: false, onread: vi.fn(), oncreate: vi.fn(), onupdate },
+	});
+	try {
+		await tick();
+		findElement<HTMLButtonElement>(target, '[aria-label="Edit article"]').click();
+		await tick();
+		findElement<HTMLButtonElement>(target, ".editor-actions .save").click();
+		await tick();
+		expect(onupdate).toHaveBeenCalledWith(article.id, {
+			title: article.title,
+			summary: article.summary,
+			body: article.source,
+			tags: [],
+			expectedHash: article.contentHash,
+			expectedUpdatedAt: article.updatedAt,
+			visibility: "private",
+		});
+		await vi.waitFor(() => expect(target.textContent).toContain("Article changed while saving"));
+		expect(target.querySelector(".editor")).not.toBeNull();
+	} finally {
+		findElement<HTMLButtonElement>(target, ".editor-actions button").click();
+		await tick();
+		await unmount(view);
+		target.remove();
+	}
 });

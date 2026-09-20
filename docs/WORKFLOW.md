@@ -18,8 +18,7 @@ vesper publish --live
 The builder renders Markdown, highlighted code, Mermaid, and custom `md-dialect` embeds, copies
 assets, and writes `content.json` in a disposable temporary directory. It rejects symbolic links,
 output collisions, and invalid dialect input before publication. Authored SVG is sanitized;
-GitHub and stock embeds resolve through `quotes`. Syntax and examples belong to the
-[Vesper CLI skill](../.agents/skills/vesper-cli/SKILL.md).
+GitHub and stock embeds resolve through `quotes`. Syntax and examples belong to [Markdown](MARKDOWN.md).
 
 Only `--live` uploads, under R2's `blog/` prefix. Publication is additive: destination-only objects
 are not deleted. Removing obsolete objects is a separate explicit maintenance operation. A failed
@@ -56,14 +55,6 @@ the same Rust business operations and validation.
 Memo writes pass through the my-memos Worker, coordinating R2 bodies, D1 metadata, and KV invalidation.
 Lists and searches return the D1 body mirror; Vesper renders it without a second R2 read.
 
-```sh
-vesper memo get <id>
-vesper memo search <query>
-vesper memo page --file filters.json
-vesper memo patch <id> --file changes.json
-vesper memo import-x <url> private
-```
-
 `page` accepts `cursor`, `limit`, `search`, `tags`, `sortByUpdated`, `archivedOnly`, and `favoritesOnly`;
 the final two filters are mutually exclusive. `patch` accepts optional `content`, `visibility`,
 `tags`, `pinned`, `favorite`, and `archived`, and rejects an empty object. Dedicated commands also
@@ -76,23 +67,22 @@ Pass `public` explicitly for a public Memo. Social publication setup belongs to
 ## Knowledge
 
 The my-knowledge Worker authorizes against D1 before reading KV or R2. Updates and deletion require
-the current `expectedHash`; a stale copy fails instead of overwriting a newer article. Desktop
-preserves that hash while editing. Complex payloads use the API's JSON contract.
+the current `expectedHash` and `expectedUpdatedAt`; a stale copy fails instead of overwriting a newer
+article. Desktop preserves both values while editing. Complex payloads use the API's JSON contract.
 
 ```sh
 vesper knowledge page --file filters.json
 vesper knowledge get <id>
 vesper knowledge create --file article.json
 vesper knowledge update-documents <id> --file changes.json
-vesper knowledge delete <id> <expected-hash>
+vesper knowledge delete <id> <expected-hash> <expected-updated-at>
 ```
 
 `page` accepts `cursor`, `limit` (1–100), up to five `tags`, and `visibility`, returning
 `{ articles, cursor }` without bodies. `list` returns `{ documents, cursor }` summary projections.
-Use `get` for complete source and `contentHash` before editing; it accepts a UUID or a complete
-canonical article URL, including legacy slug aliases. Writes use the returned UUID, never a URL or
-a title. `update-draft` and `visibility` also accept JSON payloads. New articles start public on the
-Knowledge server. Shared Markdown syntax belongs to [Markdown](MARKDOWN.md).
+Use `get` for source, `contentHash`, and `updatedAt` before editing; it accepts a UUID or canonical
+UUID article URL. Writes use the returned UUID, never a URL or title. `update-draft` and `visibility`
+also accept JSON payloads. New articles start public on the Knowledge server. Shared Markdown syntax belongs to [Markdown](MARKDOWN.md).
 
 ## Moment
 
@@ -129,18 +119,6 @@ Desktop and CLI share dated tasks. Commands default to today; `todo --date YYYY-
 Storage, ordering, daily carry-forward, and derived calendar completion belong to
 [Persistence](PERSISTENCE.md#planner).
 
-```sh
-vesper todo list
-vesper todo create "Buy groceries"
-vesper todo update <id> "Buy groceries and milk"
-vesper todo complete <id>
-vesper todo reopen <id>
-vesper todo delete <id>
-vesper todo import-ics <path>...
-vesper todo sync
-vesper todo notion connect <calendar-view-url>
-```
-
 `database-path` and `schedule-path` print storage locations. `import-ics` validates every source
 before atomically replacing each managed file; an installation failure may leave earlier files
 installed and reports that partial result. `sync-ics` reads only ICS files. Recurrences materialize
@@ -161,13 +139,6 @@ never synchronize calendars; Desktop owns habit names and membership.
 
 Ledger shares Desktop's local GBP store. Use `ledger --date YYYY-MM-DD` for another day. Amounts are
 decimal GBP strings; quote categories containing spaces.
-
-```sh
-vesper ledger list
-vesper ledger create 12.34 "Coffee shop" "Lunch"
-vesper ledger update <id> 8.50 Dining
-vesper ledger delete <id>
-```
 
 Create/update accept an optional description. Omitting it on update preserves the note; an empty
 string clears it. Each response includes the day's entries and total, month total, category totals,

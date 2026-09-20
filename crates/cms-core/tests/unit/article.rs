@@ -323,7 +323,7 @@ async fn knowledge_uses_authorized_article_metadata() {
 
 #[tokio::test]
 async fn compiles_url_list_cards_with_host_metadata_and_in_app_routes() {
-    let url = "https://knowledge.you-find.me/articles/real-slug";
+    let url = "https://knowledge.you-find.me/articles/11111111-1111-4111-8111-111111111111";
     let metadata = std::collections::HashMap::from([(
         url.to_owned(),
         md_dialect::ArticleMetadata {

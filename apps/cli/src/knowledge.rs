@@ -67,8 +67,8 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&article)
         }
-        ("delete", [id, expected_hash]) => {
-            consumers::api::knowledge::delete(id, expected_hash)
+        ("delete", [id, expected_hash, expected_updated_at]) => {
+            consumers::api::knowledge::delete(id, expected_hash, expected_updated_at)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "id": id, "deleted": true }))

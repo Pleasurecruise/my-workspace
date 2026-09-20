@@ -213,7 +213,7 @@
 		const current = selected;
 		const response = current === null
 			? await oncreate(input)
-			: await onupdate(current.id, { ...input, expectedHash: current.contentHash, visibility: submitted.visibility });
+			: await onupdate(current.id, { ...input, expectedHash: current.contentHash, expectedUpdatedAt: current.updatedAt, visibility: submitted.visibility });
 		saving = false;
 		if (response.status === "failed") {
 			error = response.message;

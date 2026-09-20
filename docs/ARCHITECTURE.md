@@ -86,8 +86,9 @@ Svelte owns loading/error presentation and discards detail responses after switc
 The Rust compiler supplies prose word counts and estimated reading minutes with each document detail.
 
 Compiled external links open in the system browser; same-article fragments remain in the reader.
-Internal article cards resolve UUID URLs, legacy slug aliases and metadata through the authorized
-paginated summary index. Rendering never reads target bodies or external previews; unresolved
+Knowledge uses article IDs throughout its API and desktop contracts.
+Internal article cards resolve UUID URLs and metadata through the authorized paginated summary
+index. Rendering never reads target bodies or external previews; unresolved
 references become disabled cards. Clicking reads the ID-based detail endpoint and opens Knowledge
 while preserving unsaved drafts. Chapter navigation is consumed by the destination after it mounts,
 so replacing the source reader cannot discard it. Copied web links use canonical UUID addresses.
@@ -125,11 +126,11 @@ runtimes, R2 bindings and deployment configuration.
 repository and image caches; `consumer.rs` adapts commands. Cache revisions prevent a late read from
 restoring invalidated content. Writes retain each consumer's server-side coordination.
 
-| Consumer  | Boundary                                                                                                                                                                                            |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Memos     | API records include Markdown; Rust compiles it without another R2 read. CRUD and X imports use the Memo API.                                                                                        |
-| Moment    | API owns metadata; Rust prepares image variants, uploads them to R2, then registers them. The list is a bounded batch without a synthetic cursor.                                                   |
-| Knowledge | API summaries form the metadata-only index and classify Newspaper editions. Opening a document performs an authorized detail read and Rust compilation. Writes use content-hash conflict detection. |
+| Consumer  | Boundary                                                                                                                                                                                                                                         |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Memos     | API records include Markdown; Rust compiles it without another R2 read. CRUD and X imports use the Memo API.                                                                                                                                     |
+| Moment    | API owns metadata; Rust prepares image variants, uploads them to R2, then registers them. The list is a bounded batch without a synthetic cursor.                                                                                                |
+| Knowledge | API summaries form the metadata-only index and classify Newspaper editions. Opening a document performs an authorized detail read and Rust compilation. Writes require both the content hash and exact updated timestamp for conflict detection. |
 
 Moment shares a Rust EXIF reader between desktop preview and CLI upload, without decoding pixels.
 Desktop publication uses reviewed form values, including cleared metadata; CLI upload uses EXIF

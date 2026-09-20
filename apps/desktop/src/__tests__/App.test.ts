@@ -512,7 +512,6 @@ it("keeps one newspaper loading surface from index lookup through article compil
 	expect(loading).not.toBeNull();
 	const entry = {
 		id: "daily",
-		slug: "daily",
 		title: "Daily",
 		summary: "Summary",
 		tags: [],

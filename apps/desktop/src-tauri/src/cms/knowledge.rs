@@ -157,7 +157,6 @@ mod tests {
     fn document(hash: &str) -> Document {
         Document {
             id: "article".into(),
-            slug: "article".into(),
             title: "Title".into(),
             summary: "Summary".into(),
             tags: vec![],

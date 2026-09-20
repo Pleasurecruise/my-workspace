@@ -169,19 +169,29 @@ fn command() -> Command {
         ))
         .subcommands(
             [
-                ("update-draft", "Update draft using JSON with expectedHash"),
+                (
+                    "update-draft",
+                    "Update draft using JSON with expectedHash and expectedUpdatedAt",
+                ),
                 (
                     "update-documents",
-                    "Update documents using JSON with expectedHash",
+                    "Update documents using JSON with expectedHash and expectedUpdatedAt",
                 ),
-                ("visibility", "Set visibility using JSON with expectedHash"),
+                (
+                    "visibility",
+                    "Set visibility using JSON with expectedHash and expectedUpdatedAt",
+                ),
             ]
             .map(|(name, about)| content(Command::new(name).about(about).args([arg!(<ID>)]), true)),
         )
         .subcommand(
             Command::new("delete")
                 .about("Delete an unchanged article")
-                .args([arg!(<ID>), arg!(<EXPECTED_HASH>)]),
+                .args([
+                    arg!(<ID>),
+                    arg!(<EXPECTED_HASH>),
+                    arg!(<EXPECTED_UPDATED_AT>),
+                ]),
         );
 
     let moment = Command::new("moment")

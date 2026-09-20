@@ -17,7 +17,6 @@ const OVERVIEW_PAGE_SIZE: usize = 100;
 #[serde(rename_all = "camelCase")]
 pub struct Entry {
     pub id: String,
-    pub slug: String,
     pub title: String,
     pub summary: String,
     pub tags: Vec<String>,
@@ -32,7 +31,6 @@ pub struct Entry {
 #[serde(rename_all = "camelCase")]
 pub struct Document {
     pub id: String,
-    pub slug: String,
     pub title: String,
     pub summary: String,
     pub tags: Vec<String>,
@@ -108,7 +106,6 @@ pub struct EditionSummary {
 #[serde(rename_all = "camelCase")]
 pub struct Article {
     pub id: String,
-    pub slug: String,
     pub editions: HashMap<String, Edition>,
     pub tags: Vec<String>,
     pub visibility: Visibility,
@@ -121,7 +118,6 @@ pub struct Article {
 #[serde(rename_all = "camelCase")]
 pub struct Summary {
     pub id: String,
-    pub slug: String,
     pub editions: HashMap<String, EditionSummary>,
     pub tags: Vec<String>,
     pub visibility: Visibility,
@@ -165,6 +161,7 @@ pub enum Create {
 #[serde(rename_all = "camelCase")]
 pub struct DraftUpdate {
     pub expected_hash: String,
+    pub expected_updated_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visibility: Option<Visibility>,
     pub title: String,
@@ -177,6 +174,7 @@ pub struct DraftUpdate {
 #[serde(rename_all = "camelCase")]
 pub struct DocumentUpdate {
     pub expected_hash: String,
+    pub expected_updated_at: String,
     pub documents: Documents,
 }
 
@@ -184,6 +182,7 @@ pub struct DocumentUpdate {
 #[serde(rename_all = "camelCase")]
 pub struct VisibilityUpdate {
     pub expected_hash: String,
+    pub expected_updated_at: String,
     pub visibility: Visibility,
 }
 
@@ -368,7 +367,6 @@ fn project_summary(summary: Summary) -> Result<Entry, ApiError> {
     let newspaper_edition = newspaper_edition(&summary.tags);
     Ok(Entry {
         id: summary.id,
-        slug: summary.slug,
         title: edition.title.clone(),
         summary: edition.summary.clone(),
         tags: summary.tags,
@@ -384,7 +382,6 @@ impl From<&Document> for Entry {
     fn from(document: &Document) -> Self {
         Self {
             id: document.id.clone(),
-            slug: document.slug.clone(),
             title: document.title.clone(),
             summary: document.summary.clone(),
             tags: document.tags.clone(),
@@ -438,7 +435,6 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
         .collect();
     let own = Summary {
         id: article.id.clone(),
-        slug: article.slug.clone(),
         editions: article
             .editions
             .iter()
@@ -483,7 +479,6 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
     let newspaper_edition = newspaper_edition(&article.tags);
     Ok(Document {
         id: article.id,
-        slug: article.slug,
         title: edition.title.clone(),
         summary: edition.summary.clone(),
         tags: article.tags,
@@ -551,14 +546,14 @@ fn article_identity(value: &str) -> Option<String> {
     {
         return None;
     }
-    let slug = url.path().strip_prefix("/articles/")?.trim_end_matches('/');
-    if slug.is_empty() || slug.contains('/') {
+    let id = url.path().strip_prefix("/articles/")?.trim_end_matches('/');
+    if id.is_empty() || id.contains('/') {
         return None;
     }
-    percent_encoding::percent_decode_str(slug)
+    percent_encoding::percent_decode_str(id)
         .decode_utf8()
         .ok()
-        .map(|slug| slug.into_owned())
+        .map(|id| id.into_owned())
 }
 
 fn resolve_card_metadata(
@@ -570,14 +565,10 @@ fn resolve_card_metadata(
     let Some(edition) = summary.editions.get("zh") else {
         return;
     };
-    for key in ids
-        .iter()
-        .filter(|id| *id == &summary.id)
-        .chain(urls.iter().filter(|url| {
-            article_identity(url)
-                .is_some_and(|identity| identity == summary.id || identity == summary.slug)
-        }))
-    {
+    for key in ids.iter().filter(|id| *id == &summary.id).chain(
+        urls.iter()
+            .filter(|url| article_identity(url).is_some_and(|identity| identity == summary.id)),
+    ) {
         metadata.insert(
             key.clone(),
             ArticleMetadata {
@@ -644,19 +635,7 @@ where
 }
 
 pub async fn get(reference: &str) -> Result<Article, ApiError> {
-    let id = if let Some(slug) = article_identity(reference) {
-        reference_summaries()
-            .await?
-            .into_iter()
-            .find(|summary| summary.id == slug || summary.slug == slug)
-            .map(|summary| summary.id)
-            .ok_or(ApiError::Status {
-                operation: "resolve knowledge article",
-                status: StatusCode::NOT_FOUND,
-            })?
-    } else {
-        reference.to_owned()
-    };
+    let id = article_identity(reference).unwrap_or_else(|| reference.to_owned());
     if id.is_empty()
         || id.len() > 240
         || !id
@@ -756,13 +735,20 @@ pub async fn set_visibility(id: &str, input: &VisibilityUpdate) -> Result<Summar
     Ok(result.article)
 }
 
-pub async fn delete(id: &str, expected_hash: &str) -> Result<(), ApiError> {
+pub async fn delete(
+    id: &str,
+    expected_hash: &str,
+    expected_updated_at: &str,
+) -> Result<(), ApiError> {
     let client = Client::load()?;
     let response = client
         .http
         .delete(format!("{ENDPOINT}/{id}"))
         .bearer_auth(&client.api_key)
-        .json(&serde_json::json!({ "expectedHash": expected_hash }))
+        .json(&serde_json::json!({
+            "expectedHash": expected_hash,
+            "expectedUpdatedAt": expected_updated_at,
+        }))
         .send()
         .await?;
     if response.status() == StatusCode::NO_CONTENT {
@@ -813,10 +799,43 @@ async fn mutation_error(mut response: reqwest::Response, operation: &'static str
 mod tests {
     use super::*;
 
+    #[test]
+    fn mutations_require_and_preserve_both_version_fields() {
+        let version = serde_json::json!({
+            "expectedHash": "a".repeat(64),
+            "expectedUpdatedAt": "2026-09-20T11:00:00.000Z"
+        });
+        let mut draft = version.clone();
+        draft.as_object_mut().unwrap().extend(serde_json::json!({
+            "title": "Title", "summary": "Summary", "body": "Body", "tags": [], "visibility": "private"
+        }).as_object().unwrap().clone());
+        let decoded: DraftUpdate = serde_json::from_value(draft.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), draft);
+        draft.as_object_mut().unwrap().remove("expectedUpdatedAt");
+        assert!(serde_json::from_value::<DraftUpdate>(draft).is_err());
+        let mut documents = version.clone();
+        documents["documents"] = serde_json::json!({"zh": "Chinese document"});
+        let decoded: DocumentUpdate = serde_json::from_value(documents.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), documents);
+        documents
+            .as_object_mut()
+            .unwrap()
+            .remove("expectedUpdatedAt");
+        assert!(serde_json::from_value::<DocumentUpdate>(documents).is_err());
+        let mut visibility = version;
+        visibility["visibility"] = serde_json::json!("public");
+        let decoded: VisibilityUpdate = serde_json::from_value(visibility.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), visibility);
+        visibility
+            .as_object_mut()
+            .unwrap()
+            .remove("expectedUpdatedAt");
+        assert!(serde_json::from_value::<VisibilityUpdate>(visibility).is_err());
+    }
+
     async fn projected_document(id: &str, tags: &[&str], created_at: &str) -> Document {
         project_article(Article {
             id: id.to_owned(),
-            slug: id.to_owned(),
             editions: HashMap::from([(
                 "zh".to_owned(),
                 Edition {
@@ -836,8 +855,8 @@ mod tests {
     }
 
     #[test]
-    fn article_urls_decode_one_path_segment_without_reinterpreting_slug_characters() {
-        for (path, slug) in [
+    fn article_urls_decode_one_path_segment() {
+        for (path, id) in [
             ("%61lpha", "alpha"),
             ("%e4%b8%ad%e6%96%87", "中文"),
             ("a%23b", "a#b"),
@@ -846,7 +865,7 @@ mod tests {
             assert_eq!(
                 article_identity(&format!("https://knowledge.you-find.me/articles/{path}"))
                     .as_deref(),
-                Some(slug)
+                Some(id)
             );
         }
         assert!(article_identity("https://knowledge.you-find.me/articles/%FF").is_none());
@@ -854,14 +873,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn uuid_and_legacy_urls_resolve_current_article_metadata() {
+    async fn uuid_urls_resolve_current_article_metadata() {
         let id = "11111111-1111-4111-8111-111111111111";
         let source = format!(
-            "```embed:article\nhttps://knowledge.you-find.me/articles/{id}\nhttps://knowledge.you-find.me/articles/legacy-title\nhttps://knowledge.you-find.me/articles/{id}#section\nhttps://example.com/articles/{id}\n```"
+            "```embed:article\nhttps://knowledge.you-find.me/articles/{id}\nhttps://knowledge.you-find.me/articles/{id}#section\nhttps://example.com/articles/{id}\n```"
         );
         let document = project_article(Article {
             id: id.to_owned(),
-            slug: "legacy-title".to_owned(),
             editions: HashMap::from([(
                 "zh".to_owned(),
                 Edition {
@@ -883,14 +901,14 @@ mod tests {
                 .html
                 .matches(&format!("href=\"/articles/{id}\""))
                 .count(),
-            2
+            1
         );
         assert_eq!(
             document
                 .html
                 .matches("<strong>Current title</strong>")
                 .count(),
-            3
+            2
         );
         assert!(
             document
@@ -918,7 +936,6 @@ mod tests {
             std::future::ready(Ok(ArticlePage {
                 articles: vec![Summary {
                     id: id.into(),
-                    slug: id.into(),
                     editions: HashMap::new(),
                     tags: filters.tags,
                     visibility: Visibility::Private,
@@ -955,10 +972,9 @@ mod tests {
     }
 
     #[test]
-    fn cards_use_summary_metadata_and_real_ids_for_web_slugs() {
+    fn cards_use_summary_metadata_for_article_ids() {
         let summary = Summary {
             id: "real-id".into(),
-            slug: "different-slug".into(),
             editions: HashMap::from([(
                 "zh".into(),
                 EditionSummary {
@@ -972,8 +988,7 @@ mod tests {
             created_at: String::new(),
             updated_at: String::new(),
         };
-        let url =
-            "https://knowledge.you-find.me/articles/different-slug?from=list#section".to_owned();
+        let url = "https://knowledge.you-find.me/articles/real-id?from=list#section".to_owned();
         let mut metadata = HashMap::new();
         resolve_card_metadata(
             &summary,
@@ -991,7 +1006,6 @@ mod tests {
             metadata["real-id"].href.as_deref(),
             Some("/articles/real-id")
         );
-        assert!(!metadata.contains_key("different-slug"));
     }
 
     #[tokio::test]
@@ -1007,7 +1021,6 @@ mod tests {
             std::future::ready(Ok(ArticlePage {
                 articles: vec![Summary {
                     id: id.to_owned(),
-                    slug: id.to_owned(),
                     editions: HashMap::new(),
                     tags: vec![],
                     visibility: Visibility::Private,
@@ -1052,11 +1065,10 @@ mod tests {
     }
 
     #[test]
-    fn decodes_list_metadata() {
+    fn decodes_list_metadata_without_slug() {
         let page: ArticlePage = serde_json::from_value(serde_json::json!({
             "articles": [{
                 "id": "019c1234-1234-7000-8000-123456789abc",
-                "slug": "typed-boundaries",
                 "editions": {
                     "zh": { "title": "类型边界", "summary": "完整的元数据契约" }
                 },
@@ -1072,6 +1084,30 @@ mod tests {
 
         assert_eq!(page.cursor.as_deref(), Some("next-page"));
         assert_eq!(page.articles[0].tags, ["rust", "api"]);
+        let summary = &page.articles[0];
+        let url = format!(
+            "https://knowledge.you-find.me/articles/{}#section",
+            summary.id
+        );
+        let mut metadata = HashMap::new();
+        resolve_card_metadata(
+            summary,
+            std::slice::from_ref(&summary.id),
+            std::slice::from_ref(&url),
+            &mut metadata,
+        );
+        assert_eq!(metadata[&url].title, "类型边界");
+        assert_eq!(
+            metadata[&url].href,
+            Some(format!("/articles/{}#section", summary.id))
+        );
+        assert_eq!(
+            metadata[&summary.id].href,
+            Some(format!("/articles/{}", summary.id))
+        );
+        let entry = project_summary(page.articles.into_iter().next().unwrap()).unwrap();
+        assert_eq!(entry.title, "类型边界");
+        assert!(serde_json::to_value(&entry).unwrap().get("slug").is_none());
     }
 
     #[test]
@@ -1079,7 +1115,6 @@ mod tests {
         fn summary(id: &str, tags: &[&str], created_at: &str) -> Summary {
             Summary {
                 id: id.to_owned(),
-                slug: id.to_owned(),
                 editions: HashMap::new(),
                 tags: tags.iter().map(|tag| (*tag).to_owned()).collect(),
                 visibility: Visibility::Private,
@@ -1157,11 +1192,10 @@ mod tests {
     }
 
     #[test]
-    fn decodes_markdown() {
+    fn decodes_markdown_without_slug() {
         let response: ArticleResponse<Article> = serde_json::from_value(serde_json::json!({
             "article": {
                 "id": "019c1234-1234-7000-8000-123456789abc",
-                "slug": "typed-boundaries",
                 "editions": {
                     "zh": {
                         "title": "类型边界",
@@ -1185,7 +1219,6 @@ mod tests {
     async fn strips_article_header() {
         let article: Article = serde_json::from_value(serde_json::json!({
             "id": "019c1234-1234-7000-8000-123456789abc",
-            "slug": "daily-brief",
             "editions": {
                     "zh": {
                         "title": "Daily",
@@ -1205,6 +1238,12 @@ mod tests {
             .await
             .expect("projected Chinese article");
 
+        assert!(
+            serde_json::to_value(&document)
+                .unwrap()
+                .get("slug")
+                .is_none()
+        );
         assert_eq!(document.source, "## Today\n\nNews");
         assert!(document.html.starts_with("<h2 id=\"today\">Today</h2>"));
         assert_eq!(document.tags, ["newspaper", "daily"]);
@@ -1214,7 +1253,6 @@ mod tests {
     async fn preserves_article_when_embed_enrichment_fails() {
         let article: Article = serde_json::from_value(serde_json::json!({
             "id": "019c1234-1234-7000-8000-123456789abc",
-            "slug": "unavailable-embed",
             "editions": {
                 "zh": {
                     "title": "Unavailable embed",
@@ -1305,7 +1343,6 @@ mod tests {
     async fn self_shortcut_uses_current_metadata_without_recursive_reads() {
         let document = project_article(Article {
             id: "self".to_owned(),
-            slug: "self-slug".to_owned(),
             editions: HashMap::from([(
                 "zh".to_owned(),
                 Edition {
@@ -1334,7 +1371,6 @@ mod tests {
         let articles: Vec<_> = (0..100)
             .map(|index| Article {
                 id: format!("article-{index}"),
-                slug: format!("article-{index}"),
                 editions: HashMap::from([(
                     "zh".to_owned(),
                     Edition {
@@ -1354,7 +1390,6 @@ mod tests {
             .iter()
             .map(|article| Summary {
                 id: article.id.clone(),
-                slug: article.slug.clone(),
                 editions: article
                     .editions
                     .iter()

@@ -188,7 +188,7 @@ it("warms visible entries before clicks with two concurrent requests and stops o
 it("opens an unresolved Knowledge URL card inside the application", async () => {
 	const node = document.createElement("article");
 	node.innerHTML =
-		'<a class="content-embed-article" href="https://knowledge.you-find.me/articles/a-slug"><strong>Article title</strong><span>Article description</span></a>';
+		'<a class="content-embed-article" href="https://knowledge.you-find.me/articles/11111111-1111-4111-8111-111111111111"><strong>Article title</strong><span>Article description</span></a>';
 	const onOpen = vi.fn(() => null);
 	const data = { id: "resolved-id" };
 	invoke.mockResolvedValue({ status: "ready", data });
@@ -196,7 +196,7 @@ it("opens an unresolved Knowledge URL card inside the application", async () => 
 	node.querySelector<HTMLAnchorElement>("a")?.click();
 	await vi.waitFor(() => expect(onOpen).toHaveBeenCalledWith(data));
 	expect(invoke).toHaveBeenCalledWith("read_knowledge", {
-		id: "https://knowledge.you-find.me/articles/a-slug",
+		id: "https://knowledge.you-find.me/articles/11111111-1111-4111-8111-111111111111",
 		expectedHash: null,
 	});
 	expect(opener.openUrl).not.toHaveBeenCalled();
