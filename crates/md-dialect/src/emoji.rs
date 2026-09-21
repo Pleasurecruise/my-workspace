@@ -54,9 +54,6 @@ fn catalog(source: &str) -> Result<HashMap<String, String>, String> {
                 Display::Emoji => {
                     "display:inline-block;width:2rem;height:2rem;max-width:100%;margin:0 .125rem;object-fit:contain;vertical-align:middle"
                 }
-                Display::Sticker if url.host_str() == Some("cdn.combot.online") => {
-                    "display:inline-block;width:auto;height:auto;max-width:min(4rem,100%);max-height:4rem;margin:0 .25rem;object-fit:contain;vertical-align:middle"
-                }
                 Display::Sticker => {
                     "display:inline-block;width:auto;height:auto;max-width:min(6rem,100%);max-height:6rem;margin:0 .25rem;object-fit:contain;vertical-align:middle"
                 }
@@ -136,11 +133,12 @@ mod tests {
     use pulldown_cmark::{Parser, html};
 
     #[test]
-    fn low_resolution_combot_stickers_keep_a_two_x_pixel_budget() {
+    fn validate_catalog() {
         let images = catalog(include_str!("emoji-packs.json")).unwrap();
-        assert!(images[":daimao2_02:"].contains("max-height:4rem"));
-        assert!(images[":denghuoju8_03:"].contains("max-width:min(4rem,100%)"));
-        assert!(images[":baishengnv_01:"].contains("max-height:6rem"));
+        assert!(images[":suzume_思考:"].contains("https://szm.de5.net/"));
+        assert!(images[":suzume_期待:"].contains("max-height:6rem"));
+        assert!(!images.contains_key(":daimao2_02:"));
+        assert!(!images.contains_key(":denghuoju8_03:"));
     }
 
     #[test]

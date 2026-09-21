@@ -126,65 +126,6 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
     ))
 }
 
-// Match the web renderer's conservative 14px glyph budget without splitting
-// combining characters or emoji sequences. Prefer word boundaries when possible.
-fn label_lines(label: &str) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut line = String::new();
-    let mut width = 0;
-    for word in label.split_inclusive(char::is_whitespace) {
-        let glyphs: Vec<_> = word
-            .graphemes(true)
-            .map(|glyph| {
-                let size = if glyph.chars().all(char::is_whitespace) {
-                    5
-                } else if matches!(glyph, "M" | "W" | "@" | "%" | "&" | "#") {
-                    14
-                } else if glyph.is_ascii() {
-                    9
-                } else if glyph
-                    .chars()
-                    .any(|c| matches!(c as u32, 0x1f000..=0x1faff | 0x2600..=0x27ff))
-                {
-                    28
-                } else {
-                    14
-                };
-                (glyph, size)
-            })
-            .collect();
-        let word_width: usize = glyphs
-            .iter()
-            .filter(|(g, _)| !g.chars().all(char::is_whitespace))
-            .map(|(_, size)| size)
-            .sum();
-        if !line.trim().is_empty() && word_width <= 128 && width + word_width > 128 {
-            lines.push(line.trim_end().to_owned());
-            line.clear();
-            width = 0;
-        }
-        for (glyph, size) in glyphs {
-            if line.is_empty() && glyph.chars().all(char::is_whitespace) {
-                continue;
-            }
-            if width + size > 128 && !line.is_empty() {
-                lines.push(line.trim_end().to_owned());
-                line.clear();
-                width = 0;
-                if glyph.chars().all(char::is_whitespace) {
-                    continue;
-                }
-            }
-            line.push_str(glyph);
-            width += size;
-        }
-    }
-    if !line.is_empty() {
-        lines.push(line.trim_end().to_owned());
-    }
-    lines
-}
-
 fn render_diagram(
     nodes: &[(String, String)],
     edges: &[(usize, usize)],
@@ -192,7 +133,66 @@ fn render_diagram(
     groups: &[Vec<usize>],
     compact: bool,
 ) -> String {
-    let labels: Vec<_> = nodes.iter().map(|(_, label)| label_lines(label)).collect();
+    // Match the web renderer without splitting graphemes.
+    let labels: Vec<_> = nodes
+        .iter()
+        .map(|(_, label)| {
+            let mut lines = Vec::new();
+            let mut line = String::new();
+            let mut width = 0;
+            for word in label.split_inclusive(char::is_whitespace) {
+                let glyphs: Vec<_> = word
+                    .graphemes(true)
+                    .map(|glyph| {
+                        let size = if glyph.chars().all(char::is_whitespace) {
+                            5
+                        } else if matches!(glyph, "M" | "W" | "@" | "%" | "&" | "#") {
+                            14
+                        } else if glyph.is_ascii() {
+                            9
+                        } else if glyph
+                            .chars()
+                            .any(|c| matches!(c as u32, 0x1f000..=0x1faff | 0x2600..=0x27ff))
+                        {
+                            28
+                        } else {
+                            14
+                        };
+                        (glyph, size)
+                    })
+                    .collect();
+                let word_width: usize = glyphs
+                    .iter()
+                    .filter(|(g, _)| !g.chars().all(char::is_whitespace))
+                    .map(|(_, size)| size)
+                    .sum();
+                if !line.trim().is_empty() && word_width <= 128 && width + word_width > 128 {
+                    lines.push(line.trim_end().to_owned());
+                    line.clear();
+                    width = 0;
+                }
+                for (glyph, size) in glyphs {
+                    if line.is_empty() && glyph.chars().all(char::is_whitespace) {
+                        continue;
+                    }
+                    if width + size > 128 && !line.is_empty() {
+                        lines.push(line.trim_end().to_owned());
+                        line.clear();
+                        width = 0;
+                        if glyph.chars().all(char::is_whitespace) {
+                            continue;
+                        }
+                    }
+                    line.push_str(glyph);
+                    width += size;
+                }
+            }
+            if !line.is_empty() {
+                lines.push(line.trim_end().to_owned());
+            }
+            lines
+        })
+        .collect();
     let node_height = labels
         .iter()
         .map(|lines| lines.len() * 20 + 24)
@@ -394,28 +394,44 @@ mod tests {
     }
 
     #[test]
-    fn long_multilingual_labels_wrap_without_losing_text_or_graphemes() {
+    fn wrap_labels() {
         for label in [
             "测试体系：Unit / 接口与存储 / Playwright E2E",
             "Content services: permissions / versions / saving",
             "ローカルエディター：原稿と素材 👩‍💻",
             "SupercalifragilisticexpialidociousLongUnbrokenIdentifier",
         ] {
-            let lines = label_lines(label);
+            let html = render(&format!("flowchart LR\na[{label}] --> b[Reader]")).unwrap();
+            let text = html
+                .split("<text ")
+                .nth(1)
+                .unwrap()
+                .split("</text>")
+                .next()
+                .unwrap();
+            let lines: Vec<_> = text
+                .split("<tspan ")
+                .skip(1)
+                .map(|span| {
+                    span.split_once('>')
+                        .unwrap()
+                        .1
+                        .split("</tspan>")
+                        .next()
+                        .unwrap()
+                })
+                .collect();
             assert!(lines.len() > 1);
             assert_eq!(
                 lines.concat().split_whitespace().collect::<String>(),
                 label.split_whitespace().collect::<String>()
             );
-            let html = render(&format!("flowchart LR\na[{label}] --> b[Reader]")).unwrap();
+            if label.contains("👩‍💻") {
+                assert!(lines.iter().any(|line| line.contains("👩‍💻")));
+            }
             assert!(html.contains("<tspan"));
             assert!(!html.contains("NaN"));
         }
-        assert!(
-            label_lines("ローカルエディター：原稿と素材 👩‍💻")
-                .iter()
-                .any(|line| line.contains("👩‍💻"))
-        );
         let long = "中".repeat(45);
         let html = render(&format!("flowchart LR\na[{long}] --> b[Reader]")).unwrap();
         assert!(html.contains("height=\"124\""));

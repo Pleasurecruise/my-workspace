@@ -77,9 +77,9 @@ fn rich_roundtrip() {
 #[test]
 fn image_shortcodes_reach_all_markdown_entrypoints() {
     for compiled in [
-        super::render("Before :suzume5_01: after :baishengnv_117: :denghuoju8_16: :daimao2_20:"),
+        super::render("Before :suzume5_01: after :baishengnv_117: :suzume_思考: :suzume_期待:"),
         super::render_memo(
-            "Before :suzume5_01: after :baishengnv_117: :denghuoju8_16: :daimao2_20:",
+            "Before :suzume5_01: after :baishengnv_117: :suzume_思考: :suzume_期待:",
         ),
     ] {
         assert_eq!(compiled.matches("class=\"markdown-emoji\"").count(), 4);

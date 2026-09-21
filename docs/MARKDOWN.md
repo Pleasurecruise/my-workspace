@@ -167,8 +167,8 @@ examples never trigger enrichment and following live embeds still compile.
 
 ## Image shortcodes
 
-Use `:suzume5_01:`–`:suzume5_30:`, `:baishengnv_01:`–`:baishengnv_117:`,
-`:denghuoju8_01:`–`:denghuoju8_16:` or `:daimao2_01:`–`:daimao2_20:` in prose.
+Use named green-cat shortcodes such as `:suzume_思考:` and `:suzume_期待:`,
+`:suzume5_01:`–`:suzume5_30:`, or `:baishengnv_01:`–`:baishengnv_117:` in prose.
 Matching is case-sensitive. Unknown shortcodes remain literal. Code, links (including labels),
 image alt text, math and generated embeds are not expanded. The compiler never downloads images.
 
@@ -176,15 +176,11 @@ image alt text, math and generated embeds are not expanded. The compiler never d
 `packages/content/src/emoji-packs.json`. Each pack has an ASCII alphanumeric `key`, a `name`,
 `display` (`emoji` or `sticker`), and `items` with `name` and HTTPS image `value`.
 Names exclude whitespace and colons; duplicate shortcodes and credential-bearing URLs are invalid.
+Never reuse published names for different artwork.
 
-The owner selected [SuzumeS5](https://t.me/addstickers/SuzumeS5) (30 images via
-[Fullyst](https://fullyst.com/en/stickers/SuzumeS5)) and
-[白圣女](https://t.me/addstickers/Baishengnv) (117 images via
-[Stickers.wiki](https://stickers.wiki/telegram/baishengnv/)). Catalog order fixes numeric names;
-never renumber existing entries. Combot URLs provide compressed 128px previews, capped at 4rem to fit a 2x pixel budget.
-These are external image references, not bundled artwork or a
-license grant; availability and rights remain with the original providers/authors. No image files
-were copied. [Combot](https://combot.org/stickers/daimaoextended2) supplies 20 images for 呆猫八条集合包 #2
-and [16 for 灯火橘8](https://combot.org/stickers/in_AJEJDC_by_NaiDrawBot). These are the
-public mirror snapshots, not a guarantee of Telegram completeness; the 灯火橘8 snapshot dates
-to July 2024 and 呆猫 #2 to July 2026.
+The preferred `suzume` pack references 16 named 300×300 green-cat images from
+[Suzume’s public collection](https://szm.de5.net/posts/suzume5/), excluding its contact sheet.
+Existing SuzumeS5 and 白圣女 names retain their Fullyst and Stickers.wiki URLs.
+The low-resolution Combot packs (`daimao2`, `denghuoju8`) were removed at the owner's request;
+update their article shortcodes before deploying the removal. These are remote references, not
+bundled artwork or a license grant. Rights and availability remain with authors/providers.
