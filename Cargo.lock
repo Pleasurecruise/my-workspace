@@ -4272,6 +4272,7 @@ dependencies = [
  "serde_json",
  "svg-hush",
  "thiserror 2.0.20",
+ "unicode-segmentation",
  "url",
 ]
 

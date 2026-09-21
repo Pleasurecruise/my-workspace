@@ -144,6 +144,7 @@ or reproduce the web reader's measured arrow. Text remains readable without Java
 
 Architecture supports `flowchart LR`/`graph LR`, one two-endpoint edge per line, and optional
 `[labels]`. Structured engineering diagrams group nodes by dependency; siblings share a column.
+Labels wrap at words or grapheme boundaries; node heights and edge anchors grow with their lines.
 Containers at most 640px wide use a vertical layout with at most two nodes per row. Cycles and
 skipped layers route around nodes. Generated diagrams grow in height without the authored SVG
 height cap. The query measures the diagram container after alignment, so left/right/narrow diagrams
@@ -180,7 +181,8 @@ The owner selected [SuzumeS5](https://t.me/addstickers/SuzumeS5) (30 images via
 [Fullyst](https://fullyst.com/en/stickers/SuzumeS5)) and
 [白圣女](https://t.me/addstickers/Baishengnv) (117 images via
 [Stickers.wiki](https://stickers.wiki/telegram/baishengnv/)). Catalog order fixes numeric names;
-never renumber existing entries. These are external image references, not bundled artwork or a
+never renumber existing entries. Combot URLs provide compressed 128px previews, capped at 4rem to fit a 2x pixel budget.
+These are external image references, not bundled artwork or a
 license grant; availability and rights remain with the original providers/authors. No image files
 were copied. [Combot](https://combot.org/stickers/daimaoextended2) supplies 20 images for 呆猫八条集合包 #2
 and [16 for 灯火橘8](https://combot.org/stickers/in_AJEJDC_by_NaiDrawBot). These are the

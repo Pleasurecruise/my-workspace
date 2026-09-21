@@ -1,4 +1,5 @@
 use super::{EmbedError, canvas, escape_html};
+use unicode_segmentation::UnicodeSegmentation;
 
 pub(super) fn render(source: &str) -> Result<String, EmbedError> {
     let source = source.trim();
@@ -125,6 +126,65 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
     ))
 }
 
+// Match the web renderer's conservative 14px glyph budget without splitting
+// combining characters or emoji sequences. Prefer word boundaries when possible.
+fn label_lines(label: &str) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    let mut width = 0;
+    for word in label.split_inclusive(char::is_whitespace) {
+        let glyphs: Vec<_> = word
+            .graphemes(true)
+            .map(|glyph| {
+                let size = if glyph.chars().all(char::is_whitespace) {
+                    5
+                } else if matches!(glyph, "M" | "W" | "@" | "%" | "&" | "#") {
+                    14
+                } else if glyph.is_ascii() {
+                    9
+                } else if glyph
+                    .chars()
+                    .any(|c| matches!(c as u32, 0x1f000..=0x1faff | 0x2600..=0x27ff))
+                {
+                    28
+                } else {
+                    14
+                };
+                (glyph, size)
+            })
+            .collect();
+        let word_width: usize = glyphs
+            .iter()
+            .filter(|(g, _)| !g.chars().all(char::is_whitespace))
+            .map(|(_, size)| size)
+            .sum();
+        if !line.trim().is_empty() && word_width <= 128 && width + word_width > 128 {
+            lines.push(line.trim_end().to_owned());
+            line.clear();
+            width = 0;
+        }
+        for (glyph, size) in glyphs {
+            if line.is_empty() && glyph.chars().all(char::is_whitespace) {
+                continue;
+            }
+            if width + size > 128 && !line.is_empty() {
+                lines.push(line.trim_end().to_owned());
+                line.clear();
+                width = 0;
+                if glyph.chars().all(char::is_whitespace) {
+                    continue;
+                }
+            }
+            line.push_str(glyph);
+            width += size;
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line.trim_end().to_owned());
+    }
+    lines
+}
+
 fn render_diagram(
     nodes: &[(String, String)],
     edges: &[(usize, usize)],
@@ -132,6 +192,14 @@ fn render_diagram(
     groups: &[Vec<usize>],
     compact: bool,
 ) -> String {
+    let labels: Vec<_> = nodes.iter().map(|(_, label)| label_lines(label)).collect();
+    let node_height = labels
+        .iter()
+        .map(|lines| lines.len() * 20 + 24)
+        .max()
+        .unwrap_or(80)
+        .max(80);
+    let row_step = node_height + if compact { 40 } else { 32 };
     let mut positions = vec![(0, 0); nodes.len()];
     let (width, height) = if compact {
         let mut rows = 0;
@@ -142,11 +210,11 @@ fn render_diagram(
                 } else {
                     32 + column % 2 * 176
                 };
-                positions[index] = (x, 24 + (rows + column / 2) * 120);
+                positions[index] = (x, 24 + (rows + column / 2) * row_step);
             }
             rows += group.len().div_ceil(2);
         }
-        (400, rows * 120 + 8)
+        (400, rows * row_step + 8)
     } else {
         let rows = groups.iter().map(Vec::len).max().unwrap_or(1);
         let top = 24
@@ -159,11 +227,11 @@ fn render_diagram(
             for (row, &index) in group.iter().enumerate() {
                 positions[index] = (
                     24 + column * 224,
-                    top + (rows - group.len()) * 56 + row * 112,
+                    top + (rows - group.len()) * row_step / 2 + row * row_step,
                 );
             }
         }
-        (groups.len() * 224 + 8, top + rows * 112)
+        (groups.len() * 224 + 8, top + rows * row_step)
     };
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {width} {height}\" width=\"{width}\" height=\"{height}\" role=\"img\"><title>Architecture flow</title><desc>System boundaries grouped by dependency.</desc>"
@@ -174,7 +242,7 @@ fn render_diagram(
         let (end_x, end_y) = positions[to];
         let path = if compact {
             let x = x + 80;
-            let y = y + 80;
+            let y = y + node_height;
             let end_x = end_x + 80;
             let path = if end_y == y + 40 {
                 format!(
@@ -202,8 +270,8 @@ fn render_diagram(
             )
         } else {
             let x = x + 160;
-            let y = y + 40;
-            let end_y = end_y + 40;
+            let y = y + node_height / 2;
+            let end_y = end_y + node_height / 2;
             let path = if levels[to] == levels[from] + 1 {
                 format!(
                     "M{x} {y} C{} {y} {} {end_y} {end_x} {end_y}",
@@ -231,12 +299,21 @@ fn render_diagram(
         };
         svg.push_str(&format!("<path class=\"arr\" d=\"{path}\"/>"));
     }
-    for (index, (_, label)) in nodes.iter().enumerate() {
+    for (index, lines) in labels.iter().enumerate() {
         let (x, y) = positions[index];
         let color = [
             "c-teal", "c-purple", "c-coral", "c-blue", "c-green", "c-amber",
         ][levels[index] % 6];
-        svg.push_str(&format!("<g class=\"node {color}\"><rect x=\"{x}\" y=\"{y}\" width=\"160\" height=\"80\" rx=\"12\"/><text class=\"th\" x=\"{}\" y=\"{}\" text-anchor=\"middle\">{}</text></g>", x + 80, y + 45, escape_html(label)));
+        svg.push_str(&format!("<g class=\"node {color}\"><rect x=\"{x}\" y=\"{y}\" width=\"160\" height=\"{node_height}\" rx=\"12\"/><text class=\"th\" text-anchor=\"middle\">"));
+        for (line, label) in lines.iter().enumerate() {
+            let baseline = y + (node_height - lines.len() * 20) / 2 + 15 + line * 20;
+            svg.push_str(&format!(
+                "<tspan x=\"{}\" y=\"{baseline}\">{}</tspan>",
+                x + 80,
+                escape_html(label)
+            ));
+        }
+        svg.push_str("</text></g>");
     }
     svg.push_str("</svg>");
     svg
@@ -290,13 +367,14 @@ mod tests {
             "Browser",
             "Vesper CLI",
             "Article API",
-            "Validate and save",
+            "Validate and",
+            "save",
             "Metadata",
             "Markdown",
             "Cache",
             "Index",
         ] {
-            assert_eq!(html.matches(&format!(">{label}</text>")).count(), 2);
+            assert_eq!(html.matches(&format!(">{label}</tspan>")).count(), 2);
         }
     }
 
@@ -313,6 +391,38 @@ mod tests {
             assert!(!html.contains("NaN"));
             assert!(!html.contains("inf"));
         }
+    }
+
+    #[test]
+    fn long_multilingual_labels_wrap_without_losing_text_or_graphemes() {
+        for label in [
+            "测试体系：Unit / 接口与存储 / Playwright E2E",
+            "Content services: permissions / versions / saving",
+            "ローカルエディター：原稿と素材 👩‍💻",
+            "SupercalifragilisticexpialidociousLongUnbrokenIdentifier",
+        ] {
+            let lines = label_lines(label);
+            assert!(lines.len() > 1);
+            assert_eq!(
+                lines.concat().split_whitespace().collect::<String>(),
+                label.split_whitespace().collect::<String>()
+            );
+            let html = render(&format!("flowchart LR\na[{label}] --> b[Reader]")).unwrap();
+            assert!(html.contains("<tspan"));
+            assert!(!html.contains("NaN"));
+        }
+        assert!(
+            label_lines("ローカルエディター：原稿と素材 👩‍💻")
+                .iter()
+                .any(|line| line.contains("👩‍💻"))
+        );
+        let long = "中".repeat(45);
+        let html = render(&format!("flowchart LR\na[{long}] --> b[Reader]")).unwrap();
+        assert!(html.contains("height=\"124\""));
+        assert!(html.contains("viewBox=\"0 0 400 336\""));
+        let escaped = render("flowchart LR\na[<script>] --> b[Reader]").unwrap();
+        assert!(!escaped.contains("<script>"));
+        assert!(escaped.contains("&lt;script&gt;"));
     }
 
     #[test]

@@ -187,7 +187,7 @@ Cancel discards it. Changing the select alone never writes to the server.
 ## Markdown presentation
 
 Shortcode images align with text: emoji occupy 2rem squares and stickers retain their aspect ratio
-within 6rem. They load lazily with descriptive alt text and without referrers.
+within 6rem; Combot’s 128px previews are capped at 4rem. They load lazily with descriptive alt text and without referrers.
 
 Compiled embeds use restrained paper, outlines, shadows and accents. Alignment applies to individual
 cards or whole article lists: left/right cap width at 32rem and align to that edge, narrow centers
@@ -202,7 +202,7 @@ Audio and video use responsive native controls, optional captions and video post
 autoplay. Videos without a poster request an opening-frame preview; playback starts with Play.
 
 Architecture and storyboard canvases remain transparent and frame-free. Structured engineering
-diagrams group parallel nodes into dependency columns. At most 640px of actual diagram width,
+diagrams wrap labels and grow nodes and edge anchors with the text, then group parallel nodes into dependency columns. At most 640px of actual diagram width,
 including narrow alignment, selects a vertical layout with at most two nodes per row. Generated
 engineering diagrams have no maximum height. Authored SVG retains its geometry and a 42rem display
 height cap. Syntax and compiler rules belong to [Markdown](MARKDOWN.md).

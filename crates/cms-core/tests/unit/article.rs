@@ -76,7 +76,7 @@ fn upgrades_structured_diagrams_to_svg_canvases() {
 
     assert!(html.contains("svg-canvas-architecture content-embed-wide"));
     assert!(html.contains("class=\"node c-teal\""));
-    assert!(html.contains(">Client</text>"));
+    assert!(html.contains(">Client</tspan>"));
     assert!(html.contains("svg-canvas-storyboard content-embed-wide"));
     assert!(html.contains("class=\"sketch-shadow\""));
     assert!(html.contains("class=\"arrow-shadow\""));
