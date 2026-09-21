@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 futures-util.workspace = true
 pulldown-cmark.workspace = true
 quotes.workspace = true
@@ -12,6 +15,3 @@ url.workspace = true
 percent-encoding.workspace = true
 svg-hush.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
-serde_json.workspace = true

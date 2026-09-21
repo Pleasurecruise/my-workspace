@@ -190,6 +190,11 @@ Both require a desktop session and use synthetic inputs without credentials or g
 Apply the independent [review process](STYLEGUIDE.md#review) to non-trivial behavior and boundaries.
 Handoff records commands actually run, before/after evidence, unresolved cases, and untested environments.
 
+The Knowledge consumer fixture is captured from the generated local Worker using
+`KNOWLEDGE_CONTRACT_OUTPUT` during its REST/MCP contract journey. Store only synthetic responses in
+`crates/consumers/tests/fixtures/knowledge-contract.json`; `cargo test -p consumers
+consumes_current_rest_and_mcp_responses` checks deserialization and desktop projection without credentials.
+
 ## Documentation synchronization
 
 Keep each fact in its owning document: [Architecture](ARCHITECTURE.md) for boundaries,

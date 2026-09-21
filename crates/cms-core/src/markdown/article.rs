@@ -99,7 +99,7 @@ fn render_publication_with(source: &str, data: &EmbedData) -> Result<String, Pub
     }
 
     let mut output = String::new();
-    html::push_html(&mut output, events.into_iter());
+    html::push_html(&mut output, md_dialect::render_emojis(events).into_iter());
     add_embed_styles(&mut output);
     Ok(output)
 }
@@ -235,7 +235,7 @@ fn compile_knowledge_events(events: Vec<Event<'_>>, stats: ReadingStats) -> Comp
         event => event,
     });
     let mut html = String::new();
-    html::push_html(&mut html, events);
+    html::push_html(&mut html, md_dialect::render_emojis(events).into_iter());
     add_embed_styles(&mut html);
     let excerpt = excerpt
         .split_whitespace()

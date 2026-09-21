@@ -1,7 +1,9 @@
-//! Project-specific Markdown fences: validation, provider data, and rendered embeds.
+//! Project-specific Markdown fences and inline image shortcodes.
 //! The calling Markdown compiler owns document parsing, HTML assembly, and metadata.
 
 mod embed;
+mod emoji;
+pub use emoji::render_emojis;
 mod source;
 pub use source::normalize_embed_examples;
 

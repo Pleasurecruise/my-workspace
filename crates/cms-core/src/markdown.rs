@@ -27,7 +27,7 @@ pub fn equivalent(source: &str, candidate: &str) -> bool {
 pub fn render(source: &str) -> String {
     let parser = Parser::new_ext(source, options()).map(|event| normalize(event, false));
     let mut output = String::new();
-    html::push_html(&mut output, parser);
+    html::push_html(&mut output, md_dialect::render_emojis(parser).into_iter());
     output
 }
 
@@ -54,7 +54,7 @@ pub fn render_memo(source: &str) -> String {
         }
     }
     let mut output = String::new();
-    html::push_html(&mut output, events.into_iter());
+    html::push_html(&mut output, md_dialect::render_emojis(events).into_iter());
     output
 }
 

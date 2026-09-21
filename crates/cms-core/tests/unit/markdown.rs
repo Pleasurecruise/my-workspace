@@ -73,3 +73,17 @@ fn rich_roundtrip() {
         assert!(!equivalent(source, candidate), "{source}");
     }
 }
+
+#[test]
+fn image_shortcodes_reach_all_markdown_entrypoints() {
+    for compiled in [
+        super::render("Before :suzume5_01: after :baishengnv_117: :denghuoju8_16: :daimao2_20:"),
+        super::render_memo(
+            "Before :suzume5_01: after :baishengnv_117: :denghuoju8_16: :daimao2_20:",
+        ),
+    ] {
+        assert_eq!(compiled.matches("class=\"markdown-emoji\"").count(), 4);
+        assert!(compiled.contains("Before "));
+        assert!(compiled.contains(" after "));
+    }
+}

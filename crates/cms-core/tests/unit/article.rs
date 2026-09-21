@@ -422,3 +422,17 @@ async fn bare_embed_examples_do_not_swallow_following_live_blocks() {
         .is_empty()
     );
 }
+
+#[test]
+fn image_shortcodes_render_in_articles_and_publication() {
+    let source = "## Heading :suzume5_01:\n\n:baishengnv_117: `:suzume5_01:` $:suzume5_01:$";
+    let plain = compile_knowledge_plain(source);
+    let enriched = compile_knowledge(source).unwrap();
+    for article in [&plain, &enriched] {
+        assert_eq!(article.html.matches("class=\"markdown-emoji\"").count(), 2);
+        assert!(article.html.contains("<code>:suzume5_01:</code>"));
+        assert_eq!(article.toc[0].text, "Heading :suzume5_01:");
+    }
+    let publication = render_publication(":suzume5_01: `:suzume5_01:`").unwrap();
+    assert_eq!(publication.matches("class=\"markdown-emoji\"").count(), 1);
+}

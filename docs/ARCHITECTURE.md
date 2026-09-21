@@ -102,7 +102,8 @@ The updater verifies signed artifacts before installation; setup belongs in
 
 `cms-core::markdown` owns document and Memo compilation. `md-dialect` validates and renders custom
 `embed:*` fences, lays out structured diagrams, and normalizes source examples consistently for
-provider discovery and compilation. Annotation, quote and diff rendering require no provider reads.
+provider discovery and compilation. Annotation, quote and diff rendering require no provider reads. Inline image shortcodes use a bundled
+`md-dialect` catalog and transform prose events before HTML assembly; compilation performs no image reads.
 Article cards use host-provided index metadata; `quotes` supplies GitHub, stock and generic website
 preview data for other embeds. [Markdown](MARKDOWN.md) owns syntax and rendering safety;
 [Workflow](WORKFLOW.md) owns operations and recovery.

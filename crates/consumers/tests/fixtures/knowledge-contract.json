@@ -1,0 +1,93 @@
+{
+  "list": {
+    "articles": [
+      {
+        "id": "69debffa-174f-463d-843b-0855cff9d8b2",
+        "editions": {
+          "zh": {
+            "title": "Contract article",
+            "summary": "REST and MCP parity"
+          }
+        },
+        "tags": ["daily/contract"],
+        "visibility": "private",
+        "contentHash": "4ad481cf0336bf49c4555d9ec090f35fa6230b44c3431a5437a4fe65c8d43169",
+        "createdAt": "2026-09-21T10:25:04.755Z",
+        "updatedAt": "2026-09-21T10:25:04.801Z"
+      }
+    ]
+  },
+  "created": {
+    "article": {
+      "id": "69debffa-174f-463d-843b-0855cff9d8b2",
+      "editions": {
+        "zh": {
+          "title": "Contract article",
+          "summary": "REST and MCP parity",
+          "markdown": "---\ntitle: Contract article\nsummary: REST and MCP parity\ntags:\n  - daily/contract\n---\nHello :suzume5_01:.\n"
+        },
+        "en": {
+          "title": "Contract translation",
+          "summary": "Current English edition",
+          "markdown": "---\ntitle: Contract translation\nsummary: Current English edition\ntags:\n  - daily/contract\n---\nHello.\n"
+        }
+      },
+      "tags": ["daily/contract"],
+      "visibility": "public",
+      "contentHash": "173f426ae15696a2c1d1a3d4552af12b6829b7a4027e5ce6bbf5809f75c2addc",
+      "createdAt": "2026-09-21T10:25:04.755Z",
+      "updatedAt": "2026-09-21T10:25:04.755Z"
+    }
+  },
+  "detail": {
+    "article": {
+      "id": "69debffa-174f-463d-843b-0855cff9d8b2",
+      "editions": {
+        "zh": {
+          "title": "Contract article",
+          "summary": "REST and MCP parity",
+          "markdown": "---\ntitle: Contract article\nsummary: REST and MCP parity\ntags:\n  - daily/contract\n---\nUpdated :suzume5_01:.\n"
+        }
+      },
+      "tags": ["daily/contract"],
+      "visibility": "public",
+      "contentHash": "4ad481cf0336bf49c4555d9ec090f35fa6230b44c3431a5437a4fe65c8d43169",
+      "createdAt": "2026-09-21T10:25:04.755Z",
+      "updatedAt": "2026-09-21T10:25:04.785Z"
+    }
+  },
+  "visibility": {
+    "article": {
+      "id": "69debffa-174f-463d-843b-0855cff9d8b2",
+      "editions": {
+        "zh": {
+          "title": "Contract article",
+          "summary": "REST and MCP parity"
+        }
+      },
+      "tags": ["daily/contract"],
+      "visibility": "private",
+      "contentHash": "4ad481cf0336bf49c4555d9ec090f35fa6230b44c3431a5437a4fe65c8d43169",
+      "createdAt": "2026-09-21T10:25:04.755Z",
+      "updatedAt": "2026-09-21T10:25:04.801Z"
+    }
+  },
+  "search": {
+    "articles": [
+      {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "editions": {
+          "zh": {
+            "title": "私密删除夹具",
+            "summary": "只允许所有者读取并通过浏览器删除的测试文章。"
+          }
+        },
+        "tags": ["testing/privacy"],
+        "visibility": "private",
+        "contentHash": "24127f5139323ac615200058d1cc566fcc55d7fbd37563f93aa153992d3e3725",
+        "createdAt": "2026-08-16T09:00:00.000Z",
+        "updatedAt": "2026-08-16T09:00:00.000Z"
+      }
+    ]
+  }
+}

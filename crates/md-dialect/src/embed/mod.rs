@@ -305,7 +305,7 @@ fn unquote(value: &str) -> &str {
     }
 }
 
-fn escape_html(value: &str) -> String {
+pub(crate) fn escape_html(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")

@@ -186,6 +186,9 @@ Cancel discards it. Changing the select alone never writes to the server.
 
 ## Markdown presentation
 
+Shortcode images align with text: emoji occupy 2rem squares and stickers retain their aspect ratio
+within 6rem. They load lazily with descriptive alt text and without referrers.
+
 Compiled embeds use restrained paper, outlines, shadows and accents. Alignment applies to individual
 cards or whole article lists: left/right cap width at 32rem and align to that edge, narrow centers
 the same bounded width, and wide fills the available container subject to type-specific caps.

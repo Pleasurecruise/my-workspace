@@ -799,6 +799,45 @@ async fn mutation_error(mut response: reqwest::Response, operation: &'static str
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn consumes_current_rest_and_mcp_responses() {
+        #[derive(Deserialize)]
+        struct Responses {
+            list: ArticlePage,
+            created: ArticleResponse<Article>,
+            detail: ArticleResponse<Article>,
+            visibility: ArticleResponse<Summary>,
+            search: ArticlePage,
+        }
+        // Captured from the local generated Knowledge Worker, never production data.
+        let source = include_str!("../../tests/fixtures/knowledge-contract.json");
+        let responses: Responses = serde_json::from_str(source).unwrap();
+        assert!(responses.list.cursor.is_none());
+        assert_eq!(responses.list.articles.len(), 1);
+        let summary = responses.list.articles.into_iter().next().unwrap();
+        let visible = responses.visibility.article;
+        assert_eq!(
+            serde_json::to_value(&summary).unwrap(),
+            serde_json::to_value(&visible).unwrap()
+        );
+        let entry = project_summary(summary).unwrap();
+        assert_eq!(entry.id, responses.detail.article.id);
+        assert_eq!(entry.title, "Contract article");
+        assert!(matches!(entry.visibility, Visibility::Private));
+        assert_eq!(entry.content_hash, responses.detail.article.content_hash);
+        assert_ne!(entry.updated_at, responses.detail.article.updated_at);
+        assert!(responses.created.article.editions.contains_key("en"));
+        assert_eq!(responses.detail.article.editions.len(), 1);
+        let document = project_article(responses.detail.article).await.unwrap();
+        assert!(document.source.contains(":suzume5_01:"));
+        assert!(document.html.contains("markdown-emoji"));
+        assert_eq!(responses.search.articles.len(), 1);
+        let search =
+            project_summary(responses.search.articles.into_iter().next().unwrap()).unwrap();
+        assert!(matches!(search.visibility, Visibility::Private));
+        assert_eq!(search.tags, ["testing/privacy"]);
+    }
+
     #[test]
     fn mutations_require_and_preserve_both_version_fields() {
         let version = serde_json::json!({

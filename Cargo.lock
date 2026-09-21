@@ -4267,6 +4267,8 @@ dependencies = [
  "percent-encoding",
  "pulldown-cmark",
  "quotes",
+ "regex",
+ "serde",
  "serde_json",
  "svg-hush",
  "thiserror 2.0.20",

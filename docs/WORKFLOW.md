@@ -82,7 +82,11 @@ vesper knowledge delete <id> <expected-hash> <expected-updated-at>
 `{ articles, cursor }` without bodies. `list` returns `{ documents, cursor }` summary projections.
 Use `get` for source, `contentHash`, and `updatedAt` before editing; it accepts a UUID or canonical
 UUID article URL. Writes use the returned UUID, never a URL or title. `update-draft` and `visibility`
-also accept JSON payloads. New articles start public on the Knowledge server. Shared Markdown syntax belongs to [Markdown](MARKDOWN.md).
+also accept JSON payloads. REST detail/create/content updates wrap an article in `{ article }`;
+visibility wraps a body-free summary. Summaries carry `editions.zh.title` and `summary`, tags,
+visibility, hash and timestamps; details add Markdown and current translations. REST omits a terminal
+cursor; Rust exposes it as `null`. MCP keyword search uses `{ articles }` with the same summaries,
+without scores or excerpts. New articles start public on the Knowledge server. Shared Markdown syntax belongs to [Markdown](MARKDOWN.md).
 
 ## Moment
 
