@@ -31,9 +31,9 @@ const DATA_CONCURRENCY: usize = 4;
 /// Resolved provider snapshots used by embed rendering. Fields remain provider-owned.
 #[derive(Default)]
 pub struct Data {
-    repositories: HashMap<String, quotes::github::RepositorySnapshot>,
-    links: HashMap<String, quotes::opengraph::Metadata>,
-    stocks: HashMap<String, quotes::stocks::StockSeries>,
+    repositories: HashMap<String, ::github::RepositorySnapshot>,
+    links: HashMap<String, link_preview::LinkMetadata>,
+    stocks: HashMap<String, market_data::stocks::StockSeries>,
     pub articles: HashMap<String, ArticleMetadata>,
 }
 
@@ -201,7 +201,7 @@ pub async fn load_with_articles(
         ..Data::default()
     };
     let repository_data = stream::iter(repositories.into_iter().map(|repo| async move {
-        let snapshot = quotes::github::read_repository(&repo).await?;
+        let snapshot = ::github::read_repository(&repo).await?;
         Ok::<_, String>((repo, snapshot))
     }))
     .buffer_unordered(DATA_CONCURRENCY)
@@ -212,7 +212,7 @@ pub async fn load_with_articles(
         data.repositories.insert(repo, snapshot);
     }
     data.links = stream::iter(links.into_iter().map(|url| async move {
-        let metadata = quotes::opengraph::read(&url).await?;
+        let metadata = link_preview::read(&url).await?;
         Ok::<_, String>((url, metadata))
     }))
     .buffer_unordered(DATA_CONCURRENCY)
@@ -220,7 +220,7 @@ pub async fn load_with_articles(
     .await
     .map_err(EmbedError::Data)?;
     if !stocks.is_empty() {
-        let report = quotes::stocks::read(stocks.into_iter().collect())
+        let report = market_data::stocks::read(stocks.into_iter().collect())
             .await
             .map_err(EmbedError::Data)?;
         if let Some(failure) = report.failures.into_iter().next() {

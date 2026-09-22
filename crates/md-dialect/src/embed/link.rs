@@ -6,7 +6,7 @@ pub(super) fn parse<'a>(
 ) -> Result<(&'a str, &'a str), EmbedError> {
     reject_unknown("embed:link", &fields, &["url", "align"])?;
     let url = required(&mut fields, "link", "url")?;
-    quotes::opengraph::validate_url(url).map_err(EmbedError::Data)?;
+    link_preview::validate_url(url).map_err(EmbedError::Data)?;
     let align = fields.remove("align").unwrap_or("wide");
     if !matches!(align, "left" | "right" | "wide" | "narrow") {
         return Err(EmbedError::InvalidAlignment(align.to_owned()));

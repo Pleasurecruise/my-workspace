@@ -1,7 +1,7 @@
 #[tauri::command]
-pub(crate) fn read_service_status_catalog()
--> crate::CommandResponse<Vec<quotes::status::ServiceCatalogEntry>> {
+pub(crate) fn read_service_catalog()
+-> crate::CommandResponse<Vec<service_status::ServiceCatalogEntry>> {
     crate::CommandResponse::Ready {
-        data: quotes::status::catalog(),
+        data: service_status::read_catalog(),
     }
 }

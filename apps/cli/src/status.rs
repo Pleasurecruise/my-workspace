@@ -24,24 +24,26 @@ pub(super) async fn run(sources: &[String]) -> Result<(), String> {
     if let [source, arguments @ ..] = sources {
         match (source.as_str(), arguments) {
             ("weather", queries) => {
-                return super::print_json(&quotes::weather::read(queries.to_vec()).await?);
+                return super::print_json(&weather::read(queries.to_vec()).await?);
             }
             ("astronomy", queries) => {
-                return super::print_json(&quotes::astronomy::read(queries.to_vec()).await?);
+                return super::print_json(&weather::astronomy::read(queries.to_vec()).await?);
             }
             ("stocks", symbols) if !symbols.is_empty() => {
-                return super::print_json(&quotes::stocks::read(symbols.to_vec()).await?);
+                return super::print_json(&market_data::stocks::read(symbols.to_vec()).await?);
             }
             ("services", ids) => {
-                return super::print_json(&quotes::status::read(ids.to_vec()).await?);
+                return super::print_json(&service_status::read(ids.to_vec()).await?);
             }
-            ("service-catalog", []) => return super::print_json(&quotes::status::catalog()),
-            ("exchange", []) => return super::print_json(&quotes::exchange::read().await?),
-            ("github", []) => return super::print_json(&quotes::github::read().await?),
+            ("service-catalog", []) => return super::print_json(&service_status::read_catalog()),
+            ("exchange", []) => return super::print_json(&market_data::exchange::read().await?),
+            ("github", []) => return super::print_json(&github::read().await?),
             ("github", [repository]) => {
-                return super::print_json(&quotes::github::read_repository(repository).await?);
+                return super::print_json(&github::read_repository(repository).await?);
             }
-            ("quotation", []) => return super::print_json(&quotes::quotations::read().await?),
+            ("quotation", []) => {
+                return super::print_json(&quotes::read().await?);
+            }
             _ => {}
         }
     }

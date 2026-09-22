@@ -8,7 +8,7 @@ use tokio::task::JoinSet;
 use tokio::time::{Instant, interval_at};
 
 use crate::{CommandResponse, telemetry, widgets};
-use quotes::{exchange, github, quotations, status, stocks, weather};
+use market_data::{exchange, stocks};
 
 const EVENT: &str = "dashboard-source-updated";
 const SOURCE_COUNT: usize = 18;
@@ -76,9 +76,9 @@ enum DashboardEvent {
     Weather(Box<CommandResponse<weather::WeatherReport>>),
     Stocks(Box<CommandResponse<stocks::StockReport>>),
     Exchange(Box<CommandResponse<Option<exchange::ExchangeReport>>>),
-    ServiceStatus(Box<CommandResponse<status::ServiceStatusReport>>),
+    ServiceStatus(Box<CommandResponse<service_status::ServiceStatusReport>>),
     Github(CommandResponse<Option<github::GithubSnapshot>>),
-    Quotation(CommandResponse<Option<quotations::Quotation>>),
+    Quotation(CommandResponse<Option<quotes::Quotation>>),
     Games(CommandResponse<()>),
 }
 
@@ -209,8 +209,8 @@ impl DashboardEvent {
                 },
                 Err(message) => Self::Exchange(Box::new(CommandResponse::Failed { message })),
             },
-            Source::ServiceStatus => match widgets::service_status_ids(app) {
-                Ok(service_ids) => match status::read(service_ids).await {
+            Source::ServiceStatus => match widgets::service_ids(app) {
+                Ok(service_ids) => match service_status::read(service_ids).await {
                     Ok(data) => Self::ServiceStatus(Box::new(CommandResponse::Ready { data })),
                     Err(message) => {
                         tracing::warn!(error = %message, "failed to load service status");
@@ -228,7 +228,7 @@ impl DashboardEvent {
             ),
             Source::Quotation => match widgets::has_quotation(app) {
                 Ok(false) => Self::Quotation(CommandResponse::Ready { data: None }),
-                Ok(true) => match quotations::read().await {
+                Ok(true) => match quotes::read().await {
                     Ok(data) => Self::Quotation(CommandResponse::Ready { data: Some(data) }),
                     Err(message) => {
                         tracing::warn!(error = %message, "failed to load random quotation");

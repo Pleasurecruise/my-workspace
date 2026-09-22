@@ -1,6 +1,9 @@
+use std::error::Error;
+
 use cms::CmsState;
 use tauri::http::{Response, StatusCode, header};
 use tauri::{Emitter, Manager};
+use tracing_subscriber::EnvFilter;
 
 mod cms;
 mod configuration;
@@ -33,10 +36,10 @@ pub fn run() {
     if let Err(error) = vesper_credentials::load_dev_environment() {
         panic!("failed to load development credentials: {error}");
     }
-    if let Err(error) = my_workspace_logger::init() {
+    if let Err(error) = init_logging() {
         panic!("failed to initialize logging: {error}");
     }
-    my_workspace_logger::info!("starting desktop application");
+    tracing::info!("starting desktop application");
 
     let result = tauri::Builder::default()
         .register_asynchronous_uri_scheme_protocol("vesper-asset", |context, request, responder| {
@@ -266,7 +269,7 @@ pub fn run() {
             island::island_available,
             island::set_island_expanded,
             dashboard::set_dashboard_active,
-            status::read_service_status_catalog,
+            status::read_service_catalog,
             storage::open_storage_settings,
             widgets::read_layout,
             widgets::reset_layout,
@@ -345,4 +348,19 @@ pub fn run() {
             runtime.suspend();
         }
     });
+}
+
+fn init_logging() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let filter = match std::env::var("RUST_LOG") {
+        Ok(value) => EnvFilter::try_new(value)?,
+        Err(std::env::VarError::NotPresent) => EnvFilter::new("info"),
+        Err(error) => return Err(Box::new(error)),
+    };
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .try_init()?;
+
+    Ok(())
 }

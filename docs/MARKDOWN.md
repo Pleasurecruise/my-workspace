@@ -40,9 +40,9 @@ that edge; `narrow` centers the same width. Alignment never changes authorizatio
 | `embed:stock`  | `code: AAPL`               | Stock price series  |
 | `embed:link`   | `url: https://example.com` | Website preview     |
 
-The shared `quotes` providers resolve these cards during compilation. Author text fields as plain
-text; provider data never rewrites the stored Markdown. An enrichment failure invokes the host's
-fallback policy described above.
+The `github`, `market-data`, and `link-preview` crates resolve these cards during compilation.
+Author text fields as plain text; provider data never rewrites the stored Markdown. An enrichment
+failure invokes the host's fallback policy described above.
 
 ## Article cards
 

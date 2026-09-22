@@ -7,15 +7,19 @@ members = [
   "crates/credentials",
   "crates/database",
   "crates/games",
-  "crates/logger",
+  "crates/github",
   "crates/ledger",
+  "crates/link-preview",
+  "crates/market-data",
   "crates/md-dialect",
   "crates/music",
   "crates/quotes",
+  "crates/service-status",
   "crates/social",
   "crates/todo",
   "crates/ugos",
   "crates/useage",
+  "crates/weather",
 ]
 resolver = "3"
 
@@ -71,7 +75,11 @@ kamadak-exif = "0.6.1"
 keyring = "4.2.0"
 linkify = "0.11"
 mermaid-svg = "0.7.0"
-my-workspace-logger = { path = "crates/logger" }
+github = { path = "crates/github" }
+link-preview = { path = "crates/link-preview" }
+market-data = { path = "crates/market-data" }
+service-status = { path = "crates/service-status" }
+weather = { path = "crates/weather" }
 pulldown-cmark = "0.13.4"
 rand = "0.9"
 rodio = "0.21"
@@ -124,6 +132,7 @@ tokio = { version = "1", features = [
   "time",
 ] }
 tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 ugos = { path = "crates/ugos" }
 vesper-credentials = { path = "crates/credentials" }
 time = { version = "0.3", features = ["formatting", "local-offset", "macros", "parsing"] }

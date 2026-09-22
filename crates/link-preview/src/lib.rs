@@ -4,7 +4,7 @@ use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
 
 const MAX_HTML_BYTES: usize = 1024 * 1024;
 
-pub struct Metadata {
+pub struct LinkMetadata {
     pub url: String,
     pub title: String,
     pub description: String,
@@ -75,7 +75,7 @@ impl dns::Resolve for PublicDns {
     }
 }
 
-pub async fn read(value: &str) -> Result<Metadata, String> {
+pub async fn read(value: &str) -> Result<LinkMetadata, String> {
     let url = validate_url(value)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
@@ -132,7 +132,7 @@ pub async fn read(value: &str) -> Result<Metadata, String> {
     Ok(parse(&String::from_utf8_lossy(&body), response.url()))
 }
 
-fn parse(html: &str, url: &Url) -> Metadata {
+fn parse(html: &str, url: &Url) -> LinkMetadata {
     let document = Document::from(html);
     let mut tags = HashMap::new();
     for meta in document.select("head meta").iter() {
@@ -160,7 +160,7 @@ fn parse(html: &str, url: &Url) -> Metadata {
         .and_then(|value| url.join(&value).ok())
         .filter(|url| validate_url(url.as_str()).is_ok())
         .map(String::from);
-    Metadata {
+    LinkMetadata {
         url: url.to_string(),
         title: if title.is_empty() {
             url.host_str().unwrap_or_default().to_owned()

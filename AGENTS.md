@@ -23,10 +23,14 @@
 - `crates/useage`: AI subscription and credit reads; CherryIN may refresh its existing OAuth session.
   The spelling is intentional.
 - `crates/ledger`: local GBP expense storage, validation, and monthly category/day statistics.
-- `crates/logger`: shared `tracing` initialization.
+- `crates/github`: GitHub CLI dashboard and repository reads.
+- `crates/link-preview`: SSRF-safe public link metadata reads.
+- `crates/market-data`: ECB exchange and Yahoo stock reads.
 - `crates/music`: Spotify and QQ Music authentication, collections, playback, album art, and lyrics.
 - `crates/games`: Game account authorization, daily notes, Steam activity, and local pull archives.
-- `crates/quotes`: Shared astronomy, exchange, GitHub, quotation, stock, weather, and status read providers.
+- `crates/quotes`: Random quotation reads.
+- `crates/service-status`: Statuspage service catalog and health reads.
+- `crates/weather`: Open-Meteo weather, astronomy, and geocoding reads.
 - `crates/md-dialect`: Publication and Knowledge Markdown dialect compilation.
 - `packages/ui`: reusable Svelte components and design tokens.
 - `packages/tsconfig`: UI-only TypeScript configuration.

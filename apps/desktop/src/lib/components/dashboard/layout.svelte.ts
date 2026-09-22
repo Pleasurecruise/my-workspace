@@ -68,7 +68,7 @@ export function createLayoutSession() {
 			islandAvailable = available === true;
 		});
 		void load();
-		void invoke<CommandResponse<ServiceStatusCatalogEntry[]>>("read_service_status_catalog").then(
+		void invoke<CommandResponse<ServiceStatusCatalogEntry[]>>("read_service_catalog").then(
 			(response) => {
 				if (disposed) return;
 				if (response.status === "ready") serviceCatalog = response.data;

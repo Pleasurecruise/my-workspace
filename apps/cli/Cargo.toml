@@ -10,13 +10,16 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+github.workspace = true
+market-data.workspace = true
 quotes.workspace = true
+service-status.workspace = true
+tracing-subscriber.workspace = true
 games.workspace = true
 ledger.workspace = true
 vesper-database.workspace = true
 cms-core.workspace = true
 consumers.workspace = true
-my-workspace-logger.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["io-std"] }
@@ -25,6 +28,7 @@ todo-core.workspace = true
 ugos.workspace = true
 useage.workspace = true
 vesper-credentials.workspace = true
+weather.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

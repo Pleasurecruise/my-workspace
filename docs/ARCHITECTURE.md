@@ -6,26 +6,30 @@ stores artifacts. This repository does not host a cloud application backend.
 
 ## Repository layout
 
-| Path                 | Responsibility                                                            |
-| -------------------- | ------------------------------------------------------------------------- |
-| `apps/desktop`       | Tauri v2 shell, Svelte 5 views and Rust command adapters                  |
-| `apps/cli`           | The `vesper` command-line interface                                       |
-| `crates/cms-core`    | Markdown compilation, content builds, publication and R2                  |
-| `crates/consumers`   | Memo, Moment and Knowledge APIs and projections                           |
-| `crates/database`    | Shared Diesel/SQLite connection and schema                                |
-| `crates/credentials` | Typed validation and build-specific credential storage                    |
-| `crates/social`      | Telegram Channel and X publication                                        |
-| `crates/todo`        | Tasks, habits, ICS, Notion and Codex Resets calendar sources              |
-| `crates/ledger`      | Local GBP expenses and monthly statistics                                 |
-| `crates/md-dialect`  | Custom publication and Knowledge Markdown fences                          |
-| `crates/music`       | Spotify and QQ Music authentication, library and playback                 |
-| `crates/games`       | Game accounts, daily notes, Steam and pull archives                       |
-| `crates/quotes`      | Shared read-only astronomy, finance, GitHub, weather and status providers |
-| `crates/ugos`        | Read-only UGOS Pro authentication and telemetry                           |
-| `crates/useage`      | AI subscriptions and account credits; the spelling is intentional         |
-| `crates/logger`      | Shared tracing initialization                                             |
-| `packages/ui`        | Self-owned Svelte primitives and semantic design tokens                   |
-| `packages/tsconfig`  | Shared UI TypeScript configuration                                        |
+| Path                    | Responsibility                                                    |
+| ----------------------- | ----------------------------------------------------------------- |
+| `apps/desktop`          | Tauri v2 shell, Svelte 5 views and Rust command adapters          |
+| `apps/cli`              | The `vesper` command-line interface                               |
+| `crates/cms-core`       | Markdown compilation, content builds, publication and R2          |
+| `crates/consumers`      | Memo, Moment and Knowledge APIs and projections                   |
+| `crates/database`       | Shared Diesel/SQLite connection and schema                        |
+| `crates/credentials`    | Typed validation and build-specific credential storage            |
+| `crates/social`         | Telegram Channel and X publication                                |
+| `crates/todo`           | Tasks, habits, ICS, Notion and Codex Resets calendar sources      |
+| `crates/ledger`         | Local GBP expenses and monthly statistics                         |
+| `crates/md-dialect`     | Custom publication and Knowledge Markdown fences                  |
+| `crates/music`          | Spotify and QQ Music authentication, library and playback         |
+| `crates/games`          | Game accounts, daily notes, Steam and pull archives               |
+| `crates/github`         | GitHub CLI dashboard and repository reads                         |
+| `crates/link-preview`   | SSRF-safe public link metadata reads                              |
+| `crates/market-data`    | ECB exchange and Yahoo stock reads                                |
+| `crates/quotes`         | Random quotation reads                                            |
+| `crates/service-status` | Statuspage service catalog and health reads                       |
+| `crates/weather`        | Open-Meteo weather, astronomy, and geocoding reads                |
+| `crates/ugos`           | Read-only UGOS Pro authentication and telemetry                   |
+| `crates/useage`         | AI subscriptions and account credits; the spelling is intentional |
+| `packages/ui`           | Self-owned Svelte primitives and semantic design tokens           |
+| `packages/tsconfig`     | Shared UI TypeScript configuration                                |
 
 Create a package only for a stable independent or genuinely shared responsibility. Application
 behavior belongs in Rust; Svelte owns presentation and interaction state.
@@ -104,8 +108,8 @@ The updater verifies signed artifacts before installation; setup belongs in
 `embed:*` fences, lays out structured diagrams, and normalizes source examples consistently for
 provider discovery and compilation. Annotation, quote and diff rendering require no provider reads. Inline image shortcodes use a bundled
 `md-dialect` catalog and transform prose events before HTML assembly; compilation performs no image reads.
-Article cards use host-provided index metadata; `quotes` supplies GitHub, stock and generic website
-preview data for other embeds. [Markdown](MARKDOWN.md) owns syntax and rendering safety;
+Article cards use host-provided index metadata; `github`, `market-data`, and `link-preview` supply
+provider data for other embeds. [Markdown](MARKDOWN.md) owns syntax and rendering safety;
 [Workflow](WORKFLOW.md) owns operations and recovery.
 
 `vesper build` compiles Markdown under `content/` to HTML in a temporary directory, copies other

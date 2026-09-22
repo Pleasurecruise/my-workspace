@@ -62,18 +62,21 @@ metadata through the authorized summary index.
 
 ## Public feeds
 
-`crates/quotes` owns these unauthenticated reads. Failed locations or symbols remain independent.
+`crates/weather`, `crates/market-data`, and `crates/quotes` own the public Dashboard feeds.
+Provider failures remain independent; authenticated GitHub reads and Markdown link previews have
+separate boundaries.
 
-| Module       | Source and meaning                                                                         |
-| ------------ | ------------------------------------------------------------------------------------------ |
-| `weather`    | [Open-Meteo geocoding][geocoding] and [forecast][weather]; local time and six hourly cells |
-| `stocks`     | Yahoo Finance chart endpoint; validated tickers with bounded concurrency                   |
-| `exchange`   | Latest two ECB working days; units per euro and derived cross rates, not live prices       |
-| `quotations` | One quotation from [FreeAPI](https://freeapi.app/)                                         |
+| Module      | Source and meaning                                                                   |
+| ----------- | ------------------------------------------------------------------------------------ |
+| `weather`   | `crates/weather`: Open-Meteo geocoding and forecast; local time and six hourly cells |
+| `stocks`    | `crates/market-data`: Yahoo Finance chart endpoint; bounded concurrency              |
+| `exchange`  | `crates/market-data`: Latest two ECB working days and derived cross rates            |
+| `quotation` | `crates/quotes`: One quotation from [FreeAPI](https://freeapi.app/)                  |
 
 ## Service status
 
-`quotes::status` reads public Statuspage summaries for [GitHub][github-status], [OpenAI][openai-status],
+`crates/service-status` (`service_status` in Rust) reads public Statuspage summaries for
+[GitHub][github-status], [OpenAI][openai-status],
 and [DeepSeek][deepseek-status] with bounded concurrency and a fifteen-second deadline. Codex selects
 only matching components and linked unresolved incidents. GitHub and DeepSeek include non-group
 components and page-wide incidents. Health reflects the worst matching current component; the
@@ -81,7 +84,7 @@ percentage is current operational capacity, not historical uptime. Rust owns thi
 
 ## GitHub
 
-`quotes::github` uses authenticated `gh api`, with `GITHUB_CLI_BINARY` as an optional path override
+`crates/github` uses authenticated `gh api`, with `GITHUB_CLI_BINARY` as an optional path override
 and fifteen-second request deadlines. GraphQL provides contributions and recent activity; a separate
 REST read returns up to twenty unread notification threads and whether more exist. Notification
 scope failures remain separate from contribution results. Reads do not mark threads read or change

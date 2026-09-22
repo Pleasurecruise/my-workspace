@@ -2738,6 +2738,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "github"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "glass_pumpkin"
 version = "2.0.0-rc0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4096,6 +4105,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "link-preview"
+version = "0.1.0"
+dependencies = [
+ "dom_query",
+ "reqwest 0.13.5",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "linked-hash-map"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4220,6 +4239,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "market-data"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4264,9 +4294,11 @@ name = "md-dialect"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "github",
+ "link-preview",
+ "market-data",
  "percent-encoding",
  "pulldown-cmark",
- "quotes",
  "regex",
  "serde",
  "serde_json",
@@ -4445,14 +4477,6 @@ name = "mutate_once"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13d2233c9842d08cfe13f9eac96e207ca6a2ea10b80259ebe8ad0268be27d2af"
-
-[[package]]
-name = "my-workspace-logger"
-version = "0.1.0"
-dependencies = [
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "nasm-rs"
@@ -5712,14 +5736,10 @@ dependencies = [
 name = "quotes"
 version = "0.1.0"
 dependencies = [
- "dom_query",
- "futures-util",
  "reqwest 0.13.5",
  "serde",
  "serde_json",
- "time",
  "tokio",
- "url",
 ]
 
 [[package]]
@@ -6648,6 +6668,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "service-status"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -8473,9 +8504,11 @@ dependencies = [
  "diesel",
  "futures-util",
  "games",
+ "github",
  "ledger",
+ "link-preview",
+ "market-data",
  "music",
- "my-workspace-logger",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
@@ -8485,6 +8518,7 @@ dependencies = [
  "reqwest 0.13.5",
  "serde",
  "serde_json",
+ "service-status",
  "social",
  "sysinfo 0.39.6",
  "tauri",
@@ -8496,11 +8530,13 @@ dependencies = [
  "todo",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "ugos",
  "useage",
  "uuid",
  "vesper-credentials",
  "vesper-database",
+ "weather",
 ]
 
 [[package]]
@@ -8511,20 +8547,24 @@ dependencies = [
  "cms-core",
  "consumers",
  "games",
+ "github",
  "ledger",
- "my-workspace-logger",
+ "market-data",
  "quotes",
  "serde",
  "serde_json",
+ "service-status",
  "tempfile",
  "time",
  "todo",
  "tokio",
+ "tracing-subscriber",
  "ugos",
  "useage",
  "uuid",
  "vesper-credentials",
  "vesper-database",
+ "weather",
 ]
 
 [[package]]
@@ -8681,6 +8721,18 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "weather"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
 ]
 
 [[package]]

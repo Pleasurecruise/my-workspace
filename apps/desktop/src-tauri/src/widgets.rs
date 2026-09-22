@@ -174,7 +174,7 @@ impl Layout {
                     }
                 }
                 Widget::ServiceStatus { service_id }
-                    if !quotes::status::valid_service_id(service_id) =>
+                    if !service_status::is_known_service(service_id) =>
                 {
                     return Err("Dashboard service status selection is invalid".to_owned());
                 }
@@ -427,7 +427,7 @@ pub(crate) fn weather_locations(app: &tauri::AppHandle) -> Result<Vec<String>, S
     Ok(locations)
 }
 
-pub(crate) fn service_status_ids(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
+pub(crate) fn service_ids(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
     let layout = path(app).and_then(|path| read(&path))?;
     let mut service_ids = Vec::new();
     for placement in layout.widgets {

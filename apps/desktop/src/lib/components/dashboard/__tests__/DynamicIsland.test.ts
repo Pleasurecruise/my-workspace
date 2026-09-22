@@ -33,7 +33,7 @@ beforeEach(() => {
 		if (command === "island_available") return true;
 		if (command === "set_island_expanded")
 			return { status: "ready", data: { topInset: 0, notchWidth: 0 } };
-		if (command === "read_service_status_catalog") return { status: "ready", data: [] };
+		if (command === "read_service_catalog") return { status: "ready", data: [] };
 		if (command === "read_todos")
 			return { status: "ready", data: { date: "2026-09-07", items: [], syncError: null } };
 		return { status: "failed", message: "Unexpected command" };

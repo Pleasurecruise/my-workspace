@@ -18,7 +18,8 @@ vesper publish --live
 The builder renders Markdown, highlighted code, Mermaid, and custom `md-dialect` embeds, copies
 assets, and writes `content.json` in a disposable temporary directory. It rejects symbolic links,
 output collisions, and invalid dialect input before publication. Authored SVG is sanitized;
-GitHub and stock embeds resolve through `quotes`. Syntax and examples belong to [Markdown](MARKDOWN.md).
+GitHub, stock, and link embeds resolve through `crates/github`, `crates/market-data`, and
+`crates/link-preview`. Syntax and examples belong to [Markdown](MARKDOWN.md).
 
 Only `--live` uploads, under R2's `blog/` prefix. Publication is additive: destination-only objects
 are not deleted. Removing obsolete objects is a separate explicit maintenance operation. A failed

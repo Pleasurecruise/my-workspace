@@ -57,7 +57,7 @@ pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String,
     ))
 }
 
-fn chart(points: &[quotes::stocks::StockPoint]) -> (String, String, f64, f64) {
+fn chart(points: &[market_data::stocks::StockPoint]) -> (String, String, f64, f64) {
     let min = points
         .iter()
         .map(|point| point.close)

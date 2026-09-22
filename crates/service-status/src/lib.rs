@@ -128,11 +128,11 @@ struct IncidentComponent {
     id: String,
 }
 
-pub fn valid_service_id(id: &str) -> bool {
+pub fn is_known_service(id: &str) -> bool {
     SERVICES.iter().any(|service| service.id == id)
 }
 
-pub fn catalog() -> Vec<ServiceCatalogEntry> {
+pub fn read_catalog() -> Vec<ServiceCatalogEntry> {
     SERVICES
         .iter()
         .map(|service| ServiceCatalogEntry {
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn validates_catalog_ids() {
-        assert!(valid_service_id("deepseek"));
-        assert!(!valid_service_id("https://example.com/status"));
+        assert!(is_known_service("deepseek"));
+        assert!(!is_known_service("https://example.com/status"));
     }
 }

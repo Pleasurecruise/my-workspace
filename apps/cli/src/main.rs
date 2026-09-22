@@ -1,4 +1,6 @@
-use std::process::ExitCode;
+use std::{error::Error, process::ExitCode};
+
+use tracing_subscriber::EnvFilter;
 
 mod arguments;
 mod game;
@@ -30,7 +32,7 @@ async fn execute(arguments: Vec<String>) -> ExitCode {
         eprintln!("error: {error}");
         return ExitCode::FAILURE;
     }
-    if let Err(error) = my_workspace_logger::init() {
+    if let Err(error) = init_logging() {
         eprintln!("error: failed to initialize logging: {error}");
         return ExitCode::FAILURE;
     }
@@ -41,6 +43,21 @@ async fn execute(arguments: Vec<String>) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn init_logging() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let filter = match std::env::var("RUST_LOG") {
+        Ok(value) => EnvFilter::try_new(value)?,
+        Err(std::env::VarError::NotPresent) => EnvFilter::new("info"),
+        Err(error) => return Err(Box::new(error)),
+    };
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .try_init()?;
+
+    Ok(())
 }
 
 async fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
