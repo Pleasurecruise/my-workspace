@@ -1,5 +1,5 @@
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
 export default {
-  preprocess: vitePreprocess({ script: true }),
+	preprocess: vitePreprocess({ script: true }),
 };

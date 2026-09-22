@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm run dev:desktop",
+    "dev": "vp run dev:desktop",
     "dev:cli": "vp run --filter ./apps/cli dev",
     "dev:desktop": "vp run --filter ./apps/desktop dev",
     "build:cli": "vp run --filter ./apps/cli build",
@@ -13,34 +13,41 @@
     "content:publish:live": "cargo run -p vesper-cli -- publish --live",
     "cli:install": "cargo install --path apps/cli --locked",
     "cli:uninstall": "cargo uninstall vesper",
-    "lint": "pnpm run lint:frontend && pnpm run lint:rust",
-    "lint:frontend": "vp lint",
+    "lint": "vp run lint:frontend && vp run lint:rust",
+    "lint:frontend": "eslint . --max-warnings 0",
     "lint:rust": "cargo clippy --workspace --all-targets --all-features -- -D warnings",
-    "lint:fix": "vp lint --fix",
+    "lint:fix:frontend": "vp run lint:frontend --fix",
     "format": "vp fmt && cargo fmt --all",
-    "format:check": "pnpm run format:check:frontend && pnpm run format:check:rust",
+    "format:check": "vp run format:check:frontend && vp run format:check:rust",
     "format:check:frontend": "vp fmt --check",
     "format:check:rust": "cargo fmt --all -- --check",
-    "check": "pnpm run check:frontend && pnpm run check:rust",
-    "check:frontend": "vp run --filter \"./apps/**\" --filter \"./packages/**\" check",
-    "check:rust": "cargo check --workspace --all-targets",
-    "test": "pnpm run test:frontend && pnpm run test:rust",
+    "check": "vp run check:frontend && vp run check:rust",
+    "check:frontend": "vp run format:check:frontend && vp run lint:frontend && vp run --filter \"./apps/**\" --filter \"./packages/**\" typecheck",
+    "check:rust": "vp run format:check:rust && vp run lint:rust && cargo check --workspace --all-targets",
+    "test": "vp run test:frontend && vp run test:rust",
     "test:frontend": "vp test --run",
     "test:rust": "cargo test --workspace --all-targets",
-    "precommit": "pnpm run check && pnpm run test",
-    "precommit:fix": "pnpm run format && pnpm run lint:fix",
-    "test:coverage:frontend": "vp test --run --coverage"
+    "precommit": "vp run check && vp run test",
+    "precommit:fix": "vp run lint:fix:frontend && vp run format",
+    "test:coverage:frontend": "vp test --run --coverage",
+    "test:coverage:rust": "cargo llvm-cov --workspace --all-targets --locked --html --output-dir coverage/rust"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@shadcn/lint": "0.2.0",
     "@types/node": "26.6.2",
     "@typescript/native": "npm:typescript@7.0.2",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "5.0.1",
+    "eslint": "10.11.0",
+    "eslint-plugin-svelte": "3.23.0",
+    "globals": "17.12.0",
     "simple-git-hooks": "2.14.0",
     "typescript": "6.0.3",
-    "vite-plus": "0.3.3"
+    "typescript-eslint": "8.70.0",
+    "vite-plus": "1.0.0-rc.0"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm run precommit"
   },
-  "packageManager": "pnpm@12.4.1"
+  "packageManager": "pnpm@12.5.1"
 }

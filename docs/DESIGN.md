@@ -14,9 +14,9 @@ computed dimensions and progress values may use inline styles.
 
 ## Style contracts
 
-Apply these rules to Svelte templates, scoped styles, shared CSS, and class helpers. They adapt
-the design-system checks from [shadcn lint](https://github.com/shadcn-ui/lint) to this workspace;
-the plugin is not installed and these are review requirements, not automated lint coverage.
+Apply these rules to Svelte templates, scoped styles, shared CSS, and class helpers. ESLint runs
+[shadcn lint](https://github.com/shadcn-ui/lint)'s `no-arbitrary-values` on scripts and Svelte templates.
+Other design contracts and scoped CSS require review; no additional shadcn rules are enabled.
 
 - **Semantic colors:** use declared `--color-*` tokens, including for SVG and focus indicators.
   `transparent`, `currentColor`, inheritance, and `color-mix` with semantic colors are valid.
@@ -53,6 +53,8 @@ owned styling and interaction. Do not mix packaged headless runtimes into indivi
 Contracts include Svelte 5 snippets, bindable element `ref`, native attributes, `cn` overrides,
 component-specific `data-slot`, keyboard focus, and disabled/invalid states. Visual roles use
 Vesper's semantic tokens and compact scale.
+Label renders its required marker as an aria-hidden inline element with semantic error color;
+the associated control owns required-field semantics.
 
 Select provides keyboard navigation, typeahead, dismissal, and visible selection. Checkbox uses
 native checked/indeterminate semantics; controlled saves retain the accepted value until updated.

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteDate } from "svelte/reactivity";
 	import { Select } from "@my-workspace/ui";
 	import { ChevronLeft, ChevronRight, Check, Pencil, Plus, Trash2, WalletCards, X } from "@lucide/svelte";
 	import { untrack } from "svelte";
@@ -49,7 +50,7 @@
 	}
 
 	function day(offset: number) {
-		const date = new Date(`${selectedDate}T00:00:00Z`);
+		const date = new SvelteDate(`${selectedDate}T00:00:00Z`);
 		date.setUTCDate(date.getUTCDate() + offset);
 		onselect(date.toISOString().slice(0, 10));
 	}
@@ -97,15 +98,15 @@
 			{#if snapshot !== null && snapshot.monthTotalPence > 0}
 				<div class="category-chart">
 					<svg viewBox="0 0 120 120" role="img" aria-label={`${monthLabel} spending by category`}>
-						{#each slices as slice}<circle cx="60" cy="60" r="46" fill="none" stroke={slice.color} stroke-width="22" pathLength="100" stroke-dasharray={`${slice.share} ${100 - slice.share}`} stroke-dashoffset={-slice.start} transform="rotate(-90 60 60)"><title>{slice.category}: {currency.format(slice.amountPence / 100)} ({slice.share.toFixed(1)}%)</title></circle>{/each}
+						{#each slices as slice (slice.category)}<circle cx="60" cy="60" r="46" fill="none" stroke={slice.color} stroke-width="22" pathLength="100" stroke-dasharray={`${slice.share} ${100 - slice.share}`} stroke-dashoffset={-slice.start} transform="rotate(-90 60 60)"><title>{slice.category}: {currency.format(slice.amountPence / 100)} ({slice.share.toFixed(1)}%)</title></circle>{/each}
 					</svg>
-					<ul class="legend">{#each slices as slice}<li><span class="swatch" style:background={slice.color}></span><span class="category-name">{slice.category}</span><span>{slice.share.toFixed(1)}%</span><strong>{currency.format(slice.amountPence / 100)}</strong></li>{/each}</ul>
+					<ul class="legend">{#each slices as slice (slice.category)}<li><span class="swatch" style:background={slice.color}></span><span class="category-name">{slice.category}</span><span>{slice.share.toFixed(1)}%</span><strong>{currency.format(slice.amountPence / 100)}</strong></li>{/each}</ul>
 				</div>
 			{:else}<div class="empty-chart"><div class="empty-ring"></div><p>{snapshot === null ? "Monthly statistics will appear here." : "No spending this month. Add your first expense."}</p></div>{/if}
 			{:else}
 			<div class="daily-heading"><h4>Daily spending</h4><span>{snapshot === null ? "—" : currency.format(maximum / 100)} peak</span></div>
 			<div class="bar-chart" aria-label={`${monthLabel} daily spending`}>
-				{#each snapshot === null ? [] : snapshot.days as day}
+				{#each snapshot === null ? [] : snapshot.days as day (day.date)}
 					<div class="day" role="img" class:selected={day.date === selectedDate} aria-label={`${day.date}: ${currency.format(day.amountPence / 100)}`} title={`${day.date}: ${currency.format(day.amountPence / 100)}`}><span class="bar-track"><span class="bar" style:height={`${maximum === 0 ? 0 : day.amountPence / maximum * 100}%`}></span></span><span class="tick">{Number(day.date.slice(8)) % 5 === 0 || day.date.endsWith("01") || day.date === selectedDate ? Number(day.date.slice(8)) : ""}</span></div>
 				{/each}
 			</div>

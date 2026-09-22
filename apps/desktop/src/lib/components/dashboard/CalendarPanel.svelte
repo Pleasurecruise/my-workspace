@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteDate } from "svelte/reactivity";
 	import { CalendarDays, Check, ChevronLeft, ChevronRight } from "@lucide/svelte";
 
 	import { invoke } from "@tauri-apps/api/core";
@@ -13,10 +14,10 @@
 	$effect(() => { if (selectedDate) monthOffset = 0; });
 	let calendar = $derived.by(() => {
 		const selected = new Date(`${selectedDate}T00:00:00Z`);
-		const first = new Date(selected);
+		const first = new SvelteDate(selected.getTime());
 		first.setUTCDate(1);
 		first.setUTCMonth(first.getUTCMonth() + monthOffset);
-		const last = new Date(first);
+		const last = new SvelteDate(first.getTime());
 		last.setUTCMonth(last.getUTCMonth() + 1, 0);
 		return {
 			label: monthFormatter.format(first),
@@ -25,7 +26,7 @@
 			canGoBack: first.getUTCFullYear() > 1 || first.getUTCMonth() > 0,
 			canGoForward: first.getUTCFullYear() < 9999 || first.getUTCMonth() < 11,
 			days: Array.from({ length: last.getUTCDate() }, (_, index) => {
-				const day = new Date(first);
+				const day = new SvelteDate(first.getTime());
 				day.setUTCDate(index + 1);
 				return { date: day.toISOString().slice(0, 10), number: index + 1 };
 			}),
@@ -77,9 +78,9 @@
 	<header><div><CalendarDays size={15} /><h2>Calendar</h2></div><button type="button" disabled={selectedDate === todayDate && monthOffset === 0} onclick={() => { monthOffset = 0; void onselect(todayDate); }}>Today</button></header>
 	<div class="month-heading"><button type="button" disabled={!calendar.canGoBack} onclick={() => (monthOffset -= 1)} aria-label="Previous month"><ChevronLeft size={13} /></button><strong>{calendar.label}</strong><button type="button" disabled={!calendar.canGoForward} onclick={() => (monthOffset += 1)} aria-label="Next month"><ChevronRight size={13} /></button></div>
 	<div class="month-calendar" aria-label={`${calendar.label} calendar`}>
-		{#each weekdays as weekday}<span class="weekday">{weekday}</span>{/each}
-		{#each Array(calendar.leadingDays) as _}<span class="calendar-spacer"></span>{/each}
-		{#each calendar.days as day}<button type="button" class:today={day.date === todayDate} class:selected={day.date === selectedDate} onclick={() => { monthOffset = 0; void onselect(day.date); }} aria-label={`Select ${day.date}`} aria-pressed={day.date === selectedDate} aria-describedby={completed.includes(day.date) ? `${id}-complete` : undefined} title={completed.includes(day.date) ? "All tasks and check-ins complete" : undefined}>{day.number}{#if completed.includes(day.date)}<span class="completion" aria-hidden="true"><Check size={9} strokeWidth={3} /></span>{/if}</button>{/each}
+		{#each weekdays as weekday, index (index)}<span class="weekday">{weekday}</span>{/each}
+		{#each Array.from({ length: calendar.leadingDays }, (_, index) => index) as index (index)}<span class="calendar-spacer"></span>{/each}
+		{#each calendar.days as day (day.date)}<button type="button" class:today={day.date === todayDate} class:selected={day.date === selectedDate} onclick={() => { monthOffset = 0; void onselect(day.date); }} aria-label={`Select ${day.date}`} aria-pressed={day.date === selectedDate} aria-describedby={completed.includes(day.date) ? `${id}-complete` : undefined} title={completed.includes(day.date) ? "All tasks and check-ins complete" : undefined}>{day.number}{#if completed.includes(day.date)}<span class="completion" aria-hidden="true"><Check size={9} strokeWidth={3} /></span>{/if}</button>{/each}
 	</div>
 	<span id={`${id}-complete`} class="sr-only">All tasks and check-ins complete</span>
 	{#if liveError !== null}<p role="alert">{liveError}</p>{/if}

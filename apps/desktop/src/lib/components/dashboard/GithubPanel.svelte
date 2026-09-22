@@ -56,9 +56,9 @@
 			<p><strong>{github.totalContributions}</strong> contributions in the last year</p>
 			<div class="calendar-scroll" bind:this={calendarScroll}>
 				<div class="calendar" role="img" aria-label={`${github.totalContributions} GitHub contributions in the last year`}>
-					{#each github.weeks as week}
+					{#each github.weeks as week (week)}
 						<div class="week">
-							{#each week.days as day}
+							{#each week.days as day (day.date)}
 								<span
 									class={`level-${day.level}`}
 									style:grid-row={calendarRow(day.date)}
@@ -69,7 +69,7 @@
 					{/each}
 				</div>
 			</div>
-			<div class="legend"><span>Less</span>{#each [0, 1, 2, 3, 4] as level}<i class={`level-${level}`}></i>{/each}<span>More</span></div>
+			<div class="legend"><span>Less</span>{#each [0, 1, 2, 3, 4] as level (level)}<i class={`level-${level}`}></i>{/each}<span>More</span></div>
 		</div>
 
 		<div class="recent">
@@ -78,7 +78,7 @@
 				<p class="empty">No recent contribution activity</p>
 			{:else}
 				<div class="activity-list">
-					{#each github.recentActivity as activity}
+					{#each github.recentActivity as activity (activity)}
 						<button type="button" class="activity" onclick={() => void openUrl(activity.url)}>
 							<span class="activity-icon">
 								{#if activity.kind === "approve"}<BadgeCheck size={14} />

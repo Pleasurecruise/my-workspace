@@ -115,9 +115,14 @@ early returns. Do not create a one-call helper merely to avoid ordinary Rust syn
 - Keep secrets out of `Debug`, provider response types, and tracing fields. The typed Settings
   response is the narrow exception for editing stored values in the local webview.
 
-## TypeScript and Svelte
+## JavaScript, TypeScript, and Svelte
 
-- Use tabs and double quotes; Vite Plus owns formatting and linting. The root and desktop Vite configs enforce tabs for TypeScript.
+- Use tabs and double quotes. Vite Plus owns formatting and orchestration; root `eslint.config.js`
+  owns recommended JavaScript, TypeScript, and Svelte lint rules. Use the workspace
+  [verification commands](DEVELOPMENT.md#root-commands).
+- Do not add inline ESLint suppression directives. Necessary rule exceptions belong in narrowly
+  scoped, documented entries in `eslint.config.js`. Typed test callbacks may prefix intentionally
+  unused arguments with an underscore.
 - Use `PascalCase` for components and types, `camelCase` for variables and functions, and concrete
   nouns for state.
 - Define serialized command contracts in `apps/desktop/src/lib/consumer.ts`.
@@ -129,9 +134,9 @@ early returns. Do not create a one-call helper merely to avoid ordinary Rust syn
 - Use semantic CSS tokens and reusable UI primitives.
 - Apply [Style contracts](DESIGN.md#style-contracts) to Svelte templates and CSS as well as class
   helpers. Check token definitions, complete Tailwind class names, and shared variant/size contracts.
-  `vp lint` passing does not validate Svelte template styling or CSS token existence. For style
-  changes, also run Svelte checks and the production frontend build; inspect affected light/dark
-  states and reduced motion when appearance or animation changes.
+  Passing lint does not validate scoped CSS or every design contract. For style changes, also run
+  Svelte checks and the production frontend build; inspect affected light/dark states and reduced
+  motion when appearance or animation changes.
 - Shared UI components are self-owned in `packages/ui`, following shadcn-svelte's Svelte 5 snippet,
   bindable ref, native-attribute, variant, data-slot, and accessibility conventions. Implement their
   interaction behavior locally; do not mix a packaged component/headless runtime into individual

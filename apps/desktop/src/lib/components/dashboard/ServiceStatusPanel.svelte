@@ -58,7 +58,7 @@
 					<strong>{label(service.status)}</strong>
 					{#if service.affectedComponents.length > 0}
 						<ul class="affected-components" aria-label="Affected services">
-							{#each service.affectedComponents as component}
+							{#each service.affectedComponents as component (component)}
 								<li><span class="component-name">{component.name}</span><span>{label(component.status)}</span></li>
 							{/each}
 						</ul>

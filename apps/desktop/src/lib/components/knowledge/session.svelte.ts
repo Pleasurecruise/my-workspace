@@ -1,3 +1,4 @@
+import { SvelteDate } from "svelte/reactivity";
 import { invoke } from "@tauri-apps/api/core";
 import { onMount, tick } from "svelte";
 import type {
@@ -184,7 +185,7 @@ export function createKnowledgeSession(context: {
 			if (!loading && context.mainElement !== null && context.mainElement.scrollTop < 200)
 				void load(null, true);
 		}, 60_000);
-		const nextNewspaperRefresh = new Date();
+		const nextNewspaperRefresh = new SvelteDate();
 		nextNewspaperRefresh.setHours(9, 0, 0, 0);
 		if (nextNewspaperRefresh.getTime() <= Date.now())
 			nextNewspaperRefresh.setDate(nextNewspaperRefresh.getDate() + 1);

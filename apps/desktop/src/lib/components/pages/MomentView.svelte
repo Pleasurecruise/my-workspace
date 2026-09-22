@@ -245,7 +245,7 @@
 						<button type="button" onclick={() => (selectedPhotoId = photo.id)} aria-label={`Open ${photo.title}`}>
 							<R2Image objectKey={photo.thumbnailR2Key} thumbHash={photo.thumbHash} alt={photo.title} width={photo.width} height={photo.height} />
 						</button>
-						<figcaption><strong>{photo.title}</strong>{#if photo.date}<span>{dateFormatter.format(new Date(photo.date))}</span>{/if}<div>{#each photo.tags as tag}<span>#{tag}</span>{/each}</div></figcaption>
+						<figcaption><strong>{photo.title}</strong>{#if photo.date}<span>{dateFormatter.format(new Date(photo.date))}</span>{/if}<div>{#each photo.tags as tag (tag)}<span>#{tag}</span>{/each}</div></figcaption>
 					</figure>
 				{/each}
 			</div>
@@ -302,7 +302,7 @@
 			<dl><dt>Dimensions</dt><dd>{selectedPhoto.width} × {selectedPhoto.height}</dd></dl>
 			{#if selectedPhoto.format}<dl><dt>Format</dt><dd>{selectedPhoto.format}</dd></dl>{/if}
 			{#if selectedPhoto.size}<dl><dt>Size</dt><dd>{(selectedPhoto.size / 1024 / 1024).toFixed(1)} MB</dd></dl>{/if}
-			{#if selectedPhoto.tags.length > 0}<div class="viewer-tags">{#each selectedPhoto.tags as tag}<span>#{tag}</span>{/each}</div>{/if}
+			{#if selectedPhoto.tags.length > 0}<div class="viewer-tags">{#each selectedPhoto.tags as tag (tag)}<span>#{tag}</span>{/each}</div>{/if}
 			<div class="delete-actions">
 				{#if confirmingDelete}
 					<span>Delete this photo and its stored images?</span>

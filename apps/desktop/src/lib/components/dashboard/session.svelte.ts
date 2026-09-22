@@ -21,7 +21,7 @@ export function createDashboardSession(
 	isActive: () => boolean,
 	surface: "dashboard" | "island" = "dashboard",
 ) {
-	let dashboard = $state<DashboardState>({
+	const dashboard = $state<DashboardState>({
 		taskManager: { data: null, error: null, loading: false },
 		deviceTelemetry: { data: null, error: null, loading: false },
 		codex: { data: null, error: null, loading: false },
@@ -42,8 +42,8 @@ export function createDashboardSession(
 	});
 	let dashboardRefreshing = $state(false);
 	let dashboardRequest = 0;
-	let todos = $state<QueryState<TodoList>>({ data: null, error: null, loading: false });
-	const initialDate = new Intl.DateTimeFormat("en-CA").format(new Date());
+	const todos = $state<QueryState<TodoList>>({ data: null, error: null, loading: false });
+	const initialDate = new Intl.DateTimeFormat("en-CA").format(Date.now());
 	let todayDate = $state(initialDate);
 	let selectedDate = $state(initialDate);
 	let todoRequest = 0;

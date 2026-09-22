@@ -155,7 +155,7 @@
 	<div class="provider-section">
 		<div class="provider-heading"><strong>{section.title}</strong>{#if section.planType !== null}<span>{section.planType}</span>{/if}</div>
 		{#if section.windows.length > 0}
-			<div class="meter-list">{#each section.windows as window}<div class="meter"><div><span>{window.label}</span><strong>{percentFormatter.format(remaining(window))}%</strong></div><div class="progress" role="progressbar" aria-label={`${section.title} ${window.label} quota`} aria-valuenow={remaining(window)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(window)}%`}></span></div><small>{resetLabel(window.resetsAt)}</small></div>{/each}</div>
+			<div class="meter-list">{#each section.windows as window (window.label)}<div class="meter"><div><span>{window.label}</span><strong>{percentFormatter.format(remaining(window))}%</strong></div><div class="progress" role="progressbar" aria-label={`${section.title} ${window.label} quota`} aria-valuenow={remaining(window)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(window)}%`}></span></div><small>{resetLabel(window.resetsAt)}</small></div>{/each}</div>
 		{:else if section.hasData}
 			<p>No metered quota is available.</p>
 		{:else if section.error === null}
@@ -168,13 +168,13 @@
 <section class="usage-panel" aria-label={panelLabel}>
 	<article>
 		{#if source.provider === "codex" || source.provider === "claude" || source.provider === "codexClaude"}
-			{#each rateSections as section}
+			{#each rateSections as section (section.title)}
 				{@render providerSection(section)}
 			{/each}
 		{:else if source.provider === "openCode"}
 			{@const openCode = source.state.data}
 			<div class="provider-heading"><strong>OpenCode Go</strong><span>Go</span></div>
-			{#if openCode !== null}<div class="meter-list">{#each openCodeWindows as item}<div class="meter"><div><span>{item.label}</span><strong>{percentFormatter.format(item.available)}%</strong></div><div class:limited={item.window.status === "rate-limited"} class="progress" role="progressbar" aria-label={`OpenCode Go ${item.label} quota`} aria-valuenow={item.available} aria-valuemin="0" aria-valuemax="100"><span style:width={`${item.available}%`}></span></div><small>{resetLabel(item.window.resetsAt)}</small></div>{/each}</div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
+			{#if openCode !== null}<div class="meter-list">{#each openCodeWindows as item (item.label)}<div class="meter"><div><span>{item.label}</span><strong>{percentFormatter.format(item.available)}%</strong></div><div class:limited={item.window.status === "rate-limited"} class="progress" role="progressbar" aria-label={`OpenCode Go ${item.label} quota`} aria-valuenow={item.available} aria-valuemin="0" aria-valuemax="100"><span style:width={`${item.available}%`}></span></div><small>{resetLabel(item.window.resetsAt)}</small></div>{/each}</div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
 		{:else if source.provider === "grok"}
 			{@const grok = source.state.data}
 			<div class="provider-heading"><strong>Grok</strong>{#if grok !== null && grok.planType !== null}<span>{grok.planType}</span>{/if}</div>
@@ -182,11 +182,11 @@
 		{:else if source.provider === "copilot"}
 			{@const copilot = source.state.data}
 			<div class="provider-heading"><strong>Copilot</strong>{#if copilot !== null && copilot.copilotPlan !== null}<span>{copilot.copilotPlan}</span>{/if}</div>
-			{#if copilot !== null && copilotQuotas.length > 0}<div class="meter-list">{#each copilotQuotas as item}{@const available = Math.max(0, Math.min(100, item.quota.percentRemaining === null ? 0 : item.quota.percentRemaining))}<div class="meter"><div><span>{item.label}</span><strong>{percentFormatter.format(available)}%</strong></div><div class="progress" role="progressbar" aria-label={`Copilot ${item.label} quota`} aria-valuenow={available} aria-valuemin="0" aria-valuemax="100"><span style:width={`${available}%`}></span></div><small>{copilotQuotaDetail(item.quota, copilot.quotaResetDateUtc)}</small></div>{/each}</div>{:else if copilot !== null}<p>No metered Copilot quota is available.</p>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
+			{#if copilot !== null && copilotQuotas.length > 0}<div class="meter-list">{#each copilotQuotas as item (item.label)}{@const available = Math.max(0, Math.min(100, item.quota.percentRemaining === null ? 0 : item.quota.percentRemaining))}<div class="meter"><div><span>{item.label}</span><strong>{percentFormatter.format(available)}%</strong></div><div class="progress" role="progressbar" aria-label={`Copilot ${item.label} quota`} aria-valuenow={available} aria-valuemin="0" aria-valuemax="100"><span style:width={`${available}%`}></span></div><small>{copilotQuotaDetail(item.quota, copilot.quotaResetDateUtc)}</small></div>{/each}</div>{:else if copilot !== null}<p>No metered Copilot quota is available.</p>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
 		{:else if source.provider === "deepSeek"}
 			{@const deepSeek = source.state.data}
 			<div class="provider-heading"><strong>DeepSeek</strong>{#if deepSeek !== null}<span class:unavailable={!deepSeek.isAvailable}>{deepSeek.isAvailable ? "Available" : "Unavailable"}</span>{/if}</div>
-			{#if deepSeek !== null && deepSeek.balanceInfos.length > 0}<div class="account-balances">{#each deepSeek.balanceInfos as balance}<div class="account-balance"><div><strong>{balance.currency === "CNY" ? "¥" : "$"}{balance.totalBalance}</strong><span>{balance.currency === "CNY" ? "RMB" : balance.currency}</span></div><small>Available balance</small></div>{/each}</div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
+			{#if deepSeek !== null && deepSeek.balanceInfos.length > 0}<div class="account-balances">{#each deepSeek.balanceInfos as balance (balance.currency)}<div class="account-balance"><div><strong>{balance.currency === "CNY" ? "¥" : "$"}{balance.totalBalance}</strong><span>{balance.currency === "CNY" ? "RMB" : balance.currency}</span></div><small>Available balance</small></div>{/each}</div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
 		{:else if source.provider === "tokenFlux"}
 			{@const tokenFlux = source.state.data}
 			{@const meters = tokenFluxMeters}
@@ -194,7 +194,7 @@
 			<div class="provider-heading"><strong>TokenFlux</strong>{#if balance !== null}<span>{balance.planName}</span>{/if}</div>
 			{#if tokenFlux !== null}
 				{#if source.state.error !== null}<p role="alert">{source.state.error} Showing last successful data.</p>{/if}
-				{#if meters.length > 0 || tokenFlux.subscription.dailyLimitUsd === null}<div class="meter-list">{#if tokenFlux.subscription.dailyLimitUsd === null}<div class="meter" aria-label="TokenFlux daily usage"><div><span>Daily used</span><strong>{usdFormatter.format(tokenFlux.subscription.dailyUsageUsd)} USD</strong></div><small>Daily limit not provided</small></div>{/if}{#each meters as meter}<div class="meter"><div><span>{meter.label}</span><strong>{percentFormatter.format(meter.percent)}%</strong></div><div class="progress" role="progressbar" aria-label={`TokenFlux ${meter.label} quota`} aria-valuenow={meter.percent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${meter.percent}%`}></span></div><small>{usdFormatter.format(meter.remaining)} / {usdFormatter.format(meter.limit)} USD remaining</small></div>{/each}</div>{/if}
+				{#if meters.length > 0 || tokenFlux.subscription.dailyLimitUsd === null}<div class="meter-list">{#if tokenFlux.subscription.dailyLimitUsd === null}<div class="meter" aria-label="TokenFlux daily usage"><div><span>Daily used</span><strong>{usdFormatter.format(tokenFlux.subscription.dailyUsageUsd)} USD</strong></div><small>Daily limit not provided</small></div>{/if}{#each meters as meter (meter.label)}<div class="meter"><div><span>{meter.label}</span><strong>{percentFormatter.format(meter.percent)}%</strong></div><div class="progress" role="progressbar" aria-label={`TokenFlux ${meter.label} quota`} aria-valuenow={meter.percent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${meter.percent}%`}></span></div><small>{usdFormatter.format(meter.remaining)} / {usdFormatter.format(meter.limit)} USD remaining</small></div>{/each}</div>{/if}
 				{#if balance !== null}<div class="account-balances"><div class="account-balance"><div><strong>{creditFormatter.format(balance.remaining)}</strong><span>{balance.unit}</span></div><small>Available balance</small></div></div>{/if}
 			{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
 		{:else if source.provider === "dimAgent"}
@@ -208,7 +208,7 @@
 					{#if meter !== null}
 					<div class="meter"><div><span>Credits</span><strong>{percentFormatter.format(meter.percent)}%</strong></div><div class="progress" role="progressbar" aria-label="DimAgent credits" aria-valuenow={meter.percent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${meter.percent}%`}></span></div><small>{creditFormatter.format(meter.used)} / {creditFormatter.format(meter.total)} used{#if meter.expiresAt !== null} · resets {resetLabel(meter.expiresAt)}{/if}</small></div>
 					{/if}
-					{#each features as feature}<div class="meter"><div><span>{feature.label}</span><strong>{percentFormatter.format(feature.percent)}%</strong></div><div class="progress" role="progressbar" aria-label={`DimAgent ${feature.label}`} aria-valuenow={feature.percent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${feature.percent}%`}></span></div><small>{creditFormatter.format(feature.used)} / {creditFormatter.format(feature.allowance)} {feature.unit} used</small></div>{/each}
+					{#each features as feature (feature.label)}<div class="meter"><div><span>{feature.label}</span><strong>{percentFormatter.format(feature.percent)}%</strong></div><div class="progress" role="progressbar" aria-label={`DimAgent ${feature.label}`} aria-valuenow={feature.percent} aria-valuemin="0" aria-valuemax="100"><span style:width={`${feature.percent}%`}></span></div><small>{creditFormatter.format(feature.used)} / {creditFormatter.format(feature.allowance)} {feature.unit} used</small></div>{/each}
 					{#if meter === null && features.length === 0}<p>No metered quota is available.</p>{/if}
 				</div>
 			{:else}<p>{loadingMessage(source.state.error)}</p>{/if}

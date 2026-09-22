@@ -52,10 +52,10 @@
 				<div class="pool"><h4>{pool.name}</h4><div class="distribution">
 					<svg viewBox="0 0 100 100" role="img" aria-label={`${pool.name}: ${pool.total} pulls; ${pool.rarities.map((count, index) => `${index + 1} star: ${count}`).join(", ")}`}>
 						<circle class="track" cx="50" cy="50" r="39" />
-						{#each pool.rarities as count, index}{#if count > 0}<circle class={`rarity rarity-${index + 1}`} cx="50" cy="50" r="39" pathLength="100" stroke-dasharray={`${count / pool.total * 100} 100`} stroke-dashoffset={-pool.rarities.slice(0, index).reduce((sum, value) => sum + value, 0) / pool.total * 100} />{/if}{/each}
+						{#each pool.rarities as count, index (index)}{#if count > 0}<circle class={`rarity rarity-${index + 1}`} cx="50" cy="50" r="39" pathLength="100" stroke-dasharray={`${count / pool.total * 100} 100`} stroke-dashoffset={-pool.rarities.slice(0, index).reduce((sum, value) => sum + value, 0) / pool.total * 100} />{/if}{/each}
 						<text x="50" y="49" class="total">{pool.total}</text><text x="50" y="63" class="caption">pulls</text>
 					</svg>
-					<div class="legend">{#each pool.rarities as count, index}{#if count > 0}<span><i class={`rarity-${index + 1}`}></i>{index + 1}★ <b>{count}</b></span>{/if}{/each}</div>
+					<div class="legend">{#each pool.rarities as count, index (index)}{#if count > 0}<span><i class={`rarity-${index + 1}`}></i>{index + 1}★ <b>{count}</b></span>{/if}{/each}</div>
 				</div><p class="muted">Since top rarity <strong>{pool.highRarity === 0 ? "≥ " : ""}{pool.sinceHighRarity}</strong></p><p class="muted">Avg. interval <strong>{pool.averageInterval === null ? "—" : pool.averageInterval.toFixed(1)}</strong></p></div>
 			{/each}</div>
 		{/if}

@@ -8,18 +8,18 @@
 	{/if}
 	<div class="placeholders" class:newspaper={view === "newspaper"} class:photos={view === "moment"} aria-hidden="true">
 		{#if view === "moment"}
-			{#each [1, 2, 3, 4, 5, 6] as item}<div class="photo pulse" class:tall={item % 2 === 0}></div>{/each}
+			{#each [1, 2, 3, 4, 5, 6] as item (item)}<div class="photo pulse" class:tall={item % 2 === 0}></div>{/each}
 		{:else if view === "memos"}
 			<div class="composer pulse"></div>
-			{#each [1, 2, 3] as item}<div class="memo"><div class="line short pulse"></div><div class="line pulse"></div><div class="line pulse"></div><div class="line short pulse"></div></div>{/each}
+			{#each [1, 2, 3] as item (item)}<div class="memo"><div class="line short pulse"></div><div class="line pulse"></div><div class="line pulse"></div><div class="line short pulse"></div></div>{/each}
 		{:else if view === "knowledge"}
 			<div class="line short pulse"></div>
-			{#each [1, 2, 3, 4, 5, 6] as item}<div class="article-row"><div class="line date pulse"></div><div class="line pulse"></div></div>{/each}
+			{#each [1, 2, 3, 4, 5, 6] as item (item)}<div class="article-row"><div class="line date pulse"></div><div class="line pulse"></div></div>{/each}
 		{:else if view === "music"}
-			{#each [1, 2, 3, 4, 5, 6] as item}<div class="track-row"><div class="cover pulse"></div><div class="line pulse"></div><div class="line date pulse"></div></div>{/each}
+			{#each [1, 2, 3, 4, 5, 6] as item (item)}<div class="track-row"><div class="cover pulse"></div><div class="line pulse"></div><div class="line date pulse"></div></div>{/each}
 		{:else}
 			<div class="masthead pulse"></div>
-			{#each [1, 2, 3] as item}<div class="paragraph"><div class="line short pulse"></div><div class="line pulse"></div><div class="line pulse"></div><div class="line pulse"></div></div>{/each}
+			{#each [1, 2, 3] as item (item)}<div class="paragraph"><div class="line short pulse"></div><div class="line pulse"></div><div class="line pulse"></div><div class="line pulse"></div></div>{/each}
 		{/if}
 	</div>
 </section>

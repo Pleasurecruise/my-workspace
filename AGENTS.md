@@ -41,9 +41,10 @@ Create a package only when it owns a stable independent responsibility or is gen
 ## Working expectations
 
 - Prefer root commands from `package.json`.
-- Use Vite Plus for frontend formatting, linting, tests, and orchestration.
+- Use Vite Plus for frontend formatting, tests, and orchestration. ESLint owns frontend linting;
+  use `vp run lint` and `vp run check`, not the built-in Oxlint `vp lint` or `vp check`.
 - Use Cargo fmt, Clippy, check, and test for Rust.
-- TypeScript and Svelte use tabs and double quotes. Rust follows `cargo fmt`.
+- JavaScript, TypeScript, and Svelte use tabs and double quotes. Rust follows `cargo fmt`.
 - Workspace-owned dependencies use `workspace:*` in pnpm and workspace dependencies in Cargo.
 - Preserve unrelated user changes. Commit messages follow Conventional Commits.
 - Do not embed secrets in packaged code, logs, or source files. Provider responses must not expose

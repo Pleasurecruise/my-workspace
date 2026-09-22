@@ -286,7 +286,7 @@
 		</div>
 
 		<nav aria-label="Consumer views">
-			{#each visibleNavigation as item}
+			{#each visibleNavigation as item (item.id)}
 				<button
 					type="button"
 					class:active={selected === item.id}

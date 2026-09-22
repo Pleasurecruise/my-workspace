@@ -1,3 +1,4 @@
+import { SvelteSet } from "svelte/reactivity";
 import { invoke } from "@tauri-apps/api/core";
 import { onMount, tick } from "svelte";
 import type {
@@ -105,7 +106,7 @@ export function createMemosSession(context: {
 		const page = response.data;
 		if (replace && content !== null && !filtersChanged) {
 			const tail = content.memos.slice(25);
-			const refreshedIds = new Set(page.memos.map((memo) => memo.id));
+			const refreshedIds = new SvelteSet(page.memos.map((memo) => memo.id));
 			content = {
 				...page,
 				memos: [...page.memos, ...tail.filter((memo) => !refreshedIds.has(memo.id))],

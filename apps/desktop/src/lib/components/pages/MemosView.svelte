@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import { SvelteDate, SvelteMap } from "svelte/reactivity";
 	let draft = $state("");
 	let visibility = $state<"public" | "private">("private");
 	let saving = $state(false);
@@ -144,7 +145,7 @@
 	let pinned = $derived(visible.filter((memo) => memo.pinned));
 	let unpinned = $derived(visible.filter((memo) => !memo.pinned));
 	let monthGroups = $derived.by(() => {
-		const groups = new Map<string, MemoView[]>();
+		const groups = new SvelteMap<string, MemoView[]>();
 		for (const memo of visible) {
 			const key = memo.createdAt.slice(0, 7);
 			const group = groups.get(key);
@@ -189,7 +190,7 @@
 			date.getDate() === today.getDate()
 		)
 			return "Today";
-		const yesterday = new Date(today);
+		const yesterday = new SvelteDate(today.getTime());
 		yesterday.setDate(today.getDate() - 1);
 		if (
 			date.getFullYear() === yesterday.getFullYear() &&

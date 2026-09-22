@@ -16,10 +16,10 @@
 	class={cn(
 		"font-sans text-sm font-medium leading-none text-foreground",
 		"peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-		required && "after:ml-1 after:text-error after:content-['*']",
 		className,
 	)}
 	{...rest}
 >
 	{@render children?.()}
+	{#if required}<span class="ml-1 text-error" aria-hidden="true">*</span>{/if}
 </label>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import "../settings/settings.css";
-	import { CalendarDays, BellRing, CircleCheck, Cloud, Eye, EyeOff, KeyRound, Lock, Music2, QrCode, Send } from "@lucide/svelte";
+	import { CalendarDays, BellRing, Cloud, Eye, EyeOff, KeyRound, Lock, Music2, QrCode, Send } from "@lucide/svelte";
 	import QqMusicConnection from "../settings/QqMusicConnection.svelte";
 	import ConfigurationBadge from "../settings/ConfigurationBadge.svelte";
 	import {
@@ -487,7 +487,7 @@
 		<div><h1>Settings</h1><p class="page-description">Manage your accounts and make Vesper your own.</p></div>
 	</header>
 
-	{#each Object.values(formErrors).filter((message) => message !== null) as message}
+	{#each Object.values(formErrors).filter((message) => message !== null) as message, index (index)}
 		<Alert class="settings-alert" variant="error"><AlertDescription class="settings-alert-copy">{message}</AlertDescription></Alert>
 	{/each}
 	{#if error !== null}

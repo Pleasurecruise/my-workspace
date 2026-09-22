@@ -10,11 +10,12 @@
     "./styles/*": "./src/styles/*.css"
   },
   "scripts": {
-    "lint": "vp lint",
-    "lint:fix": "vp lint --fix",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "vp run lint --fix",
     "format": "vp fmt",
     "format:check": "vp fmt --check",
-    "check": "svelte-check --tsgo --tsconfig ./tsconfig.json && vp check"
+    "check": "vp run format:check && vp run lint && vp run typecheck",
+    "typecheck": "svelte-check --tsgo --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "clsx": "2.1.1",

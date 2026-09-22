@@ -15,6 +15,7 @@ target/
 **/dist/
 **/target/
 .vite/
+.vitest/
 .svelte-kit/
 .svelte-check/
 .turbo/

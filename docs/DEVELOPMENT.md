@@ -2,29 +2,34 @@
 
 ## Prerequisites
 
-Use Rust `1.95` or newer, pnpm `12.4.1` (pinned in `package.json`), and the platform
+Use Rust `1.95` or newer, Node.js `^22.18.0 || ^24.11.0 || >=26.0.0`,
+pnpm `12.5.1` (pinned in `package.json`), and the platform
 build dependencies required by Tauri v2. The desktop app requires macOS 12 or newer on Mac.
 R2 access is needed for publication and Moment image transfer; UGOS requires Tailscale with MagicDNS.
 
 ## Root commands
 
-| Command                     | Purpose                                             |
-| --------------------------- | --------------------------------------------------- |
-| `pnpm dev`                  | Run the desktop application.                        |
-| `pnpm dev:cli`              | Run the CLI in development.                         |
-| `pnpm build:desktop`        | Build the desktop deliverable.                      |
-| `pnpm build:cli`            | Build the CLI deliverable.                          |
-| `pnpm content:build`        | Compile local content into a disposable build.      |
-| `pnpm content:publish`      | Preview the R2 upload plan.                         |
-| `pnpm content:publish:live` | Upload the planned artifacts.                       |
-| `pnpm format:check`         | Check frontend and Rust formatting.                 |
-| `pnpm lint`                 | Run Vite Plus lint and Clippy with warnings denied. |
-| `pnpm check`                | Run frontend and Cargo checks.                      |
-| `pnpm test`                 | Run frontend and Cargo tests.                       |
+| Command                     | Purpose                                                               |
+| --------------------------- | --------------------------------------------------------------------- |
+| `pnpm dev`                  | Run the desktop application.                                          |
+| `pnpm dev:cli`              | Run the CLI in development.                                           |
+| `pnpm build:desktop`        | Build the desktop deliverable.                                        |
+| `pnpm build:cli`            | Build the CLI deliverable.                                            |
+| `pnpm content:build`        | Compile local content into a disposable build.                        |
+| `pnpm content:publish`      | Preview the R2 upload plan.                                           |
+| `pnpm content:publish:live` | Upload the planned artifacts.                                         |
+| `pnpm format:check`         | Check frontend and Rust formatting.                                   |
+| `pnpm lint`                 | Run ESLint with Svelte/shadcn checks and Clippy with warnings denied. |
+| `pnpm check`                | Run formatting, lint, and type checks for both toolchains.            |
+| `pnpm test`                 | Run frontend and Cargo tests.                                         |
 
-The binaries are `vesper` (CLI) and `vesper-desktop`; keep their Cargo target names distinct.
-Use package-specific checks during iteration and root commands for workspace verification.
-The `:frontend` and `:rust` script suffixes isolate each toolchain; CI runs them in parallel jobs.
+Root pnpm scripts and `vp run <task>` are equivalent workspace entries. Root `check` combines
+`check:frontend` (formatting, whole-workspace ESLint, and each UI package's `typecheck`) and
+`check:rust` (Cargo fmt, Clippy, and check). The pre-commit hook runs `check` followed by `test`.
+Package `check` runs local formatting, lint, and types. `lint:fix:frontend` applies ESLint fixes;
+`precommit:fix` follows those fixes with frontend and Rust formatting. Scripts use Vite Plus's uncached default;
+Cargo retains its incremental build cache. Use `vp run lint` and `vp run check`, since built-in
+`vp lint` and `vp check` still invoke Oxlint. The binaries are `vesper` (CLI) and `vesper-desktop`.
 
 The macOS View menu offers Reload and Developer Tools in debug and packaged builds. Reload preserves
 App Lock state. Tools require an unlocked session and close when locked; a restart starts unlocked.
@@ -163,7 +168,8 @@ and playback behavior are documented in [Music](MUSIC.md#qq-music-lifecycle).
 
 Keep manifests and lockfiles synchronized. librespot's `vergen-gitcl` 1.x requires `vergen` 9.0.6,
 and `grammers-crypto` 0.10 requires `glass_pumpkin` 2.0.0-rc0 because later shared types fail to compile.
-Reassess these constraints when upgrading the owning dependencies.
+Keep `@vitest/coverage-v8` aligned with Vite Plus's bundled Vitest (`5.0.1` for Vite Plus
+`1.0.0-rc.0`). Reassess these constraints when upgrading the owning dependencies.
 
 ## Verification
 
@@ -179,9 +185,15 @@ live authenticated tests stay explicitly ignored. Inspect publication plans befo
 `cargo test -p vesper terminal::` covers discovery and native PTY lifecycle with a synthetic local shell.
 Real Tailscale login still needs an interactive check against a permitted device.
 
-`pnpm test:coverage:frontend` writes `coverage/index.html` and `coverage/coverage-summary.json`.
-Keep `@vitest/coverage-v8` aligned with Vite Plus's Vitest. Coverage guides missing branches but
-cannot establish Rust, live-provider, or native playback correctness.
+Coverage reports are separate and ignored by Git:
+
+- `pnpm test:coverage:frontend`: HTML and `coverage-summary.json` under `coverage/frontend/`.
+- `pnpm test:coverage:rust`: `coverage/rust/html/index.html`; default-feature, all-target workspace tests.
+
+Rust coverage requires `cargo install cargo-llvm-cov --locked` and
+`rustup component add llvm-tools-preview`. Its first run builds separate instrumented artifacts.
+Stable Rust coverage excludes branch coverage, doctests, and ignored live tests. Neither command
+sets a coverage threshold; passing coverage tests does not establish live-provider or native UI correctness.
 
 On macOS, `cargo run -p vesper --example cookie_probe` checks native WebView domain-cookie behavior;
 `cargo run -p vesper --example captcha_probe` checks the production page-to-native proof callback.

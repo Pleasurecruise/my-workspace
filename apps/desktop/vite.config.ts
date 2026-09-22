@@ -5,9 +5,6 @@ import { defaultClientConditions, defineConfig } from "vite-plus";
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
-	fmt: {
-		overrides: [{ files: ["**/*.ts"], options: { useTabs: true } }],
-	},
 	plugins: [svelte(), tailwindcss()],
 	resolve: { conditions: [...defaultClientConditions] },
 	test: {
