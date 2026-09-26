@@ -35,7 +35,7 @@ const DATA_CONCURRENCY: usize = 4;
 pub struct Data {
     repositories: HashMap<String, ::github::RepositorySnapshot>,
     links: HashMap<String, link_preview::LinkMetadata>,
-    tweets: HashMap<String, Option<link_preview::twitter::Post>>,
+    tweets: HashMap<String, Result<link_preview::twitter::Post, String>>,
     stocks: HashMap<String, market_data::stocks::StockSeries>,
     pub articles: HashMap<String, ArticleMetadata>,
 }
@@ -228,7 +228,7 @@ pub async fn load_with_articles(
     .await
     .map_err(EmbedError::Data)?;
     data.tweets = stream::iter(tweets.into_iter().map(|url| async move {
-        let post = link_preview::twitter::read(&url).await.ok();
+        let post = link_preview::twitter::read(&url).await;
         (url, post)
     }))
     .buffer_unordered(DATA_CONCURRENCY)

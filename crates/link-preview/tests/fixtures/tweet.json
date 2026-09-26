@@ -1,0 +1,29 @@
+{
+  "id_str": "12345",
+  "text": "hello & world\nnext",
+  "user": {
+    "name": "<Alice>",
+    "screen_name": "example",
+    "profile_image_url_https": "https://pbs.twimg.com/profile_images/example.png"
+  },
+  "created_at": "2026-09-25T09:30:00.000Z",
+  "display_text_range": [0, 18],
+  "mediaDetails": [
+    {
+      "type": "photo",
+      "media_url_https": "https://pbs.twimg.com/media/example.jpg",
+      "ext_alt_text": "Landscape"
+    }
+  ],
+  "quoted_tweet": {
+    "id_str": "456",
+    "text": "Quoted post",
+    "user": {
+      "name": "Quoted author",
+      "screen_name": "quoted",
+      "profile_image_url_https": "https://pbs.twimg.com/profile_images/quoted.png"
+    },
+    "created_at": "2026-09-25T09:30:00.000Z",
+    "display_text_range": [0, 11]
+  }
+}

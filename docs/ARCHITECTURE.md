@@ -34,6 +34,10 @@ stores artifacts. This repository does not host a cloud application backend.
 
 Create a package only for a stable independent or genuinely shared responsibility. Application
 behavior belongs in Rust; Svelte owns presentation and interaction state.
+Shared TypeScript settings and path aliases belong to `packages/tsconfig`: `@/` resolves each
+consumer's `src`, and `@workspace/` resolves repository files such as cross-language test fixtures.
+Workspace packages are imported through their declared exports. Vite reads the inherited tsconfig
+paths; consumer configs only select their files.
 
 ## Data flow
 
@@ -144,14 +148,23 @@ restoring invalidated content. Writes retain each consumer's server-side coordin
 | Moment    | API owns metadata; Rust prepares image variants, uploads them to R2, then registers them. The list is a bounded batch without a synthetic cursor.                                                                                                |
 | Knowledge | API summaries form the metadata-only index and classify Newspaper editions. Opening a document performs an authorized detail read and Rust compilation. Writes require both the content hash and exact updated timestamp for conflict detection. |
 
-Moment shares a Rust EXIF reader between desktop preview and CLI upload, without decoding pixels.
-Desktop publication uses reviewed form values, including cleared metadata; CLI upload uses EXIF
-for unspecified fields.
+Knowledge stores Markdown. Milkdown owns browser editing and selection, while `cms-core::markdown`
+owns dialect classification and semantic compatibility. The editor uses Rust source spans to retain
+special syntax as source blocks with inline compiled rendering. The `preview_knowledge` transport
+calls `consumers::api::knowledge::preview`, which resolves authorized article references and uses
+the existing Rust dialect compiler. `cms-core::markdown::fragment` includes document reference
+and footnote definitions when compiling a block. Preview returns HTML or an explicit failure and
+never persists the draft. [Markdown](MARKDOWN.md#editing) defines the round-trip contract;
+[Design](DESIGN.md#knowledge-interaction) defines the editing surface.
+Content and staged visibility share one Save request. Article-list URLs resolve authorized metadata
+and desktop destinations in Rust; individual enrichment failures preserve neighboring cards and
+leave source code visible when an article cannot be enriched.
 
-Moment upload cleanup depends on whether metadata registration has started: before registration,
-failed partial uploads can be removed; afterward objects are retained for reconciliation because the
-server may have committed. Knowledge's rich-text and source editors preserve a Markdown storage
-contract. Article-list URLs resolve authorized metadata and desktop article destinations in Rust; individual preview failures preserve neighboring cards. Existing content and draft visibility share one Save request. Failed optional embed enrichment leaves code visible rather than hiding an article.
+Moment shares a Rust EXIF reader between desktop preview and CLI upload without decoding pixels.
+Desktop publication uses reviewed form values, including cleared metadata; CLI upload uses EXIF for
+unspecified fields. Failed partial uploads can be removed before metadata registration starts.
+After registration starts, objects remain available for reconciliation because the server may have
+committed them.
 
 Outbound Memo publication belongs to `crates/social`. Commands reread a Memo by ID; the social
 boundary independently rejects non-public content before sending bounded text and its canonical URL.

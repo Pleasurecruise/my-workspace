@@ -1,0 +1,123 @@
+.knowledge-prose {
+  min-width: 0;
+  margin-top: 2rem;
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  line-height: 1.65;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.knowledge-prose h1,
+.knowledge-prose h2,
+.knowledge-prose h3,
+.knowledge-prose h4,
+.knowledge-prose h5,
+.knowledge-prose h6 {
+  position: relative;
+  margin: 2em 0 0.6em;
+  scroll-margin-top: 4rem;
+}
+.knowledge-prose h2 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--color-border);
+}
+.knowledge-prose p,
+.knowledge-prose ul:where(:not(.content-article-list)),
+.knowledge-prose ol {
+  margin: 1em 0;
+}
+.knowledge-prose ul,
+.knowledge-prose ol {
+  padding-left: 1.6em;
+}
+.knowledge-prose ul {
+  list-style: disc;
+}
+.knowledge-prose ol {
+  list-style: decimal;
+}
+.knowledge-prose li {
+  margin: 0.4em 0;
+  line-height: 1.7;
+}
+.knowledge-prose li > ul,
+.knowledge-prose li > ol {
+  margin: 0.25em 0;
+}
+.knowledge-prose blockquote {
+  margin: 1.5em 0;
+  padding: 0.1em 0 0.1em 1.25em;
+  border-left: 2px solid var(--color-muted-foreground);
+  color: var(--color-muted-foreground);
+  font-style: italic;
+}
+.knowledge-prose blockquote p {
+  margin: 0.3em 0;
+}
+.knowledge-prose strong {
+  font-weight: 700;
+}
+.knowledge-prose hr {
+  margin: 2.5em 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+.knowledge-prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.5em auto;
+  border-radius: var(--radius-md);
+}
+.knowledge-prose a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+.knowledge-prose pre {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 1.75em 0;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+}
+.knowledge-prose :not(pre) > code {
+  padding: 0.15em 0.4em;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+.knowledge-prose table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  margin: 1.5em 0;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+.knowledge-prose th,
+.knowledge-prose td {
+  padding: 0.6rem;
+  border: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+@media (min-width: 640px) {
+  .knowledge-prose {
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .knowledge-prose p {
+    text-align: justify;
+  }
+}

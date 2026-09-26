@@ -9,6 +9,10 @@
     "moduleResolution": "Bundler",
     "noEmit": true,
     "types": ["node", "svelte"],
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "paths": {
+      "@/*": ["${configDir}/src/*"],
+      "@workspace/*": ["../../*"]
+    }
   }
 }

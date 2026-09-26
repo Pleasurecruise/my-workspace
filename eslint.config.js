@@ -40,10 +40,16 @@ export default defineConfig(
 		// These views render only HTML compiled by the Rust Markdown boundary.
 		files: [
 			"apps/desktop/src/lib/components/pages/KnowledgeView.svelte",
+			"apps/desktop/src/lib/components/knowledge/DialectBlock.svelte",
 			"apps/desktop/src/lib/components/pages/MemosView.svelte",
 			"apps/desktop/src/lib/components/pages/NewspaperView.svelte",
 		],
 		rules: { "svelte/no-at-html-tags": "off" },
+	},
+	{
+		// Milkdown owns the contentDOM mounted into this Svelte host.
+		files: ["apps/desktop/src/lib/components/knowledge/DialectBlock.svelte"],
+		rules: { "svelte/no-dom-manipulating": "off" },
 	},
 	{
 		// Core ESLint cannot see the parent reading this component's bindable output.

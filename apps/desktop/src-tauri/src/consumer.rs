@@ -435,6 +435,19 @@ pub(crate) async fn update_knowledge(
 }
 
 #[tauri::command]
+pub(crate) async fn preview_knowledge(source: String, context: String) -> CommandResponse<String> {
+    match consumers::api::knowledge::preview(&source, &context).await {
+        Ok(data) => CommandResponse::Ready { data: data.html },
+        Err(message) => CommandResponse::Failed { message },
+    }
+}
+
+#[tauri::command]
+pub(crate) fn markdown_spans(source: String) -> Vec<cms_core::markdown::MarkdownSpan> {
+    cms_core::markdown::source_spans(&source)
+}
+
+#[tauri::command]
 pub(crate) fn markdown_matches(source: String, candidate: String) -> bool {
     cms_core::markdown::equivalent(&source, &candidate)
 }

@@ -106,7 +106,7 @@ it("returns from a related article to its source before returning to the index",
 	const previousScroll = HTMLElement.prototype.scrollIntoView;
 	HTMLElement.prototype.scrollIntoView = scroll;
 	invoke.mockResolvedValueOnce({ status: "ready", data: related });
-	findElement<HTMLAnchorElement>(target, ".prose a").click();
+	findElement<HTMLAnchorElement>(target, ".knowledge-prose a").click();
 	await vi.waitFor(() => expect(target.querySelector("h1")?.textContent).toBe("Related article"));
 	expect(scroll).toHaveBeenCalledWith({ behavior: "instant", block: "start" });
 	HTMLElement.prototype.scrollIntoView = previousScroll;

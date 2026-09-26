@@ -1,12 +1,77 @@
 //! Public X / Twitter cards, without account credentials or executable embeds.
-use dom_query::Document;
 use serde::Deserialize;
 use std::time::Duration;
 use url::Url;
 
+/// Fields consumed by the shared Markdown renderer, from Twitter's syndication response.
+#[derive(Debug, Deserialize)]
 pub struct Post {
-    pub author: String,
+    #[serde(rename = "id_str")]
+    pub id: String,
     pub text: String,
+    pub user: Author,
+    pub created_at: String,
+    #[serde(default)]
+    pub entities: Entities,
+    pub display_text_range: [usize; 2],
+    #[serde(rename = "mediaDetails", default)]
+    pub media: Vec<Media>,
+    pub quoted_tweet: Option<Box<Post>>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct Entities {
+    #[serde(default)]
+    pub urls: Vec<Link>,
+    #[serde(default)]
+    pub user_mentions: Vec<Mention>,
+    #[serde(default)]
+    pub hashtags: Vec<Hashtag>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Link {
+    pub indices: [usize; 2],
+    pub expanded_url: String,
+    pub display_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Mention {
+    pub indices: [usize; 2],
+    pub screen_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Hashtag {
+    pub indices: [usize; 2],
+    pub text: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Author {
+    pub name: String,
+    pub screen_name: String,
+    pub profile_image_url_https: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Media {
+    pub media_url_https: String,
+    pub ext_alt_text: Option<String>,
+    pub video_info: Option<Video>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Video {
+    pub variants: Vec<Variant>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Variant {
+    pub content_type: String,
+    pub url: String,
+    pub bitrate: Option<u64>,
 }
 
 pub fn canonical_url(value: &str) -> Result<String, String> {
@@ -53,24 +118,24 @@ pub fn canonical_url(value: &str) -> Result<String, String> {
 
 pub async fn read(value: &str) -> Result<Post, String> {
     let url = canonical_url(value)?;
+    let id = url
+        .rsplit('/')
+        .next()
+        .expect("canonical status URL has an ID");
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| "could not create Twitter preview client")?;
     let mut response = client
-        .get("https://publish.x.com/oembed")
-        .query(&[
-            ("url", url.as_str()),
-            ("omit_script", "true"),
-            ("dnt", "true"),
-            ("hide_thread", "true"),
-        ])
+        .get("https://cdn.syndication.twimg.com/tweet-result")
+        .query(&[("id", id), ("lang", "en"), ("token", "1")])
         .header(reqwest::header::ACCEPT, "application/json")
+        .header(reqwest::header::USER_AGENT, "Vesper")
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|_| "could not fetch Twitter preview")?;
+        .map_err(|error| format!("could not fetch Twitter preview: {error}"))?;
     let mut body = Vec::new();
     while let Some(chunk) = response
         .chunk()
@@ -82,28 +147,19 @@ pub async fn read(value: &str) -> Result<Post, String> {
         }
         body.extend_from_slice(&chunk);
     }
-    parse(&body)
+    let post = parse(&body)?;
+    if post.id != id {
+        return Err("Twitter preview returned a different post".to_owned());
+    }
+    Ok(post)
 }
 
 fn parse(body: &[u8]) -> Result<Post, String> {
-    #[derive(Deserialize)]
-    struct Response {
-        author_name: String,
-        html: String,
-    }
-    let response: Response = serde_json::from_slice(body).map_err(|_| "invalid Twitter preview")?;
-    let document = Document::from(response.html);
-    let paragraph = document.select_single("blockquote > p");
-    paragraph.select("script, style").remove();
-    paragraph.select("br").replace_with_html("\n");
-    let text = paragraph.text().trim().to_owned();
-    if response.author_name.trim().is_empty() || text.is_empty() {
+    let post: Post = serde_json::from_slice(body).map_err(|_| "invalid Twitter preview")?;
+    if post.user.name.trim().is_empty() || post.text.trim().is_empty() {
         return Err("Twitter preview is missing author or body".to_owned());
     }
-    Ok(Post {
-        author: response.author_name,
-        text,
-    })
+    Ok(post)
 }
 
 #[cfg(test)]
@@ -145,11 +201,12 @@ mod tests {
     }
 
     #[test]
-    fn extracts_text_without_provider_scripts() {
-        let body = serde_json::json!({"author_name":"Alice", "html":"<blockquote><p>Hello &amp; <a href='x'>world</a><br>next<script>bad()</script><style>bad</style></p>footer</blockquote><script>remote()</script>"});
-        let post = parse(&serde_json::to_vec(&body).unwrap()).unwrap();
-        assert_eq!(post.author, "Alice");
-        assert_eq!(post.text, "Hello & world\nnext");
-        assert!(parse(br#"{"author_name":"Alice","html":"<script>bad</script>"}"#).is_err());
+    fn reads_syndication_media() {
+        let post = parse(include_bytes!("../tests/fixtures/tweet.json")).unwrap();
+        assert_eq!(post.user.screen_name, "example");
+        assert_eq!(post.media.len(), 1);
+        assert!(post.quoted_tweet.is_some());
+        assert!(parse(br#"{}"#).is_err());
+        assert!(parse(br#"{"__typename":"TweetTombstone"}"#).is_err());
     }
 }

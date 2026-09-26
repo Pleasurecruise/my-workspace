@@ -132,6 +132,11 @@ export interface NewspaperIssues {
 	personal: string | null;
 }
 
+export interface MarkdownSpan {
+	start: number;
+	end: number;
+}
+
 export interface KnowledgeDraft {
 	title: string;
 	summary: string;

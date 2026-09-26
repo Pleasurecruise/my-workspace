@@ -6,7 +6,8 @@ const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
 	plugins: [svelte(), tailwindcss()],
-	resolve: { conditions: [...defaultClientConditions] },
+	resolve: { conditions: [...defaultClientConditions], tsconfigPaths: true },
+
 	test: {
 		name: "desktop",
 		environment: "happy-dom",

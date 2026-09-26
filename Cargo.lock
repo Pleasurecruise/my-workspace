@@ -3185,6 +3185,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "html-escape"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9356095b4b41197bba32173600e1582792cda618f65d12f68e2e77d273413c5"
+
+[[package]]
 name = "html5ever"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4329,6 +4335,7 @@ version = "0.1.0"
 dependencies = [
  "futures-util",
  "github",
+ "html-escape",
  "link-preview",
  "market-data",
  "percent-encoding",
@@ -4338,6 +4345,7 @@ dependencies = [
  "serde_json",
  "svg-hush",
  "thiserror 2.0.20",
+ "time",
  "unicode-segmentation",
  "url",
 ]

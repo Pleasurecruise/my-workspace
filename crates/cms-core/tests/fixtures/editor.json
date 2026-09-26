@@ -1,0 +1,197 @@
+[
+  {
+    "candidate": "# Title\n\nHello **world** and *friends*.\n\n> Quote\n\n* One\n* Two\n\n1. First\n2. Second\n",
+    "name": "commonmark",
+    "protected": [],
+    "ranges": [],
+    "source": "# Title\n\nHello **world** and *friends*.\n\n> Quote\n\n- One\n- Two\n\n1. First\n2. Second\n"
+  },
+  {
+    "candidate": "Before\n\n![Alt](https://example.com/a.png \"Caption\")\n\nAfter\n",
+    "name": "image",
+    "protected": [],
+    "ranges": [],
+    "source": "Before\n\n![Alt](https://example.com/a.png \"Caption\")\n\nAfter\n"
+  },
+  {
+    "candidate": "| A  |     B |\n| :- | ----: |\n| 1  | **2** |\n",
+    "name": "table",
+    "protected": [],
+    "ranges": [],
+    "source": "| A | B |\n|:---|---:|\n| 1 | **2** |\n"
+  },
+  {
+    "candidate": "* [x] Done\n* [ ] Todo\n",
+    "name": "tasks",
+    "protected": [],
+    "ranges": [],
+    "source": "- [x] Done\n- [ ] Todo\n"
+  },
+  {
+    "candidate": "Hello[^1]\n\n[^1]: Note\n",
+    "name": "footnote",
+    "protected": [],
+    "ranges": [],
+    "source": "Hello[^1]\n\n[^1]: Note\n"
+  },
+  {
+    "candidate": "[site](https://example.com \"Title\")\n",
+    "name": "reference link",
+    "protected": [],
+    "ranges": [],
+    "source": "[site][ref]\n\n[ref]: https://example.com \"Title\"\n"
+  },
+  {
+    "candidate": "<https://example.com>\n",
+    "name": "autolink",
+    "protected": [],
+    "ranges": [],
+    "source": "<https://example.com>\n"
+  },
+  {
+    "candidate": "Hello :suzume_思考: :suzume5_01: world\n\nAfter\n",
+    "name": "shortcode",
+    "protected": ["Hello :suzume_思考: :suzume5_01: world"],
+    "ranges": [
+      {
+        "start": 0,
+        "end": 36
+      }
+    ],
+    "source": "Hello :suzume_思考: :suzume5_01: world\n\nAfter\n"
+  },
+  {
+    "candidate": "First line\nsecond line\n",
+    "name": "soft break",
+    "protected": [],
+    "ranges": [],
+    "source": "First line\nsecond line\n"
+  },
+  {
+    "candidate": "---\ntitle: Test\n---\n\nAfter\n",
+    "name": "frontmatter",
+    "protected": ["---\ntitle: Test\n---"],
+    "ranges": [
+      {
+        "end": 19,
+        "start": 0
+      }
+    ],
+    "source": "---\ntitle: Test\n---\n\nAfter\n"
+  },
+  {
+    "candidate": "Before\n\n中文😀 $x^2$ and [[Page|Label]].\n\nAfter\n",
+    "name": "math and wiki",
+    "protected": ["中文😀 $x^2$ and [[Page|Label]]."],
+    "ranges": [
+      {
+        "end": 18,
+        "start": 13
+      },
+      {
+        "end": 37,
+        "start": 23
+      }
+    ],
+    "source": "Before\n\n中文😀 $x^2$ and [[Page|Label]].\n\nAfter\n"
+  },
+  {
+    "candidate": "Before\n\n<div>keep & raw</div>\n\nAfter\n",
+    "name": "html",
+    "protected": ["<div>keep & raw</div>"],
+    "ranges": [
+      {
+        "end": 30,
+        "start": 8
+      }
+    ],
+    "source": "Before\n\n<div>keep & raw</div>\n\nAfter\n"
+  },
+  {
+    "candidate": "Before\n\n```embed:link\nurl: https://example.com\nalign: narrow\n```\n\n```embed:media\ntype: audio\nsrc: https://example.com/audio.mp3\n```\n\nAfter\n",
+    "name": "embeds",
+    "protected": [
+      "```embed:link\nurl: https://example.com\nalign: narrow\n```\n\n```embed:media\ntype: audio\nsrc: https://example.com/audio.mp3\n```"
+    ],
+    "ranges": [
+      {
+        "end": 64,
+        "start": 8
+      },
+      {
+        "end": 131,
+        "start": 66
+      }
+    ],
+    "source": "Before\n\n```embed:link\nurl: https://example.com\nalign: narrow\n```\n\n```embed:media\ntype: audio\nsrc: https://example.com/audio.mp3\n```\n\nAfter\n"
+  },
+  {
+    "candidate": "Before\n\n```rust title=\"example\"\nlet x = 1;\n```\n\nAfter\n",
+    "name": "code metadata",
+    "protected": ["```rust title=\"example\"\nlet x = 1;\n```"],
+    "ranges": [
+      {
+        "end": 46,
+        "start": 8
+      }
+    ],
+    "source": "Before\n\n```rust title=\"example\"\nlet x = 1;\n```\n\nAfter\n"
+  },
+  {
+    "candidate": "Before\n\n````markdown\n```embed:link\nurl: https://example.com\n```\n````\n\nAfter\n",
+    "name": "nested source example",
+    "protected": ["````markdown\n```embed:link\nurl: https://example.com\n```\n````"],
+    "ranges": [
+      {
+        "end": 68,
+        "start": 8
+      }
+    ],
+    "source": "Before\n\n````markdown\n```embed:link\nurl: https://example.com\n```\n````\n\nAfter\n"
+  },
+  {
+    "candidate": "Before\n\n- Text\n\n  ```embed:quote\n  author: Test\n  ---\n  Keep  spaces\n  ```\n\nAfter\n",
+    "name": "nested dialect",
+    "protected": ["- Text\n\n  ```embed:quote\n  author: Test\n  ---\n  Keep  spaces\n  ```"],
+    "ranges": [
+      {
+        "end": 74,
+        "start": 18
+      }
+    ],
+    "source": "Before\n\n- Text\n\n  ```embed:quote\n  author: Test\n  ---\n  Keep  spaces\n  ```\n\nAfter\n"
+  },
+  {
+    "candidate": "Before\n\n$x$ and [site][ref]\n\n[ref]: https://example.com \"Title\"\n\nAfter\n",
+    "name": "reference inside source block",
+    "protected": ["$x$ and [site][ref]"],
+    "ranges": [
+      {
+        "end": 11,
+        "start": 8
+      }
+    ],
+    "source": "Before\n\n$x$ and [site][ref]\n\n[ref]: https://example.com \"Title\"\n\nAfter\n"
+  },
+  {
+    "candidate": "",
+    "name": "empty document",
+    "protected": [],
+    "ranges": [],
+    "source": ""
+  },
+  {
+    "name": "formatted link",
+    "source": "[**bold** plain](https://example.com)",
+    "candidate": "**[bold](https://example.com)** [plain](https://example.com)\n",
+    "protected": [],
+    "ranges": []
+  },
+  {
+    "name": "image without title",
+    "source": "![中文图片说明](https://example.com/image.png)",
+    "candidate": "![中文图片说明](https://example.com/image.png)\n",
+    "protected": [],
+    "ranges": []
+  }
+]

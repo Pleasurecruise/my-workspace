@@ -6,23 +6,28 @@ fn renders_twitter_text_and_unavailable_cards() {
     let url = "https://x.com/example/status/12345";
     data.tweets.insert(
         url.to_owned(),
-        Some(link_preview::twitter::Post {
-            author: "<Alice>".to_owned(),
-            text: "hello & world\nnext".to_owned(),
-        }),
+        Ok(serde_json::from_str(include_str!(
+            "../../../link-preview/tests/fixtures/tweet.json"
+        ))
+        .unwrap()),
     );
     let source = "url: https://twitter.com/Example/status/12345?s=20\nalign: narrow";
     let html = render(TWITTER, source, &data).unwrap().unwrap();
     assert!(html.contains("content-embed-narrow"));
+    assert!(html.contains("tweet-header"));
+    assert!(html.contains("Landscape"));
+    assert!(html.contains("tweet-quote"));
+    assert!(html.contains("Sep 25, 2026"));
     assert!(html.contains("&lt;Alice&gt;"));
     assert!(html.contains("hello &amp; world\nnext"));
     assert!(html.contains(&format!("href=\"{url}\"")));
-    data.tweets.insert(url.to_owned(), None);
+    data.tweets
+        .insert(url.to_owned(), Err("Twitter request timed out".to_owned()));
     assert!(
         render(TWITTER, source, &data)
             .unwrap()
             .unwrap()
-            .contains("Post preview is unavailable")
+            .contains("Twitter request timed out")
     );
     for source in [
         "url: https://x.com/a/status/1\nscript: true",
@@ -31,6 +36,75 @@ fn renders_twitter_text_and_unavailable_cards() {
     ] {
         assert!(render(TWITTER, source, &data).is_err());
     }
+}
+
+#[test]
+fn twitter_media_preserves_text_and_rejects_unsafe_urls() {
+    let mut data = Data::default();
+    let mut post: link_preview::twitter::Post = serde_json::from_str(include_str!(
+        "../../../link-preview/tests/fixtures/tweet.json"
+    ))
+    .unwrap();
+    post.text = "😀 <script> https://example.com".to_owned();
+    post.display_text_range = [0, post.text.chars().count()];
+    post.entities.urls.push(link_preview::twitter::Link {
+        indices: [11, post.text.chars().count()],
+        expanded_url: "https://example.com".to_owned(),
+        display_url: "example.com".to_owned(),
+    });
+    post.media[0].video_info = Some(
+        serde_json::from_value(serde_json::json!({ "variants": [
+            {"content_type":"application/x-mpegURL", "url":"https://video.twimg.com/play.m3u8"},
+            {"content_type":"video/mp4", "url":"https://video.twimg.com/play.mp4", "bitrate":256000}
+        ]}))
+        .unwrap(),
+    );
+    data.tweets
+        .insert("https://x.com/example/status/12345".to_owned(), Ok(post));
+    let html = render(TWITTER, "url: https://x.com/example/status/12345", &data)
+        .unwrap()
+        .unwrap();
+    assert!(html.contains("😀 &lt;script&gt;"));
+    assert!(html.contains("href=\"https://example.com\""));
+    assert!(html.contains("<video controls"));
+    assert!(html.contains("content-embed-media tweet-video"));
+    assert!(!html.contains("play.m3u8"));
+    data.tweets
+        .get_mut("https://x.com/example/status/12345")
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .user
+        .profile_image_url_https = "javascript:alert(1)".to_owned();
+    assert!(render(TWITTER, "url: https://x.com/example/status/12345", &data).is_err());
+}
+
+#[test]
+fn twitter_entities_decode_after_indexing() {
+    let mut post: link_preview::twitter::Post = serde_json::from_str(include_str!(
+        "../../../link-preview/tests/fixtures/tweet.json"
+    ))
+    .unwrap();
+    let prefix = "😀 A &amp; B &lt;script&gt; &#39; &amp;lt; ";
+    post.text = format!("{prefix}https://t.co/example");
+    post.display_text_range = [0, post.text.chars().count()];
+    post.entities.urls.push(link_preview::twitter::Link {
+        indices: [prefix.chars().count(), post.text.chars().count()],
+        expanded_url: "https://example.com".to_owned(),
+        display_url: "example.com".to_owned(),
+    });
+    let mut data = Data::default();
+    data.tweets
+        .insert("https://x.com/example/status/12345".to_owned(), Ok(post));
+    let html = render(TWITTER, "url: https://x.com/example/status/12345", &data)
+        .unwrap()
+        .unwrap();
+    assert!(
+        html.contains("😀 A &amp; B &lt;script&gt; &#39; &amp;lt; <a href=\"https://example.com\""),
+        "{html}"
+    );
+    assert!(!html.contains("<script>"));
+    assert!(!html.contains("https://t.co/example"));
 }
 
 #[test]

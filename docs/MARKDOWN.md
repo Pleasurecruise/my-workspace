@@ -18,10 +18,32 @@ Embed validation precedes provider reads. Rust counts prose at 350 CJK character
 per minute, excluding frontmatter, URLs, code, math, image descriptions and embed configuration.
 Consumers own storage and metadata; Vesper keeps no second Markdown mirror.
 
-Rich/source switching compares Markdown semantics: formatting differences are allowed, content
-changes are not. Source stays authoritative until edited. Loading, cache invalidation and navigation
-belong to [Architecture](ARCHITECTURE.md#desktop-boundary); draft visibility and Save behavior belong
-to [Design](DESIGN.md).
+## Editing
+
+Knowledge keeps authored Markdown as its storage contract. Milkdown edits ordinary prose, images,
+tables, task lists and footnotes. Rust identifies code blocks, frontmatter, math, Wiki links, image
+shortcodes and raw HTML through `cms-core::markdown::source_spans`; the thin `markdown_spans` IPC adapter returns UTF-16
+offsets. Milkdown retains each containing top-level block and its required reference definitions as
+editable source. It does not implement the dialect compiler.
+
+Rich mode checks its serialized document against Rust's semantic comparison before accepting edits.
+The comparison allows equivalent inline mark nesting and reference/inline links while retaining
+text, formatting, destinations, titles and dialect content. Switching modes without editing leaves
+the original Markdown unchanged. Content transactions update the draft synchronously and reject
+growth beyond the article limit; loading a source revision resets undo history.
+
+Protected blocks render inline through `consumers::api::knowledge::preview`. The operation includes
+reference and footnote definitions from the current document, resolves internal article references
+through the authorized index, and calls the existing Knowledge compiler and `md-dialect` providers.
+The view shares reader prose styles, link handling and media controls. Edit Markdown exposes the
+preserved block source; Show rendered block collapses it. Refresh recompiles with current document
+references and retries provider requests. Compilation errors remain visible without substituting
+plain rendering or changing the draft. Changing block source or closing its view invalidates pending
+results. These previews never save or publish, and do not add a third editor mode.
+
+Shared fixtures verify source spans, Milkdown serialization and semantic equivalence; preview tests
+cover dialect compilation and reference context. Draft lifetime and saving follow
+[Architecture](ARCHITECTURE.md#desktop-boundary) and [Design](DESIGN.md#knowledge-interaction).
 
 ## Shared embed rules
 
@@ -53,10 +75,12 @@ contain 1–20 digits without a leading zero. Canonical URLs use `x.com`, a lowe
 trailing slash, query or fragment. Reads are deduplicated by canonical URL, with up to four requests
 in flight.
 
-`link-preview` reads the fixed X oEmbed endpoint without redirects, with a 15-second timeout and
-1 MiB response limit. The response supplies the author name; an HTML parser extracts the post body
-and discards scripts and styles. The renderer escapes both text fields. Provider HTML and scripts
-never enter the reader.
+`link-preview` reads the fixed Twitter syndication endpoint without redirects, with a 15-second
+timeout and 1 MiB response limit. Its typed response supplies author identity, display text range,
+media, quoted post and creation date. The shared Rust renderer slices text using provider indices,
+decodes HTML entities once and safely escapes the result. It validates outgoing URLs and emits
+the card used by both reading and draft preview. Images load without referrers;
+video uses native controls and never autoplays. Provider HTML and scripts never enter either view.
 
 ## Article cards
 

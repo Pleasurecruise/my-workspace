@@ -262,6 +262,8 @@ pub fn run() {
             consumer::read_knowledge,
             consumer::prefetch_knowledge,
             consumer::markdown_matches,
+            consumer::markdown_spans,
+            consumer::preview_knowledge,
             updater::check_for_update,
             updater::install_update,
             dashboard::refresh_dashboard,

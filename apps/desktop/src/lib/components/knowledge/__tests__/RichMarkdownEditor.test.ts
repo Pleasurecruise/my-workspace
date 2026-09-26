@@ -2,7 +2,18 @@ import { expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import RichMarkdownEditor from "../RichMarkdownEditor.svelte";
 
-const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+const { invoke, matches, preview } = vi.hoisted(() => ({
+	invoke: vi.fn(),
+	matches: vi.fn(),
+	preview: vi.fn(),
+}));
+invoke.mockImplementation((command: string) =>
+	command === "markdown_spans"
+		? Promise.resolve([])
+		: command === "preview_knowledge"
+			? preview()
+			: matches(),
+);
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 function findElement<T extends Element>(target: ParentNode, selector: string): T {
@@ -15,7 +26,7 @@ it("keeps source mode when a compatibility result arrives after the user chooses
 	let finish: (value: boolean) => void = () => {
 		throw new Error("Compatibility request has not started");
 	};
-	invoke.mockImplementation(
+	matches.mockImplementation(
 		() =>
 			new Promise<boolean>((resolve) => {
 				finish = resolve;
@@ -31,13 +42,14 @@ it("keeps source mode when a compatibility result arrives after the user chooses
 				candidate: expect.any(String),
 			}),
 		);
-		findElement<HTMLButtonElement>(target, ".mode-switch button:last-child").click();
+		findElement<HTMLButtonElement>(target, ".mode-switch button:nth-child(2)").click();
 		finish(true);
 		await tick();
 		expect(findElement<HTMLTextAreaElement>(target, "textarea").value).toBe(
 			"* **Hello**\n* World\n",
 		);
 		findElement<HTMLButtonElement>(target, ".mode-switch button:first-child").click();
+		await vi.waitFor(() => expect(matches).toHaveBeenCalledTimes(2));
 		finish(true);
 		await vi.waitFor(() => expect(target.querySelector("textarea")).toBeNull());
 	} finally {
@@ -47,8 +59,9 @@ it("keeps source mode when a compatibility result arrives after the user chooses
 });
 
 it("preserves authored Markdown when switching modes without editing", async () => {
-	invoke.mockReset();
-	invoke.mockResolvedValue(true);
+	matches.mockReset();
+	invoke.mockClear();
+	matches.mockResolvedValue(true);
 	const source =
 		"* **Hello**\n* World\n\n```embed:media\ntype: audio\nsrc: https://example.com/audio.mp3\n```\n";
 	const target = document.createElement("div");
@@ -57,12 +70,12 @@ it("preserves authored Markdown when switching modes without editing", async () 
 	try {
 		await vi.waitFor(() => expect(invoke).toHaveBeenCalled());
 		await vi.waitFor(() => expect(target.querySelector("textarea")).toBeNull());
-		findElement<HTMLButtonElement>(target, ".mode-switch button:last-child").click();
+		findElement<HTMLButtonElement>(target, ".mode-switch button:nth-child(2)").click();
 		await tick();
 		expect(findElement<HTMLTextAreaElement>(target, "textarea").value).toBe(source);
 		findElement<HTMLButtonElement>(target, ".mode-switch button:first-child").click();
 		await vi.waitFor(() => expect(target.querySelector("textarea")).toBeNull());
-		findElement<HTMLButtonElement>(target, ".mode-switch button:last-child").click();
+		findElement<HTMLButtonElement>(target, ".mode-switch button:nth-child(2)").click();
 		await tick();
 		expect(findElement<HTMLTextAreaElement>(target, "textarea").value).toBe(source);
 	} finally {
@@ -74,9 +87,10 @@ it("preserves authored Markdown when switching modes without editing", async () 
 it.each(["unsupported", "failed"])(
 	"keeps the complete source when compatibility is %s",
 	async (result) => {
-		invoke.mockReset();
-		if (result === "unsupported") invoke.mockResolvedValue(false);
-		else invoke.mockRejectedValue(new Error("Unavailable"));
+		matches.mockReset();
+		invoke.mockClear();
+		if (result === "unsupported") matches.mockResolvedValue(false);
+		else matches.mockRejectedValue(new Error("Unavailable"));
 		const source =
 			"```embed:article\nhttps://knowledge.you-find.me/articles/reference\n```\n\n![image](https://example.com/image.png)\n";
 		const target = document.createElement("div");
@@ -94,11 +108,12 @@ it.each(["unsupported", "failed"])(
 );
 
 it("ignores compatibility completion after the source changes", async () => {
-	invoke.mockReset();
+	matches.mockReset();
+	invoke.mockClear();
 	let finish: (value: boolean) => void = () => {
 		throw new Error("Compatibility request has not started");
 	};
-	invoke.mockImplementation(
+	matches.mockImplementation(
 		() =>
 			new Promise<boolean>((resolve) => {
 				finish = resolve;

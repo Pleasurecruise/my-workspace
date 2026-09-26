@@ -1,7 +1,7 @@
 use super::{ApiError, Client, send};
 use cms_core::markdown::{
-    ArticleMetadata, ReadingStats, TocEntry, article_ids, article_urls, compile_knowledge_plain,
-    compile_knowledge_with_articles, knowledge_body,
+    ArticleMetadata, CompiledKnowledge, ReadingStats, TocEntry, article_ids, article_urls,
+    compile_knowledge_plain, compile_knowledge_with_articles, knowledge_body,
 };
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -476,6 +476,29 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
     })
 }
 
+/// Compile an editor block with document definitions and authorized article references.
+pub async fn preview(source: &str, context: &str) -> Result<CompiledKnowledge, String> {
+    let source = cms_core::markdown::fragment(source, context);
+    let ids = article_ids(&source).map_err(|error| error.to_string())?;
+    let urls: Vec<_> = article_urls(&source)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|url| article_identity(url).is_some())
+        .collect();
+    let mut metadata = HashMap::new();
+    if !ids.is_empty() || !urls.is_empty() {
+        for summary in reference_summaries()
+            .await
+            .map_err(|error| error.to_string())?
+        {
+            resolve_card_metadata(&summary, &ids, &urls, &mut metadata);
+        }
+    }
+    compile_knowledge_with_articles(&source, metadata)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 fn newspaper_edition(tags: &[String]) -> Option<NewspaperEdition> {
     let mut developer = false;
     let mut personal = false;
@@ -778,6 +801,20 @@ async fn mutation_error(mut response: reqwest::Response, operation: &'static str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn compiles_draft_dialects_and_reports_invalid_source() {
+        let source = "```embed:annotation\nmark: Example\nnote: Kept note\n---\nExample body\n```\n\n:suzume_思考:";
+        let result = preview(source, source).await.unwrap();
+        assert!(result.html.contains("content-embed-annotation"));
+        assert!(result.html.contains("Kept note"));
+        assert!(result.html.contains("markdown-emoji"));
+        assert!(
+            preview("```embed:annotation\nnote: Incomplete\n```", "")
+                .await
+                .is_err()
+        );
+    }
 
     #[tokio::test]
     async fn decodes_api_contracts() {

@@ -181,10 +181,19 @@ open Knowledge and retain a bounded reading history; Back returns to the previou
 the index. Chapter links locate headings after the destination mounts. Failed navigation preserves
 the current article. Ordinary external links open the system browser.
 
-Rich editing includes explicit Markdown mode; unsupported syntax opens there without rewriting it.
-Session drafts survive navigation, saving preserves edits made during the request, and unfinished
-edits block switching articles. Existing-article visibility is staged with content until Save;
-Cancel discards it. Changing the select alone never writes to the server.
+The editor offers Rich text and Markdown modes. Rich text edits ordinary prose, images, tables,
+task checkboxes and footnotes. Protected dialect blocks show Rust-compiled content inline, using
+the reader's prose styles, link handling and media controls. Each block offers Edit Markdown and
+Show rendered block, plus Refresh to retry compilation or resolve changed document references.
+Formatting controls disable when a selection includes a protected block. Images fit the editor
+width, tables use semantic borders, and task checkboxes expose completion controls.
+
+Loading and compilation failures appear inside the affected block without changing its source.
+A rich-mode compatibility failure keeps the complete source available in Markdown mode.
+
+Drafts survive navigation, unfinished edits block switching articles, and saving retains edits made
+during the request. Existing-article visibility is staged with content until Save; Cancel discards
+it. Changing the visibility select alone never writes to the server.
 
 ## Markdown presentation
 
@@ -195,9 +204,12 @@ Compiled embeds use restrained paper, outlines, shadows and accents. Alignment a
 cards or whole article lists: left/right cap width at 32rem and align to that edge, narrow centers
 the same bounded width, and wide fills the available container subject to type-specific caps.
 
-Twitter cards use the link-card layout with the full post body and preserved whitespace. Ordinary
-link descriptions remain clamped. Unavailable posts retain a canonical source link and explanatory
-message.
+Twitter cards follow the Knowledge web card composition: avatar and author header, unclamped post
+body, responsive media, quoted post and creation date. Cards use semantic surfaces and borders,
+1.25rem padding, 1rem body text at 1.65 line height, and visible keyboard focus. Video shares the
+reader's playback controls. Narrow cards wrap within their container and reduced motion disables
+transitions. Unavailable posts retain a canonical source link and explanatory message. Ordinary
+link descriptions remain clamped.
 
 Attributed quotes preserve multiline text with a source footer. Git diffs use a keyboard-scrollable
 code region, visible plus/minus markers and semantic success/error colors; headers remain muted.

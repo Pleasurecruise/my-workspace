@@ -54,6 +54,7 @@ base64 = "0.23"
 der = "0.8"
 dotenvy = "0.15"
 dom_query = "0.27"
+html-escape = "0.2.15"
 dirs = "6"
 diesel = { version = "2.3", default-features = false, features = ["sqlite"] }
 libsqlite3-sys = { version = "0.38", features = ["bundled"] }

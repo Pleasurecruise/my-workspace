@@ -38,6 +38,7 @@
 	import type { CommandResponse, KnowledgeDraft, KnowledgeUpdate, KnowledgeEntry } from "../../consumer";
 	import KnowledgeHeader from "../knowledge/KnowledgeHeader.svelte";
 	import KnowledgeToc from "../knowledge/KnowledgeToc.svelte";
+	import "../knowledge/prose.css";
 	import RichMarkdownEditor from "../knowledge/RichMarkdownEditor.svelte";
 
 	let linkError = $state<string | null>(null);
@@ -254,7 +255,7 @@
 			{/snippet}
 		</KnowledgeHeader>
 		{#key selected.id}
-			<article data-article-id={selected.id} bind:this={articleElement} use:mediaPlayers={selected.html} class="prose" use:openArticleLinks={{ onError: (message) => { linkError = message; }, onOpen: selectKnowledgeArticle }}>{@html selected.html}</article>
+			<article data-article-id={selected.id} bind:this={articleElement} use:mediaPlayers={selected.html} class="knowledge-prose" use:openArticleLinks={{ onError: (message) => { linkError = message; }, onOpen: selectKnowledgeArticle }}>{@html selected.html}</article>
 		{/key}
 		{#if linkError !== null}<p role="alert">{linkError}</p>{/if}
 		{#if copyError !== null}<p role="alert">{copyError}</p>{/if}
@@ -317,28 +318,8 @@
 	li span { color: var(--color-muted-foreground); font-size: 0.75rem; }
 	.empty { padding: 4rem 0; color: var(--color-muted-foreground); font-size: 0.875rem; text-align: center; }
 	.reader { position: relative; width: 100%; margin: 0; }
-	.prose { min-width: 0; margin-top: 2rem; color: var(--color-foreground); font-family: var(--font-sans); font-size: 0.95rem; line-height: 1.65; overflow-wrap: break-word; word-break: break-word; }
-	.prose :global(h1), .prose :global(h2), .prose :global(h3), .prose :global(h4), .prose :global(h5), .prose :global(h6) { position: relative; margin: 2em 0 0.6em; scroll-margin-top: 4rem; }
-	.prose :global(h2) { padding-bottom: 0.3em; border-bottom: 1px solid var(--color-border); }
-	.prose :global(p), .prose :global(ul:where(:not(.content-article-list))), .prose :global(ol) { margin: 1em 0; }
-	.prose :global(ul), .prose :global(ol) { padding-left: 1.6em; }
-	.prose :global(ul) { list-style: disc; }
-	.prose :global(ol) { list-style: decimal; }
-	.prose :global(li) { margin: 0.4em 0; line-height: 1.7; }
-	.prose :global(li > ul), .prose :global(li > ol) { margin: 0.25em 0; }
-	.prose :global(blockquote) { margin: 1.5em 0; padding: 0.1em 0 0.1em 1.25em; border-left: 2px solid var(--color-muted-foreground); color: var(--color-muted-foreground); font-style: italic; }
-	.prose :global(blockquote p) { margin: 0.3em 0; }
-	.prose :global(strong) { font-weight: 700; }
-	.prose :global(hr) { margin: 2.5em 0; border: 0; border-top: 1px solid var(--color-border); }
-	.prose :global(img) { display: block; max-width: 100%; height: auto; margin: 1.5em auto; border-radius: var(--radius-md); }
-	.prose :global(a) { color: var(--color-accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
-	.prose :global(pre) { max-width: 100%; overflow-x: auto; margin: 1.75em 0; padding: 0.875rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-muted); font-family: var(--font-mono); font-size: 0.8125rem; line-height: 1.65; }
-	.prose :global(:not(pre) > code) { padding: 0.15em 0.4em; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-muted); font-family: var(--font-mono); font-size: 0.875em; line-height: 1.5; }
-	.prose :global(table) { display: block; overflow-x: auto; width: 100%; margin: 1.5em 0; border-collapse: collapse; font-size: 0.9em; }
-	.prose :global(th), .prose :global(td) { padding: 0.6rem; border: 1px solid var(--color-border); text-align: left; vertical-align: top; }
 	.article-actions { display: flex; flex-shrink: 0; gap: 0.5rem; }
 
 	:global(.page-content[data-stacked="true"]) .editor header { display: grid; }
 	:global(.page-content[data-stacked="true"]) .fields { grid-template-columns: minmax(0, 1fr); }
-	@media (min-width: 640px) { .prose { font-size: 1rem; line-height: 1.5; } .prose :global(p) { text-align: justify; } }
 </style>
