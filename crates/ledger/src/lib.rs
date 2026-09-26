@@ -43,6 +43,8 @@ pub enum Error {
     MissingEntry,
     #[error("The expense total is too large to display accurately")]
     Total,
+    #[error("Expense storage contains an invalid record")]
+    InvalidRecord,
     #[error(transparent)]
     Database(#[from] vesper_database::Error),
     #[error("Expense storage operation failed: {0}")]
@@ -212,6 +214,7 @@ impl Store {
     }
 }
 
+// Mirrors todo's parse_date (crates/todo/src/date.rs); keep both policies in sync.
 fn parse_date(value: &str) -> Result<time::Date, Error> {
     let date = time::Date::parse(
         value,
@@ -313,7 +316,7 @@ fn snapshot(connection: &mut SqliteConnection, date: &str) -> Result<Snapshot, E
             .filter(|value| *value <= MAX_TOTAL)
             .ok_or(Error::Total)?;
         *categories.entry(entry.category.clone()).or_insert(0) += entry.amount_pence;
-        *days.get_mut(&entry.date).ok_or(Error::Date)? += entry.amount_pence;
+        *days.get_mut(&entry.date).ok_or(Error::InvalidRecord)? += entry.amount_pence;
     }
     let used = ledger_entries::table
         .select(ledger_entries::category)
@@ -337,7 +340,7 @@ fn snapshot(connection: &mut SqliteConnection, date: &str) -> Result<Snapshot, E
     Ok(Snapshot {
         date: date.to_owned(),
         month: date[..7].to_owned(),
-        day_total_pence: *days.get(date).ok_or(Error::Date)?,
+        day_total_pence: *days.get(date).ok_or(Error::InvalidRecord)?,
         month_total_pence: total,
         entries: entries
             .into_iter()

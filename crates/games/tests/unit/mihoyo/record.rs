@@ -117,7 +117,7 @@ fn bridge_signature() {
 }
 
 #[test]
-fn pull_authkey_uses_stoken_and_hutao_lk2_profile() {
+fn signs_pull_authorization() {
     let body = serde_json::json!({"auth_appid":"webview_gacha","game_biz":"hkrpg_cn","game_uid":100,"region":"prod_gf_cn"}).to_string();
     let request = record()
         .authkey_request(body.clone())

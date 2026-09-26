@@ -10,8 +10,8 @@
 </p>
 
 Vesper is a focused desktop workspace backed by a Rust core. It combines a live personal dashboard
-with Memos, Moment, Knowledge, Todo, and publishing workflows, while keeping credentials in the
-operating-system credential store.
+with content, planning, media, and publishing workflows. Release builds keep Vesper-owned credentials
+in the operating-system store; debug builds use the local database.
 
 It is designed to stay open throughout the day: glance at system health, capture an idea, review a
 photo stream, continue a longer draft, or publish content without switching between unrelated tools.
@@ -23,13 +23,17 @@ photo stream, continue a longer draft, or publish content without switching betw
 - **Moment** — browse and manage a personal photo stream with progressive R2-backed images
 - **Knowledge** — create and read long-form Markdown with a focused article experience
 - **Newspaper** — a calm daily view projected from Knowledge
+- **Music** — browse and play Spotify and QQ Music collections
+- **Inbox** — read notifications from a configured ntfy feed
+- **Planning and spending** — manage Todo, habits, calendars, and local GBP expenses on the dashboard
+- **Games** — view daily notes, pull history, and Steam activity on the dashboard
+- **Terminals** — open a local shell or connect to permitted Tailscale devices over SSH
 - **CLI** — reuse the same Rust capability crates for Todo, content builds, publication, and
   consumer workflows
 
 ## Built around clear boundaries
 
-- **Local first** — the desktop experience starts immediately and keeps credentials in the
-  operating-system store
+- **Local first** — the desktop experience starts immediately, with Todo and spending records stored locally
 - **One trusted core** — Rust owns commands, network access, content compilation, publication, and
   runtime behavior
 - **Focused interfaces** — Svelte provides a calm, responsive view layer while the CLI exposes the
@@ -66,7 +70,7 @@ pnpm test
 ```
 
 Create a desktop installer with `pnpm build:desktop`, or build the CLI with `pnpm build:cli`.
-Install the CLI locally with `pnpm cli:install`, then run `vesper`.
+The desktop installer does not include the CLI. Install the CLI separately with `pnpm cli:install`, then run `vesper`.
 
 ## Documentation
 

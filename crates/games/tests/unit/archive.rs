@@ -48,7 +48,7 @@ fn missing_item() {
 }
 
 #[test]
-fn preserves_history_across_windows_accounts_and_restarts() {
+fn persists_account_history() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("games.sqlite");
     let first = merge(
@@ -70,7 +70,7 @@ fn preserves_history_across_windows_accounts_and_restarts() {
 }
 
 #[test]
-fn rejects_invalid_batches_without_partial_changes() {
+fn rejects_invalid_batches() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("games.sqlite");
     merge(&path, &account("100"), &[pull("1", 3)]).unwrap();
@@ -89,7 +89,7 @@ fn corrupt_store_is_not_replaced() {
 }
 
 #[test]
-fn conflicting_history_rolls_back_the_whole_sync() {
+fn rolls_back_history_conflicts() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("games.sqlite");
     merge(&path, &account("100"), &[pull("1", 3)]).unwrap();
@@ -100,7 +100,7 @@ fn conflicting_history_rolls_back_the_whole_sync() {
 }
 
 #[test]
-fn rejects_dates_and_keeps_game_archives_separate() {
+fn validates_game_archives() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("games.sqlite");
     let mut item = pull("1", 5);
@@ -123,7 +123,7 @@ fn rejects_dates_and_keeps_game_archives_separate() {
 }
 
 #[test]
-fn official_report_preserves_real_pulls_and_older_five_stars() {
+fn merges_official_history() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("games.sqlite3");
     let mut owner = account("100");

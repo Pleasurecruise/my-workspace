@@ -40,7 +40,7 @@ pub async fn publish(memo: &MemoPublication) -> Result<PublishedPost, PublishErr
     let text = render_x(&memo.content, &memo_url);
     let client = reqwest::Client::builder()
         .timeout(TIMEOUT)
-        .user_agent("vesper/1.0")
+        .user_agent(concat!("vesper/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|_| PublishError::Request("X"))?;
     let response = client

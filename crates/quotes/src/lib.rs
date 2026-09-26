@@ -58,7 +58,11 @@ fn project(envelope: Envelope) -> Result<Quotation, String> {
 pub async fn read() -> Result<Quotation, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
-        .user_agent("Vesper/0.1 random quotation")
+        .user_agent(concat!(
+            "Vesper/",
+            env!("CARGO_PKG_VERSION"),
+            " random quotation"
+        ))
         .build()
         .map_err(|error| format!("Could not create random quotation client: {error}"))?;
     let response = client

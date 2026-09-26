@@ -4,10 +4,43 @@ mod spotify;
 
 pub use lyrics::{Lyrics, LyricsLine};
 pub use qq::{QqLogin, QqLoginStatus, QqMusic, QqQr};
-pub use spotify::{
-    Cover, Playback, PlaybackOrder, Spotify, Track, authenticate, playback_authorization,
-    web_authorization,
-};
+pub use spotify::{Spotify, authenticate, playback_authorization, web_authorization};
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Track {
+    pub id: String,
+    pub name: String,
+    pub artists: Vec<String>,
+    pub album: String,
+    pub duration_ms: u64,
+    pub added_at: String,
+    pub cover_key: Option<String>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Playback {
+    pub track_id: Option<String>,
+    pub playing: bool,
+    pub progress_ms: u64,
+    pub duration_ms: u64,
+    pub order: PlaybackOrder,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PlaybackOrder {
+    #[default]
+    Sequential,
+    RepeatOne,
+    Shuffle,
+}
+
+pub struct Cover {
+    pub bytes: Vec<u8>,
+    pub content_type: String,
+}
 
 #[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,7 +90,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn request_errors_omit_login_and_media_credentials() {
+    fn redacts_request_errors() {
         let request =
             reqwest::Response::from(http::Response::builder().status(401).body("").unwrap())
                 .error_for_status()

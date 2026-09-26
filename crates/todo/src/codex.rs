@@ -95,57 +95,9 @@ pub(crate) async fn read(date: &str, zone: TimeZone, endpoint: &str) -> Result<V
                 {
                     return Err(Error::Codex("invalid or repeated announcement ID".into()));
                 }
-                let timestamp: Timestamp = reset
-                    .announced_at
-                    .parse()
-                    .map_err(|_| Error::Codex("announcement has an invalid date".into()))?;
-                if timestamp < start || timestamp > end {
-                    return Err(Error::Codex(
-                        "announcement is outside the requested day".into(),
-                    ));
+                if let Some(item) = project_reset(reset, start, end, &zone)? {
+                    items.push(item);
                 }
-                if timestamp == end {
-                    continue;
-                }
-                let local = timestamp.to_zoned(zone.clone());
-                let title = match reset.reset_type {
-                    ResetType::Regular => "Codex usage reset",
-                    ResetType::Banked => "Codex reset credit",
-                };
-                let source = match reset.source {
-                    Source::XPost { url } => Some(url),
-                    Source::Observed { url } => url,
-                };
-                let description = match source {
-                    Some(source) => {
-                        let url = url::Url::parse(&source).map_err(|_| {
-                            Error::Codex("announcement has an invalid source URL".into())
-                        })?;
-                        if !matches!(url.scheme(), "https" | "http") {
-                            return Err(Error::Codex(
-                                "announcement has an invalid source URL".into(),
-                            ));
-                        }
-                        format!("{}\n\nSource: {source}", reset.text)
-                    }
-                    None => reset.text,
-                };
-                let time = format!("{:02}:{:02}", local.hour(), local.minute());
-                items.push(Item {
-                    id: format!("codex:{}", reset.id),
-                    text: format!("{time} {title}"),
-                    description: Some(description),
-                    completed: false,
-                    rollover: false,
-                    details: Some(Details {
-                        calendar: "Codex Resets".into(),
-                        start_date: local.date().to_string(),
-                        start_time: Some(time),
-                        end_date: None,
-                        end_time: None,
-                        location: None,
-                    }),
-                });
             }
             if !page.pagination.has_more {
                 if page.pagination.next_cursor.is_some() {
@@ -171,6 +123,67 @@ pub(crate) async fn read(date: &str, zone: TimeZone, endpoint: &str) -> Result<V
     })
     .await
     .unwrap_or_else(|_| Err(Error::Codex("calendar read timed out".into())))
+}
+
+/// Projects one API reset into a calendar item, validating its timestamp and source.
+/// Returns `Ok(None)` for the next-midnight boundary, which the inclusive API upper
+/// bound already covers with the following day.
+fn project_reset(
+    reset: Reset,
+    start: Timestamp,
+    end: Timestamp,
+    zone: &TimeZone,
+) -> Result<Option<Item>, Error> {
+    let timestamp: Timestamp = reset
+        .announced_at
+        .parse()
+        .map_err(|_| Error::Codex("announcement has an invalid date".into()))?;
+    if timestamp < start || timestamp > end {
+        return Err(Error::Codex(
+            "announcement is outside the requested day".into(),
+        ));
+    }
+    if timestamp == end {
+        return Ok(None);
+    }
+    let local = timestamp.to_zoned(zone.clone());
+    let title = match reset.reset_type {
+        ResetType::Regular => "Codex usage reset",
+        ResetType::Banked => "Codex reset credit",
+    };
+    let source = match reset.source {
+        Source::XPost { url } => Some(url),
+        Source::Observed { url } => url,
+    };
+    let description = match source {
+        Some(source) => {
+            let url = url::Url::parse(&source)
+                .map_err(|_| Error::Codex("announcement has an invalid source URL".into()))?;
+            if !matches!(url.scheme(), "https" | "http") {
+                return Err(Error::Codex(
+                    "announcement has an invalid source URL".into(),
+                ));
+            }
+            format!("{}\n\nSource: {source}", reset.text)
+        }
+        None => reset.text,
+    };
+    let time = format!("{:02}:{:02}", local.hour(), local.minute());
+    Ok(Some(Item {
+        id: format!("codex:{}", reset.id),
+        text: format!("{time} {title}"),
+        description: Some(description),
+        completed: false,
+        rollover: false,
+        details: Some(Details {
+            calendar: "Codex Resets".into(),
+            start_date: local.date().to_string(),
+            start_time: Some(time),
+            end_date: None,
+            end_time: None,
+            location: None,
+        }),
+    }))
 }
 
 fn bounds(date: &str, zone: &TimeZone) -> Result<(Timestamp, Timestamp), Error> {

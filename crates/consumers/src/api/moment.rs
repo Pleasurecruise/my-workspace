@@ -1,8 +1,8 @@
-use super::ApiError;
+use super::{ApiError, Client, send};
 use cms_core::r2::Store;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use vesper_credentials::{ConsumerApi, Stored};
+use vesper_credentials::ConsumerApi;
 
 mod exif;
 mod media;
@@ -10,12 +10,6 @@ mod media;
 pub(super) use media::Error as MediaError;
 
 const ENDPOINT: &str = "https://moment.you-find.me/api/v1";
-
-#[derive(Clone)]
-struct Client {
-    api_key: String,
-    http: reqwest::Client,
-}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Geo {
@@ -167,21 +161,6 @@ struct TagList {
     tags: Vec<String>,
 }
 
-impl Client {
-    fn load() -> Result<Self, ApiError> {
-        let api_key = match vesper_credentials::consumer_api(ConsumerApi::Moment)? {
-            Stored::Ready(api_key) => api_key,
-            Stored::Missing => return Err(ApiError::MissingCredentials("my-moment")),
-        };
-        Ok(Self {
-            api_key,
-            http: reqwest::Client::builder()
-                .timeout(super::REQUEST_TIMEOUT)
-                .build()?,
-        })
-    }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PhotoQuery {
@@ -236,7 +215,7 @@ pub async fn query(input: &PhotoQuery) -> Result<Vec<Photo>, ApiError> {
             "photo tags must be non-empty and contain no commas".to_owned(),
         ));
     }
-    let client = Client::load()?;
+    let client = Client::load(ConsumerApi::Moment)?;
     let mut request = client
         .http
         .get(format!("{ENDPOINT}/photos"))
@@ -256,19 +235,13 @@ pub async fn query(input: &PhotoQuery) -> Result<Vec<Photo>, ApiError> {
     if !input.tags.is_empty() {
         request = request.query(&[("tags", input.tags.join(","))]);
     }
-    let response = request.send().await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "query photos",
-            status,
-        });
-    }
+    let response = send(request, "query photos").await?;
     let result: PhotoList = response.json().await?;
     Ok(result.photos)
 }
 
-pub async fn get(id: &str) -> Result<Photo, ApiError> {
+/// Build the photo detail URL, percent-encoding the ID instead of splicing it.
+fn build_url(id: &str) -> Result<reqwest::Url, ApiError> {
     if id.trim().is_empty() {
         return Err(ApiError::Protocol("a photo ID is required".to_owned()));
     }
@@ -278,41 +251,34 @@ pub async fn get(id: &str) -> Result<Photo, ApiError> {
         .map_err(|_| {
             ApiError::Protocol("the Moment endpoint cannot contain a photo ID".to_owned())
         })?
+        .pop_if_empty()
         .push(id);
-    let client = Client::load()?;
-    let response = client
-        .http
-        .get(url)
-        .bearer_auth(&client.api_key)
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "read photo",
-            status,
-        });
-    }
+    Ok(url)
+}
+
+pub async fn get(id: &str) -> Result<Photo, ApiError> {
+    let url = build_url(id)?;
+    let client = Client::load(ConsumerApi::Moment)?;
+    let response = send(
+        client.http.get(url).bearer_auth(&client.api_key),
+        "read photo",
+    )
+    .await?;
     let result: PhotoResponse = response.json().await?;
     Ok(result.photo)
 }
 
 pub async fn list() -> Result<Page, ApiError> {
-    let client = Client::load()?;
-    let response = client
-        .http
-        .get(format!("{ENDPOINT}/photos"))
-        .bearer_auth(&client.api_key)
-        .query(&[("limit", "100")])
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "list photos",
-            status,
-        });
-    }
+    let client = Client::load(ConsumerApi::Moment)?;
+    let response = send(
+        client
+            .http
+            .get(format!("{ENDPOINT}/photos"))
+            .bearer_auth(&client.api_key)
+            .query(&[("limit", "100")]),
+        "list photos",
+    )
+    .await?;
     let result: PhotoList = response.json().await?;
     Ok(Page {
         total: result.photos.len(),
@@ -321,58 +287,49 @@ pub async fn list() -> Result<Page, ApiError> {
 }
 
 pub async fn search(query: &str) -> Result<Vec<Photo>, ApiError> {
-    let client = Client::load()?;
-    let response = client
-        .http
-        .get(format!("{ENDPOINT}/photos"))
-        .bearer_auth(&client.api_key)
-        .query(&[("limit", "100"), ("search", query)])
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "search photos",
-            status,
-        });
-    }
+    let client = Client::load(ConsumerApi::Moment)?;
+    let response = send(
+        client
+            .http
+            .get(format!("{ENDPOINT}/photos"))
+            .bearer_auth(&client.api_key)
+            .query(&[("limit", "100"), ("search", query)]),
+        "search photos",
+    )
+    .await?;
     let result: PhotoList = response.json().await?;
     Ok(result.photos)
 }
 
 pub async fn tags() -> Result<Vec<String>, ApiError> {
-    let client = Client::load()?;
-    let response = client
-        .http
-        .get(format!("{ENDPOINT}/tags"))
-        .bearer_auth(&client.api_key)
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "list photo tags",
-            status,
-        });
-    }
+    let client = Client::load(ConsumerApi::Moment)?;
+    let response = send(
+        client
+            .http
+            .get(format!("{ENDPOINT}/tags"))
+            .bearer_auth(&client.api_key),
+        "list photo tags",
+    )
+    .await?;
     let result: TagList = response.json().await?;
     Ok(result.tags)
 }
 
 pub async fn create(input: &Create) -> Result<Photo, ApiError> {
-    let client = Client::load()?;
-    let response = client
-        .http
-        .post(format!("{ENDPOINT}/photos"))
-        .bearer_auth(&client.api_key)
-        .json(input)
-        .send()
-        .await?;
-    let status = response.status();
-    if status != StatusCode::CREATED {
+    let client = Client::load(ConsumerApi::Moment)?;
+    let response = send(
+        client
+            .http
+            .post(format!("{ENDPOINT}/photos"))
+            .bearer_auth(&client.api_key)
+            .json(input),
+        "create photo",
+    )
+    .await?;
+    if response.status() != StatusCode::CREATED {
         return Err(ApiError::Status {
             operation: "create photo",
-            status,
+            status: response.status(),
         });
     }
     let result: PhotoResponse = response.json().await?;
@@ -456,30 +413,27 @@ pub async fn upload(
 }
 
 pub async fn update(id: &str, input: &Update) -> Result<Photo, ApiError> {
-    let client = Client::load()?;
-    let response = client
-        .http
-        .patch(format!("{ENDPOINT}/photos/{id}"))
-        .bearer_auth(&client.api_key)
-        .json(input)
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "update photo",
-            status,
-        });
-    }
+    let url = build_url(id)?;
+    let client = Client::load(ConsumerApi::Moment)?;
+    let response = send(
+        client
+            .http
+            .patch(url)
+            .bearer_auth(&client.api_key)
+            .json(input),
+        "update photo",
+    )
+    .await?;
     let result: PhotoResponse = response.json().await?;
     Ok(result.photo)
 }
 
 pub async fn delete(id: &str) -> Result<(), ApiError> {
-    let client = Client::load()?;
+    let url = build_url(id)?;
+    let client = Client::load(ConsumerApi::Moment)?;
     let response = client
         .http
-        .delete(format!("{ENDPOINT}/photos/{id}"))
+        .delete(url)
         .bearer_auth(&client.api_key)
         .send()
         .await?;
@@ -496,6 +450,35 @@ pub async fn delete(id: &str) -> Result<(), ApiError> {
 #[cfg(test)]
 mod tests {
     use super::{Photo, Update, Upload};
+
+    #[test]
+    fn encodes_photo_ids() {
+        assert_eq!(
+            super::build_url("item").unwrap().path(),
+            "/api/v1/photos/item"
+        );
+        assert_eq!(
+            super::build_url("../settings").unwrap().path(),
+            "/api/v1/photos/..%2Fsettings"
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_blank_photo_ids() {
+        for id in ["", "   "] {
+            assert!(
+                matches!(
+                    super::update(id, &Update::default()).await,
+                    Err(super::ApiError::Protocol(_))
+                ),
+                "{id}"
+            );
+            assert!(
+                matches!(super::delete(id).await, Err(super::ApiError::Protocol(_))),
+                "{id}"
+            );
+        }
+    }
 
     #[test]
     fn decodes_photo() {

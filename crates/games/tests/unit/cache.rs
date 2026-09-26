@@ -3,7 +3,7 @@ use crate::NotesError;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[tokio::test]
-async fn concurrent_first_reads_share_one_request() {
+async fn shares_initial_read() {
     let cache = Cache::default();
     let requests = AtomicUsize::new(0);
     let fetch = || async {
@@ -29,7 +29,7 @@ async fn concurrent_first_reads_share_one_request() {
 }
 
 #[tokio::test]
-async fn failures_remain_cached_until_manual_refresh() {
+async fn caches_read_failures() {
     for error in [
         NotesError::Failed("session initialization failed".into()),
         NotesError::VerificationRequired(1034),
@@ -62,7 +62,7 @@ async fn failures_remain_cached_until_manual_refresh() {
 }
 
 #[tokio::test]
-async fn failed_manual_refresh_does_not_start_automatic_retries() {
+async fn caches_refresh_failures() {
     let cache = Cache::default();
     assert_eq!(
         cache
@@ -87,7 +87,7 @@ async fn failed_manual_refresh_does_not_start_automatic_retries() {
 }
 
 #[tokio::test]
-async fn pending_read_does_not_block_other_keys() {
+async fn isolates_pending_reads() {
     let cache = Cache::default();
     cache
         .read("cached", false, async { Ok::<_, String>(42) })

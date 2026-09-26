@@ -195,6 +195,10 @@ Compiled embeds use restrained paper, outlines, shadows and accents. Alignment a
 cards or whole article lists: left/right cap width at 32rem and align to that edge, narrow centers
 the same bounded width, and wide fills the available container subject to type-specific caps.
 
+Twitter cards use the link-card layout with the full post body and preserved whitespace. Ordinary
+link descriptions remain clamped. Unavailable posts retain a canonical source link and explanatory
+message.
+
 Attributed quotes preserve multiline text with a source footer. Git diffs use a keyboard-scrollable
 code region, visible plus/minus markers and semantic success/error colors; headers remain muted.
 Annotations retain the sentence with a semantic-color highlight and a visible note below it. The

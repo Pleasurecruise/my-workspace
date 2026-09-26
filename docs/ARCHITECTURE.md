@@ -19,9 +19,10 @@ stores artifacts. This repository does not host a cloud application backend.
 | `crates/ledger`         | Local GBP expenses and monthly statistics                         |
 | `crates/md-dialect`     | Custom publication and Knowledge Markdown fences                  |
 | `crates/music`          | Spotify and QQ Music authentication, library and playback         |
+| `crates/oauth`          | Shared OAuth PKCE, loopback callbacks and token transport         |
 | `crates/games`          | Game accounts, daily notes, Steam and pull archives               |
 | `crates/github`         | GitHub CLI dashboard and repository reads                         |
-| `crates/link-preview`   | SSRF-safe public link metadata reads                              |
+| `crates/link-preview`   | SSRF-safe link metadata and fixed-endpoint X previews             |
 | `crates/market-data`    | ECB exchange and Yahoo stock reads                                |
 | `crates/quotes`         | Random quotation reads                                            |
 | `crates/service-status` | Statuspage service catalog and health reads                       |
@@ -77,6 +78,11 @@ preserves hidden terminals; selecting a sidebar device replaces its terminal wit
 Rust replaces same-device sessions atomically and rejects superseded launch requests. App Lock, window reload/destruction and shutdown close them and cancel pending
 launches. [Development](DEVELOPMENT.md#service-setup) describes authentication and idle limits.
 
+`crates/oauth` adapts `oauth2` to the workspace reqwest transport and uses `httparse` for loopback
+request parsing. Spotify and X share that boundary; their feature crates retain endpoints, scopes,
+client selection, credential storage and refresh-token rotation policy. Token requests use system
+proxies, bounded timeouts and no redirects; callback and token failures omit response bodies.
+
 Music and game runtimes outlive route mounts. Their authentication, cancellation, cache and playback
 rules belong in [Music](MUSIC.md) and [Games](GAMES.md); NAS protocols belong in [UGOS](UGOS.md).
 Inbox independently activates its ntfy stream while its route is active.
@@ -109,7 +115,8 @@ The updater verifies signed artifacts before installation; setup belongs in
 provider discovery and compilation. Annotation, quote and diff rendering require no provider reads. Inline image shortcodes use a bundled
 `md-dialect` catalog and transform prose events before HTML assembly; compilation performs no image reads.
 Article cards use host-provided index metadata; `github`, `market-data`, and `link-preview` supply
-provider data for other embeds. [Markdown](MARKDOWN.md) owns syntax and rendering safety;
+repository, market, website and X post metadata for provider cards. [Markdown](MARKDOWN.md) owns
+syntax and rendering safety;
 [Workflow](WORKFLOW.md) owns operations and recovery.
 
 `vesper build` compiles Markdown under `content/` to HTML in a temporary directory, copies other
@@ -163,10 +170,11 @@ to Todo, not credentials. [Development](DEVELOPMENT.md#credential-resolution) de
 
 ### Daily Planner
 
-`crates/todo` owns dated tasks, habit history and calendar projections. ICS parsing, Notion CLI reads
-and Codex Resets HTTP reads stay in this crate. The Notion CLI owns authentication; Codex Resets needs
-only a local enable preference. Each source updates its own records and preserves saved data on
-failure. Configuration changes and reconciliation share locks through commit.
+`crates/todo` owns dated tasks, habit history and calendar projections. ICS parsing uses `icalendar`;
+`rrule` validates and evaluates supported recurrence rules. Notion CLI reads and Codex Resets HTTP
+reads stay in this crate. The Notion CLI owns authentication; Codex Resets needs only a local enable
+preference. Each source updates its own records and preserves saved data on failure. Configuration
+changes and reconciliation share locks through commit.
 
 Rust moves opted-in unfinished tasks to today and computes monthly completion from stored tasks and
 current habit IDs. Completion is derived, never saved as a second state. The layout owns habit IDs

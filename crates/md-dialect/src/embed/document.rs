@@ -1,4 +1,4 @@
-use super::{EmbedError, diff, escape_html, fields, reject_unknown, required};
+use super::{EmbedError, align, diff, escape_html, fields, is_web_url, reject_unknown, required};
 use url::Url;
 
 pub(super) fn render(kind: &str, source: &str) -> Result<String, EmbedError> {
@@ -32,10 +32,7 @@ pub(super) fn render(kind: &str, source: &str) -> Result<String, EmbedError> {
         &["title", "align"]
     };
     reject_unknown(kind, &values, allowed)?;
-    let align = values.remove("align").unwrap_or("wide");
-    if !matches!(align, "left" | "right" | "wide" | "narrow") {
-        return Err(EmbedError::InvalidAlignment(align.to_owned()));
-    }
+    let align = align(&mut values)?;
     if kind == "embed:diff" {
         let title = escape_html(required(&mut values, "diff", "title")?);
         let content = diff::render(&body)?;
@@ -99,11 +96,7 @@ fn source_url(value: &str) -> Result<String, EmbedError> {
         return Err(invalid());
     }
     let url = Url::parse(value).map_err(|_| invalid())?;
-    if !matches!(url.scheme(), "http" | "https")
-        || url.host_str().is_none()
-        || !url.username().is_empty()
-        || url.password().is_some()
-    {
+    if !is_web_url(&url) {
         return Err(invalid());
     }
     Ok(escape_html(url.as_str()))

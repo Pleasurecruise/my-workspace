@@ -21,7 +21,7 @@ MusicView ───────────────────────�
 | [SettingsView.svelte](../apps/desktop/src/lib/components/pages/SettingsView.svelte) | Credential forms and QQ QR dialog; settings/session.svelte.ts owns login command callbacks                        |
 | [Desktop music.rs](../apps/desktop/src-tauri/src/music.rs)                          | Typed commands, lazy runtime ownership, login cancellation, and pausing the other provider when starting playback |
 | [spotify/mod.rs](../crates/music/src/spotify/mod.rs)                                | Liked Songs, token refresh, track/cover projections, and player access                                            |
-| [spotify/auth.rs](../crates/music/src/spotify/auth.rs)                              | PKCE browser grants, loopback callback validation, and token exchange                                             |
+| [spotify/auth.rs](../crates/music/src/spotify/auth.rs)                              | Spotify client/scopes and grants through the shared OAuth boundary                                                |
 | [spotify/player.rs](../crates/music/src/spotify/player.rs)                          | librespot session, audio output, playback events, and queue advancement                                           |
 | [qq/mod.rs](../crates/music/src/qq/mod.rs)                                          | Daily 30 discovery, session renewal, media and lyric requests, and queue advancement                              |
 | [qq/audio.rs](../crates/music/src/qq/audio.rs)                                      | Rodio worker ownership, cancellation, decoder seeks, and the loaded audio snapshot                                |
@@ -43,7 +43,9 @@ Settings connects the Web API and local playback through two sequential PKCE gra
 uses the shared application by default or the personal Client ID entered in Settings. Playback uses
 its independent application identity and requires Spotify Premium. A successful library read does
 not establish playback eligibility. Each authorization checks callback state and has a ten-minute
-deadline.
+deadline through the [shared OAuth boundary](ARCHITECTURE.md#desktop-boundary). Refresh responses
+without a rotated refresh token retain the existing grant; malformed token responses fail without
+exposing their bodies.
 
 The credential record stores both refresh grants and the optional Web API Client ID. Records without
 that ID use shared access. Token refresh uses the application identity belonging to the saved grant,

@@ -11,6 +11,9 @@ diesel::table! {
     }
 }
 
+// The Planner selection renders a four-week strip of check-in days ending at the selected date.
+const PLANNER_WINDOW_DAYS: i64 = 28;
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckIn {
@@ -137,8 +140,8 @@ fn read(
         streak += 1;
         cursor = day.previous_day();
     }
-    let mut days = Vec::with_capacity(28);
-    for offset in (0..28).rev() {
+    let mut days = Vec::with_capacity(PLANNER_WINDOW_DAYS as usize);
+    for offset in (0..PLANNER_WINDOW_DAYS).rev() {
         let day = selected
             .checked_sub(time::Duration::days(offset))
             .ok_or(Error::DateOverflow)?;
@@ -156,6 +159,21 @@ fn read(
         total: recorded.len(),
         days,
     })
+}
+
+/// Reads every check-in of the selected habits recorded between the two dates, inclusive.
+pub(crate) fn read_checks(
+    connection: &mut SqliteConnection,
+    ids: &BTreeSet<String>,
+    start: &str,
+    end: &str,
+) -> Result<Vec<(String, String)>, Error> {
+    Ok(check_ins::table
+        .filter(check_ins::date.ge(start))
+        .filter(check_ins::date.le(end))
+        .filter(check_ins::id.eq_any(ids))
+        .select((check_ins::date, check_ins::id))
+        .load::<(String, String)>(connection)?)
 }
 
 #[cfg(test)]

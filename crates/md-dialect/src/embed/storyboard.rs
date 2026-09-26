@@ -1,13 +1,8 @@
-use super::{EmbedError, canvas, escape_html, unquote};
+use super::{EmbedError, canvas, check_align, escape_html, unquote};
 
 pub(super) fn render(source: &str) -> Result<String, EmbedError> {
     let source = source.trim();
-    let board = match source.lines().next() {
-        Some(line) if line.trim_start().starts_with("align:") => {
-            source[line.len()..].trim_start_matches(['\r', '\n'])
-        }
-        _ => source,
-    };
+    let (_, board) = canvas::split_header(source);
     if board.trim_start().starts_with("<svg") {
         return canvas::render("storyboard", source);
     }
@@ -42,13 +37,17 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
                     });
                 }
                 has_align = true;
-                align = value;
-                match align {
-                    "left" | "right" | "wide" | "narrow" => {}
-                    value => return Err(EmbedError::InvalidAlignment(value.to_owned())),
-                }
+                align = check_align(value)?;
             }
-            "title" if title.is_none() => title = Some(value.trim()),
+            "title" => {
+                if title.is_some() {
+                    return Err(EmbedError::DuplicateField {
+                        kind: "embed:storyboard".to_owned(),
+                        field: "title".to_owned(),
+                    });
+                }
+                title = Some(value.trim());
+            }
             "step" => {
                 let Some((heading, body)) = value.split_once('|') else {
                     return Err(EmbedError::InvalidCanvas {

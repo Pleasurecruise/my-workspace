@@ -232,23 +232,8 @@ impl Runtime {
             .read((game, id.clone(), token.clone()), refresh, async {
                 match game.provider() {
                     Provider::Mihoyo => {
-                        let Session::Mihoyo { account_id, .. } = session else {
-                            return Err("Invalid miHoYo account".into());
-                        };
-                        let mut records = self.record.lock().await;
-                        if records
-                            .get(account_id)
-                            .is_none_or(|record| !record.matches(session))
-                        {
-                            records.insert(
-                                account_id.clone(),
-                                mihoyo::record::RecordSession::create(session).await?,
-                            );
-                        }
-                        let record = records
-                            .get(account_id)
-                            .ok_or("Game-record session unavailable")?;
-                        mihoyo::notes(record, game).await
+                        let record = self.load_record(session).await?;
+                        mihoyo::notes(&record, game).await
                     }
                     Provider::Skland => skland::notes(session, game)
                         .await
@@ -257,6 +242,31 @@ impl Runtime {
                 }
             })
             .await
+    }
+
+    // Reuse the cached game-record session for this login. The returned clone releases
+    // the session lock before callers resume network I/O.
+    async fn load_record(
+        &self,
+        session: &vesper_credentials::games::Session,
+    ) -> Result<mihoyo::record::RecordSession, String> {
+        let vesper_credentials::games::Session::Mihoyo { account_id, .. } = session else {
+            return Err("Invalid miHoYo account".into());
+        };
+        let mut records = self.record.lock().await;
+        if records
+            .get(account_id)
+            .is_none_or(|record| !record.matches(session))
+        {
+            records.insert(
+                account_id.clone(),
+                mihoyo::record::RecordSession::create(session).await?,
+            );
+        }
+        Ok(records
+            .get(account_id)
+            .ok_or("Game-record session unavailable")?
+            .clone())
     }
     pub async fn record_page(&self, game: Game) -> Result<VerificationPage, String> {
         if game.provider() != Provider::Mihoyo {
@@ -267,8 +277,9 @@ impl Runtime {
         let vesper_credentials::games::Session::Mihoyo { account_id, .. } = &session else {
             return Err("Invalid miHoYo account".into());
         };
-        // Opening verification is explicit: renew its derived CookieToken instead of
-        // handing a possibly rejected in-memory token to the official page.
+        // Opening verification is explicit and always rebuilds the session rather than
+        // reusing the cached one: renew its derived CookieToken instead of handing a
+        // possibly rejected in-memory token to the official page.
         let record = mihoyo::record::RecordSession::create(&session).await?;
         let mut records = self.record.lock().await;
         records.insert(account_id.clone(), record);
@@ -295,27 +306,7 @@ impl Runtime {
         let result = tokio::time::timeout(std::time::Duration::from_secs(300), async {
             match game.provider() {
                 Provider::Mihoyo => {
-                    let vesper_credentials::games::Session::Mihoyo { account_id, .. } = &session
-                    else {
-                        return Err("Invalid miHoYo account".into());
-                    };
-                    let mut records = self.record.lock().await;
-                    if records
-                        .get(account_id)
-                        .is_none_or(|record| !record.matches(&session))
-                    {
-                        records.insert(
-                            account_id.clone(),
-                            mihoyo::record::RecordSession::create(&session)
-                                .await
-                                .map_err(|error| format!("Pull history session: {error}"))?,
-                        );
-                    }
-                    let record = records
-                        .get(account_id)
-                        .ok_or("Game-record session unavailable")?
-                        .clone();
-                    drop(records);
+                    let record = self.load_record(&session).await?;
                     if game == Game::StarRail {
                         let (account, report) = mihoyo::rail_gacha::read(&record).await?;
                         Ok(Download::Official(account, report))

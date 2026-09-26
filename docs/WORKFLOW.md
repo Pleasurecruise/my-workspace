@@ -7,7 +7,11 @@ covers credentials and build commands. Use `vesper --help` for the complete comm
 
 ## Static publication
 
-Place Markdown and assets in `content/`, then preview the build and upload plan:
+Create a `content/` directory at the repository root and place your Markdown and assets there.
+This personal content is not included in the repository; without the directory, `vesper build`
+reports a missing content source. A minimal input is `content/index.md`; other files and folders
+under `content/` keep their relative paths in the build. From the repository root, preview the
+build and upload plan:
 
 ```sh
 vesper build

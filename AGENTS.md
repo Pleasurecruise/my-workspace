@@ -10,30 +10,10 @@
 
 ## Architecture
 
-- `apps/desktop`: Tauri v2 application. Svelte 5 owns the view layer; Rust owns commands and runtime
-  behavior below `src-tauri` and the shared crates.
-- `apps/cli`: Rust `vesper` command-line binary.
-- `crates/cms-core`: Markdown, content builds, static publication, and R2 access.
-- `crates/consumers`: Memos, Moment, and Knowledge APIs, projections, and Moment media processing.
-- `crates/social`: outbound Telegram Channel and X publication.
-- `crates/todo`: local Todo storage and ICS/Notion calendar projection.
-- `crates/credentials`: typed credentials and build-specific storage boundary.
-- `crates/database`: shared Diesel SQLite connection, schema, and database location.
-- `crates/ugos`: read-only UGOS Pro boundary.
-- `crates/useage`: AI subscription and credit reads; CherryIN may refresh its existing OAuth session.
-  The spelling is intentional.
-- `crates/ledger`: local GBP expense storage, validation, and monthly category/day statistics.
-- `crates/github`: GitHub CLI dashboard and repository reads.
-- `crates/link-preview`: SSRF-safe public link metadata reads.
-- `crates/market-data`: ECB exchange and Yahoo stock reads.
-- `crates/music`: Spotify and QQ Music authentication, collections, playback, album art, and lyrics.
-- `crates/games`: Game account authorization, daily notes, Steam activity, and local pull archives.
-- `crates/quotes`: Random quotation reads.
-- `crates/service-status`: Statuspage service catalog and health reads.
-- `crates/weather`: Open-Meteo weather, astronomy, and geocoding reads.
-- `crates/md-dialect`: Publication and Knowledge Markdown dialect compilation.
-- `packages/ui`: reusable Svelte components and design tokens.
-- `packages/tsconfig`: UI-only TypeScript configuration.
+`apps/desktop` is the Tauri v2 application, `apps/cli` provides the Rust `vesper` binary,
+`crates/` owns feature and provider behavior, and `packages/` contains shared UI and TypeScript
+configuration. [Architecture](docs/ARCHITECTURE.md#repository-layout) owns the full directory map
+and each package's responsibility.
 
 Except for the Svelte view layer and its build configuration, new application code should be Rust.
 Create a package only when it owns a stable independent responsibility or is genuinely shared.

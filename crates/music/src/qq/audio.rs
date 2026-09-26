@@ -79,23 +79,7 @@ impl AudioPlayer {
             });
             (sent, Arc::clone(&worker.retired))
         };
-        if sent.is_err() {
-            self.retire(Some(&retired));
-            return Err(Error::Playback("QQ Music audio thread stopped".to_owned()));
-        }
-        match tokio::time::timeout(COMMAND_TIMEOUT, result).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => {
-                self.retire(Some(&retired));
-                Err(Error::Playback("QQ Music audio thread stopped".to_owned()))
-            }
-            Err(_) => {
-                self.retire(Some(&retired));
-                Err(Error::Playback(
-                    "QQ Music audio loading timed out; try playing the track again".to_owned(),
-                ))
-            }
-        }
+        self.resolve(sent, &retired, result, "loading").await
     }
 
     pub async fn seek(
@@ -120,21 +104,33 @@ impl AudioPlayer {
             });
             (sent, Arc::clone(&worker.retired))
         };
+        self.resolve(sent, &retired, result, "seek").await
+    }
+
+    // Retire the worker when the audio thread stopped or stalled, so a late or hung
+    // command cannot leave a half-installed sink behind.
+    async fn resolve(
+        &self,
+        sent: std::result::Result<(), mpsc::SendError<Command>>,
+        retired: &Arc<AtomicBool>,
+        result: oneshot::Receiver<Result<()>>,
+        operation: &'static str,
+    ) -> Result<()> {
         if sent.is_err() {
-            self.retire(Some(&retired));
+            self.retire(Some(retired));
             return Err(Error::Playback("QQ Music audio thread stopped".to_owned()));
         }
         match tokio::time::timeout(COMMAND_TIMEOUT, result).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => {
-                self.retire(Some(&retired));
+                self.retire(Some(retired));
                 Err(Error::Playback("QQ Music audio thread stopped".to_owned()))
             }
             Err(_) => {
-                self.retire(Some(&retired));
-                Err(Error::Playback(
-                    "QQ Music audio seek timed out; try playing the track again".to_owned(),
-                ))
+                self.retire(Some(retired));
+                Err(Error::Playback(format!(
+                    "QQ Music audio {operation} timed out; try playing the track again"
+                )))
             }
         }
     }

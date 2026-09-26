@@ -43,11 +43,7 @@ fn catalog(source: &str) -> Result<HashMap<String, String>, String> {
                 return Err("Invalid emoji name".into());
             }
             let url = url::Url::parse(&item.value).map_err(|error| error.to_string())?;
-            if url.scheme() != "https"
-                || url.host_str().is_none()
-                || !url.username().is_empty()
-                || url.password().is_some()
-            {
+            if url.scheme() != "https" || !crate::embed::is_web_url(&url) {
                 return Err("Emoji images require an HTTPS URL without credentials".into());
             }
             let style = match pack.display {
@@ -160,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn catalog_rejects_unsafe_urls_and_duplicates() {
+    fn validates_catalog() {
         for url in [
             "javascript:alert(1)",
             "http://example.com/x",

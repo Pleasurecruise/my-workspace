@@ -34,15 +34,29 @@ that edge; `narrow` centers the same width. Alignment never changes authorizatio
 
 ## Provider cards
 
-| Fence          | Required field             | Resolved content    |
-| -------------- | -------------------------- | ------------------- |
-| `embed:github` | `repo: owner/name`         | Repository metadata |
-| `embed:stock`  | `code: AAPL`               | Stock price series  |
-| `embed:link`   | `url: https://example.com` | Website preview     |
+| Fence           | Required field                       | Resolved content    |
+| --------------- | ------------------------------------ | ------------------- |
+| `embed:github`  | `repo: owner/name`                   | Repository metadata |
+| `embed:stock`   | `code: AAPL`                         | Stock price series  |
+| `embed:link`    | `url: https://example.com`           | Website preview     |
+| `embed:twitter` | `url: https://x.com/user/status/123` | Public post preview |
 
-The `github`, `market-data`, and `link-preview` crates resolve these cards during compilation.
-Author text fields as plain text; provider data never rewrites the stored Markdown. An enrichment
-failure invokes the host's fallback policy described above.
+The `github`, `market-data`, and `link-preview` crates resolve provider data during compilation.
+Provider metadata never rewrites stored Markdown. GitHub, stock and website preview failures invoke
+the host's fallback policy; an unavailable Twitter preview renders a source link and explanatory
+message. Invalid fence syntax always fails before provider reads.
+
+`embed:twitter` accepts only `url` and `align`. The URL must use HTTPS without credentials or a
+nondefault port, on `x.com`, `www.x.com`, `twitter.com`, `www.twitter.com`, or `mobile.twitter.com`.
+Its path is `/handle/status/id`: handles contain 1–15 ASCII letters, digits or underscores, and IDs
+contain 1–20 digits without a leading zero. Canonical URLs use `x.com`, a lowercase handle and no
+trailing slash, query or fragment. Reads are deduplicated by canonical URL, with up to four requests
+in flight.
+
+`link-preview` reads the fixed X oEmbed endpoint without redirects, with a 15-second timeout and
+1 MiB response limit. The response supplies the author name; an HTML parser extracts the post body
+and discards scripts and styles. The renderer escapes both text fields. Provider HTML and scripts
+never enter the reader.
 
 ## Article cards
 

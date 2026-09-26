@@ -1,14 +1,9 @@
-use super::{EmbedError, canvas, escape_html};
+use super::{EmbedError, canvas, escape_html, unquote};
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(super) fn render(source: &str) -> Result<String, EmbedError> {
     let source = source.trim();
-    let diagram = match source.lines().next() {
-        Some(line) if line.trim_start().starts_with("align:") => {
-            source[line.len()..].trim_start_matches(['\r', '\n'])
-        }
-        _ => source,
-    };
+    let (header, diagram) = canvas::split_header(source);
     if diagram.trim_start().starts_with("<svg") {
         return canvas::render("architecture", source);
     }
@@ -103,13 +98,9 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
     for (index, &level) in levels.iter().enumerate() {
         groups[level].push(index);
     }
-    let align = source
-        .lines()
-        .next()
-        .filter(|line| line.trim_start().starts_with("align:"));
     let render = |compact| {
         let svg = render_diagram(&nodes, &edges, &levels, &groups, compact);
-        let source = match align {
+        let source = match header {
             Some(line) => format!("{}\n{svg}", line.trim()),
             None => svg,
         };
@@ -117,9 +108,9 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
     };
     let wide = render(false)?;
     let compact = render(true)?;
-    let alignment = align
+    let alignment = header
         .and_then(|line| line.split_once(':'))
-        .map(|(_, value)| super::unquote(value.trim()))
+        .map(|(_, value)| unquote(value.trim()))
         .unwrap_or("wide");
     Ok(format!(
         "<div class=\"architecture-flow content-embed-{alignment}\"><div class=\"architecture-wide\">{wide}</div><div class=\"architecture-compact\">{compact}</div></div>\n"
@@ -357,7 +348,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn branching_article_flow_uses_dependency_columns_and_a_tall_compact_layout() {
+    fn lays_out_branching_flow() {
         let html = render("flowchart LR\nBrowser[Browser] --> API[Article API]\nVesper[Vesper CLI] --> API[Article API]\nAPI --> Service[Validate and save]\nService --> D1[Metadata]\nService --> R2[Markdown]\nService --> KV[Cache]\nService --> Search[Index]").unwrap();
         assert!(html.contains("viewBox=\"0 0 904 472\""));
         assert!(html.contains("viewBox=\"0 0 400 608\""));
@@ -379,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn cycles_and_self_edges_have_bounded_finite_layouts() {
+    fn lays_out_cycles() {
         for source in [
             "flowchart LR\na --> b\nb --> a",
             "flowchart LR\na --> a\na --> b",
@@ -442,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn authored_svg_keeps_its_own_geometry() {
+    fn preserves_svg_geometry() {
         let html = render("align: narrow\n<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 680 230\"><title>Custom</title><desc>Authored layout</desc></svg>").unwrap();
         assert!(!html.contains("architecture-flow"));
         assert!(html.contains("viewBox=\"0 0 680 230\""));

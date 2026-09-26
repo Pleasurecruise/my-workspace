@@ -1,0 +1,12 @@
+[package]
+name = "vesper-oauth"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+oauth2.workspace = true
+httparse.workspace = true
+reqwest = { workspace = true, features = ["system-proxy"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net"] }

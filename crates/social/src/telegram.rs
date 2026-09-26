@@ -85,6 +85,15 @@ impl DatabaseSession {
         self.data.lock().map_err(|_| SessionError::Lock)
     }
 
+    fn update(&self, change: impl FnOnce(&mut StoredSession)) -> Result<(), SessionError> {
+        let mut current = self.data()?;
+        let mut data = current.clone();
+        change(&mut data);
+        self.persist(&data)?;
+        *current = data;
+        Ok(())
+    }
+
     fn persist(&self, data: &StoredSession) -> Result<(), SessionError> {
         let encoded = serde_json::to_string(data)?;
         let mut connection = vesper_database::open(&self.path)?;
@@ -110,12 +119,9 @@ impl Session for DatabaseSession {
 
     fn set_home_dc_id(&self, dc_id: i32) -> BoxFuture<'_, Result<(), Self::Error>> {
         Box::pin(async move {
-            let mut current = self.data()?;
-            let mut data = current.clone();
-            data.home_dc = dc_id;
-            self.persist(&data)?;
-            *current = data;
-            Ok(())
+            self.update(|data| {
+                data.home_dc = dc_id;
+            })
         })
     }
 
@@ -126,12 +132,9 @@ impl Session for DatabaseSession {
     fn set_dc_option(&self, dc_option: &DcOption) -> BoxFuture<'_, Result<(), Self::Error>> {
         let dc_option = dc_option.clone();
         Box::pin(async move {
-            let mut current = self.data()?;
-            let mut data = current.clone();
-            data.dc_options.insert(dc_option.id, dc_option);
-            self.persist(&data)?;
-            *current = data;
-            Ok(())
+            self.update(|data| {
+                data.dc_options.insert(dc_option.id, dc_option);
+            })
         })
     }
 
@@ -142,15 +145,12 @@ impl Session for DatabaseSession {
     fn cache_peer(&self, peer: &PeerInfo) -> BoxFuture<'_, Result<(), Self::Error>> {
         let peer = peer.clone();
         Box::pin(async move {
-            let mut current = self.data()?;
-            let mut data = current.clone();
-            data.peer_infos
-                .entry(peer.id())
-                .or_insert_with(|| peer.clone())
-                .extend_info(&peer);
-            self.persist(&data)?;
-            *current = data;
-            Ok(())
+            self.update(|data| {
+                data.peer_infos
+                    .entry(peer.id())
+                    .or_insert_with(|| peer.clone())
+                    .extend_info(&peer);
+            })
         })
     }
 
@@ -160,9 +160,7 @@ impl Session for DatabaseSession {
 
     fn set_update_state(&self, update: UpdateState) -> BoxFuture<'_, Result<(), Self::Error>> {
         Box::pin(async move {
-            let mut current = self.data()?;
-            let mut data = current.clone();
-            match update {
+            self.update(|data| match update {
                 UpdateState::All(state) => data.updates_state = state,
                 UpdateState::Primary { pts, date, seq } => {
                     data.updates_state.pts = pts;
@@ -176,10 +174,7 @@ impl Session for DatabaseSession {
                         .retain(|channel| channel.id != id);
                     data.updates_state.channels.push(ChannelState { id, pts });
                 }
-            }
-            self.persist(&data)?;
-            *current = data;
-            Ok(())
+            })
         })
     }
 }
@@ -288,17 +283,10 @@ pub async fn begin_login(
     session_path: &Path,
     phone: &str,
 ) -> Result<(TelegramAuthorizationStatus, Option<TelegramLogin>), PublishError> {
-    let credentials = match vesper_credentials::telegram()? {
-        Stored::Ready(credentials) => credentials,
-        Stored::Missing => return Err(PublishError::MissingCredentials("Telegram")),
-    };
+    let credentials = telegram_credentials()?;
     let phone =
         normalize_phone(phone).ok_or(PublishError::Authorization("the phone number is invalid"))?;
-    let (client, runner) = connect(session_path, credentials.api_id).await?;
-    let authorized = tokio::time::timeout(TIMEOUT, client.is_authorized())
-        .await
-        .map_err(|_| PublishError::Authorization("the authorization check timed out"))?
-        .map_err(|_| PublishError::Authorization("could not check the Telegram session"))?;
+    let (client, runner, authorized) = connect_and_check(session_path, credentials.api_id).await?;
     if authorized {
         client.disconnect();
         return Ok((TelegramAuthorizationStatus::Ready, None));
@@ -321,10 +309,7 @@ pub async fn begin_login(
 }
 
 pub async fn read_auth(session_path: &Path) -> Result<TelegramAuthorizationStatus, PublishError> {
-    let credentials = match vesper_credentials::telegram()? {
-        Stored::Ready(credentials) => credentials,
-        Stored::Missing => return Err(PublishError::MissingCredentials("Telegram")),
-    };
+    let credentials = telegram_credentials()?;
     let mut connection = vesper_database::open(session_path)
         .map_err(|_| PublishError::Session("could not open local storage"))?;
     let exists = diesel::select(diesel::dsl::exists(telegram_session::table.find(1)))
@@ -333,11 +318,7 @@ pub async fn read_auth(session_path: &Path) -> Result<TelegramAuthorizationStatu
     if !exists {
         return Ok(TelegramAuthorizationStatus::Disconnected);
     }
-    let (client, _runner) = connect(session_path, credentials.api_id).await?;
-    let authorized = tokio::time::timeout(TIMEOUT, client.is_authorized())
-        .await
-        .map_err(|_| PublishError::Authorization("the authorization check timed out"))?
-        .map_err(|_| PublishError::Authorization("could not check the Telegram session"))?;
+    let (client, _runner, authorized) = connect_and_check(session_path, credentials.api_id).await?;
     client.disconnect();
     Ok(if authorized {
         TelegramAuthorizationStatus::Ready
@@ -351,16 +332,9 @@ pub async fn publish(
     session_path: &Path,
 ) -> Result<PublishedPost, PublishError> {
     let memo_url = memo_url(memo)?;
-    let credentials = match vesper_credentials::telegram()? {
-        Stored::Ready(credentials) => credentials,
-        Stored::Missing => return Err(PublishError::MissingCredentials("Telegram")),
-    };
+    let credentials = telegram_credentials()?;
     let text = render_telegram(&memo.content, &memo_url);
-    let (client, _runner) = connect(session_path, credentials.api_id).await?;
-    let authorized = tokio::time::timeout(TIMEOUT, client.is_authorized())
-        .await
-        .map_err(|_| PublishError::Request("Telegram"))?
-        .map_err(|_| PublishError::Request("Telegram"))?;
+    let (client, _runner, authorized) = connect_and_check(session_path, credentials.api_id).await?;
     if !authorized {
         client.disconnect();
         return Err(PublishError::Session("the user account is not authorized"));
@@ -425,6 +399,25 @@ fn normalize_phone(phone: &str) -> Option<String> {
         .then(|| format!("+{digits}"))
 }
 
+fn telegram_credentials() -> Result<vesper_credentials::TelegramCredentials, PublishError> {
+    match vesper_credentials::telegram()? {
+        Stored::Ready(credentials) => Ok(credentials),
+        Stored::Missing => Err(PublishError::MissingCredentials("Telegram")),
+    }
+}
+
+async fn connect_and_check(
+    session_path: &Path,
+    api_id: i32,
+) -> Result<(Client, Runner, bool), PublishError> {
+    let (client, runner) = connect(session_path, api_id).await?;
+    let authorized = tokio::time::timeout(TIMEOUT, client.is_authorized())
+        .await
+        .map_err(|_| PublishError::Authorization("the authorization check timed out"))?
+        .map_err(|_| PublishError::Authorization("could not check the Telegram session"))?;
+    Ok((client, runner, authorized))
+}
+
 async fn connect(session_path: &Path, api_id: i32) -> Result<(Client, Runner), PublishError> {
     if let Some(parent) = session_path.parent() {
         tokio::fs::create_dir_all(parent)
@@ -451,6 +444,22 @@ mod tests {
         );
         assert_eq!(normalize_phone("account13800138000"), None);
         assert_eq!(normalize_phone("123"), None);
+    }
+
+    #[tokio::test]
+    async fn retains_session_on_error() {
+        let directory =
+            std::env::temp_dir().join(format!("vesper-session-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let path = directory.join(vesper_database::FILE_NAME);
+        let session = DatabaseSession::open(&path).unwrap();
+        session.set_home_dc_id(4).await.unwrap();
+        std::fs::remove_dir_all(&directory).unwrap();
+        std::fs::write(&directory, b"blocked storage directory").unwrap();
+
+        assert!(session.set_home_dc_id(2).await.is_err());
+        assert_eq!(session.home_dc_id().unwrap(), 4);
+        std::fs::remove_file(&directory).unwrap();
     }
 
     #[tokio::test]

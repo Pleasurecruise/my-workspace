@@ -136,7 +136,7 @@ async fn atomic_writes() {
 }
 
 #[tokio::test]
-async fn notes_survive_reopening_and_invalid_edits_are_atomic() {
+async fn persists_notes_atomically() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("ledger.sqlite3");
     let store = Store::new(path.clone());
@@ -192,7 +192,7 @@ async fn rejects_old_schema() {
 }
 
 #[tokio::test]
-async fn suggestions_keep_other_last_after_custom_categories() {
+async fn orders_category_suggestions() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::new(directory.path().join("ledger.sqlite3"));
     let snapshot = store

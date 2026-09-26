@@ -7,7 +7,7 @@ use futures_util::StreamExt;
 use tokio::sync::{Mutex, RwLock};
 
 use self::player::LocalPlayer;
-use crate::{Error, Lyrics, Result, lyrics};
+use crate::{Cover, Error, Lyrics, Playback, PlaybackOrder, Result, Track, lyrics};
 
 mod auth;
 mod player;
@@ -64,42 +64,6 @@ struct SpotifyApiFailure {
 #[derive(serde::Deserialize)]
 struct SpotifyApiReason {
     reason: Option<String>,
-}
-
-#[derive(Clone, Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Track {
-    pub id: String,
-    pub name: String,
-    pub artists: Vec<String>,
-    pub album: String,
-    pub duration_ms: u64,
-    pub added_at: String,
-    pub cover_key: Option<String>,
-}
-
-#[derive(Clone, Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Playback {
-    pub track_id: Option<String>,
-    pub playing: bool,
-    pub progress_ms: u64,
-    pub duration_ms: u64,
-    pub order: PlaybackOrder,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PlaybackOrder {
-    #[default]
-    Sequential,
-    RepeatOne,
-    Shuffle,
-}
-
-pub struct Cover {
-    pub bytes: Vec<u8>,
-    pub content_type: String,
 }
 
 struct Token {
@@ -453,12 +417,11 @@ impl Spotify {
             &credentials.web_refresh_token,
         )
         .await?;
-        if let Some(next_refresh_token) = refreshed.refresh_token {
-            let mut next_credentials = credentials.clone();
-            next_credentials.web_refresh_token = next_refresh_token;
-            vesper_credentials::save_spotify(next_credentials.clone())?;
-            *credentials = next_credentials;
-        }
+        Self::rotate_refresh_token(
+            &mut credentials,
+            refreshed.refresh_token,
+            |credentials, rotated| credentials.web_refresh_token = rotated,
+        )?;
         drop(credentials);
         let value = refreshed.value;
         *token = Some(Token {
@@ -485,17 +448,32 @@ impl Spotify {
             &credentials.playback_refresh_token,
         )
         .await?;
-        if let Some(next_refresh_token) = refreshed.refresh_token {
-            let mut next_credentials = credentials.clone();
-            next_credentials.playback_refresh_token = next_refresh_token;
-            vesper_credentials::save_spotify(next_credentials.clone())?;
-            *credentials = next_credentials;
-        }
+        Self::rotate_refresh_token(
+            &mut credentials,
+            refreshed.refresh_token,
+            |credentials, rotated| credentials.playback_refresh_token = rotated,
+        )?;
         drop(credentials);
         let connected =
             Arc::new(LocalPlayer::connect(&self.http, &self.api, refreshed.value).await?);
         *player = Some(Arc::clone(&connected));
         Ok(connected)
+    }
+
+    // Spotify rotates refresh tokens on use. Persist the replacement before the credentials
+    // lock is released so a restart resumes with the newest token.
+    fn rotate_refresh_token(
+        credentials: &mut vesper_credentials::SpotifyCredentials,
+        rotated: Option<String>,
+        apply: impl FnOnce(&mut vesper_credentials::SpotifyCredentials, String),
+    ) -> Result<()> {
+        if let Some(rotated) = rotated {
+            let mut next_credentials = credentials.clone();
+            apply(&mut next_credentials, rotated);
+            vesper_credentials::save_spotify(next_credentials.clone())?;
+            *credentials = next_credentials;
+        }
+        Ok(())
     }
 }
 
@@ -621,7 +599,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rate_limit_preserves_pages_and_blocks_concurrent_refreshes_until_cooldown() {
+    async fn enforces_library_cooldown() {
         let (spotify, server) = mock_library(vec![
             (200, "", saved_page("first", Some("next"))),
             (
@@ -677,7 +655,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shutdown_rejects_an_in_flight_library_response() {
+    async fn cancels_library_on_shutdown() {
         let (spotify, server) = mock_library(vec![(200, "", saved_page("old", None))]).await;
         let token = spotify.token.lock().await;
         let read = spotify.liked_songs();
@@ -691,7 +669,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn expired_partial_library_restarts_at_the_first_page() {
+    async fn restarts_expired_pagination() {
         let (spotify, server) = mock_library(vec![(200, "", saved_page("fresh", None))]).await;
         {
             let mut refresh = spotify.library_refresh.lock().await;
@@ -709,7 +687,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn short_cooldowns_retry_only_a_bounded_number_of_times() {
+    async fn bounds_cooldown_retries() {
         let responses = (0..4)
             .map(|_| (429, "Retry-After: 1\r\n", "{}".to_owned()))
             .collect();
@@ -728,7 +706,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn quota_exhaustion_is_not_automatically_retried() {
+    async fn stops_on_quota_exhaustion() {
         let (spotify, server) = mock_library(vec![(
             429,
             "Retry-After: 1\r\n",
@@ -742,7 +720,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invalid_retry_after_uses_a_cooldown_instead_of_immediate_retries() {
+    async fn handles_invalid_retry_after() {
         for header in [
             "",
             "Retry-After: invalid\r\n",
@@ -768,7 +746,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn switching_away_cancels_a_play_waiting_for_track_lookup() {
+    async fn cancels_stale_play() {
         let spotify = Spotify::new(vesper_credentials::SpotifyCredentials {
             web_client_id: None,
             web_refresh_token: "unused-test-token".to_owned(),
@@ -820,7 +798,7 @@ mod tests {
     }
 
     #[test]
-    fn playback_order_uses_the_command_wire_names() {
+    fn serializes_playback_order() {
         let repeat: PlaybackOrder = serde_json::from_str(r#""repeatOne""#).unwrap();
         assert_eq!(repeat, PlaybackOrder::RepeatOne);
         assert_eq!(
@@ -830,7 +808,7 @@ mod tests {
     }
 
     #[test]
-    fn library_cache_expires_after_five_minutes() {
+    fn expires_library_cache() {
         let now = Instant::now();
         let cache = LibraryCache {
             tracks: vec![track()],

@@ -255,7 +255,7 @@ fn zzz_response() {
 }
 
 #[test]
-fn pull_query_preserves_authorization_metadata_and_encodes_the_key_once() {
+fn encodes_pull_authorization() {
     for key in ["a+b/c=", "a%2Bb%2Fc%3D"] {
         let authorization: AuthKey = serde_json::from_value(
             serde_json::json!({"authkey":key,"authkey_ver":2,"sign_type":7}),
@@ -283,7 +283,7 @@ fn pull_query_preserves_authorization_metadata_and_encodes_the_key_once() {
 }
 
 #[test]
-fn rejected_pull_key_does_not_instruct_the_user_to_scan_again() {
+fn reports_rejected_pull_key() {
     for code in [-100, -101] {
         let response = Envelope {
             retcode: code,
@@ -298,7 +298,7 @@ fn rejected_pull_key_does_not_instruct_the_user_to_scan_again() {
 }
 
 #[test]
-fn pull_records_accept_absent_item_ids() {
+fn accepts_missing_item_ids() {
     for item_id in [
         None,
         Some(serde_json::Value::Null),

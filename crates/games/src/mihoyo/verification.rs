@@ -228,21 +228,10 @@ impl Runtime {
             }
         }
         let session = transport::game(game)?;
-        let Session::Mihoyo { account_id, .. } = &session else {
+        if !matches!(session, Session::Mihoyo { .. }) {
             return Err("Connect your miHoYo account first.".into());
-        };
-        let mut records = self.record.lock().await;
-        if records
-            .get(account_id)
-            .is_none_or(|record| !record.matches(&session))
-        {
-            records.insert(account_id.clone(), RecordSession::create(&session).await?);
         }
-        let record = records
-            .get(account_id)
-            .ok_or("Game-record login is unavailable.")?
-            .clone();
-        drop(records);
+        let record = self.load_record(&session).await?;
         let trace = record
             .verification_traces
             .lock()

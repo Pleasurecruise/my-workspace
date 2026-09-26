@@ -48,7 +48,7 @@ fn track() -> Track {
 }
 
 #[tokio::test]
-async fn stopped_worker_can_be_replaced() {
+async fn replaces_stopped_worker() {
     let (commands, receiver) = mpsc::channel();
     drop(receiver);
     let retired = Arc::new(AtomicBool::new(false));
@@ -80,7 +80,7 @@ async fn stopped_worker_can_be_replaced() {
 }
 
 #[test]
-fn snapshot_preserves_seek_offset_and_loaded_track() {
+fn projects_audio_snapshot() {
     let (sink, _source) = Sink::new();
     sink.pause();
     sink.append(rodio::buffer::SamplesBuffer::new(
@@ -112,7 +112,7 @@ fn snapshot_preserves_seek_offset_and_loaded_track() {
 }
 
 #[test]
-fn cancelled_audio_is_not_installed() {
+fn discards_cancelled_audio() {
     let (commands, receiver) = mpsc::channel();
     let (response, result) = oneshot::channel();
     let changes = watch::channel(1).0;

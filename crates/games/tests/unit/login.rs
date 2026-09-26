@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn cancelling_an_old_qr_does_not_remove_the_new_login() {
+async fn ignores_stale_cancellation() {
     let logins = Logins::default();
     logins.0.lock().unwrap().insert(
         Provider::Mihoyo,
@@ -19,7 +19,7 @@ async fn cancelling_an_old_qr_does_not_remove_the_new_login() {
 }
 
 #[tokio::test]
-async fn expired_qr_never_contacts_the_provider() {
+async fn rejects_expired_qr() {
     let logins = Logins::default();
     logins.0.lock().unwrap().insert(
         Provider::Skland,

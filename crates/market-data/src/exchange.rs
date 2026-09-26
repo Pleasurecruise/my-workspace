@@ -197,7 +197,11 @@ fn project(envelope: Envelope) -> Result<ExchangeReport, String> {
 pub async fn read() -> Result<ExchangeReport, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
-        .user_agent("Vesper/0.1 exchange rates")
+        .user_agent(concat!(
+            "Vesper/",
+            env!("CARGO_PKG_VERSION"),
+            " exchange rates"
+        ))
         .build()
         .map_err(|error| format!("Could not create exchange-rate client: {error}"))?;
     let response = client

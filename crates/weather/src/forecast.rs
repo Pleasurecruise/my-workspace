@@ -1,9 +1,7 @@
-use futures_util::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 const ENDPOINT: &str = "https://api.open-meteo.com/v1/forecast";
-const CONCURRENCY: usize = 4;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
@@ -140,22 +138,12 @@ pub async fn read(queries: Vec<String>) -> Result<WeatherReport, String> {
         .timeout(Duration::from_secs(15))
         .build()
         .map_err(|error| format!("Could not create weather client: {error}"))?;
-    let results = stream::iter(queries.into_iter().map(|query| async {
+    let (locations, failures) = crate::collect_locations(queries.into_iter().map(|query| async {
         request(&client, &query)
             .await
             .map_err(|message| WeatherFailure { query, message })
     }))
-    .buffered(CONCURRENCY)
-    .collect::<Vec<_>>()
     .await;
-    let mut locations = Vec::new();
-    let mut failures = Vec::new();
-    for result in results {
-        match result {
-            Ok(weather) => locations.push(weather),
-            Err(failure) => failures.push(failure),
-        }
-    }
     Ok(WeatherReport {
         locations,
         failures,

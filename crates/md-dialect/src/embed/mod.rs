@@ -11,6 +11,7 @@ mod storyboard;
 mod style;
 #[cfg(test)]
 mod tests;
+mod twitter;
 
 use futures_util::stream::{self, StreamExt, TryStreamExt};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
@@ -18,6 +19,7 @@ use std::collections::{HashMap, HashSet};
 
 const GITHUB: &str = "embed:github";
 const ARTICLE: &str = "embed:article";
+const TWITTER: &str = "embed:twitter";
 const LINK: &str = "embed:link";
 const MEDIA: &str = "embed:media";
 const ANNOTATION: &str = "embed:annotation";
@@ -33,6 +35,7 @@ const DATA_CONCURRENCY: usize = 4;
 pub struct Data {
     repositories: HashMap<String, ::github::RepositorySnapshot>,
     links: HashMap<String, link_preview::LinkMetadata>,
+    tweets: HashMap<String, Option<link_preview::twitter::Post>>,
     stocks: HashMap<String, market_data::stocks::StockSeries>,
     pub articles: HashMap<String, ArticleMetadata>,
 }
@@ -152,6 +155,7 @@ pub async fn load_with_articles(
     let mut repositories = HashSet::new();
     let mut stocks = HashSet::new();
     let mut links = HashSet::new();
+    let mut tweets = HashSet::new();
     for (language, source) in parse_fences(source) {
         match language.as_str() {
             GITHUB => {
@@ -163,6 +167,10 @@ pub async fn load_with_articles(
                 let parsed = fields(&language, &source)?;
                 let (url, _) = link::parse(parsed)?;
                 links.insert(url.to_owned());
+            }
+            TWITTER => {
+                let (url, _) = twitter::parse(fields(&language, &source)?)?;
+                tweets.insert(url);
             }
             STOCK => {
                 let parsed = fields(&language, &source)?;
@@ -219,6 +227,13 @@ pub async fn load_with_articles(
     .try_collect()
     .await
     .map_err(EmbedError::Data)?;
+    data.tweets = stream::iter(tweets.into_iter().map(|url| async move {
+        let post = link_preview::twitter::read(&url).await.ok();
+        (url, post)
+    }))
+    .buffer_unordered(DATA_CONCURRENCY)
+    .collect()
+    .await;
     if !stocks.is_empty() {
         let report = market_data::stocks::read(stocks.into_iter().collect())
             .await
@@ -241,6 +256,7 @@ pub fn render(language: &str, source: &str, data: &Data) -> Result<Option<String
     match language {
         GITHUB => github::render(fields(language, source)?, data).map(Some),
         ARTICLE => article::render_source(source, data).map(Some),
+        TWITTER => twitter::render(fields(language, source)?, data).map(Some),
         LINK => link::render(fields(language, source)?, data).map(Some),
         ANNOTATION | QUOTE | DIFF => document::render(language, source).map(Some),
         MEDIA => media::render(fields(language, source)?).map(Some),
@@ -295,6 +311,14 @@ fn fields<'a>(kind: &str, source: &'a str) -> Result<HashMap<&'a str, &'a str>, 
     Ok(fields)
 }
 
+/// An HTTP(S) URL with a host and no embedded credentials.
+pub(crate) fn is_web_url(url: &url::Url) -> bool {
+    matches!(url.scheme(), "http" | "https")
+        && url.host_str().is_some()
+        && url.username().is_empty()
+        && url.password().is_none()
+}
+
 fn unquote(value: &str) -> &str {
     if value.len() < 2 {
         return value;
@@ -303,6 +327,19 @@ fn unquote(value: &str) -> &str {
         (Some(b'"'), Some(b'"')) | (Some(b'\''), Some(b'\'')) => &value[1..value.len() - 1],
         _ => value,
     }
+}
+
+/// Validate one alignment value, keeping it for rendering.
+fn check_align(value: &str) -> Result<&str, EmbedError> {
+    if !matches!(value, "left" | "right" | "wide" | "narrow") {
+        return Err(EmbedError::InvalidAlignment(value.to_owned()));
+    }
+    Ok(value)
+}
+
+/// Remove and validate the optional `align` field, defaulting to `wide`.
+fn align<'a>(fields: &mut HashMap<&str, &'a str>) -> Result<&'a str, EmbedError> {
+    check_align(fields.remove("align").unwrap_or("wide"))
 }
 
 pub(crate) fn escape_html(value: &str) -> String {

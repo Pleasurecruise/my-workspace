@@ -62,6 +62,9 @@ struct CalendarCache {
     codex: BTreeMap<String, (std::time::Instant, Vec<Item>)>,
 }
 
+// Remote calendar snapshots stay reusable for this long before a refresh is required.
+const CALENDAR_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
 pub struct Store {
     path: PathBuf,
     schedule_directory: PathBuf,
@@ -104,7 +107,7 @@ impl Store {
         .map_err(|error| Error::Task(error.to_string()))?
     }
 
-    pub async fn list(&self, date: &str) -> Result<List, Error> {
+    async fn list(&self, date: &str) -> Result<List, Error> {
         validate_date(date)?;
         let date = date.to_owned();
         let path = self.path.clone();
@@ -277,9 +280,9 @@ impl Store {
                 return Ok(Vec::new());
             }
             let reusable = !refresh
-                && codex.get(date).is_some_and(|(loaded, _)| {
-                    loaded.elapsed() < std::time::Duration::from_secs(300)
-                });
+                && codex
+                    .get(date)
+                    .is_some_and(|(loaded, _)| loaded.elapsed() < CALENDAR_CACHE_TTL);
             if !reusable {
                 let items =
                     crate::codex::read(date, jiff::tz::TimeZone::system(), crate::codex::ENDPOINT)
@@ -417,7 +420,7 @@ impl Store {
                 let occurrences =
                     crate::schedule::occurrences(&content, parsed_date).map_err(|message| {
                         Error::ScheduleParse {
-                            path: PathBuf::from(&name),
+                            path: path.clone(),
                             message,
                         }
                     })?;
@@ -532,7 +535,7 @@ impl Store {
                     .filter(todo_items::date.le(&end))
                     .select((todo_items::date, todo_items::completed))
                     .load::<(String, bool)>(connection)?;
-                let mut days: BTreeMap<String, (bool, BTreeSet<String>)> = BTreeMap::new();
+                let mut days: BTreeMap<String, DayProgress> = BTreeMap::new();
                 for day in 1..=selected.month().length(selected.year()) {
                     let date = selected
                         .replace_day(day)
@@ -541,29 +544,24 @@ impl Store {
                     if date > end {
                         break;
                     }
-                    days.insert(date, (true, BTreeSet::new()));
+                    days.insert(date, DayProgress::new());
                 }
                 for (date, completed) in tasks {
-                    let day = days.entry(date).or_insert_with(|| (true, BTreeSet::new()));
-                    day.0 &= completed;
+                    days.entry(date)
+                        .or_insert_with(DayProgress::new)
+                        .tasks_completed &= completed;
                 }
-                use crate::checkin::check_ins;
-                let checks = check_ins::table
-                    .filter(check_ins::date.ge(&start))
-                    .filter(check_ins::date.le(&end))
-                    .filter(check_ins::id.eq_any(&ids))
-                    .select((check_ins::date, check_ins::id))
-                    .load::<(String, String)>(connection)?;
+                let checks = crate::checkin::read_checks(connection, &ids, &start, &end)?;
                 for (date, id) in checks {
                     days.entry(date)
-                        .or_insert_with(|| (true, BTreeSet::new()))
-                        .1
+                        .or_insert_with(DayProgress::new)
+                        .checked_habits
                         .insert(id);
                 }
                 Ok(days
                     .into_iter()
-                    .filter_map(|(date, (tasks_done, checked))| {
-                        (tasks_done && checked == ids).then_some(date)
+                    .filter_map(|(date, day)| {
+                        (day.tasks_completed && day.checked_habits == ids).then_some(date)
                     })
                     .collect())
             })
@@ -799,6 +797,22 @@ impl Store {
     }
 }
 
+/// A Planner day counts as complete when every task on it is completed and every
+/// selected habit has a check-in.
+struct DayProgress {
+    tasks_completed: bool,
+    checked_habits: BTreeSet<String>,
+}
+
+impl DayProgress {
+    fn new() -> Self {
+        Self {
+            tasks_completed: true,
+            checked_habits: BTreeSet::new(),
+        }
+    }
+}
+
 // Own the remote snapshot lifecycle independently of dated SQLite projections.
 async fn read_notion(
     cache: &mut Option<CalendarSnapshot>,
@@ -809,7 +823,7 @@ async fn read_notion(
     let reusable = cache.as_ref().is_some_and(|snapshot| {
         !refresh
             && snapshot.view_url == configuration.view_url
-            && snapshot.loaded.elapsed() < std::time::Duration::from_secs(300)
+            && snapshot.loaded.elapsed() < CALENDAR_CACHE_TTL
     });
     if !reusable {
         let items = crate::notion::read(configuration).await?;
@@ -942,6 +956,14 @@ fn normalized_text(text: &str) -> Result<&str, Error> {
     Ok(text)
 }
 
+fn normalized_description(value: &str) -> Result<Option<String>, Error> {
+    let value = value.trim();
+    if value.chars().count() > 4000 {
+        return Err(Error::DescriptionTooLong);
+    }
+    Ok((!value.is_empty()).then(|| value.to_owned()))
+}
+
 fn find_item<'a>(items: &'a mut [Item], id: &str) -> Result<&'a mut Item, Error> {
     items
         .iter_mut()
@@ -965,11 +987,3 @@ fn schedule_name(path: &Path) -> Result<String, Error> {
 #[cfg(test)]
 #[path = "../tests/unit/store.rs"]
 mod tests;
-
-fn normalized_description(value: &str) -> Result<Option<String>, Error> {
-    let value = value.trim();
-    if value.chars().count() > 4000 {
-        return Err(Error::DescriptionTooLong);
-    }
-    Ok((!value.is_empty()).then(|| value.to_owned()))
-}

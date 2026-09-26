@@ -1,4 +1,3 @@
-use futures_util::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::TAU;
 use std::time::Duration;
@@ -6,7 +5,6 @@ use time::Date;
 use time::macros::format_description;
 
 const ENDPOINT: &str = "https://api.open-meteo.com/v1/forecast";
-const CONCURRENCY: usize = 4;
 const SYNODIC_MONTH_DAYS: f64 = 29.530_588_853;
 const KNOWN_NEW_MOON_JULIAN_DAY: f64 = 2_451_550.1;
 
@@ -182,25 +180,15 @@ async fn request(client: &reqwest::Client, query: &str) -> Result<Astronomy, Str
 pub async fn read(queries: Vec<String>) -> Result<AstronomyReport, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
-        .user_agent("Vesper/0.1 astronomy")
+        .user_agent(concat!("Vesper/", env!("CARGO_PKG_VERSION"), " astronomy"))
         .build()
         .map_err(|error| format!("Could not create astronomy client: {error}"))?;
-    let results = stream::iter(queries.into_iter().map(|query| async {
+    let (locations, failures) = crate::collect_locations(queries.into_iter().map(|query| async {
         request(&client, &query)
             .await
             .map_err(|message| AstronomyFailure { query, message })
     }))
-    .buffered(CONCURRENCY)
-    .collect::<Vec<_>>()
     .await;
-    let mut locations = Vec::new();
-    let mut failures = Vec::new();
-    for result in results {
-        match result {
-            Ok(astronomy) => locations.push(astronomy),
-            Err(failure) => failures.push(failure),
-        }
-    }
     Ok(AstronomyReport {
         locations,
         failures,

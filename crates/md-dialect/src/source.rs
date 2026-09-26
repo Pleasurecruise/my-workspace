@@ -31,22 +31,7 @@ pub fn normalize_embed_examples(source: &str) -> Cow<'_, str> {
             index += 1;
             continue;
         }
-        if line.trim_end() == "```"
-            && lines.get(index + 1).is_some_and(|next| {
-                let next = next.trim_end();
-                next.get(..9)
-                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case("```embed:"))
-                    && next[9..]
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphabetic() || byte == b'-')
-                    && next.len() > 9
-            })
-            && let Some(close) =
-                (index + 2..lines.len()).find(|offset| lines[*offset].trim_end() == "```")
-            && lines
-                .get(close + 1)
-                .is_some_and(|line| line.trim_end() == "```")
-        {
+        if let Some(close) = find_example(&lines, index) {
             lines[index] = Cow::Borrowed("````markdown");
             lines[close + 1] = Cow::Borrowed("````");
             changed = true;
@@ -63,4 +48,30 @@ pub fn normalize_embed_examples(source: &str) -> Cow<'_, str> {
     } else {
         Cow::Borrowed(source)
     }
+}
+
+/// Locate the closing fence offset of a bare ``` wrapper around one embed example,
+/// or `None` when the block does not match the Knowledge example shape.
+fn find_example(lines: &[Cow<'_, str>], index: usize) -> Option<usize> {
+    if lines[index].trim_end() != "```" {
+        return None;
+    }
+    let header = lines.get(index + 1)?.trim_end();
+    let prefix = header.get(..9)?;
+    if !prefix.eq_ignore_ascii_case("```embed:") {
+        return None;
+    }
+    let kind = &header[9..];
+    if kind.is_empty()
+        || !kind
+            .bytes()
+            .all(|byte| byte.is_ascii_alphabetic() || byte == b'-')
+    {
+        return None;
+    }
+    let close = (index + 2..lines.len()).find(|offset| lines[*offset].trim_end() == "```")?;
+    lines
+        .get(close + 1)
+        .is_some_and(|line| line.trim_end() == "```")
+        .then_some(close)
 }

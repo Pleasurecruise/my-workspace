@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn parses_metadata_with_entities_first_image_and_relative_urls() {
+fn parses_open_graph() {
     let url = Url::parse("https://example.com/articles/post").unwrap();
     let item = parse(
         r#"<html><head>
@@ -25,7 +25,7 @@ fn parses_metadata_with_entities_first_image_and_relative_urls() {
 }
 
 #[test]
-fn falls_back_without_open_graph_and_discards_unsafe_images() {
+fn uses_safe_metadata_fallback() {
     let url = Url::parse("https://example.com/post").unwrap();
     let item = parse(
         r#"<title> Page &amp; title </title><meta name="description" content="Summary"><meta property="og:image" content="data:image/svg+xml,unsafe">"#,
@@ -38,7 +38,7 @@ fn falls_back_without_open_graph_and_discards_unsafe_images() {
 }
 
 #[test]
-fn rejects_non_http_credentials_and_private_addresses() {
+fn rejects_unsafe_urls() {
     for url in [
         "file:///etc/passwd",
         "javascript:alert(1)",

@@ -1,6 +1,39 @@
 use super::*;
 
 #[test]
+fn renders_twitter_text_and_unavailable_cards() {
+    let mut data = Data::default();
+    let url = "https://x.com/example/status/12345";
+    data.tweets.insert(
+        url.to_owned(),
+        Some(link_preview::twitter::Post {
+            author: "<Alice>".to_owned(),
+            text: "hello & world\nnext".to_owned(),
+        }),
+    );
+    let source = "url: https://twitter.com/Example/status/12345?s=20\nalign: narrow";
+    let html = render(TWITTER, source, &data).unwrap().unwrap();
+    assert!(html.contains("content-embed-narrow"));
+    assert!(html.contains("&lt;Alice&gt;"));
+    assert!(html.contains("hello &amp; world\nnext"));
+    assert!(html.contains(&format!("href=\"{url}\"")));
+    data.tweets.insert(url.to_owned(), None);
+    assert!(
+        render(TWITTER, source, &data)
+            .unwrap()
+            .unwrap()
+            .contains("Post preview is unavailable")
+    );
+    for source in [
+        "url: https://x.com/a/status/1\nscript: true",
+        "url: https://x.com/a/status/1\nurl: https://x.com/b/status/2",
+        "url: https://x.com/a/status/1\nalign: center",
+    ] {
+        assert!(render(TWITTER, source, &data).is_err());
+    }
+}
+
+#[test]
 fn renders_repository_data() {
     let mut data = Data::default();
     data.repositories.insert(
@@ -27,7 +60,7 @@ fn renders_repository_data() {
 }
 
 #[test]
-fn renders_stock_data_as_a_smooth_month_chart() {
+fn renders_stock_chart() {
     let mut data = Data::default();
     data.stocks.insert(
         "AAPL".to_owned(),
@@ -65,7 +98,7 @@ fn renders_stock_data_as_a_smooth_month_chart() {
 }
 
 #[test]
-fn renders_link_metadata_as_text_and_keeps_ordinary_links_unhandled() {
+fn renders_link_cards() {
     let mut data = Data::default();
     data.links.insert(
         "https://example.com".to_owned(),
@@ -93,7 +126,7 @@ fn renders_link_metadata_as_text_and_keeps_ordinary_links_unhandled() {
 }
 
 #[test]
-fn renders_audio_and_video_without_provider_data() {
+fn renders_media() {
     let data = Data::default();
     let audio = render(
         MEDIA,
@@ -117,7 +150,7 @@ fn renders_audio_and_video_without_provider_data() {
 }
 
 #[test]
-fn rejects_invalid_media_fields_and_sources() {
+fn rejects_invalid_media() {
     let data = Data::default();
     for fields in [
         "type: image\nsrc: photo.png",
@@ -160,7 +193,7 @@ fn rejects_invalid_media_fields_and_sources() {
 }
 
 #[test]
-fn collects_only_local_media_assets() {
+fn collects_local_assets() {
     let source = "```embed:media\ntype: audio\nsrc: ./audio.mp3\n```\n\n```EMBED:MEDIA\ntype: video\nsrc: https://example.com/video.mp4\nposter: ./cover.jpg\n```\n\n```embed:media\ntype: audio\nsrc: ./audio.mp3\n```\n\n```text\ntype: audio\nsrc: ignored.mp3\n```";
     assert_eq!(
         collect_media_paths(source).unwrap(),
@@ -169,7 +202,7 @@ fn collects_only_local_media_assets() {
 }
 
 #[test]
-fn previews_video_frames_without_overriding_posters_or_start_times() {
+fn previews_video() {
     let data = Data::default();
     let preview = render(MEDIA, "type: video\nsrc: ./video.mp4", &data)
         .unwrap()
@@ -200,7 +233,7 @@ fn previews_video_frames_without_overriding_posters_or_start_times() {
 }
 
 #[test]
-fn github_media_file_pages_resolve_to_bytes_without_rewriting_other_hosts() {
+fn resolves_github_media() {
     let data = Default::default();
     for (source, expected) in [
         (
@@ -232,7 +265,7 @@ fn github_media_file_pages_resolve_to_bytes_without_rewriting_other_hosts() {
 }
 
 #[test]
-fn article_links_require_index_metadata_even_with_manual_titles() {
+fn requires_article_index() {
     for source in [
         "id: article-123\ntitle: Custom",
         "url: https://example.com/story\ntitle: Custom\ndescription: Summary",
@@ -245,7 +278,7 @@ fn article_links_require_index_metadata_even_with_manual_titles() {
 }
 
 #[test]
-fn article_links_reject_ambiguous_and_unsafe_targets() {
+fn rejects_invalid_targets() {
     for fields in [
         "id: one\nurl: https://example.com",
         "id: ../other",
@@ -273,7 +306,7 @@ fn article_links_reject_ambiguous_and_unsafe_targets() {
 }
 
 #[test]
-fn article_shortcuts_read_metadata_and_allow_independent_overrides() {
+fn overrides_article_metadata() {
     let mut data = Data::default();
     data.articles.insert(
         "article-123".to_owned(),
@@ -310,7 +343,7 @@ fn article_shortcuts_read_metadata_and_allow_independent_overrides() {
 }
 
 #[test]
-fn unresolved_articles_are_not_clickable() {
+fn disables_missing_articles() {
     for fields in ["id: article-123", "url: https://example.com/story"] {
         let html = render(ARTICLE, fields, &Data::default()).unwrap().unwrap();
         assert!(html.contains("<div class="));
@@ -319,7 +352,7 @@ fn unresolved_articles_are_not_clickable() {
 }
 
 #[test]
-fn article_url_lists_render_metadata_cards_and_preserve_order() {
+fn renders_article_lists() {
     let url = "https://knowledge.you-find.me/articles/11111111-1111-4111-8111-111111111111";
     let mut data = Data::default();
     data.articles.insert(
@@ -349,7 +382,7 @@ fn article_url_lists_render_metadata_cards_and_preserve_order() {
 }
 
 #[test]
-fn article_url_lists_reject_mixed_and_unsafe_entries() {
+fn rejects_invalid_lists() {
     for source in [
         "",
         "javascript:alert(1)",
@@ -373,7 +406,7 @@ fn article_url_lists_reject_mixed_and_unsafe_entries() {
 }
 
 #[test]
-fn aligned_articles_keep_metadata_targets_and_list_collection() {
+fn aligns_article_cards() {
     let mut data = Data::default();
     data.articles.insert(
         "article-123".to_owned(),
@@ -427,7 +460,7 @@ fn aligned_articles_keep_metadata_targets_and_list_collection() {
 }
 
 #[test]
-fn embed_styles_never_escape_into_visible_document_text() {
+fn isolates_embed_styles() {
     let mut html = render(ARTICLE, "id: article-123\nalign: narrow", &Data::default())
         .unwrap()
         .unwrap();
@@ -439,13 +472,13 @@ fn embed_styles_never_escape_into_visible_document_text() {
 }
 
 #[test]
-fn manual_article_metadata_still_requires_index_resolution() {
+fn collects_custom_articles() {
     let source = "```embed:article\nid: article-123\ntitle: Custom\ndescription: Summary\n```";
     assert_eq!(article_ids(source).unwrap(), ["article-123"]);
 }
 
 #[test]
-fn discovers_article_fences_inside_footnotes() {
+fn finds_footnote_articles() {
     let source = "Text[^note]\n\n[^note]:\n    ```embed:article\n    https://knowledge.you-find.me/articles/example\n    ```\n";
     assert_eq!(
         super::article_urls(source).unwrap(),
@@ -454,7 +487,7 @@ fn discovers_article_fences_inside_footnotes() {
 }
 
 #[test]
-fn discovers_media_assets_inside_footnotes() {
+fn finds_footnote_media() {
     let source = "Text[^note]\n\n[^note]:\n    ```embed:media\n    type: audio\n    src: ../recording.mp3\n    ```\n";
     assert_eq!(
         super::collect_media_paths(source).unwrap(),
@@ -463,7 +496,7 @@ fn discovers_media_assets_inside_footnotes() {
 }
 
 #[test]
-fn rejects_invalid_fences_before_provider_reads() {
+fn validates_before_loading() {
     use futures_util::FutureExt;
     for source in [
         "```embed:github\nrepo: owner/repo\nalign: invalid\n```",
@@ -493,7 +526,7 @@ fn rejects_invalid_fences_before_provider_reads() {
 }
 
 #[test]
-fn document_embed_contract_matches_knowledge() {
+fn matches_document_contract() {
     let cases: serde_json::Value =
         serde_json::from_str(include_str!("../../tests/fixtures/document-embeds.json")).unwrap();
     for case in cases.as_array().unwrap() {
@@ -511,7 +544,7 @@ fn document_embed_contract_matches_knowledge() {
 }
 
 #[test]
-fn quote_and_diff_preserve_plain_text() {
+fn preserves_document_text() {
     let quote = super::render(
         "embed:quote",
         "author: A & B\nurl: https://example.com\n---\nFirst\n\n<script>text</script>",
@@ -533,7 +566,7 @@ fn quote_and_diff_preserve_plain_text() {
 }
 
 #[test]
-fn annotation_preserves_text_and_rejects_ambiguous_marks() {
+fn validates_annotations() {
     let source = "mark: 内容优先\nnote: <说明>\ncolor: red\nurl: https://example.com/source\n---\n我的博客坚持内容优先。";
     let html = render("embed:annotation", source, &Data::default())
         .unwrap()
@@ -556,7 +589,7 @@ fn annotation_preserves_text_and_rejects_ambiguous_marks() {
 }
 
 #[test]
-fn semantic_canvases_validate_like_knowledge() {
+fn validates_canvas_contract() {
     for source in [
         "flowchart LR\na --> b --> c",
         "flowchart LR\na[x[y]] --> b",

@@ -31,7 +31,7 @@ async fn qr_waiting() {
 }
 
 #[test]
-fn recognizes_unscanned_response_without_data() {
+fn decodes_pending_scan() {
     let response: Envelope =
         serde_json::from_str(r#"{"msg":"未扫码","status":100,"type":"A"}"#).unwrap();
     assert_eq!(response.status, Some(100));
@@ -39,7 +39,7 @@ fn recognizes_unscanned_response_without_data() {
 }
 
 #[test]
-fn preserves_authentication_failure_instead_of_decoding_history() {
+fn reports_authentication_error() {
     let response: Envelope =
         serde_json::from_str(r#"{"code":10002,"data":{},"message":"sensitive details"}"#).unwrap();
     let error = response.decode::<Page<ArkPull>>().err().unwrap();
@@ -48,7 +48,7 @@ fn preserves_authentication_failure_instead_of_decoding_history() {
 }
 
 #[test]
-fn decodes_arknights_history_without_losing_millisecond_cursor() {
+fn decodes_arknights_history() {
     let page: Page<ArkPull> = serde_json::from_str(r#"{"list":[{"poolId":"pool","poolName":"Standard","charId":"char","charName":"Operator","rarity":5,"isNew":true,"gachaTs":"1788676800123","pos":9}],"hasMore":true}"#).unwrap();
     assert_eq!(page.list[0].gacha_ts, "1788676800123");
     assert_eq!(page.list[0].pos, 9);
@@ -57,7 +57,7 @@ fn decodes_arknights_history_without_losing_millisecond_cursor() {
 }
 
 #[test]
-fn retains_endfield_bonus_event_cursors_and_free_pull_flags() {
+fn decodes_endfield_history() {
     let page: Page<EfPull> = serde_json::from_str(r#"{"list":[{"kind":"draw","poolId":"pool","poolName":"Special","charId":"char","charName":"Operator","rarity":6,"isFree":true,"isNew":true,"gachaTs":"1788676800123","seqId":"20"},{"kind":"bonus","gachaTs":"1788676800123","seqId":"19"}],"hasMore":true}"#).unwrap();
     assert_eq!(page.list[0].is_free, Some(true));
     assert_eq!(page.list.last().unwrap().seq_id, "19");

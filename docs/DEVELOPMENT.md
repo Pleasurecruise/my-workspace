@@ -35,6 +35,18 @@ The macOS View menu offers Reload and Developer Tools in debug and packaged buil
 App Lock state. Tools require an unlocked session and close when locked; a restart starts unlocked.
 Set `RUST_LOG=debug` when investigating Rust behavior, without logging secrets or account responses.
 
+## CLI installation
+
+The CLI binary is `vesper`, distributed separately from the desktop installer and updater.
+`pnpm cli:install` builds and installs the release CLI into Cargo's binary directory (normally
+`~/.cargo/bin`, which must be on PATH). Rerun it to update; `pnpm cli:uninstall` removes the
+`vesper-cli` package.
+
+Installed CLI and packaged desktop share the release credential store. `pnpm dev:cli` and
+`content:*` run debug builds with the separate [debug credential boundary](#credential-resolution).
+The CLI owns terminal input and output; shared Rust crates own business rules, storage and provider
+access. Commands are documented by `vesper --help` and the [workflow guide](WORKFLOW.md).
+
 ## Desktop releases
 
 Run the `Release` workflow manually after committing the same new version in
@@ -205,7 +217,7 @@ Handoff records commands actually run, before/after evidence, unresolved cases, 
 The Knowledge consumer fixture is captured from the generated local Worker using
 `KNOWLEDGE_CONTRACT_OUTPUT` during its REST/MCP contract journey. Store only synthetic responses in
 `crates/consumers/tests/fixtures/knowledge-contract.json`; `cargo test -p consumers
-consumes_current_rest_and_mcp_responses` checks deserialization and desktop projection without credentials.
+decodes_api_contracts` checks deserialization and desktop projection without credentials.
 
 ## Documentation synchronization
 

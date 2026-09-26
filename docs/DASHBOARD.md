@@ -114,7 +114,15 @@ fetching all remote dates or persisting another completion flag. See [Persistenc
 
 ICS synchronization reads local `ics/` files. Imports validate all files before atomic per-file
 installation. Recurrence identities deduplicate and suppress deleted occurrences. Floating times
-stay local; UTC and IANA TZID times use the device zone. Unsupported recurrence fails explicitly.
+stay local; UTC and IANA TZID times use the device zone. `icalendar` parses folded text, quoted
+parameters and component boundaries; alarm properties do not become event properties. `rrule`
+evaluates daily, weekly, monthly and yearly rules with INTERVAL, BYDAY, BYMONTHDAY, UNTIL and COUNT.
+Rules enumerate source civil dates using a UTC surrogate; Jiff performs actual time-zone projection.
+The planner uses Jiff's compatible policy for DST gaps and folds within this supported recurrence
+subset. Absolute UTC UNTIL values are also checked against the projected instant.
+EXDATE removes an occurrence without extending COUNT. A date-only UNTIL includes the source day.
+Unsupported recurrence and exhausted evaluation limits fail explicitly rather than returning an
+incomplete calendar.
 
 Notion uses a saved view link and the official `ntn` CLI's existing login. Calendar views select a
 Date property; other views require exactly one data-source Date property. Rust applies saved filters

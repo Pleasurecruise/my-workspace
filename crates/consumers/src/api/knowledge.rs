@@ -1,4 +1,4 @@
-use super::ApiError;
+use super::{ApiError, Client, send};
 use cms_core::markdown::{
     ArticleMetadata, ReadingStats, TocEntry, article_ids, article_urls, compile_knowledge_plain,
     compile_knowledge_with_articles, knowledge_body,
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
-use vesper_credentials::{ConsumerApi, Stored};
+use vesper_credentials::ConsumerApi;
 
 const ENDPOINT: &str = "https://knowledge.you-find.me/api/articles";
 const OVERVIEW_PAGE_SIZE: usize = 100;
@@ -75,12 +75,6 @@ const PERSONAL_NEWS_TAGS: &[&str] = &[
     "个人日报",
     "每日日报",
 ];
-
-#[derive(Clone)]
-struct Client {
-    api_key: String,
-    http: reqwest::Client,
-}
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -216,7 +210,7 @@ pub async fn summaries(filters: &ListFilters) -> Result<ArticlePage, ApiError> {
             "article filters accept at most five non-empty tags".to_owned(),
         ));
     }
-    let client = Client::load()?;
+    let client = Client::load(ConsumerApi::Knowledge)?;
     read_summary_page(&client, filters).await
 }
 
@@ -225,23 +219,8 @@ struct ArticleResponse<T> {
     article: T,
 }
 
-impl Client {
-    fn load() -> Result<Self, ApiError> {
-        let api_key = match vesper_credentials::consumer_api(ConsumerApi::Knowledge)? {
-            Stored::Ready(api_key) => api_key,
-            Stored::Missing => return Err(ApiError::MissingCredentials("my-knowledge")),
-        };
-        Ok(Self {
-            api_key,
-            http: reqwest::Client::builder()
-                .timeout(super::REQUEST_TIMEOUT)
-                .build()?,
-        })
-    }
-}
-
 pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
-    let client = Client::load()?;
+    let client = Client::load(ConsumerApi::Knowledge)?;
     let page = read_summary_page(
         &client,
         &ListFilters {
@@ -263,7 +242,7 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
 }
 
 pub async fn overview() -> Result<Page, ApiError> {
-    let client = Client::load()?;
+    let client = Client::load(ConsumerApi::Knowledge)?;
     let client_ref = &client;
     let (regular, daily) = tokio::try_join!(
         overview_pages(|cursor| async move {
@@ -349,14 +328,7 @@ async fn read_summary_page(
     if let Some(cursor) = &filters.cursor {
         request = request.query(&[("cursor", cursor)]);
     }
-    let response = request.send().await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "list knowledge articles",
-            status,
-        });
-    }
+    let response = send(request, "list knowledge articles").await?;
     Ok(response.json().await?)
 }
 
@@ -403,7 +375,7 @@ fn overview_summaries(summaries: Vec<Summary>) -> Vec<Summary> {
             Some(NewspaperEdition::Personal) => &mut latest_personal,
             None => continue,
         };
-        if latest.is_none_or(|current| summary.created_at > current.created_at) {
+        if latest.is_none_or(|current| is_newer(&summary.created_at, &current.created_at)) {
             *latest = Some(summary);
         }
     }
@@ -458,7 +430,17 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
     let needs_index = ids.iter().any(|id| !metadata.contains_key(id))
         || urls.iter().any(|url| !metadata.contains_key(url));
     let summaries = if needs_index {
-        reference_summaries().await.unwrap_or_default()
+        match reference_summaries().await {
+            Ok(summaries) => summaries,
+            Err(error) => {
+                tracing::warn!(
+                    article_id = %article.id,
+                    %error,
+                    "could not read the article index; embeds keep their own metadata"
+                );
+                Vec::new()
+            }
+        }
     } else {
         Vec::new()
     };
@@ -510,15 +492,15 @@ fn newspaper_edition(tags: &[String]) -> Option<NewspaperEdition> {
 }
 
 pub fn latest_newspaper_issues(documents: &[Entry]) -> NewspaperIssues {
-    let mut developer = None;
-    let mut personal = None;
+    let mut developer: Option<&Entry> = None;
+    let mut personal: Option<&Entry> = None;
     for document in documents {
         let issue = match document.newspaper_edition {
             Some(NewspaperEdition::Developer) => &mut developer,
             Some(NewspaperEdition::Personal) => &mut personal,
             None => continue,
         };
-        if issue.is_none_or(|current| is_newer(document, current)) {
+        if issue.is_none_or(|current| is_newer(&document.created_at, &current.created_at)) {
             *issue = Some(document);
         }
     }
@@ -528,13 +510,14 @@ pub fn latest_newspaper_issues(documents: &[Entry]) -> NewspaperIssues {
     }
 }
 
-fn is_newer(candidate: &Entry, current: &Entry) -> bool {
+/// Compare `created_at` stamps, falling back to string order when either is not RFC 3339.
+fn is_newer(candidate: &str, current: &str) -> bool {
     match (
-        OffsetDateTime::parse(&candidate.created_at, &Rfc3339),
-        OffsetDateTime::parse(&current.created_at, &Rfc3339),
+        OffsetDateTime::parse(candidate, &Rfc3339),
+        OffsetDateTime::parse(current, &Rfc3339),
     ) {
         (Ok(candidate), Ok(current)) => candidate > current,
-        _ => candidate.created_at > current.created_at,
+        _ => candidate > current,
     }
 }
 
@@ -588,7 +571,7 @@ fn resolve_card_metadata(
 }
 
 async fn reference_summaries() -> Result<Vec<Summary>, ApiError> {
-    let client = Client::load()?;
+    let client = Client::load(ConsumerApi::Knowledge)?;
     let client_ref = &client;
     reference_pages(|filters| async move { read_summary_page(client_ref, &filters).await }).await
 }
@@ -602,7 +585,7 @@ where
     let mut ids = HashSet::new();
     for tags in [vec![], vec!["daily".to_owned()]] {
         let mut filters = ListFilters {
-            limit: Some(100),
+            limit: Some(OVERVIEW_PAGE_SIZE),
             tags,
             ..Default::default()
         };
@@ -634,8 +617,8 @@ where
     Ok(result)
 }
 
-pub async fn get(reference: &str) -> Result<Article, ApiError> {
-    let id = article_identity(reference).unwrap_or_else(|| reference.to_owned());
+/// Build the article detail URL, rejecting IDs that could splice the path.
+fn build_url(id: &str) -> Result<String, ApiError> {
     if id.is_empty()
         || id.len() > 240
         || !id
@@ -646,26 +629,24 @@ pub async fn get(reference: &str) -> Result<Article, ApiError> {
             "invalid knowledge article reference".to_owned(),
         ));
     }
-    let client = Client::load()?;
-    let response = client
-        .http
-        .get(format!("{ENDPOINT}/{id}"))
-        .bearer_auth(&client.api_key)
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "read knowledge article",
-            status,
-        });
-    }
+    Ok(format!("{ENDPOINT}/{id}"))
+}
+
+pub async fn get(reference: &str) -> Result<Article, ApiError> {
+    let id = article_identity(reference).unwrap_or_else(|| reference.to_owned());
+    let url = build_url(&id)?;
+    let client = Client::load(ConsumerApi::Knowledge)?;
+    let response = send(
+        client.http.get(url).bearer_auth(&client.api_key),
+        "read knowledge article",
+    )
+    .await?;
     let result: ArticleResponse<Article> = response.json().await?;
     Ok(result.article)
 }
 
 pub async fn create(input: &Create) -> Result<Article, ApiError> {
-    let client = Client::load()?;
+    let client = Client::load(ConsumerApi::Knowledge)?;
     let response = client
         .http
         .post(ENDPOINT)
@@ -682,10 +663,11 @@ pub async fn create(input: &Create) -> Result<Article, ApiError> {
 }
 
 pub async fn update_draft(id: &str, input: &DraftUpdate) -> Result<Article, ApiError> {
-    let client = Client::load()?;
+    let url = build_url(id)?;
+    let client = Client::load(ConsumerApi::Knowledge)?;
     let response = client
         .http
-        .patch(format!("{ENDPOINT}/{id}"))
+        .patch(url)
         .bearer_auth(&client.api_key)
         .json(input)
         .send()
@@ -699,10 +681,11 @@ pub async fn update_draft(id: &str, input: &DraftUpdate) -> Result<Article, ApiE
 }
 
 pub async fn update_documents(id: &str, input: &DocumentUpdate) -> Result<Article, ApiError> {
-    let client = Client::load()?;
+    let url = build_url(id)?;
+    let client = Client::load(ConsumerApi::Knowledge)?;
     let response = client
         .http
-        .patch(format!("{ENDPOINT}/{id}"))
+        .patch(url)
         .bearer_auth(&client.api_key)
         .json(input)
         .send()
@@ -716,21 +699,17 @@ pub async fn update_documents(id: &str, input: &DocumentUpdate) -> Result<Articl
 }
 
 pub async fn set_visibility(id: &str, input: &VisibilityUpdate) -> Result<Summary, ApiError> {
-    let client = Client::load()?;
-    let response = client
-        .http
-        .patch(format!("{ENDPOINT}/{id}"))
-        .bearer_auth(&client.api_key)
-        .json(input)
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "set knowledge visibility",
-            status,
-        });
-    }
+    let url = build_url(id)?;
+    let client = Client::load(ConsumerApi::Knowledge)?;
+    let response = send(
+        client
+            .http
+            .patch(url)
+            .bearer_auth(&client.api_key)
+            .json(input),
+        "set knowledge visibility",
+    )
+    .await?;
     let result: ArticleResponse<Summary> = response.json().await?;
     Ok(result.article)
 }
@@ -740,10 +719,11 @@ pub async fn delete(
     expected_hash: &str,
     expected_updated_at: &str,
 ) -> Result<(), ApiError> {
-    let client = Client::load()?;
+    let url = build_url(id)?;
+    let client = Client::load(ConsumerApi::Knowledge)?;
     let response = client
         .http
-        .delete(format!("{ENDPOINT}/{id}"))
+        .delete(url)
         .bearer_auth(&client.api_key)
         .json(&serde_json::json!({
             "expectedHash": expected_hash,
@@ -800,7 +780,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn consumes_current_rest_and_mcp_responses() {
+    async fn decodes_api_contracts() {
         #[derive(Deserialize)]
         struct Responses {
             list: ArticlePage,
@@ -839,7 +819,7 @@ mod tests {
     }
 
     #[test]
-    fn mutations_require_and_preserve_both_version_fields() {
+    fn validates_write_versions() {
         let version = serde_json::json!({
             "expectedHash": "a".repeat(64),
             "expectedUpdatedAt": "2026-09-20T11:00:00.000Z"
@@ -894,7 +874,7 @@ mod tests {
     }
 
     #[test]
-    fn article_urls_decode_one_path_segment() {
+    fn decodes_article_ids() {
         for (path, id) in [
             ("%61lpha", "alpha"),
             ("%e4%b8%ad%e6%96%87", "中文"),
@@ -912,7 +892,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn uuid_urls_resolve_current_article_metadata() {
+    async fn resolves_uuid_metadata() {
         let id = "11111111-1111-4111-8111-111111111111";
         let source = format!(
             "```embed:article\nhttps://knowledge.you-find.me/articles/{id}\nhttps://knowledge.you-find.me/articles/{id}#section\nhttps://example.com/articles/{id}\n```"
@@ -958,7 +938,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reference_index_keeps_historical_dailies_and_checks_each_cursor() {
+    async fn paginates_reference_index() {
         let mut requests = Vec::new();
         let articles = reference_pages(|filters| {
             requests.push((filters.tags.clone(), filters.cursor.clone()));
@@ -1011,7 +991,7 @@ mod tests {
     }
 
     #[test]
-    fn cards_use_summary_metadata_for_article_ids() {
+    fn resolves_card_metadata() {
         let summary = Summary {
             id: "real-id".into(),
             editions: HashMap::from([(
@@ -1048,7 +1028,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn overview_follows_pages_and_rejects_cursor_cycles() {
+    async fn paginates_overview() {
         let mut requested = Vec::new();
         let summaries = overview_pages(|cursor: Option<String>| {
             requested.push(cursor.clone());
@@ -1104,7 +1084,7 @@ mod tests {
     }
 
     #[test]
-    fn decodes_list_metadata_without_slug() {
+    fn decodes_slugless_summaries() {
         let page: ArticlePage = serde_json::from_value(serde_json::json!({
             "articles": [{
                 "id": "019c1234-1234-7000-8000-123456789abc",
@@ -1150,7 +1130,7 @@ mod tests {
     }
 
     #[test]
-    fn overview_keeps_regular_articles_and_latest_newspapers() {
+    fn projects_overview() {
         fn summary(id: &str, tags: &[&str], created_at: &str) -> Summary {
             Summary {
                 id: id.to_owned(),
@@ -1289,7 +1269,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn preserves_article_when_embed_enrichment_fails() {
+    async fn retains_failed_embeds() {
         let article: Article = serde_json::from_value(serde_json::json!({
             "id": "019c1234-1234-7000-8000-123456789abc",
             "editions": {
@@ -1365,7 +1345,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_article_path_injection_before_loading_credentials() {
+    async fn rejects_unsafe_article_ids() {
+        let expected_hash = "a".repeat(64);
+        let expected_updated_at = "2026-09-20T11:00:00.000Z".to_owned();
+        let draft = DraftUpdate {
+            expected_hash: expected_hash.clone(),
+            expected_updated_at: expected_updated_at.clone(),
+            visibility: None,
+            title: "Title".to_owned(),
+            summary: "Summary".to_owned(),
+            body: "Body".to_owned(),
+            tags: Vec::new(),
+        };
+        let documents = DocumentUpdate {
+            expected_hash: expected_hash.clone(),
+            expected_updated_at: expected_updated_at.clone(),
+            documents: Documents {
+                zh: "Chinese document".to_owned(),
+                en: None,
+                ja: None,
+            },
+        };
+        let visibility = VisibilityUpdate {
+            expected_hash,
+            expected_updated_at,
+            visibility: Visibility::Private,
+        };
         for id in [
             "",
             "..",
@@ -1375,11 +1380,36 @@ mod tests {
             "one%2Ftwo",
         ] {
             assert!(matches!(get(id).await, Err(ApiError::Protocol(_))), "{id}");
+            assert!(
+                matches!(update_draft(id, &draft).await, Err(ApiError::Protocol(_))),
+                "{id}"
+            );
+            assert!(
+                matches!(
+                    update_documents(id, &documents).await,
+                    Err(ApiError::Protocol(_))
+                ),
+                "{id}"
+            );
+            assert!(
+                matches!(
+                    set_visibility(id, &visibility).await,
+                    Err(ApiError::Protocol(_))
+                ),
+                "{id}"
+            );
+            assert!(
+                matches!(
+                    delete(id, "hash", "updated").await,
+                    Err(ApiError::Protocol(_))
+                ),
+                "{id}"
+            );
         }
     }
 
     #[tokio::test]
-    async fn self_shortcut_uses_current_metadata_without_recursive_reads() {
+    async fn resolves_self_reference() {
         let document = project_article(Article {
             id: "self".to_owned(),
             editions: HashMap::from([(

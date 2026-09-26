@@ -1,4 +1,4 @@
-use super::{Data, EmbedError, escape_html, reject_unknown, required};
+use super::{Data, EmbedError, align, escape_html, reject_unknown, required};
 use std::collections::HashMap;
 
 pub(super) fn parse<'a>(
@@ -9,11 +9,7 @@ pub(super) fn parse<'a>(
     if !valid(repo) {
         return Err(EmbedError::InvalidRepository(repo.to_owned()));
     }
-    let align = fields.remove("align").unwrap_or("wide");
-    match align {
-        "left" | "right" | "wide" | "narrow" => {}
-        value => return Err(EmbedError::InvalidAlignment(value.to_owned())),
-    }
+    let align = align(&mut fields)?;
     Ok((repo, align))
 }
 

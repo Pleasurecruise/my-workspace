@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use time::{Date, Month, Weekday};
+use chrono::TimeZone;
+use rrule::{RRule, RRuleSet, Tz};
+use time::{Date, Month};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Occurrence {
@@ -24,8 +26,8 @@ pub(crate) struct Details {
 struct Event {
     uid: String,
     summary: String,
-    start: Start,
-    end: Option<Start>,
+    start: IcsDate,
+    end: Option<IcsDate>,
     location: Option<String>,
     description: Option<String>,
     recurrence: Option<Recurrence>,
@@ -33,8 +35,16 @@ struct Event {
     cancelled: bool,
 }
 
+#[derive(Debug)]
+struct Recurrence {
+    rule: RRuleSet,
+    until: Option<chrono::DateTime<chrono::Utc>>,
+    source_zone: Tz,
+}
+
+/// An iCalendar DATE or DATE-TIME value, carried by DTSTART, DTEND, EXDATE, and UNTIL.
 #[derive(Clone, Debug)]
-struct Start {
+struct IcsDate {
     date: Date,
     time: Option<(u8, u8)>,
     time_reference: TimeReference,
@@ -53,24 +63,6 @@ struct PropertyValue {
     time_zone: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Frequency {
-    Daily,
-    Weekly,
-    Monthly,
-    Yearly,
-}
-
-#[derive(Debug)]
-struct Recurrence {
-    frequency: Frequency,
-    interval: i64,
-    weekdays: Vec<Weekday>,
-    month_days: BTreeSet<u8>,
-    until: Option<Date>,
-    count: Option<usize>,
-}
-
 pub(crate) fn occurrences(input: &str, date: Date) -> Result<Vec<Occurrence>, String> {
     let events = parse(input)?;
     let mut seen = BTreeSet::new();
@@ -80,10 +72,10 @@ pub(crate) fn occurrences(input: &str, date: Date) -> Result<Vec<Occurrence>, St
             continue;
         }
         for source_date in event.candidate_dates(date) {
-            if !event.occurs_on(source_date) {
+            if !event.occurs_on(source_date)? {
                 continue;
             }
-            let start = project_start(&event.start, source_date, jiff::tz::TimeZone::system())?;
+            let start = project_ics_date(&event.start, source_date, jiff::tz::TimeZone::system())?;
             if start.date != date {
                 continue;
             }
@@ -95,7 +87,7 @@ pub(crate) fn occurrences(input: &str, date: Date) -> Result<Vec<Occurrence>, St
                 .shifted_end(source_date)?
                 .map(|end| {
                     let end_date = end.date;
-                    project_start(&end, end_date, jiff::tz::TimeZone::system())
+                    project_ics_date(&end, end_date, jiff::tz::TimeZone::system())
                 })
                 .transpose()?;
             let text = match start.time {
@@ -135,47 +127,38 @@ impl Event {
             .collect()
     }
 
-    fn occurs_on(&self, date: Date) -> bool {
+    fn occurs_on(&self, date: Date) -> Result<bool, String> {
         if date < self.start.date || self.excluded_dates.contains(&date) {
-            return false;
+            return Ok(false);
         }
         let Some(recurrence) = &self.recurrence else {
-            return date == self.start.date;
+            return Ok(date == self.start.date);
         };
-        if recurrence.until.is_some_and(|until| date > until)
-            || !recurrence.matches(self.start.date, date)
-        {
-            return false;
-        }
-        let Some(count) = recurrence.count else {
-            return true;
-        };
-        let mut occurrence_count = 0;
-        let mut cursor = self.start.date;
-        while cursor <= date {
-            if recurrence.matches(self.start.date, cursor) && !self.excluded_dates.contains(&cursor)
-            {
-                occurrence_count += 1;
-                if cursor == date {
-                    return occurrence_count <= count;
-                }
+        if let Some(until) = recurrence.until {
+            let (hour, minute) = self.start.time.unwrap_or((0, 0));
+            let instant =
+                recurrence_bound(date, (hour as i8, minute as i8, 0), recurrence.source_zone)?;
+            if instant > until {
+                return Ok(false);
             }
-            let Some(next) = cursor.next_day() else {
-                return false;
-            };
-            cursor = next;
         }
-        false
+        let start = recurrence_datetime(date, (0, 0, 0), Tz::UTC)?;
+        let end = recurrence_datetime(date, (23, 59, 59), Tz::UTC)?;
+        let result = recurrence.rule.clone().after(start).before(end).all(2);
+        if result.limited {
+            return Err("iCalendar recurrence exceeded the evaluation limit".to_owned());
+        }
+        Ok(!result.dates.is_empty())
     }
 
-    fn shifted_end(&self, occurrence_date: Date) -> Result<Option<Start>, String> {
+    fn shifted_end(&self, occurrence_date: Date) -> Result<Option<IcsDate>, String> {
         let Some(end) = self.end.as_ref() else {
             return Ok(None);
         };
         let end_date = occurrence_date
             .checked_add(end.date - self.start.date)
             .ok_or_else(|| "iCalendar event end date is out of range".to_owned())?;
-        Ok(Some(Start {
+        Ok(Some(IcsDate {
             date: end_date,
             time: end.time,
             time_reference: end.time_reference.clone(),
@@ -183,139 +166,76 @@ impl Event {
     }
 }
 
-impl Recurrence {
-    fn matches(&self, start: Date, date: Date) -> bool {
-        match self.frequency {
-            Frequency::Daily => (date - start).whole_days() % self.interval == 0,
-            Frequency::Weekly => {
-                let start_week = start - time::Duration::days(weekday_index(start.weekday()));
-                let date_week = date - time::Duration::days(weekday_index(date.weekday()));
-                let weekday_matches = if self.weekdays.is_empty() {
-                    date.weekday() == start.weekday()
-                } else {
-                    self.weekdays.contains(&date.weekday())
-                };
-                weekday_matches && (date_week - start_week).whole_weeks() % self.interval == 0
-            }
-            Frequency::Monthly => {
-                let months = (date.year() - start.year()) as i64 * 12 + date.month() as i64
-                    - start.month() as i64;
-                let day_matches = if self.month_days.is_empty() {
-                    date.day() == start.day()
-                } else {
-                    self.month_days.contains(&date.day())
-                };
-                months % self.interval == 0 && day_matches
-            }
-            Frequency::Yearly => {
-                let years = (date.year() - start.year()) as i64;
-                years % self.interval == 0
-                    && date.month() == start.month()
-                    && date.day() == start.day()
-            }
-        }
-    }
-}
-
 fn parse(input: &str) -> Result<Vec<Event>, String> {
-    let lines = unfold(input);
-    let mut events = Vec::new();
-    let mut properties: Option<BTreeMap<String, Vec<PropertyValue>>> = None;
-    let mut calendar_open = false;
-    let mut calendar_closed = false;
-    for line in lines {
-        match line.as_str() {
-            "BEGIN:VCALENDAR" => {
-                if calendar_open || calendar_closed {
-                    return Err("multiple VCALENDAR sections are not supported".to_owned());
-                }
-                calendar_open = true;
-            }
-            "END:VCALENDAR" => {
-                if !calendar_open || properties.is_some() {
-                    return Err("unexpected END:VCALENDAR".to_owned());
-                }
-                calendar_open = false;
-                calendar_closed = true;
-            }
-            "BEGIN:VEVENT" => {
-                if !calendar_open {
-                    return Err("VEVENT must be inside VCALENDAR".to_owned());
-                }
-                if properties.is_some() {
-                    return Err("nested VEVENT is not supported".to_owned());
-                }
-                properties = Some(BTreeMap::new());
-            }
-            "END:VEVENT" => {
-                let values = properties
-                    .take()
-                    .ok_or_else(|| "END:VEVENT without BEGIN:VEVENT".to_owned())?;
-                events.push(parse_event(values, events.len() + 1)?);
-            }
-            _ => {
-                if let Some(values) = properties.as_mut() {
-                    let (name, value) = property(&line)?;
-                    values.entry(name).or_default().push(value);
-                }
-            }
+    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
+    let unfolded = icalendar::parser::unfold(&normalized);
+    // icalendar selects TEXT decoders by case-sensitive property name and accepts
+    // colonless extension properties. Preserve the importer's stricter contract.
+    let mut content = String::with_capacity(unfolded.len());
+    for line in unfolded.lines().filter(|line| !line.is_empty()) {
+        if !line.contains(':') {
+            return Err("iCalendar content line is missing ':'".to_owned());
         }
+        let end = line.find([';', ':']).expect("content line has a colon");
+        content.push_str(&line[..end].to_ascii_uppercase());
+        content.push_str(&line[end..]);
+        content.push('\n');
     }
-    if properties.is_some() {
-        return Err("VEVENT is missing END:VEVENT".to_owned());
+    let mut roots = icalendar::parser::read_calendar_simple(&content)
+        .map_err(|_| "invalid iCalendar document".to_owned())?;
+    if roots.len() != 1 || roots[0].name.as_str() != "VCALENDAR" {
+        return Err("expected one VCALENDAR section".to_owned());
     }
-    if !calendar_closed {
-        return Err("VCALENDAR is missing END:VCALENDAR".to_owned());
+    let calendar = roots.remove(0);
+    let mut events = Vec::new();
+    for component in calendar.components {
+        if component.name.as_str() == "VCALENDAR" {
+            return Err("nested VCALENDAR is not supported".to_owned());
+        }
+        if component.name.as_str() != "VEVENT" {
+            continue;
+        }
+        if component
+            .components
+            .iter()
+            .any(|child| child.name.as_str() != "VALARM" || !child.components.is_empty())
+        {
+            return Err("unsupported VEVENT child component".to_owned());
+        }
+        let mut properties = BTreeMap::new();
+        for property in component.properties {
+            let (name, value) = event_property(property)?;
+            properties.entry(name).or_insert_with(Vec::new).push(value);
+        }
+        events.push(parse_event(properties, events.len() + 1)?);
     }
     Ok(events)
 }
 
-fn unfold(input: &str) -> Vec<String> {
-    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
-    let mut lines: Vec<String> = Vec::new();
-    for line in normalized.lines() {
-        if (line.starts_with(' ') || line.starts_with('\t')) && !lines.is_empty() {
-            lines.last_mut().expect("line exists").push_str(&line[1..]);
-        } else {
-            lines.push(line.to_owned());
-        }
-    }
-    lines
-}
-
-fn property(line: &str) -> Result<(String, PropertyValue), String> {
-    let (head, value) = line
-        .split_once(':')
-        .ok_or_else(|| format!("invalid content line {line}"))?;
-    let mut parts = head.split(';');
-    let name = parts
-        .next()
-        .expect("split always returns one value")
-        .to_ascii_uppercase();
+fn event_property(
+    property: icalendar::parser::Property<'_>,
+) -> Result<(String, PropertyValue), String> {
+    let name = property.name.to_string();
     let mut time_zone = None;
     if matches!(name.as_str(), "DTSTART" | "DTEND" | "EXDATE") {
-        for parameter in parts {
-            let (parameter_name, parameter_value) = parameter
-                .split_once('=')
-                .ok_or_else(|| format!("invalid {name} parameter {parameter}"))?;
-            if parameter_name.eq_ignore_ascii_case("TZID") {
-                if time_zone.replace(parameter_value.to_owned()).is_some() {
-                    return Err(format!("duplicate {name} TZID parameter"));
-                }
-                continue;
-            }
-            if !parameter_name.eq_ignore_ascii_case("VALUE")
-                || (!parameter_value.eq_ignore_ascii_case("DATE")
-                    && !parameter_value.eq_ignore_ascii_case("DATE-TIME"))
-            {
-                return Err(format!("unsupported {name} parameter {parameter}"));
+        for parameter in property.params {
+            let key = parameter.key.as_str().to_ascii_uppercase();
+            let value = parameter
+                .val
+                .ok_or_else(|| format!("invalid {name} {key} parameter"))?;
+            match key.as_str() {
+                "TZID" if time_zone.is_none() => time_zone = Some(value.to_string()),
+                "VALUE"
+                    if value.as_str().eq_ignore_ascii_case("DATE")
+                        || value.as_str().eq_ignore_ascii_case("DATE-TIME") => {}
+                _ => return Err(format!("unsupported or duplicate {name} parameter {key}")),
             }
         }
     }
     Ok((
         name,
         PropertyValue {
-            value: value.to_owned(),
+            value: property.val.to_string(),
             time_zone,
         },
     ))
@@ -333,23 +253,25 @@ fn parse_event(
         }
     }
     let uid = take_one(&mut properties, "UID", number)?.value;
-    let summary = unescape(&take_one(&mut properties, "SUMMARY", number)?.value, ' ');
-    let start = parse_start(take_one(&mut properties, "DTSTART", number)?)?;
+    let summary = take_one(&mut properties, "SUMMARY", number)?
+        .value
+        .replace('\n', " ");
+    let start = parse_ics_date(take_one(&mut properties, "DTSTART", number)?)?;
     let end = take_optional(&mut properties, "DTEND", number)?
-        .map(parse_start)
+        .map(parse_ics_date)
         .transpose()?;
     let location = take_optional(&mut properties, "LOCATION", number)?
-        .map(|value| unescape(&value.value, ' '));
-    let description = take_optional(&mut properties, "DESCRIPTION", number)?
-        .map(|value| unescape(&value.value, '\n'));
+        .map(|value| value.value.replace('\n', " "));
+    let description =
+        take_optional(&mut properties, "DESCRIPTION", number)?.map(|value| value.value);
     let recurrence = take_optional(&mut properties, "RRULE", number)?
-        .map(|value| parse_recurrence(&value.value))
+        .map(|value| parse_recurrence(&value.value, &start))
         .transpose()?;
     let mut excluded_dates = BTreeSet::new();
     for value in properties.remove("EXDATE").unwrap_or_default() {
         for excluded in value.value.split(',') {
             excluded_dates.insert(
-                parse_start(PropertyValue {
+                parse_ics_date(PropertyValue {
                     value: excluded.to_owned(),
                     time_zone: value.time_zone.clone(),
                 })?
@@ -395,7 +317,7 @@ fn take_optional(
     Ok(values.pop().filter(|value| !value.value.trim().is_empty()))
 }
 
-fn parse_start(property: PropertyValue) -> Result<Start, String> {
+fn parse_ics_date(property: PropertyValue) -> Result<IcsDate, String> {
     let value = property.value;
     let (raw, time_reference) = if let Some(raw) = value.strip_suffix('Z') {
         if property.time_zone.is_some() {
@@ -409,79 +331,71 @@ fn parse_start(property: PropertyValue) -> Result<Start, String> {
     } else {
         (value.as_str(), TimeReference::Floating)
     };
+    let invalid_date = || format!("invalid iCalendar date {value}");
     if !raw.is_ascii() {
-        return Err(format!("invalid iCalendar date {value}"));
+        return Err(invalid_date());
     }
-    let date = raw
-        .get(..8)
-        .ok_or_else(|| format!("invalid iCalendar date {value}"))?;
+    let date = raw.get(..8).ok_or_else(invalid_date)?;
     if !date.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(format!("invalid iCalendar date {value}"));
+        return Err(invalid_date());
     }
-    let year = date[0..4]
-        .parse::<i32>()
-        .map_err(|_| format!("invalid iCalendar date {value}"))?;
+    let year = date[0..4].parse::<i32>().map_err(|_| invalid_date())?;
     let month = date[4..6]
         .parse::<u8>()
         .ok()
         .and_then(|month| Month::try_from(month).ok())
-        .ok_or_else(|| format!("invalid iCalendar date {value}"))?;
-    let day = date[6..8]
-        .parse::<u8>()
-        .map_err(|_| format!("invalid iCalendar date {value}"))?;
-    let date = Date::from_calendar_date(year, month, day)
-        .map_err(|_| format!("invalid iCalendar date {value}"))?;
+        .ok_or_else(invalid_date)?;
+    let day = date[6..8].parse::<u8>().map_err(|_| invalid_date())?;
+    let date = Date::from_calendar_date(year, month, day).map_err(|_| invalid_date())?;
     let time = if raw.len() == 8 {
         None
     } else {
-        let clock = raw
-            .strip_prefix(&format!("{}T", &raw[..8]))
-            .ok_or_else(|| format!("invalid iCalendar date-time {value}"))?;
-        if clock.len() != 4 && clock.len() != 6 {
-            return Err(format!("invalid iCalendar date-time {value}"));
-        }
-        if !clock.bytes().all(|byte| byte.is_ascii_digit()) {
-            return Err(format!("invalid iCalendar date-time {value}"));
-        }
-        let hour = clock[0..2]
-            .parse::<u8>()
-            .map_err(|_| format!("invalid iCalendar date-time {value}"))?;
-        let minute = clock[2..4]
-            .parse::<u8>()
-            .map_err(|_| format!("invalid iCalendar date-time {value}"))?;
-        let second = if clock.len() == 6 {
-            clock[4..6]
-                .parse::<u8>()
-                .map_err(|_| format!("invalid iCalendar date-time {value}"))?
-        } else {
-            0
+        let clock = match raw.as_bytes().get(8) {
+            Some(b'T') => &raw[9..],
+            _ => return Err(format!("invalid iCalendar date-time {value}")),
         };
-        if hour > 23 || minute > 59 || second > 59 {
-            return Err(format!("invalid iCalendar date-time {value}"));
-        }
-        Some((hour, minute))
+        Some(parse_ics_clock(clock, &value)?)
     };
-    Ok(Start {
+    Ok(IcsDate {
         date,
         time,
         time_reference,
     })
 }
 
-fn project_start(
-    start: &Start,
+/// Parses the `HHMM` or `HHMMSS` clock part of an iCalendar DATE-TIME value.
+fn parse_ics_clock(clock: &str, value: &str) -> Result<(u8, u8), String> {
+    let invalid = || format!("invalid iCalendar date-time {value}");
+    if (clock.len() != 4 && clock.len() != 6) || !clock.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(invalid());
+    }
+    let hour = clock[0..2].parse::<u8>().map_err(|_| invalid())?;
+    let minute = clock[2..4].parse::<u8>().map_err(|_| invalid())?;
+    let second = if clock.len() == 6 {
+        clock[4..6].parse::<u8>().map_err(|_| invalid())?
+    } else {
+        0
+    };
+    if hour > 23 || minute > 59 || second > 59 {
+        return Err(invalid());
+    }
+    Ok((hour, minute))
+}
+
+fn project_ics_date(
+    value: &IcsDate,
     occurrence_date: Date,
     target_time_zone: jiff::tz::TimeZone,
-) -> Result<Start, String> {
-    let Some((hour, minute)) = start.time else {
-        return Ok(Start {
+) -> Result<IcsDate, String> {
+    let Some((hour, minute)) = value.time else {
+        return Ok(IcsDate {
             date: occurrence_date,
             time: None,
             time_reference: TimeReference::Floating,
         });
     };
-    if matches!(start.time_reference, TimeReference::Floating) {
-        return Ok(Start {
+    if matches!(value.time_reference, TimeReference::Floating) {
+        return Ok(IcsDate {
             date: occurrence_date,
             time: Some((hour, minute)),
             time_reference: TimeReference::Floating,
@@ -499,7 +413,7 @@ fn project_start(
         0,
     )
     .map_err(|error| format!("invalid iCalendar date-time: {error}"))?;
-    let source = match &start.time_reference {
+    let source = match &value.time_reference {
         TimeReference::Floating => unreachable!("floating dates return before projection"),
         TimeReference::Utc => source.in_tz("UTC"),
         TimeReference::Named(time_zone) => source.in_tz(time_zone),
@@ -510,143 +424,139 @@ fn project_start(
         .map_err(|_| "projected iCalendar month is invalid".to_owned())?;
     let date = Date::from_calendar_date(projected.year().into(), month, projected.day() as u8)
         .map_err(|_| "projected iCalendar date is invalid".to_owned())?;
-    Ok(Start {
+    Ok(IcsDate {
         date,
         time: Some((projected.hour() as u8, projected.minute() as u8)),
         time_reference: TimeReference::Floating,
     })
 }
 
-fn parse_recurrence(value: &str) -> Result<Recurrence, String> {
+fn recurrence_datetime(
+    date: Date,
+    (hour, minute, second): (u32, u32, u32),
+    zone: Tz,
+) -> Result<chrono::DateTime<Tz>, String> {
+    zone.with_ymd_and_hms(
+        date.year(),
+        date.month() as u32,
+        date.day().into(),
+        hour,
+        minute,
+        second,
+    )
+    .earliest()
+    .ok_or_else(|| "iCalendar recurrence date-time cannot be resolved".to_owned())
+}
+
+fn recurrence_bound(
+    date: Date,
+    (hour, minute, second): (i8, i8, i8),
+    zone: Tz,
+) -> Result<chrono::DateTime<Tz>, String> {
+    let year = i16::try_from(date.year())
+        .map_err(|_| "iCalendar recurrence year is out of range".to_owned())?;
+    // A source day can begin in a DST gap. Resolve it with the same compatible
+    // policy as display projection instead of rejecting the entire day.
+    let local = jiff::civil::DateTime::new(
+        year,
+        date.month() as i8,
+        date.day() as i8,
+        hour,
+        minute,
+        second,
+        0,
+    )
+    .map_err(|error| format!("invalid recurrence bound: {error}"))?
+    .in_tz(zone.name())
+    .map_err(|error| format!("could not resolve recurrence bound: {error}"))?;
+    let timestamp = local.timestamp();
+    chrono::DateTime::from_timestamp(timestamp.as_second(), timestamp.subsec_nanosecond() as u32)
+        .map(|instant| instant.with_timezone(&zone))
+        .ok_or_else(|| "iCalendar recurrence bound is out of range".to_owned())
+}
+
+fn parse_recurrence(value: &str, start: &IcsDate) -> Result<Recurrence, String> {
+    let zone = match &start.time_reference {
+        TimeReference::Floating | TimeReference::Utc => Tz::UTC,
+        TimeReference::Named(name) => name
+            .parse::<chrono_tz::Tz>()
+            .map(Tz::from)
+            .map_err(|_| format!("unsupported recurrence time zone {name}"))?,
+    };
+    let (hour, minute) = start.time.unwrap_or((0, 0));
+    // Enumerate source civil days in a UTC surrogate. Actual timezone projection
+    // remains Jiff-compatible, including explicit DTSTARTs in a DST gap.
+    let dt_start = recurrence_datetime(start.date, (hour.into(), minute.into(), 0), Tz::UTC)?;
     let mut fields = BTreeMap::new();
     for field in value.split(';') {
-        let (name, field_value) = field
+        let (name, value) = field
             .split_once('=')
             .ok_or_else(|| format!("invalid RRULE field {field}"))?;
         let name = name.to_ascii_uppercase();
-        if name.is_empty() || field_value.is_empty() {
-            return Err(format!("invalid RRULE field {field}"));
-        }
+        // Planner exposes at most one occurrence of an event per source day.
         if !matches!(
             name.as_str(),
             "FREQ" | "INTERVAL" | "BYDAY" | "BYMONTHDAY" | "UNTIL" | "COUNT"
         ) {
             return Err(format!("unsupported RRULE field {name}"));
         }
-        if fields.insert(name.clone(), field_value).is_some() {
+        if fields.insert(name.clone(), value.to_owned()).is_some() {
             return Err(format!("duplicate RRULE field {name}"));
         }
     }
-    let frequency = match fields.get("FREQ").copied() {
-        Some("DAILY") => Frequency::Daily,
-        Some("WEEKLY") => Frequency::Weekly,
-        Some("MONTHLY") => Frequency::Monthly,
-        Some("YEARLY") => Frequency::Yearly,
-        Some(other) => return Err(format!("unsupported RRULE frequency {other}")),
-        None => return Err("RRULE is missing FREQ".to_owned()),
-    };
-    let interval = fields
-        .get("INTERVAL")
-        .map(|value| value.parse::<i64>())
-        .transpose()
-        .map_err(|_| "RRULE INTERVAL must be a positive integer".to_owned())?
-        .unwrap_or(1);
-    if interval < 1 {
-        return Err("RRULE INTERVAL must be a positive integer".to_owned());
+    if !matches!(
+        fields.get("FREQ").map(String::as_str),
+        Some("DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY")
+    ) {
+        return Err("unsupported or missing RRULE frequency".to_owned());
     }
-    let weekdays = fields
-        .get("BYDAY")
-        .map(|value| {
-            value
-                .split(',')
-                .map(parse_weekday)
-                .collect::<Result<_, _>>()
-        })
-        .transpose()?
-        .unwrap_or_default();
-    let month_days = fields
-        .get("BYMONTHDAY")
-        .map(|value| {
-            value
-                .split(',')
-                .map(|day| {
-                    day.parse::<u8>()
-                        .ok()
-                        .filter(|day| (1..=31).contains(day))
-                        .ok_or_else(|| format!("unsupported RRULE BYMONTHDAY {day}"))
-                })
-                .collect::<Result<_, _>>()
-        })
-        .transpose()?
-        .unwrap_or_default();
-    let until = fields
-        .get("UNTIL")
-        .map(|value| {
-            parse_start(PropertyValue {
-                value: (*value).to_owned(),
-                time_zone: None,
-            })
-            .map(|start| start.date)
-        })
-        .transpose()?;
-    let count = fields
-        .get("COUNT")
-        .map(|value| value.parse::<usize>())
-        .transpose()
-        .map_err(|_| "RRULE COUNT must be a positive integer".to_owned())?;
-    if count == Some(0) {
-        return Err("RRULE COUNT must be a positive integer".to_owned());
+    let mut absolute_until = None;
+    if let Some(until) = fields.get_mut("UNTIL") {
+        let parsed = parse_ics_date(PropertyValue {
+            value: until.clone(),
+            time_zone: None,
+        })?;
+        if parsed.time.is_some() && until.trim_end_matches('Z').len() == 13 {
+            until.insert_str(13, "00");
+        }
+        if parsed.time.is_some() && matches!(parsed.time_reference, TimeReference::Utc) {
+            let instant = chrono::NaiveDateTime::parse_from_str(until, "%Y%m%dT%H%M%SZ")
+                .map_err(|_| "invalid RRULE UNTIL")?
+                .and_utc();
+            // Bound enumeration by source day, then compare the actual instant in
+            // occurs_on. A local wall-clock cutoff would be ambiguous in a fold.
+            *until = instant
+                .with_timezone(&zone)
+                .format("%Y%m%dT235959Z")
+                .to_string();
+            absolute_until = Some(instant);
+        } else if parsed.time.is_none() {
+            *until = recurrence_datetime(parsed.date, (23, 59, 59), Tz::UTC)?
+                .format("%Y%m%dT%H%M%SZ")
+                .to_string();
+        } else {
+            until.push('Z');
+        }
     }
+    let rule = fields
+        .into_iter()
+        .map(|(name, value)| format!("{name}={value}"))
+        .collect::<Vec<_>>()
+        .join(";");
+    let rule = rule
+        .parse::<RRule<rrule::Unvalidated>>()
+        .map_err(|error| format!("invalid RRULE: {error}"))?;
+    if rule.get_interval() == 0 || rule.get_count() == Some(0) {
+        return Err("RRULE INTERVAL and COUNT must be positive integers".to_owned());
+    }
+    let rule = rule
+        .validate(dt_start)
+        .map_err(|error| format!("invalid RRULE: {error}"))?;
     Ok(Recurrence {
-        frequency,
-        interval,
-        weekdays,
-        month_days,
-        until,
-        count,
+        rule: RRuleSet::new(dt_start).rrule(rule),
+        until: absolute_until,
+        source_zone: zone,
     })
-}
-
-fn parse_weekday(value: &str) -> Result<Weekday, String> {
-    match value {
-        "MO" => Ok(Weekday::Monday),
-        "TU" => Ok(Weekday::Tuesday),
-        "WE" => Ok(Weekday::Wednesday),
-        "TH" => Ok(Weekday::Thursday),
-        "FR" => Ok(Weekday::Friday),
-        "SA" => Ok(Weekday::Saturday),
-        "SU" => Ok(Weekday::Sunday),
-        _ => Err(format!("unsupported RRULE BYDAY {value}")),
-    }
-}
-
-fn weekday_index(weekday: Weekday) -> i64 {
-    match weekday {
-        Weekday::Monday => 0,
-        Weekday::Tuesday => 1,
-        Weekday::Wednesday => 2,
-        Weekday::Thursday => 3,
-        Weekday::Friday => 4,
-        Weekday::Saturday => 5,
-        Weekday::Sunday => 6,
-    }
-}
-
-fn unescape(value: &str, newline: char) -> String {
-    let mut output = String::with_capacity(value.len());
-    let mut characters = value.chars();
-    while let Some(character) = characters.next() {
-        if character != '\\' {
-            output.push(character);
-            continue;
-        }
-        match characters.next() {
-            Some('n' | 'N') => output.push(newline),
-            Some(character) => output.push(character),
-            None => output.push('\\'),
-        }
-    }
-    output
 }
 
 fn format_time((hour, minute): (u8, u8)) -> String {
@@ -656,6 +566,100 @@ fn format_time((hour, minute): (u8, u8)) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn floating_until_uses_the_same_clock_as_start() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:floating\nSUMMARY:Floating\nDTSTART:20260901T090000\nRRULE:FREQ=DAILY;UNTIL=20260902T100000\nEND:VEVENT\nEND:VCALENDAR";
+        let events = parse(input).unwrap();
+        assert!(
+            events[0]
+                .occurs_on(time::macros::date!(2026 - 09 - 02))
+                .unwrap()
+        );
+        assert!(
+            !events[0]
+                .occurs_on(time::macros::date!(2026 - 09 - 03))
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn until_accepts_minute_precision() {
+        for until in ["20260902T1000", "20260902T1000Z"] {
+            let input = format!(
+                "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:short\nSUMMARY:Short\nDTSTART:20260901T0900\nRRULE:FREQ=DAILY;UNTIL={until}\nEND:VEVENT\nEND:VCALENDAR"
+            );
+            let events = parse(&input).unwrap();
+            assert!(
+                events[0]
+                    .occurs_on(time::macros::date!(2026 - 09 - 02))
+                    .unwrap()
+            );
+            assert!(
+                !events[0]
+                    .occurs_on(time::macros::date!(2026 - 09 - 03))
+                    .unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn gap_starts_preserve_civil_dates_and_count() {
+        for (zone, start, first) in [
+            (
+                "Europe/London",
+                "20260329T013000",
+                time::macros::date!(2026 - 03 - 29),
+            ),
+            (
+                "Australia/Lord_Howe",
+                "20261004T021500",
+                time::macros::date!(2026 - 10 - 04),
+            ),
+            (
+                "America/Santiago",
+                "20260906T003000",
+                time::macros::date!(2026 - 09 - 06),
+            ),
+        ] {
+            let input = format!(
+                "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:gap\nSUMMARY:Gap\nDTSTART;TZID={zone}:{start}\nRRULE:FREQ=DAILY;COUNT=2\nEND:VEVENT\nEND:VCALENDAR"
+            );
+            let events = parse(&input).unwrap();
+            assert!(events[0].occurs_on(first).unwrap(), "{zone}");
+            assert!(
+                events[0].occurs_on(first.next_day().unwrap()).unwrap(),
+                "{zone}"
+            );
+            assert!(
+                !events[0]
+                    .occurs_on(first + time::Duration::days(2))
+                    .unwrap(),
+                "{zone}"
+            );
+        }
+    }
+
+    #[test]
+    fn absolute_until_compares_instants_across_a_fold() {
+        for (until, expected) in [("20261025T001500Z", false), ("20261025T004500Z", true)] {
+            let input = format!(
+                "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:fold\nSUMMARY:Fold\nDTSTART;TZID=Europe/London:20261024T013000\nRRULE:FREQ=DAILY;UNTIL={until}\nEND:VEVENT\nEND:VCALENDAR"
+            );
+            let events = parse(&input).unwrap();
+            assert_eq!(
+                events[0]
+                    .occurs_on(time::macros::date!(2026 - 10 - 25))
+                    .unwrap(),
+                expected
+            );
+            assert!(
+                !events[0]
+                    .occurs_on(time::macros::date!(2026 - 10 - 26))
+                    .unwrap()
+            );
+        }
+    }
 
     #[test]
     fn parses_weekly_rules() {
@@ -704,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_malformed_calendar_data_without_panicking() {
+    fn rejects_malformed_ics() {
         for input in [
             "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:bad\nSUMMARY:Bad\nDTSTART:20日60901\nEND:VEVENT\nEND:VCALENDAR\n",
             "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:bad\nSUMMARY:Bad\nDTSTART:20260901\nRRULE:FREQ=DAILY;COUNT\nEND:VEVENT\nEND:VCALENDAR\n",
@@ -721,17 +725,17 @@ mod tests {
     }
 
     #[test]
-    fn projects_named_and_utc_times_into_the_target_zone() {
+    fn projects_time_zones() {
         let calendar = "BEGIN:VCALENDAR\nBEGIN:VTIMEZONE\nTZID:Europe/London\nBEGIN:DAYLIGHT\nDTSTART:19700329T010000\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\nEND:DAYLIGHT\nEND:VTIMEZONE\nBEGIN:VEVENT\nUID:training\nSUMMARY:Training\nDTSTART;TZID=Europe/London:20260907T073000\nDTEND;TZID=Europe/London:20260907T083000\nRRULE:FREQ=WEEKLY;COUNT=12\nEND:VEVENT\nEND:VCALENDAR\n";
         assert!(validate(calendar).is_ok());
 
-        let london = parse_start(PropertyValue {
+        let london = parse_ics_date(PropertyValue {
             value: "20260907T073000".to_owned(),
             time_zone: Some("Europe/London".to_owned()),
         })
         .unwrap();
         let shanghai = jiff::tz::TimeZone::get("Asia/Shanghai").unwrap();
-        let projected = project_start(
+        let projected = project_ics_date(
             &london,
             time::macros::date!(2026 - 09 - 07),
             shanghai.clone(),
@@ -740,13 +744,156 @@ mod tests {
         assert_eq!(projected.date, time::macros::date!(2026 - 09 - 07));
         assert_eq!(projected.time, Some((14, 30)));
 
-        let utc = parse_start(PropertyValue {
+        let utc = parse_ics_date(PropertyValue {
             value: "20260907T233000Z".to_owned(),
             time_zone: None,
         })
         .unwrap();
-        let projected = project_start(&utc, time::macros::date!(2026 - 09 - 07), shanghai).unwrap();
+        let projected =
+            project_ics_date(&utc, time::macros::date!(2026 - 09 - 07), shanghai).unwrap();
         assert_eq!(projected.date, time::macros::date!(2026 - 09 - 08));
         assert_eq!(projected.time, Some((7, 30)));
+    }
+
+    #[test]
+    fn exclusions_do_not_extend_count() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:daily\nSUMMARY:Daily\nDTSTART;VALUE=DATE:20260901\nRRULE:FREQ=DAILY;COUNT=2\nEXDATE;VALUE=DATE:20260902\nEND:VEVENT\nEND:VCALENDAR\n";
+        assert_eq!(
+            occurrences(input, time::macros::date!(2026 - 09 - 01))
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(
+            occurrences(input, time::macros::date!(2026 - 09 - 02))
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            occurrences(input, time::macros::date!(2026 - 09 - 03))
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn parses_quoted_parameters_and_ignores_alarm_properties() {
+        let input = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:daily\r\nSUMMARY;ALTREP=\"https://example.com/a;b\":Study\r\nDTSTART;TZID=\"Europe/London\":20260901T090000\r\nBEGIN:VALARM\r\nSUMMARY:Reminder\r\nDESCRIPTION:Not the event description\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let events = parse(input).unwrap();
+        assert_eq!(events[0].summary, "Study");
+        assert_eq!(events[0].description, None);
+    }
+
+    #[test]
+    fn daily_rules_apply_weekday_filters() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:daily\nSUMMARY:Weekdays\nDTSTART:20260904\nRRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR;COUNT=2\nEND:VEVENT\nEND:VCALENDAR\n";
+        assert!(
+            occurrences(input, time::macros::date!(2026 - 09 - 05))
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            occurrences(input, time::macros::date!(2026 - 09 - 07))
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(
+            occurrences(input, time::macros::date!(2026 - 09 - 08))
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn rejects_mismatched_components_and_duplicate_rules() {
+        for body in [
+            "END:VTODO\nEND:VCALENDAR",
+            "END:VEVENT\nEND:VTODO",
+            "RRULE:FREQ=DAILY;COUNT=2;COUNT=3\nEND:VEVENT\nEND:VCALENDAR",
+        ] {
+            let input = format!(
+                "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:event\nSUMMARY:Event\nDTSTART:20260901\n{body}\n"
+            );
+            assert!(validate(&input).is_err(), "{body}");
+        }
+        assert!(
+            validate("BEGIN:VCALENDAR\nEND:VCALENDAR\nBEGIN:VCALENDAR\nEND:VCALENDAR\n").is_err()
+        );
+    }
+
+    #[test]
+    fn respects_month_lengths_until_and_dst() {
+        let monthly = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:monthly\nSUMMARY:Monthly\nDTSTART:20260131\nRRULE:FREQ=MONTHLY;COUNT=2\nEND:VEVENT\nEND:VCALENDAR\n";
+        assert!(
+            occurrences(monthly, time::macros::date!(2026 - 02 - 28))
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            occurrences(monthly, time::macros::date!(2026 - 03 - 31))
+                .unwrap()
+                .len(),
+            1
+        );
+        let weekly = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:weekly\nSUMMARY:Weekly\nDTSTART;TZID=Europe/London:20261018T090000\nRRULE:FREQ=WEEKLY;UNTIL=20261025\nEND:VEVENT\nEND:VCALENDAR\n";
+        let event = parse(weekly).unwrap().remove(0);
+        assert!(
+            event
+                .occurs_on(time::macros::date!(2026 - 10 - 25))
+                .unwrap()
+        );
+        assert!(
+            !event
+                .occurs_on(time::macros::date!(2026 - 11 - 01))
+                .unwrap()
+        );
+        let winter = project_ics_date(
+            &event.start,
+            time::macros::date!(2026 - 10 - 25),
+            jiff::tz::TimeZone::UTC,
+        )
+        .unwrap();
+        assert_eq!(winter.time, Some((9, 0)));
+    }
+
+    #[test]
+    fn midnight_dst_does_not_hide_daytime_events() {
+        let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:daily\nSUMMARY:Daily\nDTSTART;TZID=America/Santiago:20260901T090000\nRRULE:FREQ=DAILY\nEND:VEVENT\nEND:VCALENDAR\n";
+        let event = parse(input).unwrap().remove(0);
+        for date in [
+            time::macros::date!(2026 - 09 - 05),
+            time::macros::date!(2026 - 09 - 06),
+            time::macros::date!(2026 - 09 - 07),
+        ] {
+            assert!(event.occurs_on(date).unwrap());
+            assert_eq!(occurrences(input, date).unwrap().len(), 1);
+        }
+    }
+
+    #[test]
+    fn decodes_case_insensitive_text_once() {
+        for name in ["SUMMARY", "summary", "Summary"] {
+            let input = format!(
+                "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:text\n{name}:Study\\, review\\nmore\\\\notes\nDTSTART:20260901\nEND:VEVENT\nEND:VCALENDAR\n"
+            );
+            let event = parse(&input).unwrap().remove(0);
+            assert_eq!(event.summary, "Study, review more\\notes");
+        }
+    }
+
+    #[test]
+    fn rejects_lenient_library_inputs() {
+        for body in [
+            "NONSENSE",
+            "RRULE:FREQ=DAILY;COUNT=0",
+            "RRULE:FREQ=DAILY;INTERVAL=0",
+            "BEGIN:VALARM\nBEGIN:VEVENT\nUID:nested\nSUMMARY:Nested\nDTSTART:20260901\nEND:VEVENT\nEND:VALARM",
+        ] {
+            let input = format!(
+                "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:invalid\nSUMMARY:Invalid\nDTSTART:20260901\n{body}\nEND:VEVENT\nEND:VCALENDAR\n"
+            );
+            assert!(validate(&input).is_err(), "{body}");
+        }
     }
 }

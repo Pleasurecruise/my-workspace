@@ -5,8 +5,50 @@ pub mod moment;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
+use vesper_credentials::{ConsumerApi, Stored};
 
 pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// An authenticated HTTP client for one consumer service.
+struct Client {
+    api_key: String,
+    http: reqwest::Client,
+}
+
+impl Client {
+    fn load(service: ConsumerApi) -> Result<Self, ApiError> {
+        // Matches the credential field names used by the credentials store.
+        let service_name = match service {
+            ConsumerApi::Memos => "my-memos",
+            ConsumerApi::Moment => "my-moment",
+            ConsumerApi::Knowledge => "my-knowledge",
+        };
+        let api_key = match vesper_credentials::consumer_api(service)? {
+            Stored::Ready(api_key) => api_key,
+            Stored::Missing => return Err(ApiError::MissingCredentials(service_name)),
+        };
+        Ok(Self {
+            api_key,
+            http: reqwest::Client::builder()
+                .timeout(REQUEST_TIMEOUT)
+                .build()?,
+        })
+    }
+}
+
+/// Send a request and require a successful status; callers keep their own
+/// success-code assertions and response envelopes.
+async fn send(
+    request: reqwest::RequestBuilder,
+    operation: &'static str,
+) -> Result<reqwest::Response, ApiError> {
+    let response = request.send().await?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ApiError::Status { operation, status });
+    }
+    Ok(response)
+}
 
 #[derive(Debug)]
 pub enum ApiError {

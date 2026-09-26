@@ -1,23 +1,30 @@
-use super::{EmbedError, unquote};
+use super::{EmbedError, check_align, unquote};
 use std::io::Cursor;
 
+/// Split a canvas source into its optional `align:` header line and the body after it.
+pub(super) fn split_header(source: &str) -> (Option<&str>, &str) {
+    match source.lines().next() {
+        Some(line) if line.trim_start().starts_with("align:") => (
+            Some(line),
+            source[line.len()..].trim_start_matches(['\r', '\n']),
+        ),
+        _ => (None, source),
+    }
+}
+
 pub(super) fn render(kind: &'static str, source: &str) -> Result<String, EmbedError> {
-    let (align, svg) = match source.lines().next() {
-        Some(line) if line.trim_start().starts_with("align:") => {
+    let (header, svg) = split_header(source);
+    let align = match header {
+        Some(line) => {
             let Some((_, value)) = line.split_once(':') else {
                 return Err(EmbedError::InvalidLine {
                     kind: format!("embed:{kind}"),
                     line: 1,
                 });
             };
-            let align = unquote(value.trim());
-            match align {
-                "left" | "right" | "wide" | "narrow" => {}
-                value => return Err(EmbedError::InvalidAlignment(value.to_owned())),
-            }
-            (align, source[line.len()..].trim_start_matches(['\r', '\n']))
+            check_align(unquote(value.trim()))?
         }
-        _ => ("wide", source),
+        None => "wide",
     };
     let svg = svg.trim();
     if !svg.starts_with("<svg") {

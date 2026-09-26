@@ -12,7 +12,7 @@
     "content:publish": "cargo run -p vesper-cli -- publish",
     "content:publish:live": "cargo run -p vesper-cli -- publish --live",
     "cli:install": "cargo install --path apps/cli --locked",
-    "cli:uninstall": "cargo uninstall vesper",
+    "cli:uninstall": "cargo uninstall vesper-cli",
     "lint": "vp run lint:frontend && vp run lint:rust",
     "lint:frontend": "eslint . --max-warnings 0",
     "lint:rust": "cargo clippy --workspace --all-targets --all-features -- -D warnings",
@@ -43,7 +43,7 @@
     "globals": "17.12.0",
     "simple-git-hooks": "2.14.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.70.0",
+    "typescript-eslint": "8.70.1",
     "vite-plus": "1.0.0-rc.0"
   },
   "simple-git-hooks": {

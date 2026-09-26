@@ -1,8 +1,8 @@
-use super::ApiError;
+use super::{ApiError, Client, send};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use vesper_credentials::{ConsumerApi, Stored};
+use vesper_credentials::ConsumerApi;
 
 const ENDPOINT: &str = "https://memos.you-find.me/api/v1";
 pub const PAGE_SIZE: usize = 25;
@@ -53,12 +53,6 @@ pub struct MemoView {
     pub memo: Memo,
     pub html: String,
     pub metadata_complete: bool,
-}
-
-#[derive(Clone)]
-struct Client {
-    api_key: String,
-    http: reqwest::Client,
 }
 
 #[derive(Serialize)]
@@ -151,21 +145,6 @@ struct RemoteMemo {
     archived: bool,
 }
 
-impl Client {
-    fn load() -> Result<Self, ApiError> {
-        let api_key = match vesper_credentials::consumer_api(ConsumerApi::Memos)? {
-            Stored::Ready(api_key) => api_key,
-            Stored::Missing => return Err(ApiError::MissingCredentials("my-memos")),
-        };
-        Ok(Self {
-            api_key,
-            http: reqwest::Client::builder()
-                .timeout(super::REQUEST_TIMEOUT)
-                .build()?,
-        })
-    }
-}
-
 impl RemoteMemo {
     fn into_view(self) -> MemoView {
         let html = cms_core::markdown::render_memo(&strip_tags(&self.content));
@@ -189,7 +168,7 @@ impl RemoteMemo {
 }
 
 pub async fn list(cursor: Option<String>, filters: &ListFilters) -> Result<Page, ApiError> {
-    let client = Client::load()?;
+    let client = Client::load(ConsumerApi::Memos)?;
     let limit = filters.limit.unwrap_or(PAGE_SIZE).to_string();
     let mut request = client
         .http
@@ -218,14 +197,7 @@ pub async fn list(cursor: Option<String>, filters: &ListFilters) -> Result<Page,
     if filters.favorites_only {
         request = request.query(&[("favoritesOnly", "true")]);
     }
-    let response = request.send().await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "list memos",
-            status,
-        });
-    }
+    let response = send(request, "list memos").await?;
     let page: RemotePage = response.json().await?;
     let memos = page.memos.into_iter().map(RemoteMemo::into_view).collect();
     Ok(Page {
@@ -235,21 +207,16 @@ pub async fn list(cursor: Option<String>, filters: &ListFilters) -> Result<Page,
 }
 
 pub async fn search(query: &str) -> Result<Page, ApiError> {
-    let client = Client::load()?;
-    let response = client
-        .http
-        .get(format!("{ENDPOINT}/memos"))
-        .bearer_auth(&client.api_key)
-        .query(&[("limit", "20"), ("search", query)])
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "search memos",
-            status,
-        });
-    }
+    let client = Client::load(ConsumerApi::Memos)?;
+    let response = send(
+        client
+            .http
+            .get(format!("{ENDPOINT}/memos"))
+            .bearer_auth(&client.api_key)
+            .query(&[("limit", "20"), ("search", query)]),
+        "search memos",
+    )
+    .await?;
     let page: RemotePage = response.json().await?;
     let memos = page.memos.into_iter().map(RemoteMemo::into_view).collect();
     Ok(Page {
@@ -258,7 +225,8 @@ pub async fn search(query: &str) -> Result<Page, ApiError> {
     })
 }
 
-pub async fn read(id: &str) -> Result<MemoView, ApiError> {
+/// Build the memo detail URL, percent-encoding the ID instead of splicing it.
+fn build_url(id: &str) -> Result<reqwest::Url, ApiError> {
     if id.trim().is_empty() {
         return Err(ApiError::Protocol("a memo ID is required".to_owned()));
     }
@@ -266,40 +234,33 @@ pub async fn read(id: &str) -> Result<MemoView, ApiError> {
         .map_err(|_| ApiError::Protocol("the Memos endpoint is invalid".to_owned()))?;
     url.path_segments_mut()
         .map_err(|_| ApiError::Protocol("the Memos endpoint cannot contain a memo ID".to_owned()))?
+        .pop_if_empty()
         .push(id);
-    let client = Client::load()?;
-    let response = client
-        .http
-        .get(url)
-        .bearer_auth(&client.api_key)
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "read memo",
-            status,
-        });
-    }
+    Ok(url)
+}
+
+pub async fn read(id: &str) -> Result<MemoView, ApiError> {
+    let url = build_url(id)?;
+    let client = Client::load(ConsumerApi::Memos)?;
+    let response = send(
+        client.http.get(url).bearer_auth(&client.api_key),
+        "read memo",
+    )
+    .await?;
     let result: MemoResponse = response.json().await?;
     Ok(result.memo.into_view())
 }
 
 pub async fn tags() -> Result<Vec<TagCount>, ApiError> {
-    let client = Client::load()?;
-    let response = client
-        .http
-        .get(format!("{ENDPOINT}/tags"))
-        .bearer_auth(&client.api_key)
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "list memo tags",
-            status,
-        });
-    }
+    let client = Client::load(ConsumerApi::Memos)?;
+    let response = send(
+        client
+            .http
+            .get(format!("{ENDPOINT}/tags"))
+            .bearer_auth(&client.api_key),
+        "list memo tags",
+    )
+    .await?;
     let result: TagResponse = response.json().await?;
     Ok(result.tags)
 }
@@ -313,24 +274,25 @@ async fn create_with_favorite(
     visibility: Visibility,
     favorite: bool,
 ) -> Result<MemoView, ApiError> {
-    let client = Client::load()?;
-    let response = client
-        .http
-        .post(format!("{ENDPOINT}/memos"))
-        .bearer_auth(&client.api_key)
-        .json(&json!({
-            "content": content,
-            "tags": [],
-            "visibility": visibility,
-            "favorite": favorite
-        }))
-        .send()
-        .await?;
-    let status = response.status();
-    if status != StatusCode::CREATED {
+    let client = Client::load(ConsumerApi::Memos)?;
+    let response = send(
+        client
+            .http
+            .post(format!("{ENDPOINT}/memos"))
+            .bearer_auth(&client.api_key)
+            .json(&json!({
+                "content": content,
+                "tags": [],
+                "visibility": visibility,
+                "favorite": favorite
+            })),
+        "create memo",
+    )
+    .await?;
+    if response.status() != StatusCode::CREATED {
         return Err(ApiError::Status {
             operation: "create memo",
-            status,
+            status: response.status(),
         });
     }
     let result: MemoResponse = response.json().await?;
@@ -344,47 +306,38 @@ pub async fn import_x(source_url: &str, visibility: Visibility) -> Result<MemoVi
         .timeout(super::REQUEST_TIMEOUT)
         .user_agent("vesper/1.0")
         .build()?;
-    let response = http
-        .get(format!("https://api.fxtwitter.com/status/{post_id}"))
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "import X post",
-            status,
-        });
-    }
+    let response = send(
+        http.get(format!("https://api.fxtwitter.com/status/{post_id}")),
+        "import X post",
+    )
+    .await?;
     let post: XPostResponse = response.json().await?;
     let content = format_x_post(post.tweet)?;
     create_with_favorite(&content, visibility, true).await
 }
 
 pub async fn update(id: &str, input: &Update) -> Result<MemoView, ApiError> {
-    let client = Client::load()?;
-    let response = client
-        .http
-        .patch(format!("{ENDPOINT}/memos/{id}"))
-        .bearer_auth(&client.api_key)
-        .json(input)
-        .send()
-        .await?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ApiError::Status {
-            operation: "update memo",
-            status,
-        });
-    }
+    let url = build_url(id)?;
+    let client = Client::load(ConsumerApi::Memos)?;
+    let response = send(
+        client
+            .http
+            .patch(url)
+            .bearer_auth(&client.api_key)
+            .json(input),
+        "update memo",
+    )
+    .await?;
     let result: MemoResponse = response.json().await?;
     Ok(result.memo.into_view())
 }
 
 pub async fn delete(id: &str) -> Result<(), ApiError> {
-    let client = Client::load()?;
+    let url = build_url(id)?;
+    let client = Client::load(ConsumerApi::Memos)?;
     let response = client
         .http
-        .delete(format!("{ENDPOINT}/memos/{id}"))
+        .delete(url)
         .bearer_auth(&client.api_key)
         .send()
         .await?;
@@ -566,6 +519,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn encodes_memo_ids() {
+        assert_eq!(build_url("item").unwrap().path(), "/api/v1/memos/item");
+        assert_eq!(
+            build_url("../settings").unwrap().path(),
+            "/api/v1/memos/..%2Fsettings"
+        );
+        assert_eq!(build_url("a b").unwrap().path(), "/api/v1/memos/a%20b");
+    }
+
+    #[tokio::test]
+    async fn rejects_blank_memo_ids() {
+        for id in ["", "   "] {
+            assert!(
+                matches!(
+                    update(id, &Update::default()).await,
+                    Err(ApiError::Protocol(_))
+                ),
+                "{id}"
+            );
+            assert!(
+                matches!(delete(id).await, Err(ApiError::Protocol(_))),
+                "{id}"
+            );
+        }
+    }
+
+    #[test]
     fn strips_memo_tags() {
         let content = "Body #Rust #rust #长文\nnext line";
         assert_eq!(strip_tags(content), "Body \nnext line");
@@ -589,6 +569,8 @@ mod tests {
 
         assert_eq!(view.memo.content, "Complete API body");
         assert!(view.html.contains("Complete API body"));
+        let response = serde_json::to_value(&view).unwrap();
+        assert_eq!(response["metadataComplete"], true);
     }
 
     #[test]

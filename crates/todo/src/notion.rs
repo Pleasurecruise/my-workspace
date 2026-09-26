@@ -7,6 +7,9 @@ use std::time::Duration;
 use tokio::process::Command;
 use vesper_credentials::NotionCalendar;
 
+// Notion allows roughly three requests per second; keep this pause between CLI calls.
+const REQUEST_INTERVAL: Duration = Duration::from_millis(350);
+
 #[derive(Deserialize)]
 struct View {
     name: String,
@@ -137,97 +140,17 @@ pub(crate) async fn read(configuration: &NotionCalendar) -> Result<Vec<Item>, Er
     .await?;
     // Notion expires abandoned temporary queries if the read is cancelled.
     let query_path = format!("{view_path}/queries/{}", query.id);
-    let mut page = query.page;
     let result = tokio::time::timeout(Duration::from_secs(90), async {
-        let mut references = Vec::new();
-        let mut cursors = BTreeSet::new();
-        loop {
-            if page
-                .request_status
-                .as_ref()
-                .is_some_and(|status| status.kind != "complete")
-            {
-                return Err(Error::Notion(
-                    "calendar query was truncated; narrow the view filter".into(),
-                ));
-            }
-            references.extend(
-                page.results
-                    .into_iter()
-                    .map(|reference| reference.id.to_string()),
-            );
-            if !page.has_more {
-                break;
-            }
-            let cursor = page
-                .next_cursor
-                .filter(|cursor| cursors.insert(cursor.clone()))
-                .ok_or_else(|| Error::Notion("invalid pagination cursor".into()))?;
-            let mut path = url::Url::parse("https://api.notion.com").expect("static Notion URL");
-            path.set_path(&query_path);
-            path.query_pairs_mut()
-                .append_pair("start_cursor", &cursor)
-                .append_pair("page_size", "100");
-            page = request(&binary, "GET", &path[url::Position::BeforePath..], None).await?;
-        }
-        let ids: BTreeSet<_> = references.iter().cloned().collect();
-        if ids.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut remaining = ids.clone();
-        let mut items = BTreeMap::new();
-        let mut cursor: Option<String> = None;
-        cursors.clear();
-        loop {
-            let mut body = serde_json::json!({
-                "page_size": 100,
-            });
-            if let Some(cursor) = &cursor {
-                body["start_cursor"] = serde_json::json!(cursor);
-            }
-            let batch: QueryPage<Page> = request(
-                &binary,
-                "POST",
-                &format!("/v1/data_sources/{}/query", view.data_source_id),
-                Some(&body),
-            )
-            .await?;
-            if batch
-                .request_status
-                .as_ref()
-                .is_some_and(|status| status.kind != "complete")
-            {
-                return Err(Error::Notion("calendar data query was incomplete".into()));
-            }
-            for entry in batch.results {
-                if !ids.contains(&entry.id) {
-                    continue;
-                }
-                let id = entry.id.clone();
-                remaining.remove(&id);
-                if let Some(item) = project(entry, &view_id, &view.name, &property)? {
-                    items.insert(id, item);
-                }
-            }
-            if remaining.is_empty() || !batch.has_more {
-                break;
-            }
-            cursor = Some(
-                batch
-                    .next_cursor
-                    .filter(|cursor| cursors.insert(cursor.clone()))
-                    .ok_or_else(|| Error::Notion("invalid data source pagination cursor".into()))?,
-            );
-        }
-        if !remaining.is_empty() {
-            return Err(Error::Notion(
-                "calendar changed during the read; refresh again".into(),
-            ));
-        }
-        Ok(references
-            .into_iter()
-            .filter_map(|id| items.remove(&id))
-            .collect())
+        let references = collect_references(&binary, &query_path, query.page).await?;
+        load_pages(
+            &binary,
+            &view.data_source_id,
+            &view_id,
+            &view.name,
+            &property,
+            references,
+        )
+        .await
     })
     .await
     .unwrap_or_else(|_| {
@@ -238,6 +161,115 @@ pub(crate) async fn read(configuration: &NotionCalendar) -> Result<Vec<Item>, Er
     // Deleting this temporary query does not alter the view or any pages.
     let _ = request::<serde::de::IgnoredAny>(&binary, "DELETE", &query_path, None).await;
     result
+}
+
+/// Paginates the temporary view query and collects the identifiers of its referenced pages.
+async fn collect_references(
+    binary: &Path,
+    query_path: &str,
+    mut page: QueryPage<PageReference>,
+) -> Result<Vec<String>, Error> {
+    let mut references = Vec::new();
+    let mut cursors = BTreeSet::new();
+    loop {
+        if page
+            .request_status
+            .as_ref()
+            .is_some_and(|status| status.kind != "complete")
+        {
+            return Err(Error::Notion(
+                "calendar query was truncated; narrow the view filter".into(),
+            ));
+        }
+        references.extend(
+            page.results
+                .into_iter()
+                .map(|reference| reference.id.to_string()),
+        );
+        if !page.has_more {
+            break;
+        }
+        let cursor = page
+            .next_cursor
+            .filter(|cursor| cursors.insert(cursor.clone()))
+            .ok_or_else(|| Error::Notion("invalid pagination cursor".into()))?;
+        let mut path = url::Url::parse("https://api.notion.com").expect("static Notion URL");
+        path.set_path(query_path);
+        path.query_pairs_mut()
+            .append_pair("start_cursor", &cursor)
+            .append_pair("page_size", "100");
+        page = request(binary, "GET", &path[url::Position::BeforePath..], None).await?;
+    }
+    Ok(references)
+}
+
+/// Pages through the data source query and projects the referenced pages in view order.
+async fn load_pages(
+    binary: &Path,
+    data_source_id: &uuid::Uuid,
+    view_id: &str,
+    view_name: &str,
+    date_property: &str,
+    references: Vec<String>,
+) -> Result<Vec<Item>, Error> {
+    let ids: BTreeSet<_> = references.iter().cloned().collect();
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut remaining = ids.clone();
+    let mut items = BTreeMap::new();
+    let mut cursor: Option<String> = None;
+    let mut cursors = BTreeSet::new();
+    loop {
+        let mut body = serde_json::json!({
+            "page_size": 100,
+        });
+        if let Some(cursor) = &cursor {
+            body["start_cursor"] = serde_json::json!(cursor);
+        }
+        let batch: QueryPage<Page> = request(
+            binary,
+            "POST",
+            &format!("/v1/data_sources/{data_source_id}/query"),
+            Some(&body),
+        )
+        .await?;
+        if batch
+            .request_status
+            .as_ref()
+            .is_some_and(|status| status.kind != "complete")
+        {
+            return Err(Error::Notion("calendar data query was incomplete".into()));
+        }
+        for entry in batch.results {
+            if !ids.contains(&entry.id) {
+                continue;
+            }
+            let id = entry.id.clone();
+            remaining.remove(&id);
+            if let Some(item) = project(entry, view_id, view_name, date_property)? {
+                items.insert(id, item);
+            }
+        }
+        if remaining.is_empty() || !batch.has_more {
+            break;
+        }
+        cursor = Some(
+            batch
+                .next_cursor
+                .filter(|cursor| cursors.insert(cursor.clone()))
+                .ok_or_else(|| Error::Notion("invalid data source pagination cursor".into()))?,
+        );
+    }
+    if !remaining.is_empty() {
+        return Err(Error::Notion(
+            "calendar changed during the read; refresh again".into(),
+        ));
+    }
+    Ok(references
+        .into_iter()
+        .filter_map(|id| items.remove(&id))
+        .collect())
 }
 
 fn binary() -> Result<PathBuf, Error> {
@@ -268,7 +300,7 @@ async fn request<T: serde::de::DeserializeOwned>(
     path: &str,
     body: Option<&serde_json::Value>,
 ) -> Result<T, Error> {
-    tokio::time::sleep(Duration::from_millis(350)).await;
+    tokio::time::sleep(REQUEST_INTERVAL).await;
     let mut command = Command::new(binary);
     command
         .args(["api", path, "-X", method, "--notion-version", "2026-03-11"])

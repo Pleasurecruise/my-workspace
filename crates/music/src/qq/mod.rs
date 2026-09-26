@@ -9,8 +9,7 @@ use rand::Rng;
 use tokio::sync::{Mutex, RwLock, watch};
 
 use crate::lyrics;
-use crate::spotify::{Cover, Playback, PlaybackOrder, Track};
-use crate::{Error, Lyrics, Result};
+use crate::{Cover, Error, Lyrics, Playback, PlaybackOrder, Result, Track};
 
 mod audio;
 mod qr;
@@ -265,11 +264,7 @@ impl QqMusic {
             return Err(Error::Playback(failure.clone()));
         }
         let audio = self.audio.snapshot()?;
-        let track_id = audio
-            .track
-            .as_ref()
-            .map(|track| track.id.clone())
-            .or_else(|| state.track_id.clone());
+        let track_id = select_track_id(&audio, &state);
         let Some(track_id) = track_id else {
             return Ok(None);
         };
@@ -287,11 +282,7 @@ impl QqMusic {
 
     pub async fn resume(self: &Arc<Self>) -> Result<()> {
         let audio = self.audio.snapshot()?;
-        let track_id = audio
-            .track
-            .as_ref()
-            .map(|track| track.id.clone())
-            .or(self.playback.read().await.track_id.clone())
+        let track_id = select_track_id(&audio, &*self.playback.read().await)
             .ok_or_else(|| Error::Playback("No QQ Music song has been loaded".to_owned()))?;
         if audio.ended {
             return self.play(&track_id).await;
@@ -448,11 +439,7 @@ impl QqMusic {
             .or_else(|| fields.get("wxuin"))
             .map(|value| value.trim_start_matches('o'))
             .unwrap_or("0");
-        let login_type = fields
-            .get("tmeLoginType")
-            .or_else(|| fields.get("login_type"))
-            .and_then(|value| value.parse::<u8>().ok())
-            .unwrap_or_else(|| if key.starts_with("W_X") { 1 } else { 2 });
+        let login_type = parse_login_type(&fields, &key);
         let param = if login_type == 1 {
             serde_json::json!({
                 "openid": fields.get("wxopenid").or_else(|| fields.get("psrf_qqopenid")).map(String::as_str).unwrap_or_default(),
@@ -495,32 +482,30 @@ impl QqMusic {
             ));
         }
         data.apply(&mut fields, login_type);
-        Ok(render_cookie(fields))
+        Ok(render_cookie(&fields))
     }
 
     fn auth(cookie: &str) -> QqAuth {
-        let cookies: HashMap<&str, &str> = cookie
-            .split(';')
-            .filter_map(|part| part.trim().split_once('='))
-            .map(|(key, value)| (key.trim(), value.trim()))
-            .collect();
-        let login_type = cookies
+        let cookies = parse_cookie(cookie);
+        let declared_login_type = cookies
             .get("tmeLoginType")
-            .or_else(|| cookies.get("login_type"));
-        let identity_fields = if login_type == Some(&"1") {
+            .or_else(|| cookies.get("login_type"))
+            .map(String::as_str);
+        // WeChat logins prefer their own uin field over the QQ identities.
+        let identity_fields = if declared_login_type == Some("1") {
             ["wxuin", "uin", "qqmusic_uin", "p_uin"]
         } else {
             ["uin", "qqmusic_uin", "wxuin", "p_uin"]
         };
         let uin = identity_fields
             .iter()
-            .find_map(|key| cookies.get(key).copied())
+            .find_map(|key| cookies.get(*key).map(String::as_str))
             .unwrap_or_default()
             .trim_start_matches('o')
             .trim_start_matches('0');
         let authst = ["qm_keyst", "qqmusic_key", "music_key", "wxskey"]
             .iter()
-            .find_map(|key| cookies.get(key).copied())
+            .find_map(|key| cookies.get(*key).map(String::as_str))
             .unwrap_or_default();
         QqAuth {
             uin: if uin.is_empty() { "0" } else { uin }.to_owned(),
@@ -528,13 +513,8 @@ impl QqMusic {
             ct: 19,
             cv: 0,
             authst: authst.to_owned(),
-            login_type: login_type
-                .and_then(|value| value.parse::<u8>().ok())
-                .unwrap_or_else(|| if authst.starts_with("W_X") { 1 } else { 2 }),
-            gtk: authst.bytes().fold(5_381_u32, |hash, byte| {
-                hash.wrapping_add(hash.wrapping_shl(5))
-                    .wrapping_add(u32::from(byte))
-            }) & 0x7fff_ffff,
+            login_type: parse_login_type(&cookies, authst),
+            gtk: hash33(authst, 5_381),
         }
     }
 
@@ -620,12 +600,8 @@ impl QqMusic {
 
     async fn advance(self: &Arc<Self>, generation: u64) -> Result<()> {
         let state = self.playback.read().await;
-        let current = self
-            .audio
-            .snapshot()?
-            .track
-            .map(|track| track.id)
-            .or_else(|| state.track_id.clone());
+        let audio = self.audio.snapshot()?;
+        let current = select_track_id(&audio, &state);
         let order = state.order;
         drop(state);
         let tracks = self.library.read().await.tracks.clone();
@@ -804,14 +780,48 @@ fn parse_cookie(cookie: &str) -> HashMap<String, String> {
         .collect()
 }
 
-fn render_cookie(fields: HashMap<String, String>) -> String {
-    let mut fields: Vec<_> = fields.into_iter().collect();
-    fields.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+fn render_cookie(fields: &HashMap<String, String>) -> String {
+    let mut fields: Vec<_> = fields.iter().collect();
+    fields.sort_unstable_by(|left, right| left.0.cmp(right.0));
     fields
         .into_iter()
         .map(|(key, value)| format!("{key}={value}"))
         .collect::<Vec<_>>()
         .join("; ")
+}
+
+// QQ's 33-biased rolling hash; seeds vary per token (5381 for g_tk, 0 for QR polling).
+fn hash33(value: &str, seed: u32) -> u32 {
+    value.bytes().fold(seed, |hash, byte| {
+        hash.wrapping_add(hash.wrapping_shl(5))
+            .wrapping_add(u32::from(byte))
+    }) & 0x7fff_ffff
+}
+
+// The declared tmeLoginType wins; a W_X-prefixed session key marks a WeChat login.
+fn parse_login_type(fields: &HashMap<String, String>, session_key: &str) -> u8 {
+    fields
+        .get("tmeLoginType")
+        .or_else(|| fields.get("login_type"))
+        .and_then(|value| value.parse::<u8>().ok())
+        .unwrap_or(if session_key.starts_with("W_X") { 1 } else { 2 })
+}
+
+// The loaded audio track is authoritative; playback state retains the last requested
+// track id for retries after the audio worker is retired.
+fn select_track_id(audio: &audio::Snapshot, state: &PlaybackState) -> Option<String> {
+    audio
+        .track
+        .as_ref()
+        .map(|track| track.id.clone())
+        .or_else(|| state.track_id.clone())
+}
+
+// A clock set before the Unix epoch is treated as time zero.
+fn read_time() -> Duration {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
 }
 
 fn renewal_due(cookie: &str) -> bool {
@@ -826,10 +836,7 @@ fn renewal_due(cookie: &str) -> bool {
     else {
         return false;
     };
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let now = read_time().as_secs();
     has_refresh && now.saturating_sub(created) >= RENEW_AFTER.as_secs()
 }
 
@@ -1109,7 +1116,7 @@ struct LyricData {
 mod tests {
 
     #[tokio::test]
-    async fn media_download_enforces_declared_and_streamed_size_limits() {
+    async fn limits_media_size() {
         for declared in [false, true] {
             let mut response = http::Response::builder().status(200);
             if declared {
@@ -1153,7 +1160,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn dropping_runtime_releases_monitor() {
+    async fn releases_monitor() {
         let music = std::sync::Arc::new(
             super::QqMusic::new(vesper_credentials::QqMusicCredentials {
                 cookie: String::new(),
@@ -1168,7 +1175,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn newer_action_cancels_a_waiting_load() {
+    async fn cancels_stale_load() {
         let music = std::sync::Arc::new(
             super::QqMusic::new(vesper_credentials::QqMusicCredentials {
                 cookie: String::new(),
@@ -1263,7 +1270,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rpc_success_aliases_and_optional_lyrics() {
+    async fn decodes_rpc_variants() {
         for key in ["request", "feed", "daily", "lyric", "req_0"] {
             let body = serde_json::json!({"code":0, key:{"code":0,"data":{"musickey":"key","musicid":123}}}).to_string();
             let response = http::Response::new(body);
@@ -1371,7 +1378,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn parses_daily_card_and_playlist() {
+    async fn parses_daily_feed() {
         let response: FeedData = QqResponse::read(http::Response::new(
             r#"{"feed":{"code":0,"data":{"v_shelf":[{"v_niche":[{"v_card":[{"id":"123","title":"每日30首"}]}]}]}}}"#,
         ).into(), "QQ Music test").await.unwrap();
@@ -1384,7 +1391,7 @@ mod tests {
     }
 
     #[test]
-    fn renews_a_refreshable_session_after_twenty_hours() {
+    fn checks_renewal_age() {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -1405,7 +1412,7 @@ mod tests {
     }
 
     #[test]
-    fn rotates_all_returned_session_fields() {
+    fn rotates_session_fields() {
         let mut fields =
             parse_cookie("uin=1; qm_keyst=old; qqmusic_key=old; psrf_qqrefresh_token=old-refresh");
         RenewData {

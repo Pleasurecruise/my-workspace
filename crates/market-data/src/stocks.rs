@@ -180,7 +180,11 @@ async fn request(client: &reqwest::Client, stock: Stock) -> Result<StockSeries, 
 pub async fn read(symbols: Vec<String>) -> Result<StockReport, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
-        .user_agent("Vesper/0.1 stock dashboard")
+        .user_agent(concat!(
+            "Vesper/",
+            env!("CARGO_PKG_VERSION"),
+            " stock dashboard"
+        ))
         .build()
         .map_err(|error| format!("Could not create stock client: {error}"))?;
     let results = stream::iter(symbols.into_iter().map(|symbol| {

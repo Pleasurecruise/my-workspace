@@ -12,7 +12,7 @@ impl audio_backend::Sink for SilentSink {
 }
 
 #[tokio::test]
-async fn stale_stop_does_not_stop_the_selected_track() {
+async fn ignores_stale_stop() {
     let player = Player::new(
         PlayerConfig::default(),
         Session::new(SessionConfig::default(), None),
@@ -46,7 +46,7 @@ async fn stale_stop_does_not_stop_the_selected_track() {
 }
 
 #[tokio::test]
-async fn seek_while_paused_preserves_pause() {
+async fn seeks_while_paused() {
     let player = Player::new(
         PlayerConfig::default(),
         Session::new(SessionConfig::default(), None),
@@ -81,7 +81,7 @@ async fn seek_while_paused_preserves_pause() {
 }
 
 #[tokio::test]
-async fn dropping_spotify_runtime_releases_player() {
+async fn releases_player() {
     let player = Player::new(
         PlayerConfig::default(),
         Session::new(SessionConfig::default(), None),
@@ -107,7 +107,7 @@ async fn dropping_spotify_runtime_releases_player() {
 }
 
 #[tokio::test]
-async fn repeated_loads_ignore_old_request_events() {
+async fn ignores_stale_load_events() {
     let state = Arc::new(RwLock::new(State::default()));
     {
         let mut state = state.write().await;
@@ -181,7 +181,7 @@ async fn paused_end_does_not_advance() {
 }
 
 #[tokio::test]
-async fn playback_account_rejection_returns_an_error_before_starting_librespot() {
+async fn rejects_playback_account() {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     for (status, body, expected) in [
@@ -239,7 +239,7 @@ async fn playback_account_rejection_returns_an_error_before_starting_librespot()
 }
 
 #[tokio::test]
-async fn upstream_free_account_terminates_the_process() {
+async fn exits_on_free_account() {
     const PROBE: &str = "VESPER_TEST_LIBRESPOT_FREE_ACCOUNT";
     if std::env::var_os(PROBE).is_some() {
         let session = Session::new(SessionConfig::default(), None);
@@ -247,10 +247,7 @@ async fn upstream_free_account_terminates_the_process() {
         panic!("expected librespot to exit");
     }
     let status = std::process::Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "spotify::player::tests::upstream_free_account_terminates_the_process",
-        ])
+        .args(["--exact", "spotify::player::tests::exits_on_free_account"])
         .env(PROBE, "1")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

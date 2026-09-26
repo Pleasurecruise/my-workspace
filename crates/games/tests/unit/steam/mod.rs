@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn private_activity_remains_absent_instead_of_zero() {
+fn decodes_private_activity() {
     let recent: Response<Recent> = serde_json::from_str(r#"{"response":{}}"#).unwrap();
     assert_eq!(recent.response.total_count, None);
     assert!(recent.response.games.is_empty());
@@ -13,7 +13,7 @@ fn private_activity_remains_absent_instead_of_zero() {
 }
 
 #[test]
-fn activity_projection_preserves_minutes_with_camel_case_fields() {
+fn serializes_activity() {
     let game: RecentGame = serde_json::from_str(
         r#"{"appid":10,"name":"Game","playtime_forever":123,"playtime_2weeks":45}"#,
     )
@@ -25,7 +25,7 @@ fn activity_projection_preserves_minutes_with_camel_case_fields() {
 }
 
 #[test]
-fn totals_include_games_beyond_the_display_limit() {
+fn totals_all_games() {
     let player = serde_json::from_str(
         r#"{"personaname":"Player","profileurl":"https://steamcommunity.com/id/example"}"#,
     )
@@ -62,7 +62,7 @@ fn totals_include_games_beyond_the_display_limit() {
 }
 
 #[test]
-fn hidden_library_and_activity_do_not_claim_zero_playtime() {
+fn projects_hidden_playtime() {
     let player = serde_json::from_str(
         r#"{"personaname":"Player","profileurl":"https://steamcommunity.com/id/example"}"#,
     )

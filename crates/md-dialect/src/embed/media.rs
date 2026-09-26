@@ -1,4 +1,4 @@
-use super::{EmbedError, escape_html, reject_unknown, required};
+use super::{EmbedError, align, escape_html, is_web_url, reject_unknown, required};
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use std::collections::HashMap;
 use url::{ParseError, Url};
@@ -50,10 +50,7 @@ pub(super) fn parse<'a>(mut fields: HashMap<&str, &'a str>) -> Result<Media<'a>,
             message: "only video supports a poster",
         });
     }
-    let align = fields.remove("align").unwrap_or("wide");
-    if !matches!(align, "left" | "right" | "wide" | "narrow") {
-        return Err(EmbedError::InvalidAlignment(align.to_owned()));
-    }
+    let align = align(&mut fields)?;
     Ok(Media {
         kind,
         src,
@@ -78,11 +75,7 @@ fn parse_source(value: &str, field: &'static str) -> Result<Source, EmbedError> 
     }
     match Url::parse(value) {
         Ok(mut url) => {
-            if !matches!(url.scheme(), "https" | "http")
-                || url.host_str().is_none()
-                || !url.username().is_empty()
-                || url.password().is_some()
-            {
+            if !is_web_url(&url) {
                 return Err(invalid());
             }
             // GitHub's file viewer is HTML. Keep the full ref/path suffix when requesting bytes.

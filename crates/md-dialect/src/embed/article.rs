@@ -1,4 +1,4 @@
-use super::{Data, EmbedError, escape_html, reject_unknown};
+use super::{Data, EmbedError, align, check_align, escape_html, is_web_url, reject_unknown};
 use std::collections::HashMap;
 
 pub(super) struct Article<'a> {
@@ -15,21 +15,13 @@ pub(super) fn parse<'a>(mut fields: HashMap<&str, &'a str>) -> Result<Article<'a
         &fields,
         &["title", "id", "url", "description", "align"],
     )?;
-    let align = fields.remove("align").unwrap_or("wide");
-    if !matches!(align, "left" | "right" | "wide" | "narrow") {
-        return Err(EmbedError::InvalidAlignment(align.to_owned()));
-    }
+    let align = align(&mut fields)?;
     let id = fields.remove("id");
     let destination = match (id, fields.remove("url")) {
         (Some(id), None) if valid_id(id) => format!("/articles/{id}"),
         (None, Some(destination)) => {
             let url = url::Url::parse(destination).map_err(|_| EmbedError::InvalidArticleUrl)?;
-            if !matches!(url.scheme(), "http" | "https")
-                || url.host_str().is_none()
-                || !url.username().is_empty()
-                || url.password().is_some()
-                || destination.chars().any(char::is_control)
-            {
+            if !is_web_url(&url) || destination.chars().any(char::is_control) {
                 return Err(EmbedError::InvalidArticleUrl);
             }
             url.to_string()
@@ -113,11 +105,7 @@ pub(super) fn list(source: &str) -> Result<Option<(&str, Vec<String>)>, EmbedErr
                     field: "align".to_owned(),
                 });
             }
-            let value = super::unquote(value);
-            if !matches!(value, "left" | "right" | "wide" | "narrow") {
-                return Err(EmbedError::InvalidAlignment(value.to_owned()));
-            }
-            align = Some(value);
+            align = Some(check_align(super::unquote(value))?);
             continue;
         }
         let value = match line.as_bytes() {

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use reqwest::header::{COOKIE, LOCATION, REFERER as REFERER_HEADER, SET_COOKIE};
 
-use super::{API, QqResponse, REFERER, RenewData, check, render_cookie};
+use super::{API, QqResponse, REFERER, RenewData, check, hash33, read_time, render_cookie};
 use crate::{Error, Result};
 
 const QR_API: &str = "https://ssl.ptlogin2.qq.com/ptqrshow";
@@ -91,10 +91,7 @@ impl QqLogin {
         if Instant::now() >= self.expires_at {
             return Ok((QqLoginStatus::Expired, None));
         }
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis();
+        let now = read_time().as_millis();
         let action = format!("0-0-{now}");
         let response = self
             .http
@@ -166,7 +163,7 @@ impl QqLogin {
             .http
             .get(jump)
             .header(REFERER_HEADER, "https://xui.ptlogin2.qq.com/")
-            .header(COOKIE, cookie_header(&cookies))
+            .header(COOKIE, render_cookie(&cookies))
             .send()
             .await?;
         let cookies = response_cookies(response.headers(), cookies);
@@ -179,7 +176,7 @@ impl QqLogin {
             .http
             .post(AUTHORIZE_API)
             .header(REFERER_HEADER, "https://xui.ptlogin2.qq.com/")
-            .header(COOKIE, cookie_header(&cookies))
+            .header(COOKIE, render_cookie(&cookies))
             .form(&[
                 ("response_type", "code".to_owned()),
                 ("client_id", "100497308".to_owned()),
@@ -196,14 +193,7 @@ impl QqLogin {
                 ("update_auth", "1".to_owned()),
                 ("openapi", "1010_1030".to_owned()),
                 ("g_tk", hash33(skey, 5381).to_string()),
-                (
-                    "auth_time",
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis()
-                        .to_string(),
-                ),
+                ("auth_time", read_time().as_millis().to_string()),
                 ("ui", uuid::Uuid::new_v4().to_string()),
             ])
             .send()
@@ -254,15 +244,9 @@ impl QqLogin {
         data.apply(&mut fields, 2);
         fields
             .entry("psrf_musickey_createtime".to_owned())
-            .or_insert_with(|| {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs()
-                    .to_string()
-            });
+            .or_insert_with(|| read_time().as_secs().to_string());
         Ok(vesper_credentials::QqMusicCredentials {
-            cookie: render_cookie(fields),
+            cookie: render_cookie(&fields),
         })
     }
 }
@@ -322,30 +306,12 @@ fn response_cookies(
     cookies
 }
 
-fn cookie_header(cookies: &HashMap<String, String>) -> String {
-    let mut fields: Vec<_> = cookies.iter().collect();
-    fields.sort_unstable_by(|left, right| left.0.cmp(right.0));
-    fields
-        .into_iter()
-        .map(|(key, value)| format!("{key}={value}"))
-        .collect::<Vec<_>>()
-        .join("; ")
-}
-
-fn hash33(value: &str, seed: u32) -> u32 {
-    value.bytes().fold(seed, |hash, byte| {
-        hash.wrapping_shl(5)
-            .wrapping_add(hash)
-            .wrapping_add(u32::from(byte))
-    }) & 0x7fff_ffff
-}
-
 #[cfg(test)]
 mod tests {
     use super::{hash33, parse_ptui};
 
     #[test]
-    fn parses_waiting_and_complete_callbacks() {
+    fn parses_login_callbacks() {
         let waiting = parse_ptui("\n ptuiCB( '66', '0', '', '0', 'waiting', '' );\n").unwrap();
         assert_eq!(waiting.code, "66");
         let complete = parse_ptui(

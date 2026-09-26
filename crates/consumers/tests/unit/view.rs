@@ -37,7 +37,7 @@ fn serializes_newspaper() {
 }
 
 #[test]
-fn gallery_contract_contains_no_obsolete_pagination_or_connection_fields() {
+fn serializes_gallery_contract() {
     let value = serde_json::to_value(ChannelView::Moment {
         photos: Vec::new(),
         total: 0,

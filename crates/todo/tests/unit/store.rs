@@ -28,17 +28,15 @@ async fn lists_while_writing() {
     assert_eq!(result.unwrap().items[0].text, "Committed");
 }
 
-fn test_store() -> (PathBuf, Store) {
-    let directory = std::env::temp_dir().join(format!("vesper-todo-{}", uuid::Uuid::new_v4()));
-    (
-        directory.clone(),
-        Store::new(directory.join(vesper_database::FILE_NAME)),
-    )
+fn test_store() -> (tempfile::TempDir, Store) {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    (directory, store)
 }
 
 #[tokio::test]
 async fn handles_crud() {
-    let (directory, store) = test_store();
+    let (_directory, store) = test_store();
     let date = "2026-08-23";
     let created = store.create(date, "  Ship CLI  ", None).await.unwrap();
     let id = created.items[0].id.clone();
@@ -55,12 +53,11 @@ async fn handles_crud() {
     );
     assert!(store.set_completed(date, &id, true).await.unwrap().items[0].completed);
     assert!(store.delete(date, &id).await.unwrap().items.is_empty());
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
 async fn isolates_dates() {
-    let (directory, store) = test_store();
+    let (_directory, store) = test_store();
     store.create("2026-08-22", "Yesterday", None).await.unwrap();
     store.create("2026-08-23", "Today", None).await.unwrap();
     assert_eq!(
@@ -71,36 +68,33 @@ async fn isolates_dates() {
         store.list("2026-08-23").await.unwrap().items[0].text,
         "Today"
     );
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
 async fn reloads_before_mutation() {
     let (directory, first) = test_store();
-    let second = Store::new(directory.join(vesper_database::FILE_NAME));
+    let second = Store::new(directory.path().join(vesper_database::FILE_NAME));
     first.create("2026-08-23", "First", None).await.unwrap();
     second.create("2026-08-23", "Second", None).await.unwrap();
     assert_eq!(first.list("2026-08-23").await.unwrap().items.len(), 2);
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
 async fn rolls_back_failed_mutation() {
     use diesel::connection::SimpleConnection;
-    let (directory, store) = test_store();
+    let (_directory, store) = test_store();
     let original = store.create("2026-08-23", "Keep me", None).await.unwrap();
     let mut connection = vesper_database::open(store.database_path()).unwrap();
     connection.batch_execute("CREATE TRIGGER reject_todo BEFORE INSERT ON todo_items BEGIN SELECT RAISE(ABORT, 'injected failure'); END;").unwrap();
     assert!(store.create("2026-08-23", "Fail", None).await.is_err());
     assert_eq!(store.list("2026-08-23").await.unwrap(), original);
     drop(connection);
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
 async fn serializes_writers() {
     let (directory, first) = test_store();
-    let second = Store::new(directory.join(vesper_database::FILE_NAME));
+    let second = Store::new(directory.path().join(vesper_database::FILE_NAME));
     let (first_result, second_result) = tokio::join!(
         first.create("2026-08-23", "First", None),
         second.create("2026-08-23", "Second", None)
@@ -108,34 +102,29 @@ async fn serializes_writers() {
     first_result.unwrap();
     second_result.unwrap();
     assert_eq!(first.list("2026-08-23").await.unwrap().items.len(), 2);
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
 async fn rejects_long_text() {
-    let (directory, store) = test_store();
+    let (_directory, store) = test_store();
     let error = store
         .create("2026-08-23", &"x".repeat(MAX_TEXT_LENGTH + 1), None)
         .await
         .unwrap_err();
     assert!(matches!(error, Error::TextTooLong));
-    if directory.exists() {
-        std::fs::remove_dir_all(directory).unwrap();
-    }
 }
 
 #[tokio::test]
 async fn imports_once() {
     let (directory, store) = test_store();
-    std::fs::create_dir_all(&directory).unwrap();
     std::fs::write(
-        directory.join("work.ics"),
+        directory.path().join("work.ics"),
         "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:standup\nSUMMARY:Standup\nDTSTART:20260823T093000\nRRULE:FREQ=DAILY\nEND:VEVENT\nEND:VCALENDAR\n",
     )
     .unwrap();
 
     store
-        .import_schedules(&[directory.join("work.ics")])
+        .import_schedules(&[directory.path().join("work.ics")])
         .await
         .unwrap();
     let first = store.sync_schedule("2026-08-23").await.unwrap();
@@ -169,13 +158,12 @@ async fn imports_once() {
     let synced = store.sync_schedule("2026-08-23").await.unwrap();
     assert_eq!(synced.items.len(), 1);
     assert!(synced.items[0].details.is_none());
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
 async fn combines_calendars() {
     let (directory, store) = test_store();
-    let sources = directory.join("sources");
+    let sources = directory.path().join("sources");
     std::fs::create_dir_all(&sources).unwrap();
     let mut paths = Vec::new();
     for (name, summary) in [("work.ics", "Standup"), ("personal.ics", "Exercise")] {
@@ -202,14 +190,13 @@ async fn combines_calendars() {
             .collect::<BTreeSet<_>>(),
         BTreeSet::from(["Exercise", "Standup"])
     );
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
 async fn rejects_duplicate_sources() {
     let (directory, store) = test_store();
-    let first_directory = directory.join("first");
-    let second_directory = directory.join("second");
+    let first_directory = directory.path().join("first");
+    let second_directory = directory.path().join("second");
     std::fs::create_dir_all(&first_directory).unwrap();
     std::fs::create_dir_all(&second_directory).unwrap();
     let calendar = "BEGIN:VCALENDAR\nEND:VCALENDAR\n";
@@ -223,15 +210,13 @@ async fn rejects_duplicate_sources() {
         Err(Error::DuplicateScheduleName(_))
     ));
     assert!(!store.database_path().exists());
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
 async fn validates_sources() {
     let (directory, store) = test_store();
-    std::fs::create_dir_all(&directory).unwrap();
-    let first = directory.join("first.ics");
-    let second = directory.join("second.ics");
+    let first = directory.path().join("first.ics");
+    let second = directory.path().join("second.ics");
     std::fs::write(&first, "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:old\nSUMMARY:Original\nDTSTART:20260823\nEND:VEVENT\nEND:VCALENDAR\n").unwrap();
     store
         .import_schedules(std::slice::from_ref(&first))
@@ -247,12 +232,11 @@ async fn validates_sources() {
         store.sync_schedule("2026-08-23").await.unwrap().items[0].text,
         "Original"
     );
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
 async fn reads_existing_sources() {
-    let (directory, store) = test_store();
+    let (_directory, store) = test_store();
     std::fs::create_dir_all(store.schedule_directory()).unwrap();
     let path = store.schedule_directory().join("Existing.ics");
     let content = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:event\nSUMMARY:Existing calendar\nDTSTART:20260823\nEND:VEVENT\nEND:VCALENDAR\n";
@@ -265,12 +249,11 @@ async fn reads_existing_sources() {
         store.sync_schedule("2026-08-23").await.unwrap().items.len(),
         1
     );
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
 async fn reconciles_notion() {
-    let (directory, store) = test_store();
+    let (_directory, store) = test_store();
     let date = "2026-09-07";
     store.create(date, "Manual", None).await.unwrap();
     let mut remote = Item {
@@ -346,12 +329,11 @@ async fn reconciles_notion() {
             .text,
         "Manual"
     );
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
 async fn locks_calendar() {
-    let (directory, first) = test_store();
+    let (_directory, first) = test_store();
     let second = Store::new(first.database_path().to_owned());
     let guard = first.calendar_lock().await.unwrap();
     let mut waiting = Box::pin(second.calendar_lock());
@@ -366,18 +348,17 @@ async fn locks_calendar() {
         .unwrap()
         .unwrap();
     drop(acquired);
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
-fn cancelled_calendar_commit_retains_lock() {
+fn retains_calendar_lock() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .max_blocking_threads(1)
         .build()
         .unwrap();
     runtime.block_on(async {
-        let (directory, store) = test_store();
+        let (_directory, store) = test_store();
         let guard = store.calendar_lock().await.unwrap();
         let competing = std::fs::OpenOptions::new()
             .read(true)
@@ -404,13 +385,12 @@ fn cancelled_calendar_commit_retains_lock() {
         assert!(matches!(locked, Err(std::fs::TryLockError::WouldBlock)));
         competing.try_lock().unwrap();
         drop(competing);
-        std::fs::remove_dir_all(directory).unwrap();
     });
 }
 
 #[tokio::test]
 async fn edits_preserve_task_state() {
-    let (directory, store) = test_store();
+    let (_directory, store) = test_store();
     let date = "2026-09-10";
     let list = store
         .create(date, "  Read  ", Some("  Chapter one\nTake notes  "))
@@ -449,7 +429,6 @@ async fn edits_preserve_task_state() {
         .await
         .unwrap();
     assert!(reopened.get(date, id).await.unwrap().description.is_none());
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[tokio::test]
@@ -1022,7 +1001,7 @@ async fn codex_save_waits_for_sync() {
 }
 
 #[tokio::test]
-async fn cancelled_codex_save_keeps_lock() {
+async fn retains_codex_lock() {
     use diesel::connection::SimpleConnection;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join(vesper_database::FILE_NAME);

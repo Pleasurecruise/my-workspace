@@ -1,3 +1,5 @@
+pub mod twitter;
+
 use dom_query::Document;
 use reqwest::{Url, dns};
 use std::{collections::HashMap, net::IpAddr, sync::Arc, time::Duration};
@@ -88,7 +90,11 @@ pub async fn read(value: &str) -> Result<LinkMetadata, String> {
                 attempt.follow()
             }
         }))
-        .user_agent("Vesper/1.0 (Open Graph link preview)")
+        .user_agent(concat!(
+            "Vesper/",
+            env!("CARGO_PKG_VERSION"),
+            " (Open Graph link preview)"
+        ))
         .build()
         .map_err(|_| "could not create link metadata client")?;
     let mut response = client

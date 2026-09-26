@@ -303,30 +303,43 @@ struct PullRequestReview {
     state: String,
 }
 
-pub async fn read() -> Result<GithubSnapshot, String> {
-    let binary = resolve_gh_binary()?;
-    let query = format!("query={GITHUB_QUERY}");
-    let mut command = Command::new(&binary);
+async fn run_gh(
+    binary: &std::path::Path,
+    args: &[&str],
+    timeout_message: &str,
+    failure_message: &str,
+) -> Result<std::process::Output, String> {
+    let mut command = Command::new(binary);
     command
-        .args(["api", "--hostname", "github.com", "graphql", "-f", &query])
+        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    let output = tokio::time::timeout(QUERY_TIMEOUT, command.output())
+        .await
+        .map_err(|_| timeout_message.to_owned())?
+        .map_err(|error| format!("Could not start GitHub CLI: {error}"))?;
+    if !output.status.success() {
+        return Err(failure_message.to_owned());
+    }
+    Ok(output)
+}
+
+pub async fn read() -> Result<GithubSnapshot, String> {
+    let binary = resolve_gh_binary()?;
+    let query = format!("query={GITHUB_QUERY}");
+    let args = ["api", "--hostname", "github.com", "graphql", "-f", &query];
     let (output, notifications) = tokio::join!(
-        tokio::time::timeout(QUERY_TIMEOUT, command.output()),
+        run_gh(
+            &binary,
+            &args,
+            "GitHub CLI timed out while loading Dashboard data",
+            "GitHub CLI could not load account data. Run `gh auth status` to check its login.",
+        ),
         read_notifications(&binary),
     );
-    let output = output
-        .map_err(|_| "GitHub CLI timed out while loading Dashboard data".to_owned())?
-        .map_err(|error| format!("Could not start GitHub CLI: {error}"))?;
-
-    if !output.status.success() {
-        return Err(
-            "GitHub CLI could not load account data. Run `gh auth status` to check its login."
-                .to_owned(),
-        );
-    }
+    let output = output?;
 
     let notifications = match notifications {
         Ok(data) => data,
@@ -336,25 +349,12 @@ pub async fn read() -> Result<GithubSnapshot, String> {
 }
 
 async fn read_notifications(binary: &std::path::Path) -> Result<GithubNotifications, String> {
-    let mut command = Command::new(binary);
-    command
-        .args([
-            "api",
-            "--hostname",
-            "github.com",
-            "notifications?all=false&per_page=21",
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let output = tokio::time::timeout(QUERY_TIMEOUT, command.output())
-        .await
-        .map_err(|_| "GitHub notifications timed out".to_owned())?
-        .map_err(|error| format!("Could not start GitHub CLI: {error}"))?;
-    if !output.status.success() {
-        return Err("Could not read GitHub notifications. Check `gh auth status`; the account needs the notifications or repo scope.".to_owned());
-    }
+    let output = run_gh(
+        binary,
+        &["api", "--hostname", "github.com", "notifications?all=false&per_page=21"],
+        "GitHub notifications timed out",
+        "Could not read GitHub notifications. Check `gh auth status`; the account needs the notifications or repo scope.",
+    ).await?;
     parse_notifications(&output.stdout)
 }
 
@@ -406,22 +406,12 @@ fn parse_notifications(bytes: &[u8]) -> Result<GithubNotifications, String> {
 pub async fn read_repository(repository: &str) -> Result<RepositorySnapshot, String> {
     let binary = resolve_gh_binary()?;
     let endpoint = format!("repos/{repository}");
-    let mut command = Command::new(binary);
-    command
-        .args(["api", &endpoint])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let output = tokio::time::timeout(QUERY_TIMEOUT, command.output())
-        .await
-        .map_err(|_| format!("GitHub CLI timed out while loading {repository}"))?
-        .map_err(|error| format!("Could not start GitHub CLI: {error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "GitHub CLI could not load repository {repository}. Check the repository and `gh auth status`."
-        ));
-    }
+    let output = run_gh(
+        &binary,
+        &["api", &endpoint],
+        &format!("GitHub CLI timed out while loading {repository}"),
+        &format!("GitHub CLI could not load repository {repository}. Check the repository and `gh auth status`."),
+    ).await?;
     let wire: RepositoryWire = serde_json::from_slice(&output.stdout)
         .map_err(|error| format!("GitHub CLI returned unsupported repository JSON: {error}"))?;
     Ok(RepositorySnapshot {
@@ -563,7 +553,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_review_notifications_and_preserves_absent_links() {
+    fn parses_notifications() {
         let report = parse_notifications(br#"[
             {"id":"1","repository":{"full_name":"octocat/hello"},"subject":{"title":"Review this","type":"PullRequest","url":"https://api.github.com/repos/octocat/hello/pulls/42"},"reason":"review_requested","updated_at":"2026-09-05T12:00:00Z"},
             {"id":"2","repository":{"full_name":"octocat/hello"},"subject":{"title":"Unknown subject","type":"Discussion","url":null},"reason":"mention","updated_at":"2026-09-05T11:00:00Z"},
@@ -585,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn bounds_notification_list_without_claiming_total_count() {
+    fn limits_notifications() {
         let input: Vec<_> = (0..21)
             .map(|id| {
                 serde_json::json!({

@@ -258,7 +258,11 @@ async fn request(client: &reqwest::Client, service: Service) -> Result<ServiceSt
 pub async fn read(service_ids: Vec<String>) -> Result<ServiceStatusReport, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
-        .user_agent("Vesper/0.1 service status dashboard")
+        .user_agent(concat!(
+            "Vesper/",
+            env!("CARGO_PKG_VERSION"),
+            " service status dashboard"
+        ))
         .build()
         .map_err(|error| format!("Could not create service status client: {error}"))?;
     let results = stream::iter(service_ids.into_iter().map(|service_id| {
@@ -355,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn includes_maintenance_and_unknown_services() {
+    fn projects_service_states() {
         let projected = project(
             find_service("deepseek").expect("known service"),
             summary(serde_json::json!([
@@ -378,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn healthy_services_have_no_affected_components() {
+    fn projects_healthy_service() {
         let projected = project(
             find_service("github").expect("known service"),
             summary(serde_json::json!([{ "name": "API", "status": "operational" }])),
@@ -390,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_missing_service_components() {
+    fn rejects_missing_components() {
         for components in [
             serde_json::json!([]),
             serde_json::json!([{ "name": "Codex", "status": "operational", "group": true }]),
@@ -408,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn unrelated_outages_do_not_degrade_codex() {
+    fn ignores_unrelated_outages() {
         let projected = project(
             find_service("codex").expect("known service"),
             summary(serde_json::json!([

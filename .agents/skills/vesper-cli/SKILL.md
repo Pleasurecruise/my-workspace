@@ -15,7 +15,8 @@ description: Use vesper to inspect providers, manage Todo and Ledger, publish lo
   uploads, object removal, and `publish --live`. Investigate with reads and publication previews.
 - Content payloads accept quoted inline Markdown/JSON, `--file <path>`, or `--stdin`; prefer files
   for multiline input. Parsing finishes before requests. Use `--` before literal dash-prefixed input.
-- Success returns JSON; failures use stderr and a nonzero exit. Report partial success without secrets.
+- Data commands return JSON; build and publish commands print status text. Failures use stderr
+  and a nonzero exit. Report partial success without secrets.
 - Read [Workflow](../../../docs/WORKFLOW.md) for delivery/recovery changes,
   [Development](../../../docs/DEVELOPMENT.md) for credentials, and
   [Markdown](../../../docs/MARKDOWN.md) before authoring embeds.
@@ -67,9 +68,9 @@ Use [Rust input types](../../../crates/consumers/src/api/knowledge.rs); do not i
 
 ## Markdown and publication
 
-Keep semantic Markdown in Knowledge, not compiled HTML or generated SVG. Supported `embed:*` kinds:
-`github`, `stock`, `link`, `article`, `media`, `architecture`, `storyboard`, `annotation`, `quote`,
-`diff`. Follow [Markdown](../../../docs/MARKDOWN.md) for fields, examples, SVG vocabulary and safety.
+Keep semantic Markdown in Knowledge, not compiled HTML or generated SVG.
+[Markdown](../../../docs/MARKDOWN.md) owns supported `embed:*` kinds, fields, examples, SVG vocabulary
+and safety.
 Use GitHub/stock cards when the repository/ticker matters to the explanation, not as decoration.
 
 Shared article cards use 1–50 canonical UUID URL lines or one `url` field, preserving order.
