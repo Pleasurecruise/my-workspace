@@ -977,7 +977,7 @@
 		margin-bottom: 0;
 	}
 
-	.memo-content :global(p + p),
+	.memo-content :global(p),
 	.memo-content :global(h1),
 	.memo-content :global(h2),
 	.memo-content :global(h3),
@@ -992,6 +992,14 @@
 	.memo-content :global(ul),
 	.memo-content :global(ol) {
 		padding-left: 1.25rem;
+	}
+
+	.memo-content :global(ol) {
+		list-style-type: decimal;
+	}
+
+	.memo-content :global(ul) {
+		list-style-type: disc;
 	}
 
 	.memo-content :global(a) {

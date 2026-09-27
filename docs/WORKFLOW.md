@@ -43,13 +43,13 @@ their action. Use `--` to separate options from literal content that begins with
 Content payloads accept inline Markdown or JSON, `--file <path>`, or `--stdin` in the payload position.
 File and stdin reads preserve newlines, require UTF-8, and fail before requests if parsing fails.
 This applies to Memo create/update/page/patch, Knowledge page/create/update-draft/update-documents/
-visibility, and Moment query/create/update/upload-photo.
+visibility, and photo query/register/update. Photo upload accepts image and metadata flags.
 
 ```sh
 vesper memo create --file note.md
 vesper knowledge update-documents <id> --file article.json
-cat filters.json | vesper moment query --stdin
-vesper moment upload-photo --file metadata.json photo.heic
+cat filters.json | vesper photo query --stdin
+vesper photo upload photo.heic --metadata metadata.json
 ```
 
 Successful operations return JSON; errors use stderr and a failing exit code. Desktop and CLI use
@@ -60,7 +60,9 @@ the same Rust business operations and validation.
 Memo writes pass through the my-memos Worker, coordinating R2 bodies, D1 metadata, and KV invalidation.
 Lists and searches return the D1 body mirror; Vesper renders it without a second R2 read.
 
-`page` accepts `cursor`, `limit`, `search`, `tags`, `sortByUpdated`, `archivedOnly`, and `favoritesOnly`;
+`list` accepts `--cursor`, `--limit`, repeated `--tag`, `--search`, `--updated`, `--archived`,
+and `--favorites`. `page` accepts the corresponding JSON fields `cursor`, `limit`, `search`,
+`tags`, `sortByUpdated`, `archivedOnly`, and `favoritesOnly`;
 the final two filters are mutually exclusive. `patch` accepts optional `content`, `visibility`,
 `tags`, `pinned`, `favorite`, and `archived`, and rejects an empty object. Dedicated commands also
 cover tags, visibility, pinning, favorites, archive/restore, and deletion.
@@ -84,7 +86,8 @@ vesper knowledge delete <id> <expected-hash> <expected-updated-at>
 ```
 
 `page` accepts `cursor`, `limit` (1–100), up to five `tags`, and `visibility`, returning
-`{ articles, cursor }` without bodies. `list` returns `{ documents, cursor }` summary projections.
+`{ articles, cursor }` without bodies. `list` uses the same summary query and response, with
+`--cursor`, `--limit`, repeated `--tag`, and `--visibility` options.
 Use `get` for source, `contentHash`, and `updatedAt` before editing; it accepts a UUID or canonical
 UUID article URL. Writes use the returned UUID, never a URL or title. `update-draft` and `visibility`
 also accept JSON payloads. REST detail/create/content updates wrap an article in `{ article }`;
@@ -93,34 +96,38 @@ visibility, hash and timestamps; details add Markdown and current translations. 
 cursor; Rust exposes it as `null`. MCP keyword search uses `{ articles }` with the same summaries,
 without scores or excerpts. New articles start public on the Knowledge server. Shared Markdown syntax belongs to [Markdown](MARKDOWN.md).
 
-## Moment
+## Photos
 
-`upload-photo` is the coordinated desktop and CLI path: Rust normalizes an image, uploads its original
-and thumbnail to R2, then registers their exact keys with the my-moment API. D1 owns photo metadata.
+`photo` manages the Moment gallery. `photo upload <image>` uses the desktop upload pipeline:
+Rust normalizes the image, uploads its original and thumbnail to R2, then registers their exact keys
+with the my-moment API. D1 owns photo metadata. The title defaults to the file name; `--title`,
+`--description`, repeated `--tag`, and `--date` set metadata. `--metadata <path>` supplies the
+`Upload` JSON contract instead of those flags. Missing tags default to an empty list.
 
 ```sh
-vesper moment upload-photo --file metadata.json photo.heic
-vesper moment query --file filters.json
-vesper moment update <id> --file changes.json
-vesper moment delete <id>
+vesper photo upload photo.heic --metadata metadata.json
+vesper photo query --file filters.json
+vesper photo update <id> --file changes.json
+vesper photo delete <id>
 ```
 
-The upload JSON uses the `Upload` contract. PNG, JPEG, WebP, AVIF, and HEIC sources are limited to
+`photo list` accepts `--limit`, repeated `--tag`, `--from`, `--to`, or `--search`; search cannot
+combine with dates or tags. It returns `{ photos }` without a cursor. `query` exposes the same
+filters as JSON. PNG, JPEG, WebP, AVIF, and HEIC sources are limited to
 20 MB. Rust applies orientation, fills omitted date/coordinates from EXIF where available, and
 produces normalized PNG, JPEG thumbnail, and ThumbHash. Upload failures before metadata registration
 trigger cleanup of objects written by the operation. Once registration starts, retain uploaded
 objects for reconciliation because the server may already have committed. Inspect partial results
 before retrying or removing objects.
 
-Low-level `upload <r2-key> <local-path>` and `create <json>` separate transfer from registration for
+Low-level `photo object put <r2-key> <local-path>` and `photo register <json>` separate transfer from registration for
 explicit recovery. An upload alone does not create metadata. If registration fails, retry it or
-remove the unreferenced object with `remove-object <r2-key>`. Never remove an object referenced by an
+remove the unreferenced object with `photo object delete <r2-key>`. Never remove an object referenced by an
 existing photo. Normal `delete <id>` delegates metadata and image removal to the consumer API.
 
-`query` accepts `fromDate`/`toDate` as `YYYY-MM-DD`, `tags`, and `limit` (1–100, default 20), or `search`.
-Search cannot combine with date/tag filters. It returns `{ photos }` without a cursor; `list` returns
-at most 100 recent photos. `get <id>` reads one record. In updates, omitted `date`/`geo` preserves the
-value and explicit JSON `null` clears it. Tags, search, and object download have dedicated commands.
+`get <id>` reads one record. In updates, omitted `date`/`geo` preserves the value and explicit
+JSON `null` clears it. `tags` lists known tags; `photo object get <r2-key> <local-path>` downloads
+an existing object.
 
 ## Todo
 

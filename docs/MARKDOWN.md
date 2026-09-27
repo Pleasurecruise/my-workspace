@@ -11,7 +11,7 @@ custom `embed:*` fences, resolves provider snapshots, sanitizes SVG, and supplie
 | Publication        | Syntect-highlighted code, Mermaid SVG, enriched embeds                             |
 | Knowledge          | Ordinary code/Mermaid fences, enriched embeds, stable heading IDs, TOC and excerpt |
 | Knowledge fallback | Embeds remain visible as source code                                               |
-| Memo               | Soft line breaks become hard breaks                                                |
+| Memo               | Hard line breaks and indentation-based list continuations                          |
 
 Knowledge strips one leading frontmatter block without using it as metadata. Publication does not.
 Embed validation precedes provider reads. Rust counts prose at 350 CJK characters or 200 other words
@@ -219,6 +219,5 @@ Never reuse published names for different artwork.
 The preferred `suzume` pack references 16 named 300×300 green-cat images from
 [Suzume’s public collection](https://szm.de5.net/posts/suzume5/), excluding its contact sheet.
 Existing SuzumeS5 and 白圣女 names retain their Fullyst and Stickers.wiki URLs.
-The low-resolution Combot packs (`daimao2`, `denghuoju8`) were removed at the owner's request;
-update their article shortcodes before deploying the removal. These are remote references, not
-bundled artwork or a license grant. Rights and availability remain with authors/providers.
+These are remote references, not bundled artwork or a license grant. Rights and availability
+remain with authors/providers.

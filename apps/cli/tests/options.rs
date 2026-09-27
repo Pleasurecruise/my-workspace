@@ -27,7 +27,7 @@ fn help_does_not_initialize_runtime() {
         vec!["memo", "list", "--help"],
         vec!["help", "memo", "list"],
         vec!["todo", "notion", "connect", "-h"],
-        vec!["moment", "upload-photo", "--help"],
+        vec!["photo", "upload", "--help"],
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_vesper"))
             .args(arguments)

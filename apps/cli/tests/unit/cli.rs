@@ -25,15 +25,15 @@ async fn reads_content_files_without_changing_newlines() {
 async fn rejects_invalid_consumer_queries_before_authentication() {
     for arguments in [
         vec!["memo", "get", ""],
-        vec!["moment", "get", ""],
-        vec!["moment", "query", r#"{"search":"rust","tags":["code"]}"#],
-        vec!["moment", "query", r#"{"fromDate":"2026-02-30"}"#],
+        vec!["photo", "get", ""],
+        vec!["photo", "query", r#"{"search":"rust","tags":["code"]}"#],
+        vec!["photo", "query", r#"{"fromDate":"2026-02-30"}"#],
         vec![
-            "moment",
+            "photo",
             "query",
             r#"{"fromDate":"2026-09-05","toDate":"2026-09-01"}"#,
         ],
-        vec!["moment", "query", r#"{"limit":101}"#],
+        vec!["photo", "query", r#"{"limit":101}"#],
         vec!["knowledge", "page", r#"{"limit":0}"#],
         vec!["knowledge", "page", r#"{"tags":[""]}"#],
         vec!["knowledge", "page", r#"{"unknown":true}"#],

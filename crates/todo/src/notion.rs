@@ -163,7 +163,6 @@ pub(crate) async fn read(configuration: &NotionCalendar) -> Result<Vec<Item>, Er
     result
 }
 
-/// Paginates the temporary view query and collects the identifiers of its referenced pages.
 async fn collect_references(
     binary: &Path,
     query_path: &str,
@@ -203,7 +202,6 @@ async fn collect_references(
     Ok(references)
 }
 
-/// Pages through the data source query and projects the referenced pages in view order.
 async fn load_pages(
     binary: &Path,
     data_source_id: &uuid::Uuid,

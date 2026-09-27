@@ -36,7 +36,6 @@ pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String,
     ))
 }
 
-// Main and quoted posts share the same provider contract and safe HTML rendering.
 fn card(post: &Post, quoted: bool) -> Result<String, EmbedError> {
     let url = link_preview::twitter::canonical_url(&format!(
         "https://x.com/{}/status/{}",

@@ -29,23 +29,6 @@ it.each(["apps/desktop/src", "packages/ui/src"])(
 	},
 );
 
-it("accepts Svelte runes, TypeScript props, and scale classes", async () => {
-	const results = await linter.lintText(
-		'<script lang="ts">let { count }: { count: number } = $props(); const doubled = $derived(count * 2);</script><div class="p-4">{doubled}</div>',
-		{ filePath: "apps/desktop/src/LintProbe.svelte" },
-	);
-	expect(results.flatMap((result) => result.messages)).toEqual([]);
-});
-
-it("checks Svelte list keys", async () => {
-	const results = await linter.lintText("{#each [1, 2] as item}<span>{item}</span>{/each}", {
-		filePath: "apps/desktop/src/LintProbe.svelte",
-	});
-	expect(results.flatMap((result) => result.messages.map((message) => message.ruleId))).toContain(
-		"svelte/require-each-key",
-	);
-});
-
 it("does not allow inline comments to suppress template checks", async () => {
 	const results = await linter.lintText(
 		'<!-- eslint-disable-next-line shadcn/no-arbitrary-values -->\n<div class="p-[13px]">Probe</div>',

@@ -27,6 +27,71 @@ fn normalize(command: &Command, matches: &ArgMatches, output: &mut Vec<String>) 
         normalize(child, child_matches, output);
         return;
     }
+    let domain = output.first().map(String::as_str);
+    if command.get_name() == "list" && matches!(domain, Some("memo" | "knowledge" | "photo")) {
+        let mut filters = serde_json::Map::new();
+        for (argument, field) in [
+            ("cursor", "cursor"),
+            ("search", "search"),
+            ("visibility", "visibility"),
+            ("from", "fromDate"),
+            ("to", "toDate"),
+        ] {
+            if let Ok(Some(value)) = matches.try_get_one::<String>(argument) {
+                filters.insert(field.into(), value.clone().into());
+            }
+        }
+        if let Some(limit) = matches.get_one::<u64>("limit") {
+            filters.insert("limit".into(), (*limit).into());
+        }
+        if let Some(tags) = matches.get_many::<String>("tag") {
+            filters.insert("tags".into(), tags.cloned().collect::<Vec<_>>().into());
+        }
+        for (argument, field) in [
+            ("archived", "archivedOnly"),
+            ("favorites", "favoritesOnly"),
+            ("updated", "sortByUpdated"),
+        ] {
+            if matches.try_get_one::<bool>(argument).ok().flatten() == Some(&true) {
+                filters.insert(field.into(), true.into());
+            }
+        }
+        let action = if domain == Some("photo") {
+            "query"
+        } else {
+            "page"
+        };
+        output.pop();
+        output.extend([
+            action.to_owned(),
+            serde_json::Value::Object(filters).to_string(),
+        ]);
+        return;
+    }
+    if domain == Some("photo") && command.get_name() == "upload" {
+        if let Some(path) = matches.get_one::<String>("metadata") {
+            output.extend(["--file".to_owned(), path.clone()]);
+        } else {
+            let metadata = serde_json::json!({
+                "title": matches.get_one::<String>("title"),
+                "description": matches.get_one::<String>("description"),
+                "tags": matches.get_many::<String>("tag").into_iter().flatten().collect::<Vec<_>>(),
+                "date": matches.get_one::<String>("date"),
+            });
+            output.push(metadata.to_string());
+        }
+        output.push(
+            matches
+                .get_one::<String>("SOURCE_IMAGE")
+                .expect("required image")
+                .clone(),
+        );
+        return;
+    }
+    if domain == Some("photo") && output.get(1).is_some_and(|value| value == "object") {
+        output.remove(1);
+        output[1] = format!("object-{}", command.get_name());
+    }
     for argument in command.get_positionals() {
         let id = argument.get_id().as_str();
         if id == "input" {
@@ -54,16 +119,12 @@ fn normalize(command: &Command, matches: &ArgMatches, output: &mut Vec<String>) 
     }
 }
 
-fn content(command: Command, multiple: bool) -> Command {
+fn content(command: Command) -> Command {
     command
         .arg(
             Arg::new("input")
                 .value_name("INPUT")
-                .num_args(if multiple {
-                    clap::builder::ValueRange::from(1..)
-                } else {
-                    1.into()
-                })
+                .num_args(1..)
                 .help("Inline Markdown or JSON; use -- before content starting with a dash"),
         )
         .arg(arg!(--file <PATH> "Read UTF-8 content from a file"))
@@ -87,13 +148,21 @@ fn command() -> Command {
         )
         .subcommand(Command::new("tags").about("List tags and counts"))
         .subcommand(
-            Command::new("list")
-                .about("List newest memos (default 10, maximum 25)")
-                .args([arg!([LIMIT])]),
+            Command::new("list").about("List and filter memos").args([
+                arg!(--limit <COUNT> "Maximum results (1–25)")
+                    .value_parser(clap::value_parser!(u64).range(1..=25))
+                    .default_value("10"),
+                arg!(--cursor <CURSOR> "Continue from nextCursor"),
+                arg!(--tag <TAG> "Filter by tag; repeat for multiple tags")
+                    .action(ArgAction::Append),
+                arg!(--search <TEXT> "Search memo content"),
+                arg!(--archived "Show archived memos").conflicts_with("favorites"),
+                arg!(--favorites "Show favorites"),
+                arg!(--updated "Sort by update time"),
+            ]),
         )
         .subcommand(content(
             Command::new("page").about("List a filtered page using JSON"),
-            true,
         ))
         .subcommand(
             Command::new("search")
@@ -102,7 +171,6 @@ fn command() -> Command {
         )
         .subcommand(content(
             Command::new("create").about("Create a private memo from Markdown"),
-            true,
         ))
         .subcommand(
             Command::new("import-x")
@@ -116,13 +184,11 @@ fn command() -> Command {
             Command::new("update")
                 .about("Replace a memo's Markdown")
                 .args([arg!(<ID>)]),
-            true,
         ))
         .subcommand(content(
             Command::new("patch")
                 .about("Update memo fields using JSON")
                 .args([arg!(<ID>)]),
-            true,
         ))
         .subcommand(
             Command::new("visibility")
@@ -151,8 +217,17 @@ fn command() -> Command {
         .arg_required_else_help(true)
         .subcommand(
             Command::new("list")
-                .about("List article summaries")
-                .args([arg!([CURSOR])]),
+                .about("List and filter article summaries")
+                .args([
+                    arg!(--limit <COUNT> "Maximum results (1–100)")
+                        .value_parser(clap::value_parser!(u64).range(1..=100))
+                        .default_value("20"),
+                    arg!(--cursor <CURSOR> "Continue from cursor"),
+                    arg!(--tag <TAG> "Filter by tag; repeat for multiple tags")
+                        .action(ArgAction::Append),
+                    arg!(--visibility <VISIBILITY> "Filter visibility")
+                        .value_parser(["public", "private"]),
+                ]),
         )
         .subcommand(
             Command::new("get")
@@ -161,11 +236,9 @@ fn command() -> Command {
         )
         .subcommand(content(
             Command::new("page").about("List summaries using JSON filters"),
-            true,
         ))
         .subcommand(content(
             Command::new("create").about("Create an article using JSON"),
-            true,
         ))
         .subcommands(
             [
@@ -182,7 +255,7 @@ fn command() -> Command {
                     "Set visibility using JSON with expectedHash and expectedUpdatedAt",
                 ),
             ]
-            .map(|(name, about)| content(Command::new(name).about(about).args([arg!(<ID>)]), true)),
+            .map(|(name, about)| content(Command::new(name).about(about).args([arg!(<ID>)]))),
         )
         .subcommand(
             Command::new("delete")
@@ -194,8 +267,8 @@ fn command() -> Command {
                 ]),
         );
 
-    let moment = Command::new("moment")
-        .about("Read and manage Moment photos")
+    let photo = Command::new("photo")
+        .about("Upload and manage photos in the Moment gallery")
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommand(
@@ -203,7 +276,13 @@ fn command() -> Command {
                 .about("Read one photo")
                 .args([arg!(<ID>)]),
         )
-        .subcommand(Command::new("list").about("List the latest 100 photos"))
+        .subcommand(Command::new("list").about("List and filter gallery photos").args([
+            arg!(--limit <COUNT> "Maximum results (1–100)").value_parser(clap::value_parser!(u64).range(1..=100)).default_value("20"),
+            arg!(--tag <TAG> "Filter by tag; repeat for multiple tags").action(ArgAction::Append),
+            arg!(--from <YYYY_MM_DD> "First capture date"),
+            arg!(--to <YYYY_MM_DD> "Last capture date"),
+            arg!(--search <TEXT> "Search photos").conflicts_with_all(["tag", "from", "to"]),
+        ]))
         .subcommand(Command::new("tags").about("List photo tags"))
         .subcommand(
             Command::new("search")
@@ -212,46 +291,45 @@ fn command() -> Command {
         )
         .subcommand(content(
             Command::new("query").about("Query photos using JSON filters"),
-            true,
         ))
         .subcommand(content(
-            Command::new("create").about("Register uploaded image keys using JSON"),
-            true,
+            Command::new("register").about("Register existing image objects using JSON"),
         ))
         .subcommand(content(
             Command::new("update")
                 .about("Update photo metadata using JSON")
                 .args([arg!(<ID>)]),
-            true,
         ))
         .subcommand(
-            content(
-                Command::new("upload-photo").about("Process, upload, and register a photo"),
-                false,
-            )
-            .arg(arg!(<SOURCE_IMAGE>))
-            .allow_missing_positional(true),
+            Command::new("upload")
+                .about("Process an image, upload it, and add it to the gallery")
+                .arg(arg!(<SOURCE_IMAGE> "Local PNG, JPEG, WebP, AVIF, or HEIC image"))
+                .args([
+                    arg!(--title <TITLE> "Photo title (default: file name)"),
+                    arg!(--description <TEXT> "Photo description"),
+                    arg!(--tag <TAG> "Photo tag; repeat for multiple tags").action(ArgAction::Append),
+                    arg!(--date <DATE> "Capture time (default: image EXIF)"),
+                    arg!(--metadata <PATH> "Read Upload metadata JSON from a file")
+                        .conflicts_with_all(["title", "description", "tag", "date"]),
+                ])
+                .after_help("Example: vesper photo upload photo.heic --title 'Weekend walk' --tag travel\nEXIF supplies capture time and location unless metadata overrides them."),
         )
         .subcommand(
             Command::new("delete")
                 .about("Delete a photo through the consumer API")
                 .args([arg!(<ID>)]),
         )
-        .subcommand(
-            Command::new("upload")
-                .about("Upload an original or thumbnail to R2")
-                .args([arg!(<R2_KEY>), arg!(<LOCAL_PATH>)]),
-        )
-        .subcommand(
-            Command::new("download")
-                .about("Download an R2 image")
-                .args([arg!(<R2_KEY>), arg!(<LOCAL_PATH>)]),
-        )
-        .subcommand(
-            Command::new("remove-object")
-                .about("Remove a verified orphan from R2")
-                .args([arg!(<R2_KEY>)]),
-        );
+        .subcommand(Command::new("object")
+            .about("Manage raw R2 objects; uploads do not add photos to the gallery")
+            .subcommand_required(true)
+            .subcommands([
+                Command::new("put").about("Upload an object without registering a photo")
+                    .args([arg!(<R2_KEY>), arg!(<LOCAL_PATH>)]),
+                Command::new("get").about("Download an object")
+                    .args([arg!(<R2_KEY>), arg!(<LOCAL_PATH>)]),
+                Command::new("delete").about("Delete a raw object; verify it is unreferenced first")
+                    .args([arg!(<R2_KEY>)]),
+            ]));
 
     let date = arg!(--date <YYYY_MM_DD> "Select a calendar day (default: today)").global(true);
     let todo = Command::new("todo")
@@ -373,6 +451,8 @@ fn command() -> Command {
                 ("opencode", "OpenCode usage"),
                 ("deepseek", "DeepSeek balance"),
                 ("cherryin", "CherryIN balance"),
+                ("tokenflux", "TokenFlux usage"),
+                ("dimagent", "DimAgent usage"),
                 ("exchange", "Exchange rates"),
                 ("quotation", "Quotation"),
                 ("service-catalog", "Available service IDs"),
@@ -412,7 +492,7 @@ fn command() -> Command {
         .subcommand(Command::new("build").about("Validate local content using temporary output"))
         .subcommand(Command::new("publish").about("Build and preview publication to R2")
             .arg(Arg::new("live").long("live").action(ArgAction::SetTrue).help("Upload the build to R2")))
-        .subcommands([memo, knowledge, moment, todo, ledger, game, status])
+        .subcommands([memo, knowledge, photo, todo, ledger, game, status])
         .after_help("Use 'vesper <command> --help' for details and 'vesper help <command>' to explore commands.")
 }
 

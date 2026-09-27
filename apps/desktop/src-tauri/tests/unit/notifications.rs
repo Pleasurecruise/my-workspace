@@ -152,7 +152,6 @@ async fn subscription_only_connects_on_active_route_and_stops_on_exit() {
         .unwrap();
     assert!(subscription.task.is_none());
     assert!(sender.send(()).is_err());
-    // Saving credentials after navigation must not reconnect.
     subscription.update(None, no_connection).await.unwrap();
 }
 

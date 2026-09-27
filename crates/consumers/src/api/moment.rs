@@ -100,12 +100,44 @@ pub enum MetadataPolicy {
 pub struct Upload {
     pub title: String,
     pub description: Option<String>,
+    #[serde(default)]
     pub tags: Vec<String>,
     pub date: Option<String>,
     pub geo: Option<Geo>,
 }
 
 impl Upload {
+    pub fn validate(&self) -> Result<(), ApiError> {
+        const INVALID_METADATA: &str = "photo upload metadata is invalid";
+        if self.title.trim().is_empty() || self.title.chars().count() > 120 {
+            return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
+        }
+        if self
+            .description
+            .as_ref()
+            .is_some_and(|description| description.chars().count() > 500)
+        {
+            return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
+        }
+        if self.tags.len() > 10 {
+            return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
+        }
+        for tag in &self.tags {
+            if tag.trim().is_empty() || tag.chars().count() > 50 {
+                return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
+            }
+        }
+        match &self.geo {
+            Some(geo)
+                if !(-90.0..=90.0).contains(&geo.lat) || !(-180.0..=180.0).contains(&geo.lng) =>
+            {
+                return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
+            }
+            Some(_) | None => {}
+        }
+        Ok(())
+    }
+
     fn apply_metadata(&mut self, metadata: PhotoMetadata, policy: MetadataPolicy) {
         if matches!(policy, MetadataPolicy::SourceDefaults) {
             self.date = self.date.take().or(metadata.captured_at);
@@ -342,31 +374,7 @@ pub async fn upload(
     source: Vec<u8>,
     metadata_policy: MetadataPolicy,
 ) -> Result<Photo, ApiError> {
-    const INVALID_METADATA: &str = "photo upload metadata is invalid";
-    if input.title.trim().is_empty() || input.title.chars().count() > 120 {
-        return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
-    }
-    if input
-        .description
-        .as_ref()
-        .is_some_and(|description| description.chars().count() > 500)
-    {
-        return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
-    }
-    if input.tags.len() > 10 {
-        return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
-    }
-    for tag in &input.tags {
-        if tag.trim().is_empty() || tag.chars().count() > 50 {
-            return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
-        }
-    }
-    match &input.geo {
-        Some(geo) if !(-90.0..=90.0).contains(&geo.lat) || !(-180.0..=180.0).contains(&geo.lng) => {
-            return Err(ApiError::Protocol(INVALID_METADATA.to_owned()));
-        }
-        Some(_) | None => {}
-    }
+    input.validate()?;
     let prepare_task = tokio::task::spawn_blocking(move || media::prepare(&source))
         .await
         .map_err(|_| ApiError::Protocol("photo processor stopped unexpectedly".to_owned()))?;

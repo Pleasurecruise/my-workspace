@@ -1,7 +1,6 @@
 use super::{EmbedError, check_align, unquote};
 use std::io::Cursor;
 
-/// Split a canvas source into its optional `align:` header line and the body after it.
 pub(super) fn split_header(source: &str) -> (Option<&str>, &str) {
     match source.lines().next() {
         Some(line) if line.trim_start().starts_with("align:") => (

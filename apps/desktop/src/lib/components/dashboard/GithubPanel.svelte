@@ -31,9 +31,6 @@
 		}
 	}
 
-	function activityDate(date: string) {
-		return dateFormatter.format(new Date(date));
-	}
 </script>
 
 <section class="github-panel" aria-label="GitHub contributions, activity and notifications">
@@ -87,7 +84,7 @@
 								{:else}<GitCommitHorizontal size={14} />{/if}
 							</span>
 							<span class="activity-copy">
-								<span><strong>{activityLabel(activity)}</strong><time datetime={activity.occurredAt}>{activityDate(activity.occurredAt)}</time></span>
+								<span><strong>{activityLabel(activity)}</strong><time datetime={activity.occurredAt}>{dateFormatter.format(new Date(activity.occurredAt))}</time></span>
 								<b>{activity.title}</b>
 								<small>{activity.repository}</small>
 							</span>
@@ -109,7 +106,7 @@
 						<button type="button" class="activity" disabled={notification.url === null} title={notification.url === null ? "View this notification in GitHub Inbox" : notification.title} onclick={() => { if (notification.url !== null) void openUrl(notification.url); }}>
 							<span class="activity-icon">{#if notification.reason === "review_requested"}<GitPullRequest size={14} />{:else}<Bell size={14} />{/if}</span>
 							<span class="activity-copy">
-								<span><strong>{notification.reason === "review_requested" ? "Review requested" : notification.reason.replaceAll("_", " ")}</strong><time datetime={notification.updatedAt}>{activityDate(notification.updatedAt)}</time></span>
+								<span><strong>{notification.reason === "review_requested" ? "Review requested" : notification.reason.replaceAll("_", " ")}</strong><time datetime={notification.updatedAt}>{dateFormatter.format(new Date(notification.updatedAt))}</time></span>
 								<b>{notification.title}</b><small>{notification.repository}</small>
 							</span>
 						</button>

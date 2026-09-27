@@ -89,8 +89,16 @@ incomplete groups fail validation. Settings writes the database, never `.env` or
 restart after changing an overriding environment value. Define only features under development.
 
 On macOS, release credentials share Keychain service `me.you-find.vesper`, account `credentials`.
-An ad-hoc update may require renewed authorization. Browser and QR login do not require copied
-session tokens. Codex, pi, and Claude integrations retain their existing CLI authentication;
+Each process caches one credential snapshot; unchanged saves do not write Keychain or invalidate
+other processes. A new CLI process still reads Keychain once. “Always Allow” authorizes the current
+program identity; ad-hoc updates change that identity and may require renewed authorization.
+Keychain also checks the item's partition list: trusting the CLI in the application list does not
+resolve a partition list that permits only the desktop's code hash. Repeated prompts for an unchanged
+binary require checking both controls. Repair only this service/account with macOS `security`
+using the installed applications' code hashes; never authorize all tools or pass a Keychain password
+on the command line. Stable signed identities are needed for authorization to survive binary updates.
+Browser and QR login do not require copied session tokens. Codex, pi, and Claude integrations retain
+their existing CLI authentication;
 Claude's debug read does not invoke macOS `security`.
 
 Only typed Settings reads may return editable credentials to the trusted local form. Provider

@@ -228,9 +228,62 @@ pub fn render(source: &str) -> String {
 }
 
 pub fn render_memo(source: &str) -> String {
+    let mut list_depth = 0;
+    let mut protected_depth = 0;
+    let mut separated = false;
+    let mut output = String::new();
+    let mut cursor = 0;
+    for (event, range) in Parser::new_ext(source, options()).into_offset_iter() {
+        match event {
+            Event::Start(Tag::List(_)) => list_depth += 1,
+            Event::End(TagEnd::List(_)) => list_depth -= 1,
+            Event::Start(Tag::Item) => separated = false,
+            Event::Start(
+                Tag::BlockQuote(_)
+                | Tag::Link { .. }
+                | Tag::Image { .. }
+                | Tag::Strong
+                | Tag::Emphasis
+                | Tag::Strikethrough,
+            ) => {
+                protected_depth += 1;
+            }
+            Event::End(
+                TagEnd::BlockQuote(_)
+                | TagEnd::Link
+                | TagEnd::Image
+                | TagEnd::Strong
+                | TagEnd::Emphasis
+                | TagEnd::Strikethrough,
+            ) => {
+                protected_depth -= 1;
+            }
+            Event::SoftBreak
+                if list_depth > 0
+                    && protected_depth == 0
+                    && !separated
+                    && source[range.end..]
+                        .chars()
+                        .next()
+                        .is_some_and(|character| !character.is_whitespace()) =>
+            {
+                output.push_str(&source[cursor..range.end]);
+                output.push('\n');
+                cursor = range.end;
+                separated = true;
+            }
+            _ => {}
+        }
+    }
+    let source = if cursor == 0 {
+        std::borrow::Cow::Borrowed(source)
+    } else {
+        output.push_str(&source[cursor..]);
+        std::borrow::Cow::Owned(output)
+    };
     let mut protected_depth = 0;
     let mut events = Vec::new();
-    for event in Parser::new_ext(source, options()).map(|event| normalize(event, true)) {
+    for event in Parser::new_ext(&source, options()).map(|event| normalize(event, true)) {
         if matches!(
             &event,
             Event::Start(Tag::CodeBlock(_) | Tag::Link { .. } | Tag::Image { .. })

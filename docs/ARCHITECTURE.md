@@ -87,6 +87,8 @@ request parsing. Spotify and X share that boundary; their feature crates retain 
 client selection, credential storage and refresh-token rotation policy. Token requests use system
 proxies, bounded timeouts and no redirects; callback and token failures omit response bodies.
 
+QQ Music keeps session renewal and Cookie authentication in `qq/auth.rs`, shared with QR login;
+the provider root owns library and playback coordination, and `qq/audio.rs` owns audio execution.
 Music and game runtimes outlive route mounts. Their authentication, cancellation, cache and playback
 rules belong in [Music](MUSIC.md) and [Games](GAMES.md); NAS protocols belong in [UGOS](UGOS.md).
 Inbox independently activates its ntfy stream while its route is active.
@@ -148,6 +150,8 @@ restoring invalidated content. Writes retain each consumer's server-side coordin
 | Moment    | API owns metadata; Rust prepares image variants, uploads them to R2, then registers them. The list is a bounded batch without a synthetic cursor.                                                                                                |
 | Knowledge | API summaries form the metadata-only index and classify Newspaper editions. Opening a document performs an authorized detail read and Rust compilation. Writes require both the content hash and exact updated timestamp for conflict detection. |
 
+Knowledge keeps API contracts and index policy in `api/knowledge.rs`; its `render` submodule owns
+document compilation, editor previews and authorized reference enrichment.
 Knowledge stores Markdown. Milkdown owns browser editing and selection, while `cms-core::markdown`
 owns dialect classification and semantic compatibility. The editor uses Rust source spans to retain
 special syntax as source blocks with inline compiled rendering. The `preview_knowledge` transport
@@ -186,7 +190,9 @@ to Todo, not credentials. [Development](DEVELOPMENT.md#credential-resolution) de
 `crates/todo` owns dated tasks, habit history and calendar projections. ICS parsing uses `icalendar`;
 `rrule` validates and evaluates supported recurrence rules. Notion CLI reads and Codex Resets HTTP
 reads stay in this crate. The Notion CLI owns authentication; Codex Resets needs only a local enable
-preference. Each source updates its own records and preserves saved data on failure. Configuration
+preference. `store/calendar.rs` owns calendar snapshots, source synchronization and reconciliation into saved
+tasks; the store root owns task mutations and database transactions. Each source updates its own
+records and preserves saved data on failure. Configuration
 changes and reconciliation share locks through commit.
 
 Rust moves opted-in unfinished tasks to today and computes monthly completion from stored tasks and

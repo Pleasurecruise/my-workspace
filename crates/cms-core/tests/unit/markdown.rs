@@ -71,6 +71,44 @@ fn renders_extensions() {
 #[test]
 fn renders_memo_breaks() {
     assert_eq!(render_memo("first\nsecond"), "<p>first<br />\nsecond</p>\n");
+
+    let source = "明天需要有眉目的3件事\n1. 和中介联系沟通了解大致情况\n2. 和导师联系确定fyp项目\n3. 做一套雅思阅读 看看大致的水平\n完成之后 => oc 规范文档  design system\n下一行";
+    let html = render_memo(source);
+    assert!(html.contains("<li>做一套雅思阅读 看看大致的水平</li>\n</ol>\n<p>完成之后 =&gt; oc 规范文档  design system<br />\n下一行</p>"), "{html}");
+    assert!(render(source).contains("design system\n下一行</li>"));
+    for source in [
+        "- one\nafter",
+        "3. one\nafter",
+        "- one\r\nafter",
+        "- one\n  - nested\nafter",
+        "- a\n  - b\nafter\n  - c\nafter",
+    ] {
+        assert!(render_memo(source).ends_with("<p>after</p>\n"), "{source}");
+    }
+
+    for source in [
+        "before\n\n1. one\n2. two\n\nafter",
+        "1. one\n   continuation\n2. two",
+        "- one\n  - nested\n    continuation\n- two",
+        "> 1. one\n> continuation",
+        "1. quoted\n   > quote\ncontinuation",
+        "```text\n1. one\nafter\n```",
+        "1. code\n\n   ```text\n   code\n   ```",
+        "1. [multi\nline](https://example.com)",
+        "- one\\\ncontinued",
+        "- one  \ncontinued",
+        "- **one\ncontinuation**",
+        "- *one\ncontinuation*",
+        "- ~~one\ncontinuation~~",
+    ] {
+        assert_eq!(
+            render_memo(source),
+            render(source)
+                .replace("\ncontinuation", "<br />\ncontinuation")
+                .replace("\nline</a>", "<br />\nline</a>"),
+            "{source}"
+        );
+    }
 }
 
 #[test]

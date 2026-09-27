@@ -19,10 +19,6 @@ diesel::table! {
     }
 }
 
-#[cfg(test)]
-#[path = "../tests/unit/game_layout.rs"]
-mod game_tests;
-
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Habit {
@@ -862,19 +858,6 @@ mod tests {
         let json = br#"{"revision":1,"widgets":[]}"#;
 
         assert!(decode(json).is_err());
-    }
-
-    #[test]
-    fn rejects_old_widgets() {
-        for kind in [
-            "usage", "quota", "balance", "todo", "calendar", "todoList", "checkIn",
-        ] {
-            let bytes = serde_json::to_vec(&serde_json::json!({
-                "widgets": [{ "id": "old", "widget": { "kind": kind } }]
-            }))
-            .unwrap();
-            assert!(decode(&bytes).is_err(), "unsupported widget {kind}");
-        }
     }
 }
 

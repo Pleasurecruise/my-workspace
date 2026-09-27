@@ -3,7 +3,8 @@ use std::time::{Duration, Instant};
 
 use reqwest::header::{COOKIE, LOCATION, REFERER as REFERER_HEADER, SET_COOKIE};
 
-use super::{API, QqResponse, REFERER, RenewData, check, hash33, read_time, render_cookie};
+use super::auth::{RenewData, hash33, read_time, render_cookie};
+use super::{API, QqResponse, REFERER, check};
 use crate::{Error, Result};
 
 const QR_API: &str = "https://ssl.ptlogin2.qq.com/ptqrshow";

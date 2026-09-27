@@ -14,7 +14,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
         ("query", input) => {
             let input = crate::read_input(input).await?;
             let query = serde_json::from_str(&input)
-                .map_err(|error| format!("invalid Moment query: {error}"))?;
+                .map_err(|error| format!("invalid photo query: {error}"))?;
             let photos = consumers::api::moment::query(&query)
                 .await
                 .map_err(|error| error.to_string())?;
@@ -26,12 +26,6 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "tags": tags }))
         }
-        ("list", []) => {
-            let page = consumers::api::moment::list()
-                .await
-                .map_err(|error| error.to_string())?;
-            print_json(&page)
-        }
         ("search", query) if !query.is_empty() => {
             let query = query.join(" ");
             let photos = consumers::api::moment::search(&query)
@@ -39,33 +33,44 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "photos": photos }))
         }
-        ("create", input) => {
+        ("register", input) => {
             let input = crate::read_input(input).await?;
             let input: Create = serde_json::from_str(&input)
-                .map_err(|error| format!("invalid moment create JSON: {error}"))?;
+                .map_err(|error| format!("invalid photo create JSON: {error}"))?;
             let photo = consumers::api::moment::create(&input)
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&photo)
         }
-        ("upload-photo", arguments) => {
+        ("upload", arguments) => {
             let (input, source_path) = match arguments {
-                [separator, _, source] if separator == "--" => (&arguments[..2], source),
                 [flag, _, source] if flag == "--file" => (&arguments[..2], source),
-                [flag, source] if flag == "--stdin" => (&arguments[..1], source),
                 [input, source] if !input.starts_with("--") => (&arguments[..1], source),
                 _ => {
                     return Err(
-                        "expected upload-photo <input> <source-image>; run `vesper help`"
+                        "expected photo upload <source-image> [--metadata <path>]; run `vesper help`"
                             .to_owned(),
                     );
                 }
             };
             let input = crate::read_input(input).await?;
-            let input: Upload = serde_json::from_str(&input)
-                .map_err(|error| format!("invalid Moment upload JSON: {error}"))?;
+            let mut metadata: serde_json::Value = serde_json::from_str(&input)
+                .map_err(|error| format!("invalid photo upload JSON: {error}"))?;
+            if metadata.get("title").is_none_or(serde_json::Value::is_null) {
+                let title = Path::new(source_path)
+                    .file_stem()
+                    .and_then(|name| name.to_str())
+                    .ok_or_else(|| "photo title is required for this file name".to_owned())?;
+                let fields = metadata
+                    .as_object_mut()
+                    .ok_or_else(|| "photo metadata must be a JSON object".to_owned())?;
+                fields.insert("title".into(), title.into());
+            }
+            let input: Upload = serde_json::from_value(metadata)
+                .map_err(|error| format!("invalid photo upload JSON: {error}"))?;
+            input.validate().map_err(|error| error.to_string())?;
             let source = tokio::fs::read(source_path).await.map_err(|error| {
-                format!("could not read Moment source image {source_path}: {error}")
+                format!("could not read photo source image {source_path}: {error}")
             })?;
             let store = cms_core::r2::Store::from_credentials()
                 .await
@@ -83,7 +88,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
         ("update", [id, input @ ..]) => {
             let input = crate::read_input(input).await?;
             let input: Update = serde_json::from_str(&input)
-                .map_err(|error| format!("invalid moment update JSON: {error}"))?;
+                .map_err(|error| format!("invalid photo update JSON: {error}"))?;
             let photo = consumers::api::moment::update(id, &input)
                 .await
                 .map_err(|error| error.to_string())?;
@@ -95,7 +100,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "id": id, "deleted": true }))
         }
-        ("upload", [key, path]) => {
+        ("object-put", [key, path]) => {
             let store = cms_core::r2::Store::from_credentials()
                 .await
                 .map_err(|error| error.to_string())?;
@@ -105,17 +110,17 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "key": key, "uploaded": true }))
         }
-        ("download", [key, path]) => {
+        ("object-get", [key, path]) => {
             let store = cms_core::r2::Store::from_credentials()
                 .await
                 .map_err(|error| error.to_string())?;
             let bytes = store.get(key).await.map_err(|error| error.to_string())?;
             tokio::fs::write(path, bytes)
                 .await
-                .map_err(|error| format!("could not write Moment image {path}: {error}"))?;
+                .map_err(|error| format!("could not write photo image {path}: {error}"))?;
             print_json(&json!({ "key": key, "path": path, "downloaded": true }))
         }
-        ("remove-object", [key]) => {
+        ("object-delete", [key]) => {
             let store = cms_core::r2::Store::from_credentials()
                 .await
                 .map_err(|error| error.to_string())?;
@@ -123,7 +128,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             print_json(&json!({ "key": key, "removed": true }))
         }
         (invalid_action, invalid_arguments) => Err(format!(
-            "invalid moment arguments: {action} {}; run `vesper help`",
+            "invalid photo arguments: {action} {}; run `vesper help`",
             invalid_arguments.join(" "),
             action = invalid_action
         )),
@@ -135,14 +140,27 @@ mod tests {
     use super::run;
 
     #[tokio::test]
-    async fn rejects_bad_upload_json() {
-        let error = run(
-            "upload-photo",
-            &["not-json".to_owned(), "source.heic".to_owned()],
-        )
-        .await
-        .expect_err("invalid upload JSON should fail");
+    async fn rejects_invalid_upload_metadata() {
+        let error = run("upload", &["not-json".to_owned(), "source.heic".to_owned()])
+            .await
+            .expect_err("invalid upload JSON should fail");
 
-        assert!(error.starts_with("invalid Moment upload JSON:"));
+        assert!(error.starts_with("invalid photo upload JSON:"));
+        for metadata in [
+            serde_json::json!({"title": ""}),
+            serde_json::json!({"title": "Photo", "tags": [""]}),
+            serde_json::json!({"title": "Photo", "geo": {"lat": 91, "lng": 0}}),
+        ] {
+            let error = run(
+                "upload",
+                &[metadata.to_string(), "missing-image.png".into()],
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(
+                error,
+                "consumer API returned invalid data: photo upload metadata is invalid"
+            );
+        }
     }
 }

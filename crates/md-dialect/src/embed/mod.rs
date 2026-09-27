@@ -329,7 +329,6 @@ fn unquote(value: &str) -> &str {
     }
 }
 
-/// Validate one alignment value, keeping it for rendering.
 fn check_align(value: &str) -> Result<&str, EmbedError> {
     if !matches!(value, "left" | "right" | "wide" | "narrow") {
         return Err(EmbedError::InvalidAlignment(value.to_owned()));
@@ -337,7 +336,6 @@ fn check_align(value: &str) -> Result<&str, EmbedError> {
     Ok(value)
 }
 
-/// Remove and validate the optional `align` field, defaulting to `wide`.
 fn align<'a>(fields: &mut HashMap<&str, &'a str>) -> Result<&'a str, EmbedError> {
     check_align(fields.remove("align").unwrap_or("wide"))
 }

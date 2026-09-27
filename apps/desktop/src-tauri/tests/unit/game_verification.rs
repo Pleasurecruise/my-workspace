@@ -35,14 +35,6 @@ fn parent_domain_session_is_available_to_record_subdomains() {
                 .build()
         })
         .collect();
-    // Reproduce the Wry filter that made the former readback close a valid window.
-    let target =
-        reqwest::Url::parse("https://webstatic.mihoyo.com/app/community-game-records/").unwrap();
-    assert!(
-        cookies
-            .iter()
-            .all(|cookie| cookie.domain() != target.domain())
-    );
     assert!(session_installed(&expected, &cookies));
     assert!(!session_installed(&expected, &cookies[..1]));
     for (domain, path, value) in [

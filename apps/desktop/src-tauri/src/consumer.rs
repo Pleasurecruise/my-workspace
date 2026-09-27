@@ -294,6 +294,11 @@ pub(crate) async fn create_photo(
     source: Vec<u8>,
     app: tauri::AppHandle,
 ) -> CommandResponse<consumers::api::moment::Photo> {
+    if let Err(error) = input.validate() {
+        return CommandResponse::Failed {
+            message: error.to_string(),
+        };
+    }
     let state = app.state::<CmsState>();
     let repository = match state.repository().await {
         Ok(repository) => repository,

@@ -38,15 +38,16 @@ vesper knowledge visibility <id> --file visibility.json
 vesper knowledge delete <id> <expected-hash> <expected-updated-at>
 ```
 
-| Read            | Output                   | Content                                            |
-| --------------- | ------------------------ | -------------------------------------------------- |
-| `page`          | `{ articles, cursor }`   | Summary `editions.<locale>.{title,summary}`        |
-| `list [cursor]` | `{ documents, cursor }`  | Flattened Chinese summaries and `newspaperEdition` |
-| `get`           | Article, without wrapper | `editions.<locale>.{title,summary,markdown}`       |
+| Read   | Output                   | Content                                          |
+| ------ | ------------------------ | ------------------------------------------------ |
+| `page` | `{ articles, cursor }`   | Summary `editions.<locale>.{title,summary}`      |
+| `list` | `{ articles, cursor }`   | Same summaries as `page`, selected through flags |
+| `get`  | Article, without wrapper | `editions.<locale>.{title,summary,markdown}`     |
 
 Articles/summaries include `id`, `tags`, `visibility`, `contentHash`, `createdAt`, and `updatedAt`.
+`knowledge list` accepts `--limit`, `--cursor`, repeated `--tag`, and `--visibility`.
 Locales include required `zh` and optional `en`/`ja`; never assume a translation exists. CLI output
-has no desktop `source`, `html`, `toc`, or `stats`. `newspaperEdition` is developer, personal, or null.
+has no desktop `source`, `html`, `toc`, `stats`, or `newspaperEdition`.
 `page` filters: `cursor`, `limit` (1–100, default 20), up to five `tags`, and `visibility`
 (public/private). Tags use AND matching with descendants; no tag filter excludes daily articles.
 Use `tags: ["daily"]` to read those separately. A null cursor ends pagination.
@@ -83,28 +84,31 @@ before publication and use the [recovery rules](../../../docs/WORKFLOW.md#static
 
 ## Memo
 
-The API coordinates R2, D1 and KV; list/search already contain Markdown. `list [limit]` accepts 1–25.
+The API coordinates R2, D1 and KV; list/search already contain Markdown. `list --limit <count>` accepts 1–25 and supports `--cursor`, repeated `--tag`,
+`--search`, `--updated`, `--archived`, and `--favorites`.
 `page` JSON accepts `cursor`, `limit`, `search`, `tags`, `sortByUpdated`, `archivedOnly`,
 `favoritesOnly`; the final two are mutually exclusive. `patch` accepts optional `content`,
 `visibility`, `tags`, `pinned`, `favorite`, `archived` and rejects an empty object.
 `import-x <url> [public|private]` creates a favorite and defaults to private.
 See `vesper memo --help` and [input types](../../../crates/consumers/src/api/memos.rs).
 
-## Moment
+## Photos
 
-Prefer `vesper moment upload-photo --file metadata.json photo.heic`: Rust applies orientation and
+Use `vesper photo upload photo.heic --title "Weekend walk" --tag travel`, or
+`vesper photo upload photo.heic --metadata metadata.json`: Rust applies orientation and
 EXIF defaults, creates normalized PNG/JPEG thumbnail/ThumbHash, uploads to R2, then registers metadata.
 PNG, JPEG, WebP, AVIF and HEIC inputs are limited to 20 MB. JSON follows
 [Upload](../../../crates/consumers/src/api/moment.rs).
 
 Before registration, failed uploads clean up their objects. Once registration starts, retain objects
 for reconciliation: the server may have committed. An upload alone is not publication. Retry failed
-registration before removing anything; `remove-object` is only for verified unreferenced objects.
+registration before removing anything; `photo object delete` is only for verified unreferenced objects.
 Normal `delete <id>` delegates metadata/image removal to the API.
 
+`list` accepts `--limit`, repeated `--tag`, `--from`, `--to`, or `--search`.
 `query` accepts `fromDate`/`toDate` (YYYY-MM-DD), `tags`, `limit` (1–100, default 20), or `search`;
 search cannot combine with dates/tags. Output is `{ photos }`, without a cursor. Update omission
-preserves `date`/`geo`; explicit null clears them. See `vesper moment --help` for recovery commands.
+preserves `date`/`geo`; explicit null clears them. See `vesper photo --help` for recovery commands.
 
 ## Todo and habits
 

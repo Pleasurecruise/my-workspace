@@ -363,7 +363,6 @@ fn parse_ics_date(property: PropertyValue) -> Result<IcsDate, String> {
     })
 }
 
-/// Parses the `HHMM` or `HHMMSS` clock part of an iCalendar DATE-TIME value.
 fn parse_ics_clock(clock: &str, value: &str) -> Result<(u8, u8), String> {
     let invalid = || format!("invalid iCalendar date-time {value}");
     if (clock.len() != 4 && clock.len() != 6) || !clock.bytes().all(|byte| byte.is_ascii_digit()) {

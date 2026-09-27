@@ -3,7 +3,6 @@ use consumers::api::memos::{Update, Visibility};
 use serde::Deserialize;
 use serde_json::json;
 
-const DEFAULT_LIMIT: usize = 10;
 const MAX_LIMIT: usize = consumers::api::memos::PAGE_SIZE;
 
 enum MemoFlag {
@@ -43,33 +42,6 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "tags": tags }))
-        }
-        ("list", limits) if limits.len() <= 1 => {
-            let limit = match limits {
-                [] => DEFAULT_LIMIT,
-                [limit] => limit
-                    .parse()
-                    .map_err(|error| format!("invalid memo limit: {error}"))?,
-                invalid_limits => {
-                    return Err(format!(
-                        "memo list accepts at most one limit, received {}",
-                        invalid_limits.len()
-                    ));
-                }
-            };
-            if !(1..=MAX_LIMIT).contains(&limit) {
-                return Err(format!("memo limit must be between 1 and {MAX_LIMIT}"));
-            }
-            let page = consumers::api::memos::list(
-                None,
-                &consumers::api::memos::ListFilters {
-                    limit: Some(limit),
-                    ..consumers::api::memos::ListFilters::default()
-                },
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-            print_json(&json!({ "memos": page.memos, "nextCursor": page.next_cursor }))
         }
         ("page", input) => {
             let input = crate::read_input(input).await?;

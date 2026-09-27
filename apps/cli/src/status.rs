@@ -18,6 +18,8 @@ struct Report {
     open_code: Source<useage::opencode::OpenCodeUsage>,
     deep_seek: Source<useage::deepseek::DeepSeekBalance>,
     cherry_in: Source<useage::cherryin::CherryInBalance>,
+    tokenflux: Source<useage::tokenflux::TokenFluxUsage>,
+    dimagent: Source<useage::dimagent::DimAgentUsage>,
 }
 
 pub(super) async fn run(sources: &[String]) -> Result<(), String> {
@@ -61,6 +63,8 @@ pub(super) async fn run(sources: &[String]) -> Result<(), String> {
             "opencode" => super::print_json(&useage::opencode::read().await?),
             "deepseek" => super::print_json(&useage::deepseek::read().await?),
             "cherryin" => super::print_json(&useage::cherryin::read().await?),
+            "tokenflux" => super::print_json(&useage::tokenflux::read().await?),
+            "dimagent" => super::print_json(&useage::dimagent::read().await?),
             _ => Err(format!(
                 "unknown status source: {source}; run `vesper help`"
             )),
@@ -70,7 +74,18 @@ pub(super) async fn run(sources: &[String]) -> Result<(), String> {
         return Err("status accepts at most one source".to_owned());
     }
 
-    let (task_manager, claude, codex, copilot, grok, open_code, deep_seek, cherry_in) = tokio::join!(
+    let (
+        task_manager,
+        claude,
+        codex,
+        copilot,
+        grok,
+        open_code,
+        deep_seek,
+        cherry_in,
+        tokenflux,
+        dimagent,
+    ) = tokio::join!(
         ugos::task_manager(),
         useage::claude::read(),
         useage::codex::read(),
@@ -79,8 +94,18 @@ pub(super) async fn run(sources: &[String]) -> Result<(), String> {
         useage::opencode::read(),
         useage::deepseek::read(),
         useage::cherryin::read(),
+        useage::tokenflux::read(),
+        useage::dimagent::read(),
     );
     super::print_json(&Report {
+        tokenflux: match tokenflux {
+            Ok(data) => Source::Ready { data },
+            Err(message) => Source::Failed { message },
+        },
+        dimagent: match dimagent {
+            Ok(data) => Source::Ready { data },
+            Err(message) => Source::Failed { message },
+        },
         task_manager: match task_manager {
             Ok(data) => Source::Ready { data },
             Err(error) => Source::Failed {

@@ -13,18 +13,6 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&page)
         }
-        ("list", []) => {
-            let page = consumers::api::knowledge::list(None)
-                .await
-                .map_err(|error| error.to_string())?;
-            print_json(&page)
-        }
-        ("list", [cursor]) => {
-            let page = consumers::api::knowledge::list(Some(cursor.to_owned()))
-                .await
-                .map_err(|error| error.to_string())?;
-            print_json(&page)
-        }
         ("get", [id]) => {
             let article = consumers::api::knowledge::get(id)
                 .await

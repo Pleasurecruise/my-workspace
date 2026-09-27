@@ -31,7 +31,7 @@ fn help_lists_consumer_queries() {
     for (domain, commands) in [
         ("memo", vec!["get", "list", "page", "patch", "import-x"]),
         ("knowledge", vec!["page", "get", "update-documents"]),
-        ("moment", vec!["query", "get", "upload-photo"]),
+        ("photo", vec!["query", "get", "upload"]),
         ("todo", vec!["check-ins", "undo-check-in", "notion"]),
         ("ledger", vec!["create", "list"]),
     ] {

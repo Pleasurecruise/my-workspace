@@ -126,6 +126,17 @@ fn coordinates_cached_readers_and_preserves_other_provider_updates() {
         matches!(cli.read(&fixture.path(), "my-memos-api").unwrap(), Stored::Ready(value) if value == "memo-token")
     );
     assert_eq!(fixture.backend.0.lock().unwrap().reads, 4);
+    let revision = std::fs::read(fixture.path()).unwrap();
+    desktop
+        .save(&fixture.path(), "my-memos-api", Some("memo-token"))
+        .unwrap();
+    cli.save(&fixture.path(), "missing-provider", None).unwrap();
+    desktop.read(&fixture.path(), "cloudflare-r2").unwrap();
+    cli.read(&fixture.path(), "my-memos-api").unwrap();
+    assert_eq!(std::fs::read(fixture.path()).unwrap(), revision);
+    let memory = fixture.backend.0.lock().unwrap();
+    assert_eq!(memory.reads, 4);
+    assert_eq!(memory.writes, 2);
 }
 
 #[test]

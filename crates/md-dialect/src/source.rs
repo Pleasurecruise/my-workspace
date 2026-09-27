@@ -50,8 +50,6 @@ pub fn normalize_embed_examples(source: &str) -> Cow<'_, str> {
     }
 }
 
-/// Locate the closing fence offset of a bare ``` wrapper around one embed example,
-/// or `None` when the block does not match the Knowledge example shape.
 fn find_example(lines: &[Cow<'_, str>], index: usize) -> Option<usize> {
     if lines[index].trim_end() != "```" {
         return None;

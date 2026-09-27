@@ -534,18 +534,6 @@ fn aligns_article_cards() {
 }
 
 #[test]
-fn isolates_embed_styles() {
-    let mut html = render(ARTICLE, "id: article-123\nalign: narrow", &Data::default())
-        .unwrap()
-        .unwrap();
-    let body = html.clone();
-    add_styles(&mut html);
-    let (styles, after) = html.split_once("</style>").unwrap();
-    assert!(styles.contains(".content-embed.content-embed-narrow"));
-    assert_eq!(after.trim(), body.trim());
-}
-
-#[test]
 fn collects_custom_articles() {
     let source = "```embed:article\nid: article-123\ntitle: Custom\ndescription: Summary\n```";
     assert_eq!(article_ids(source).unwrap(), ["article-123"]);

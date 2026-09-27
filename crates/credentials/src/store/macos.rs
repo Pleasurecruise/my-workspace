@@ -98,6 +98,9 @@ impl<B: Backend> CredentialStore<B> {
     ) -> Result<(), CredentialError> {
         let mut file = lock(path)?;
         let mut credentials = self.load(&mut file)?;
+        if credentials.entries.get(account).map(String::as_str) == value {
+            return Ok(());
+        }
         match value {
             Some(value) => {
                 credentials
