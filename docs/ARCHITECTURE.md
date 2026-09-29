@@ -62,25 +62,38 @@ the narrow exception for values the user edits locally.
 their views and `session.svelte.ts` state; `pages` composes complete routes and `layout` holds shell
 controls. Reusable primitives belong to `packages/ui`. [Design](DESIGN.md) defines presentation.
 
-Sessions survive page mounts within a WebView. Rust supplies an initial content snapshot; a feature
+Content sessions survive page mounts within a WebView. Chat instead discards its conversation and
+draft on navigation. Rust supplies an initial content snapshot; a feature
 accepts it only if a later read or write has not superseded it. Request generations reject stale
 responses, successful writes invalidate older reads, and failed refreshes retain settled data with
-an error. Drafts survive navigation and preserve edits made during saves. Credential changes reset
+an error. Content drafts survive navigation and preserve edits made during saves. Credential changes reset
 only the affected feature.
 
 Dashboard and Dynamic Island share `WidgetContent` and feature panels. The Rust runtime owns source
-polling and per-source request locks; the WebView holds typed projections. Opening the island reads
-only the sources required by its pinned widget, concurrently for composite widgets. Layout records
-preserve invalid widget configurations for repair while rejecting dangling references. [Dashboard](DASHBOARD.md) owns scheduling and source contracts.
+polling and per-source request locks; the WebView holds typed projections. The island starts hidden
+on every application launch and opens only after an explicit visibility action with a pinned widget.
+Opening it reads only that widget's sources, concurrently for composite widgets. Layout records
+preserve invalid widget configurations for repair while rejecting dangling references.
+[Dashboard](DASHBOARD.md) owns scheduling and source contracts.
 
-`apps/desktop/src-tauri/src/terminal` owns Tailscale discovery, local shells, and system OpenSSH sessions through
-`portable-pty`; xterm.js renders typed byte channels. The renderer selects discovered node IDs.
-Rust bounds session resources and expires idle SSH connections independently of the WebView.
-The local terminal launches the current account’s default shell without a Tailscale dependency,
-remains open while idle, and survives tailnet identity changes. Navigation
-preserves hidden terminals; selecting a sidebar device replaces its terminal with a fresh connection.
-Rust replaces same-device sessions atomically and rejects superseded launch requests. App Lock, window reload/destruction and shutdown close them and cancel pending
-launches. [Development](DEVELOPMENT.md#service-setup) describes authentication and idle limits.
+`apps/desktop/src-tauri/src/chat` owns one system Pi RPC subprocess in the current account's home
+directory. Tokio and `tokio-util::codec::LinesCodec` own process and JSONL pipe I/O; Serde decodes
+records. The runtime correlates responses by ID, projects text, thinking and tool activity, and uses
+`cms-core::markdown` for completed assistant messages. Typed Tauri commands and revisioned events
+connect Rust to the main WebView; Svelte owns drafts and presentation. Pi owns authentication and
+configuration. Vesper neither embeds its npm SDK nor exposes its credentials to the WebView.
+Unsupported extension dialogs are cancelled through Pi's UI subprotocol.
+
+`apps/desktop/src-tauri/src/terminal` owns Tailscale discovery, local shells and system OpenSSH
+sessions through `portable-pty`; xterm.js renders typed byte channels. Selecting a sidebar device
+automatically connects it, replacing any earlier session for that device. Navigation preserves
+hidden terminals. Rust bounds resources, expires idle SSH sessions and rejects superseded launches;
+local shells remain open while idle and survive tailnet identity changes.
+
+Both process runtimes cancel pending launches and close on App Lock, main-window reload/destruction
+and shutdown. Chat also closes when leaving its page and runs with `--no-session`, so no conversation
+is persisted. Terminal state survives navigation until its device is selected again or disconnected.
+[Development](DEVELOPMENT.md#service-setup) owns installation, authentication and user-facing controls.
 
 `crates/oauth` adapts `oauth2` to the workspace reqwest transport and uses `httparse` for loopback
 request parsing. Spotify and X share that boundary; their feature crates retain endpoints, scopes,
@@ -218,3 +231,18 @@ The CLI groups commands by feature and reuses the same Rust providers, consumer 
 File/stdin parsing finishes before remote writes. Status reads can target one provider or all;
 content publication remains an explicit operation. Desktop layout and player state stay outside the
 CLI. Use `vesper --help` and [Workflow](WORKFLOW.md) for command usage and recovery.
+
+Command hierarchy follows business ownership, independently of desktop page and widget placement:
+
+| Boundary                | CLI surface                                                        | Desktop relationship                                                                                                       |
+| ----------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Independent domains     | `memo`, `knowledge`, `photo`, `todo`, `ledger`, `game`             | Own records and operations through shared Rust crates. Spending is a widget, but its Ledger domain is independent of Todo. |
+| Domain capabilities     | `todo notion`, Todo habit check-ins, `photo object`, game archives | Stay under the owning domain instead of becoming top-level commands for each panel or control.                             |
+| Provider projections    | `status <source>`                                                  | Expose useful reads such as weather, usage and balances without reproducing Dashboard composition or polling.              |
+| Publication workflow    | `build`, `publish`                                                 | Explicit local-content operations, separate from individual consumer records.                                              |
+| Presentation components | No CLI commands                                                    | Date pickers, chart modes, widget placement, Dynamic Island and window state belong to Desktop.                            |
+
+Extend the CLI when a desktop capability offers a useful terminal read or operation with explicit
+inputs and output. Reuse its Rust feature boundary; do not call a Svelte component or Tauri adapter.
+A new widget alone does not justify a new top-level command. Ledger exposes dated expense CRUD and
+monthly projections; its category and daily charts consume those projections without separate commands.

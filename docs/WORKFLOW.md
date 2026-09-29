@@ -156,6 +156,20 @@ never synchronize calendars; Desktop owns habit names and membership.
 Ledger shares Desktop's local GBP store. Use `ledger --date YYYY-MM-DD` for another day. Amounts are
 decimal GBP strings; quote categories containing spaces.
 
+```sh
+vesper ledger list
+vesper ledger --date 2026-09-28 list
+vesper ledger --date 2026-09-28 create 12.50 "Eating out" "Lunch"
+vesper ledger --date 2026-09-28 update <id> 13.00 "Eating out" "Lunch and tea"
+vesper ledger --date 2026-09-28 delete <id>
+```
+
+Use the returned entry ID for update/delete. `list` returns only the selected day's individual
+entries; monthly data consists of totals, not a full month of itemized expenses. JSON monetary
+fields such as `amountPence` and `monthTotalPence` are integer pence (£12.50 is `1250`).
+This is a manual expense ledger, with no income entries, bank-statement import or multi-currency
+accounting. Provider balances under `status` are separate reads and do not create Ledger entries.
+
 Create/update accept an optional description. Omitting it on update preserves the note; an empty
 string clears it. Each response includes the day's entries and total, month total, category totals,
 daily totals, and category suggestions. Update/delete require the entry's own date. Validation and

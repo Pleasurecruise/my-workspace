@@ -13,6 +13,20 @@
   margin-inline: auto;
 }
 
+.page-layout[data-fill="true"] {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 1rem;
+}
+
+.page-layout[data-fill="true"] .page-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .page-layout :is(h1, h2, h3, h4, h5, h6):not(:where([data-content-typography] *)),
 .page-layout .page-title {
   color: var(--color-foreground);

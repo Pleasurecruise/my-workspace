@@ -40,6 +40,7 @@ export default defineConfig(
 		// These views render only HTML compiled by the Rust Markdown boundary.
 		files: [
 			"apps/desktop/src/lib/components/pages/KnowledgeView.svelte",
+			"apps/desktop/src/lib/components/pages/ChatView.svelte",
 			"apps/desktop/src/lib/components/knowledge/DialectBlock.svelte",
 			"apps/desktop/src/lib/components/pages/MemosView.svelte",
 			"apps/desktop/src/lib/components/pages/NewspaperView.svelte",

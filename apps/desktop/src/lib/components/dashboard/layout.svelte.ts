@@ -13,6 +13,7 @@ export function createLayoutSession() {
 	let revision = 0;
 	let disposed = false;
 	let islandAvailable = $state(false);
+	let islandVisible = $state(false);
 
 	async function load() {
 		if (disposed) return;
@@ -44,6 +45,13 @@ export function createLayoutSession() {
 		return true;
 	}
 
+	async function setIslandVisible(visible: boolean) {
+		const response = await invoke<CommandResponse<null>>("set_island_visible", { visible });
+		if (disposed) return;
+		if (response.status === "ready") islandVisible = visible;
+		else error = response.message;
+	}
+
 	async function reset() {
 		if (disposed || saving) return;
 		const version = ++revision;
@@ -68,6 +76,9 @@ export function createLayoutSession() {
 			islandAvailable = available === true;
 		});
 		void load();
+		void invoke<boolean>("read_island_visible").then((visible) => {
+			if (!disposed) islandVisible = visible;
+		});
 		void invoke<CommandResponse<ServiceStatusCatalogEntry[]>>("read_service_catalog").then(
 			(response) => {
 				if (disposed) return;
@@ -83,6 +94,10 @@ export function createLayoutSession() {
 	});
 
 	return {
+		setIslandVisible,
+		get islandVisible() {
+			return islandVisible;
+		},
 		get islandAvailable() {
 			return islandAvailable;
 		},

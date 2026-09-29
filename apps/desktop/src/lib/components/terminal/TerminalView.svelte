@@ -2,7 +2,9 @@
 	import "@xterm/xterm/css/xterm.css";
 	import { Channel, invoke } from "@tauri-apps/api/core";
 	import { onMount, tick, untrack } from "svelte";
-	import { Cable, RotateCcw, Square } from "@lucide/svelte";
+	import { Cable } from "@lucide/svelte";
+	import { Input, Label } from "@my-workspace/ui";
+	import ConnectionStatus from "../layout/ConnectionStatus.svelte";
 	import type { Terminal } from "@xterm/xterm";
 	import type { FitAddon } from "@xterm/addon-fit";
 	import type { CommandResponse, TerminalTarget, TerminalConnection, TerminalOutput } from "../../consumer";
@@ -265,11 +267,10 @@
 	<div class="terminal-frame">
 		<div class="toolbar">
 			<form onsubmit={(event) => { event.preventDefault(); void connect(); }}>
-				{#if device !== null}<Cable size={14} /><label for={`ssh-user-${device.id}`}>Login as</label>
-				<input id={`ssh-user-${device.id}`} bind:value={username} spellcheck="false" autocomplete="off" maxlength="64" disabled={phase === "starting" || phase === "running"} placeholder="Remote username" />{/if}
-				{#if phase === "starting" || phase === "running"}<button type="button" onclick={() => void disconnect()}><Square size={11} /> Disconnect</button>{:else}<button type="submit" disabled={terminal === null || locked}><RotateCcw size={12} /> {phase === "idle" ? "Connect" : "Reconnect"}</button>{/if}
+				{#if device !== null}<Cable size={14} /><Label for={`ssh-user-${device.id}`}>Login as</Label>
+				<Input class="terminal-username" id={`ssh-user-${device.id}`} bind:value={username} spellcheck="false" autocomplete="off" maxlength="64" disabled={phase === "starting" || phase === "running"} placeholder="Remote username" />{/if}
 			</form>
-			<span class="phase" role="status">{phase === "starting" ? (device === null ? "Starting shell…" : "Starting SSH…") : phase === "running" ? (device === null ? "Shell running" : "SSH running") : phase === "closed" ? "Disconnected" : "Ready"}</span>
+			<ConnectionStatus name={device === null ? "local terminal" : "SSH terminal"} connected={phase === "running"} connecting={phase === "starting"} disabled={terminal === null || locked} ontoggle={() => { if (phase === "running") void disconnect(); else void connect(); }} />
 		</div>
 		{#if error}<p class="terminal-error" role="alert">{error}</p>{/if}
 		<div class="terminal-host" bind:this={host}></div>
@@ -287,11 +288,7 @@
 	.terminal-frame { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; border: 1px solid var(--color-border); border-radius: 0; background: var(--color-terminal-background); box-shadow: var(--shadow-sm); }
 	.toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 10px 14px; background: var(--color-muted); border-bottom: 1px solid var(--color-border); }
 	form { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--color-muted-foreground); font-size: 0.72rem; }
-	input { width: 9rem; padding: 5px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-foreground); font-family: var(--font-mono); font-size: 0.72rem; }
-	form button { display: flex; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-foreground); font-size: 0.7rem; cursor: pointer; }
-	button:disabled { opacity: 0.5; cursor: not-allowed; }
-	button:focus-visible, input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-	.phase { color: var(--color-muted-foreground); font-size: 0.65rem; }
+	.toolbar :global(.terminal-username) { width: 9rem; }
 	.terminal-host { flex: 1; min-height: 0; overflow: hidden; padding: 12px; }
 	.terminal-host :global(.xterm) { height: 100%; }
 	.terminal-host :global(.xterm-viewport) { border-radius: var(--radius-sm); }

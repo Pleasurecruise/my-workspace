@@ -1,4 +1,31 @@
 use crate::CommandResponse;
+use tauri::Manager;
+
+#[derive(Default)]
+pub(crate) struct Visibility(std::sync::atomic::AtomicBool);
+
+#[tauri::command]
+pub(crate) fn read_island_visible(state: tauri::State<'_, Visibility>) -> bool {
+    state.0.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[tauri::command]
+pub(crate) fn set_island_visible(
+    visible: bool,
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+) -> CommandResponse<()> {
+    if window.label() != "main" || app.state::<crate::configuration::AppLockState>().locked() {
+        return CommandResponse::Failed {
+            message: "Unlock Vesper to change Dynamic Island visibility.".into(),
+        };
+    }
+    app.state::<Visibility>()
+        .0
+        .store(visible, std::sync::atomic::Ordering::SeqCst);
+    sync(&app);
+    CommandResponse::Ready { data: () }
+}
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,7 +105,11 @@ mod macos {
     use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
     pub(super) fn sync(app: &tauri::AppHandle) -> Result<(), String> {
-        let visible = !app.state::<crate::configuration::AppLockState>().locked()
+        let visible = app
+            .state::<super::Visibility>()
+            .0
+            .load(std::sync::atomic::Ordering::SeqCst)
+            && !app.state::<crate::configuration::AppLockState>().locked()
             && crate::widgets::island_widget(app)?.is_some();
         if !visible {
             if let Some(window) = app.get_webview_window("island") {

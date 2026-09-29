@@ -3,6 +3,7 @@ import { mount, tick, unmount } from "svelte";
 import { listen } from "@tauri-apps/api/event";
 import App from "../App.svelte";
 import type {
+	ChatSnapshot,
 	ChannelView,
 	ConfigurationStatus,
 	CommandResponse,
@@ -470,7 +471,7 @@ it("shows only configured destinations after configuration loads", async () => {
 		Array.from(target.querySelectorAll('nav[aria-label="Consumer views"] button'), (item) =>
 			item.textContent?.trim(),
 		);
-	expect(labels()).toEqual(["Dashboard", "Settings"]);
+	expect(labels()).toEqual(["Dashboard", "Chat", "Settings"]);
 	pending.resolve({
 		status: "ready",
 		data: {
@@ -485,7 +486,7 @@ it("shows only configured destinations after configuration loads", async () => {
 		},
 	});
 	await vi.waitFor(() =>
-		expect(labels()).toEqual(["Dashboard", "Newspaper", "Music", "Knowledge", "Settings"]),
+		expect(labels()).toEqual(["Dashboard", "Chat", "Newspaper", "Music", "Knowledge", "Settings"]),
 	);
 	expect(target.querySelector('[aria-label="Open inbox"]')).toBeNull();
 	expect(target.querySelector("aside")?.textContent).not.toContain("Connections");
@@ -623,4 +624,116 @@ it("starts a fresh SSH connection on each sidebar click, including after idle ex
 	first.output.onmessage({ kind: "error", message: "Late old-session failure" });
 	await tick();
 	expect(target.textContent).not.toContain("Late old-session failure");
+});
+
+it("places Chat below Dashboard and discards its conversation when leaving", async () => {
+	setupCommands();
+	const normal = invoke.getMockImplementation();
+	if (normal === undefined) throw new Error("Missing command mock");
+	let chat: ChatSnapshot = {
+		revision: 0,
+		connected: false,
+		busy: false,
+		model: "",
+		messages: [],
+		error: null,
+	};
+	invoke.mockImplementation(async (command: string) => {
+		if (command === "read_chat") return { status: "ready", data: chat };
+		if (command === "connect_chat") {
+			chat = {
+				...chat,
+				revision: 1,
+				connected: true,
+				model: "test",
+				messages: [
+					{
+						id: "message",
+						role: "assistant",
+						parts: [{ kind: "text", text: "temporary reply", html: "<p>temporary reply</p>" }],
+					},
+				],
+			};
+			return { status: "ready", data: chat };
+		}
+		if (command === "control_chat") {
+			chat = { ...chat, revision: 2, connected: false, model: "", messages: [] };
+			return { status: "ready", data: null };
+		}
+		return normal(command);
+	});
+	const target = document.createElement("div");
+	document.body.append(target);
+	views.push(mount(App, { target }));
+	await tick();
+	const destinations = Array.from(
+		target.querySelectorAll('nav[aria-label="Consumer views"] button'),
+		(item) => item.textContent?.trim(),
+	);
+	expect(destinations.slice(0, 2)).toEqual(["Dashboard", "Chat"]);
+	button(target, "Chat", "nav button").click();
+	await vi.waitFor(() => expect(target.querySelector('[aria-label="Connect Pi"]')).not.toBeNull());
+	expect(target.querySelector('section[aria-label="Chat"] [role="status"]')?.textContent).toBe(
+		"Offline",
+	);
+	expect(target.querySelector("#chat-directory")).toBeNull();
+	target.querySelector<HTMLButtonElement>('[aria-label="Connect Pi"]')?.click();
+	await vi.waitFor(() => expect(target.textContent).toContain("temporary reply"));
+	const profilePhoto = target.querySelector<HTMLImageElement>(".user-profile img");
+	const messagePhoto = target.querySelector<HTMLImageElement>('section[aria-label="Chat"] .avatar');
+	expect(messagePhoto?.src).toBe(profilePhoto?.src);
+	expect(messagePhoto?.src).toContain("pleasure1234-avatar.png");
+	const input = target.querySelector<HTMLTextAreaElement>('[aria-label="Message Pi"]');
+	if (input === null) throw new Error("Missing composer");
+	input.value = "temporary draft";
+	input.dispatchEvent(new Event("input", { bubbles: true }));
+	button(target, "Dashboard", "nav button").click();
+	await vi.waitFor(() =>
+		expect(invoke).toHaveBeenCalledWith("control_chat", { action: "disconnect" }),
+	);
+	await vi.waitFor(() => expect(target.querySelector('section[aria-label="Chat"]')).toBeNull());
+	button(target, "Chat", "nav button").click();
+	await vi.waitFor(() =>
+		expect(target.querySelector('section[aria-label="Chat"] [role="status"]')?.textContent).toBe(
+			"Offline",
+		),
+	);
+	expect(target.textContent).not.toContain("temporary reply");
+	expect(target.querySelector<HTMLTextAreaElement>('[aria-label="Message Pi"]')?.value).toBe("");
+});
+
+it("keeps the latest destination when Chat cleanup responses arrive out of order", async () => {
+	setupCommands();
+	const normal = invoke.getMockImplementation();
+	if (normal === undefined) throw new Error("Missing command mock");
+	const departures: ReturnType<typeof deferred<CommandResponse<null>>>[] = [];
+	invoke.mockImplementation(async (command: string) => {
+		if (command === "read_chat")
+			return {
+				status: "ready",
+				data: { revision: 0, connected: false, busy: false, model: "", messages: [], error: null },
+			};
+		if (command === "control_chat") {
+			const response = deferred<CommandResponse<null>>();
+			departures.push(response);
+			return response.promise;
+		}
+		return normal(command);
+	});
+	const target = document.createElement("div");
+	document.body.append(target);
+	views.push(mount(App, { target }));
+	await tick();
+	button(target, "Chat", "nav button").click();
+	await vi.waitFor(() => expect(target.querySelector('section[aria-label="Chat"]')).not.toBeNull());
+	button(target, "Dashboard", "nav button").click();
+	button(target, "Settings", "nav button").click();
+	await vi.waitFor(() => expect(departures).toHaveLength(2));
+	const [first, second] = departures;
+	if (first === undefined || second === undefined) throw new Error("Missing departures");
+	second.resolve({ status: "ready", data: null });
+	await vi.waitFor(() => expect(target.querySelector("h1")?.textContent).toBe("Settings"));
+	first.resolve({ status: "ready", data: null });
+	await new Promise<void>((resolve) => setTimeout(resolve, 0));
+	expect(target.querySelector("h1")?.textContent).toBe("Settings");
 });

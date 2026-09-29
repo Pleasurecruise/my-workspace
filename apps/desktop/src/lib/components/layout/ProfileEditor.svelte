@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
-	let { compact }: { compact: boolean } = $props();
+	import { Button, Input, Label } from "@my-workspace/ui";
 	const defaultProfileAvatar = new URL("../../../assets/pleasure1234-avatar.png", import.meta.url).href;
 	const profileNameKey = "vesper.profile.name";
 	const profileAvatarKey = "vesper.profile.avatar";
 	let profileName = $state("Pleasure1234");
-	let profileAvatar = $state(defaultProfileAvatar);
+	let { compact, profileAvatar = $bindable(defaultProfileAvatar) }: { compact: boolean; profileAvatar?: string } = $props();
 	let profileEditing = $state(false);
 	let profileNameDraft = $state("Pleasure1234");
 	let profileAvatarDraft = $state(defaultProfileAvatar);
@@ -119,13 +119,13 @@
 				<img src={profileAvatarDraft} alt="Profile preview" />
 				<div><strong>Local profile</strong><span>Display only</span></div>
 			</div>
-			<label for="profile-name">Username</label>
-			<input id="profile-name" bind:this={profileNameInput} maxlength="24" autocomplete="off" bind:value={profileNameDraft} />
+			<Label for="profile-name">Username</Label>
+			<Input id="profile-name" bind:ref={profileNameInput} maxlength="24" autocomplete="off" bind:value={profileNameDraft} />
 			<input class="avatar-input" bind:this={profileAvatarInput} type="file" accept="image/*" onchange={(event) => void changeProfileAvatar(event.currentTarget)} />
 			<div class="profile-editor-actions">
-				<button type="button" onclick={() => profileAvatarInput?.click()}>Change photo</button>
-				<button type="button" onclick={resetProfileDraft}>Reset</button>
-				<button type="submit">Save</button>
+				<Button variant="outline" size="xs" onclick={() => profileAvatarInput?.click()}>Change photo</Button>
+				<Button variant="outline" size="xs" onclick={resetProfileDraft}>Reset</Button>
+				<Button type="submit" size="xs" class="profile-save">Save</Button>
 			</div>
 			{#if profileError !== null}<p role="alert">{profileError}</p>{/if}
 		</form>
@@ -201,14 +201,10 @@
 	.profile-editor-heading img { width: 2.5rem; height: 2.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-full); object-fit: cover; }
 	.profile-editor-heading div { display: grid; gap: 0.1rem; }
 	.profile-editor-heading strong { font-size: 0.75rem; font-weight: 600; }
-	.profile-editor-heading span,
-	.profile-editor label { color: var(--color-muted-foreground); font-size: 0.65rem; }
-	.profile-editor input:not(.avatar-input) { min-width: 0; height: 1.9rem; box-sizing: border-box; padding: 0 0.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-size: 0.72rem; }
-	.profile-editor input:not(.avatar-input):focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+	.profile-editor-heading span { color: var(--color-muted-foreground); font-size: 0.65rem; }
 	.avatar-input { display: none; }
+	.profile-editor-actions :global(.profile-save) { margin-left: auto; }
 	.profile-editor-actions { display: flex; gap: 0.3rem; }
-	.profile-editor-actions button { height: 1.7rem; padding: 0 0.45rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: transparent; color: var(--color-foreground); cursor: pointer; font-size: 0.62rem; }
-	.profile-editor-actions button:last-child { margin-left: auto; border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-foreground); }
 	.profile-editor p { margin: 0; color: var(--color-error); font-size: 0.62rem; }
 
 	@media (min-width: 768px) {

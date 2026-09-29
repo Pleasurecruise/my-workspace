@@ -5,6 +5,7 @@ use tauri::http::{Response, StatusCode, header};
 use tauri::{Emitter, Manager};
 use tracing_subscriber::EnvFilter;
 
+mod chat;
 mod cms;
 mod configuration;
 mod consumer;
@@ -164,6 +165,8 @@ pub fn run() {
                 });
             },
         )
+        .manage(island::Visibility::default())
+        .manage(chat::Runtime::default())
         .manage(CmsState::default())
         .manage(configuration::AppLockState::default())
         .manage(configuration::PublicationState::default())
@@ -185,6 +188,10 @@ pub fn run() {
             if let Some(runtime) = window.app_handle().try_state::<terminal::Runtime>() {
                 runtime.suspend();
             }
+            window
+                .app_handle()
+                .state::<chat::Runtime>()
+                .suspend(window.app_handle());
         })
         .on_window_event(|window, event| {
             if window.label() != "main" || !matches!(event, tauri::WindowEvent::Destroyed) {
@@ -193,6 +200,10 @@ pub fn run() {
             if let Some(runtime) = window.app_handle().try_state::<terminal::Runtime>() {
                 runtime.suspend();
             }
+            window
+                .app_handle()
+                .state::<chat::Runtime>()
+                .suspend(window.app_handle());
         })
         .setup(|app| {
             app.manage(terminal::Runtime::default());
@@ -235,6 +246,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            chat::read_chat,
+            chat::connect_chat,
+            chat::send_chat,
+            chat::control_chat,
             terminal::set_terminal_active,
             terminal::read_ssh_devices,
             terminal::connect_terminal,
@@ -269,6 +284,8 @@ pub fn run() {
             dashboard::refresh_dashboard,
             dashboard::refresh_island,
             island::island_available,
+            island::read_island_visible,
+            island::set_island_visible,
             island::set_island_expanded,
             dashboard::set_dashboard_active,
             status::read_service_catalog,
@@ -349,6 +366,7 @@ pub fn run() {
         if let Some(runtime) = app.try_state::<terminal::Runtime>() {
             runtime.suspend();
         }
+        app.state::<chat::Runtime>().suspend(app);
     });
 }
 

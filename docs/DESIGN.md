@@ -68,11 +68,20 @@ One centered `page.css` frame serves loading, reading, editing, and error states
 is 84rem including 2rem side padding; below 768px the padding is 1rem. Headers retain one baseline
 across states, with H1, optional description, and wrapping actions. Reserve the main scrollbar gutter
 to prevent horizontal shifts. Content responds to its available width, including sidebar resizing.
+The shared fill mode retains page-title and horizontal spacing while allocating remaining height to
+an internal scrolling surface. Chat uses this mode with 1rem bottom padding, keeping its composer
+near the bottom of the page.
 
 Use the shared semantic heading scale and serif page title. Dashboard cards, Moment, and Newspaper
 may own internal typography through `data-content-typography`; their page titles still use the
 shared scale. Newspaper's 58rem paper surface remains an internal composition. Do not place
 containment around viewport-fixed dialogs or override page spacing to compensate for local content.
+
+Chat places user bubbles on the right and assistant Markdown on the left, with expandable thinking
+and tool details. The thread scrolls independently; new output follows only while the reader is near
+the bottom. Enter sends, Shift+Enter inserts a newline, and IME composition does not submit. Stop
+remains available during a response. Failed sends retain the draft; leaving the page discards both
+draft and conversation. New Chat resets the temporary conversation.
 
 ## Dashboard layout
 
@@ -112,7 +121,9 @@ Expanded widgets omit their outer card frame; bounded content scrolls with hidde
 The Dashboard's pinned-widget strip appears only while editing. Embedded Planner uses Tasks,
 Calendar and Habits tabs, preserving input when switching; the selected date stays visible.
 
-Pinning selects a saved Dashboard placement. Hover expands after a short dwell; pointer exit allows
+The island starts hidden on each launch, and the default layout has no pinned widget. Dashboard Edit
+provides Show/Hide separately from pinning; hiding retains the saved pin. Pinning selects a saved
+Dashboard placement. Hover expands after a short dwell; pointer exit allows
 brief re-entry, while focused controls keep it open. Click or keyboard activation opens immediately
 and focuses Close. Escape, Close and focus loss dismiss; Escape and Close restore trigger focus.
 Frame changes preserve the top anchor and respect Reduce Motion. Losing focus must not reactivate
@@ -124,18 +135,25 @@ Retain the macOS native title bar and drag behavior. Theme changes update native
 appearance directly; avoid page-level or independent control color transitions. The shell owns one
 back-to-top action tied to its main scroller.
 
-The sidebar keeps navigation primary, with Settings as a full destination. Configured credentials
+The sidebar keeps navigation primary, with Chat immediately below Dashboard and Settings as a full
+destination. Configured credentials
 gate consumer destinations; removing the active destination's configuration returns to Dashboard.
 Its resizable desktop rail retains accessible icon names when collapsed; mobile keeps the labeled
 drawer. The local profile editor stores presentation only and does not imply an authenticated account.
+Chat message avatars use its current photo without separate storage.
 
 A This device terminal entry sits immediately above the sidebar’s Tailscale list and stays available
 when discovery fails. It uses the same terminal frame without remote login controls.
 Sidebar Tailscale devices show accessible connection statuses. Selecting one opens a terminal
-filling the main pane, with username and reconnect/disconnect controls; navigation preserves its
+filling the main pane, with username and connection controls; navigation preserves its
 contents until that device is selected again. Each sidebar device click starts a fresh connection,
 including after an idle timeout. xterm.js handles input and screen-reader support, using semantic `--color-terminal-*`
 roles for theme-consistent canvas and ANSI colors.
+
+The desktop-owned ConnectionStatus component serves Chat and Terminal: Offline shows a connect icon,
+Connecting announces startup, and Online shows a disconnect icon. The labelled icon performs the
+corresponding action. Chat connects on demand in the account's home directory without a directory
+field; Terminal connects automatically when selected. Chat's heading shows the connected model.
 
 App Lock makes the entire shell inert behind an opaque focused unlock surface. Settings describes
 it as a privacy screen, not encryption. Update installation requires an explicit action after showing

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Activity, ArrowLeftRight, ChartNoAxesCombined, Check, Pin, ChevronRight, CloudSun, Cpu, Gauge, HardDrive, ListTodo, MemoryStick, Network, Plus, RefreshCw, RotateCcw, Settings2, ShieldCheck, Sparkles, WalletCards, X } from "@lucide/svelte";
+	import { Button } from "@my-workspace/ui";
 	import type { WidgetPlacement, ServiceStatusCatalogEntry } from "../../consumer";
 	import { widgetCategories, widgetCategoryLabel, widgetKey, widgetOptions, widgets } from "../../dashboard";
 	import type { WidgetCategory } from "../../dashboard";
@@ -251,7 +252,8 @@
 		<div class="island-shortcut">
 			<span class="island-preview" aria-hidden="true"><Pin size={12} /><span></span><span class="preview-dot"></span></span>
 			<div><strong>Pinned to Dynamic Island</strong><span>{pinnedWidget ? widgets[pinnedWidget.widget.kind].label : "No widget pinned"}</span></div>
-			<button type="button" onclick={() => (editing = false)}>Done<ChevronRight size={12} /></button>
+			<Button class="island-action" variant="outline" size="sm" disabled={pinnedWidget === null} aria-pressed={layoutSession.islandVisible} onclick={() => void layoutSession.setIslandVisible(!layoutSession.islandVisible)}>{layoutSession.islandVisible ? "Hide" : "Show"} Dynamic Island</Button>
+			<Button class="island-action" variant="outline" size="sm" onclick={() => (editing = false)}>Done<ChevronRight size={12} /></Button>
 		</div>
 	{/if}
 
@@ -437,8 +439,7 @@
 	.island-shortcut > div { display: grid; gap: 4px; min-width: 0; }
 	.island-shortcut strong { font-size: 0.75rem; font-weight: 500; }
 	.island-shortcut > div > span { color: var(--color-muted-foreground); font-size: 0.68rem; }
-	.island-shortcut > button { display: flex; align-items: center; gap: 5px; margin-left: auto; flex-shrink: 0; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-background); font-size: 0.68rem; cursor: pointer; }
-	.island-shortcut > button:hover { border-color: var(--color-accent); }
+	.island-shortcut :global(.island-action) { margin-left: auto; flex-shrink: 0; }
 	@media (max-width: 480px) { .island-preview { display: none; } }
 	.edit-hint { display: flex; align-items: center; gap: 0.4rem; padding: 0.55rem 0.7rem; margin: -0.75rem 0 1rem; border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-muted-foreground); font-size: 0.68rem; }
 

@@ -408,6 +408,7 @@ pub(crate) fn lock_app(
         Ok(vesper_credentials::Stored::Ready(_)) => {
             state.0.store(true, std::sync::atomic::Ordering::SeqCst);
             app.state::<crate::terminal::Runtime>().suspend();
+            app.state::<crate::chat::Runtime>().suspend(&app);
             crate::island::sync(&app);
             if let Some(webview) = app.get_webview_window("main") {
                 webview.close_devtools();

@@ -41,10 +41,13 @@ Invalid widget configurations appear as diagnostic cards and survive unrelated e
 Database and placement-integrity failures affect the whole layout. Singleton conflicts resolve in
 stable placement-ID order, independent of drag order.
 
-Dynamic Island shares rendering and Rust source locks in a separate trusted WebView. Expansion reads
-only the pinned widget's sources, without starting Dashboard polling. Composite widgets read their
-independent sources concurrently. Expanded Planner refreshes once a minute.
-App Lock closes the island; verification WebViews receive no account data.
+Dynamic Island shares rendering and Rust source locks in a separate trusted WebView. It starts
+hidden on each application launch, including when a saved layout already has a pinned widget.
+Dashboard Edit owns the explicit Show/Hide control. A new or restored default layout has no pinned
+widget; a pin and a visibility action are both required to display the island. Hiding it retains
+the layout and pin. Expansion reads only the pinned widget's sources, without starting Dashboard
+polling. Composite widgets read their independent sources concurrently. Expanded Planner refreshes
+once a minute. App Lock closes the island; verification WebViews receive no account data.
 
 ## Current device
 
@@ -212,6 +215,8 @@ separate from Codex Resets.
 
 The widget picker offers a combined Codex & Claude card; saved standalone cards remain readable.
 Both providers retain independent data and error states, including when pinned to Dynamic Island.
+Claude reports a missing credential file as signed out; unreadable files and malformed OAuth data
+remain explicit errors.
 
 ### TokenFlux and DimAgent
 

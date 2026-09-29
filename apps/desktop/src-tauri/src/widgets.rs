@@ -115,6 +115,7 @@ impl Layout {
 
 impl Default for Layout {
     fn default() -> Self {
+        // Dynamic Island is still too ugly; keep islandWidgetId null in the default layout for now.
         serde_json::from_str(include_str!("dashboard-default.json"))
             .expect("bundled Dashboard layout must be valid")
     }
@@ -773,9 +774,14 @@ mod tests {
     #[test]
     fn island_selection_must_reference_a_saved_widget() {
         let mut layout = Layout::default();
-        assert!(layout.widgets.iter().any(|placement| Some(&placement.id)
-            == layout.island_widget_id.as_ref()
-            && matches!(placement.widget, Widget::Planner { .. })));
+        assert!(layout.island_widget_id.is_none());
+        let planner = layout
+            .widgets
+            .iter()
+            .find(|placement| matches!(placement.widget, Widget::Planner { .. }))
+            .unwrap();
+        layout.island_widget_id = Some(planner.id.clone());
+        layout.validate().unwrap();
         layout.island_widget_id = Some("absent".to_owned());
         assert!(layout.validate().is_err());
         layout.island_widget_id = None;

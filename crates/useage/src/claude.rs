@@ -133,10 +133,14 @@ async fn read_credentials() -> Result<Credentials, String> {
 
 async fn read_credentials_file(path: &Path) -> Result<Credentials, String> {
     let content = tokio::fs::read_to_string(path).await.map_err(|error| {
-        format!(
-            "Could not read Claude Code credentials at {}: {error}",
-            path.display()
-        )
+        if error.kind() == std::io::ErrorKind::NotFound {
+            "Claude Code is not signed in".to_owned()
+        } else {
+            format!(
+                "Could not read Claude Code credentials at {}: {error}",
+                path.display()
+            )
+        }
     })?;
     parse_credentials(&content)
 }
@@ -267,6 +271,58 @@ mod tests {
         .expect("valid response shape");
 
         assert!(parse_usage("Pro".to_owned(), response).is_err());
+    }
+
+    #[tokio::test]
+    async fn missing_file_is_signed_out() {
+        let directory = tempfile::tempdir().unwrap();
+        let error = read_credentials_file(&directory.path().join(".credentials.json"))
+            .await
+            .err()
+            .expect("missing credentials");
+        assert_eq!(error, "Claude Code is not signed in");
+        let error = read_credentials_file(directory.path())
+            .await
+            .err()
+            .expect("directory cannot be read as credentials");
+        assert!(error.starts_with("Could not read Claude Code credentials"));
+    }
+
+    #[test]
+    fn rejects_invalid_sessions() {
+        for (content, expected) in [
+            ("not json", "Could not decode"),
+            (r#"{}"#, "does not contain an OAuth session"),
+            (
+                r#"{"claudeAiOauth":{"accessToken":"private-token","expiresAt":0}}"#,
+                "has expired",
+            ),
+            (
+                r#"{"claudeAiOauth":{"accessToken":" "}}"#,
+                "does not contain an access token",
+            ),
+        ] {
+            let error = parse_credentials(content).err().expect("invalid session");
+            assert!(error.contains(expected), "{error}");
+            assert!(!error.contains("private-token"));
+        }
+    }
+
+    #[test]
+    fn normalizes_plan_and_window() {
+        assert_eq!(plan_name(" team ").as_deref(), Some("Team"));
+        assert_eq!(plan_name("enterprise").as_deref(), Some("Enterprise"));
+        assert!(plan_name("").is_none());
+        let window = usage_window(
+            Some(UsageResponseWindow {
+                utilization: Some(-1.0),
+                resets_at: Some(" ".into()),
+            }),
+            300,
+        )
+        .unwrap();
+        assert_eq!(window.used_percent, 0.0);
+        assert!(window.resets_at.is_none());
     }
 
     #[tokio::test]

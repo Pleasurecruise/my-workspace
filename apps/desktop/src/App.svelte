@@ -8,7 +8,7 @@
 	import PageSkeleton from "./lib/components/layout/PageSkeleton.svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
-	import { Archive, ArrowLeft, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, Lock, Menu, Moon, Music2, Newspaper as NewspaperIcon, Settings, Sun, X } from "@lucide/svelte";
+	import { Archive, ArrowLeft, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, MessageCircle, Lock, Menu, Moon, Music2, Newspaper as NewspaperIcon, Settings, Sun, X } from "@lucide/svelte";
 	import { onMount, tick, untrack } from "svelte";
 	import MemosView from "./lib/components/pages/MemosView.svelte";
 	import MomentView from "./lib/components/pages/MomentView.svelte";
@@ -17,6 +17,8 @@
 	import InboxView from "./lib/components/pages/InboxView.svelte";
 	import NewspaperView from "./lib/components/pages/NewspaperView.svelte";
 	import { createLayoutSession } from "./lib/components/dashboard/layout.svelte";
+	import ChatView from "./lib/components/pages/ChatView.svelte";
+	import { createChatSession } from "./lib/components/chat/session.svelte";
 	import DashboardView from "./lib/components/pages/DashboardView.svelte";
 	import SettingsView from "./lib/components/pages/SettingsView.svelte";
 	import ScrollToTop from "./lib/components/layout/ScrollToTop.svelte";
@@ -34,10 +36,11 @@
 	import { createKnowledgeSession } from "./lib/components/knowledge/session.svelte";
 	import { applyTheme, initTheme } from "./lib/theme";
 
-	type View = "terminal" | "dashboard" | "inbox" | "music" | "newspaper" | "settings" | Channel;
+	type View = "chat" | "terminal" | "dashboard" | "inbox" | "music" | "newspaper" | "settings" | Channel;
 
 	const navigation: Array<{ id: View; label: string }> = [
 		{ id: "dashboard", label: "Dashboard" },
+		{ id: "chat", label: "Chat" },
 		{ id: "newspaper", label: "Newspaper" },
 		{ id: "memos", label: "Memos" },
 		{ id: "moment", label: "Moment" },
@@ -50,7 +53,9 @@
 	const maximumSidebarWidth = 360;
 
 	let contentWidth = $state(0);
+	let profileAvatar = $state("");
 	let selected = $state<View>("dashboard");
+	let navigationRequest = 0;
 	let reconnectMihoyo = $state(false);
 	let musicPlayerVisible = $state(false);
 	let musicPlayerAvailable = $state(false);
@@ -81,6 +86,7 @@
 	let initializationRequest = 0;
 	let dark = $state(initTheme());
 	let sidebarOpen = $state(false);
+	const chat = createChatSession();
 	const layoutSession = createLayoutSession();
 	const dashboardSession = createDashboardSession(() => selected === "dashboard");
 	const inbox = createInboxSession(() => selected === "inbox");
@@ -122,19 +128,22 @@
 	let unlockInput = $state<HTMLInputElement | null>(null);
 	let sidebarWidth = $state(240);
 
-	function openMusicPlayer() {
+	async function openMusicPlayer() {
 		musicReturnView = selected;
-		void select("music");
-		musicPlayerVisible = true;
+		await select("music");
+		if (selected === "music") musicPlayerVisible = true;
 	}
 
 	async function select(view: View) {
+		const request = ++navigationRequest;
 		reconnectMihoyo = false;
 		if (view === "inbox") {
 			if (selected === "inbox") view = previousView;
 			else previousView = selected;
 		}
 		if (!viewAvailable(view)) view = "dashboard";
+		if (selected === "chat" && view !== "chat") await chat.leave();
+		if (request !== navigationRequest) return;
 		activeContent?.leave();
 		musicPlayerVisible = false;
 		selected = view;
@@ -143,6 +152,7 @@
 		sidebarOpen = false;
 		await activeContent?.enter(view === "newspaper");
 		if (view === "dashboard") await activation;
+		if (view === "chat") void chat.refresh();
 	}
 
 	async function lockApp() {
@@ -181,6 +191,7 @@
 		}
 		unlockPassword = "";
 		locked = false;
+		void chat.refresh();
 		void Promise.all([memos.refresh(), moment.refresh(), knowledge.refresh()]);
 	}
 
@@ -295,7 +306,7 @@
 					title={item.label}
 					onclick={() => void select(item.id)}
 				>
-					{#if item.id === "dashboard"}<LayoutDashboard size={15} />{:else if item.id === "memos"}<Home size={15} />{:else if item.id === "moment"}<Image size={15} />{:else if item.id === "music"}<Music2 size={15} />{:else if item.id === "newspaper"}<NewspaperIcon size={15} />{:else if item.id === "knowledge"}<BookOpen size={15} />{:else}<Settings size={15} />{/if}
+					{#if item.id === "dashboard"}<LayoutDashboard size={15} />{:else if item.id === "chat"}<MessageCircle size={15} />{:else if item.id === "memos"}<Home size={15} />{:else if item.id === "moment"}<Image size={15} />{:else if item.id === "music"}<Music2 size={15} />{:else if item.id === "newspaper"}<NewspaperIcon size={15} />{:else if item.id === "knowledge"}<BookOpen size={15} />{:else}<Settings size={15} />{/if}
 					<span>{item.label}</span>
 				</button>
 			{/each}
@@ -304,7 +315,7 @@
 		<DeviceSidebar session={terminals} compact={sidebarWidth < 160} active={selected === "terminal"} onopen={openTerminal} />
 
 		<div class="sidebar-footer">
-			<ProfileEditor compact={sidebarWidth < 160} />
+			<ProfileEditor compact={sidebarWidth < 160} bind:profileAvatar />
 			<div class="footer-controls">
 				{#if viewAvailable("inbox")}
 				<div class="footer-navigation">
@@ -344,6 +355,7 @@
 	</aside>
 
 	<main
+		class:fill-shell={selected === "chat"}
 		class:terminal-shell={selected === "terminal"}
 		class:player-shell={selected === "music" && musicPlayerVisible}
 		bind:this={mainElement}
@@ -360,13 +372,15 @@
 			</button>
 			<strong>vesper</strong>
 		</header>
-		<div class="canvas page-layout">
+		<div class="canvas page-layout" data-fill={selected === "chat"}>
 			<div class="page-content" bind:clientWidth={contentWidth} data-stacked={contentWidth <= 640}>
 				{#each terminals.openTerminals as target (target)}
 					<TerminalView {target} active={selected === "terminal" && terminals.selected === target} {locked} />
 				{/each}
 				{#if selected === "terminal"}
 					{#if terminals.openTerminals.length === 0}<section><header class="page-header"><div><h1>Terminals</h1><p class="page-description">Select this device or a Tailscale device in the sidebar to open its terminal.</p></div></header></section>{/if}
+				{:else if selected === "chat"}
+					<ChatView session={chat} {profileAvatar} />
 				{:else if selected === "dashboard"}
 					<DashboardView session={dashboardSession} {layoutSession} />
 				{:else if selected === "settings"}
@@ -742,6 +756,9 @@
 
 	.topbar .menu-button,
 	.topbar strong { display: none; }
+
+	main.fill-shell { display: flex; flex-direction: column; overflow: hidden; }
+	.fill-shell .topbar { flex-shrink: 0; }
 
 	main.terminal-shell { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; scrollbar-gutter: auto; }
 	.terminal-shell .topbar { flex-shrink: 0; }

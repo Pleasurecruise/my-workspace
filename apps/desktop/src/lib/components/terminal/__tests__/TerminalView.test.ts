@@ -114,6 +114,29 @@ function setup() {
 	views.push(view);
 	return view;
 }
+async function clickConnect() {
+	await vi.waitFor(() => {
+		const button = document.querySelector<HTMLButtonElement>('[aria-label="Connect SSH terminal"]');
+		if (button === null || button.disabled) throw new Error("Connection icon is not ready");
+	});
+	document.querySelector<HTMLButtonElement>('[aria-label="Connect SSH terminal"]')?.click();
+}
+
+it("automatically connects and uses the icon to disconnect and reconnect", async () => {
+	setup();
+	await vi.waitFor(() =>
+		expect(document.querySelector('[role="status"]')?.textContent).toBe("Online"),
+	);
+	document.querySelector<HTMLButtonElement>('[aria-label="Disconnect SSH terminal"]')?.click();
+	await tick();
+	expect(document.querySelector('[role="status"]')?.textContent).toBe("Offline");
+	await clickConnect();
+	await vi.waitFor(() =>
+		expect(document.querySelector('[role="status"]')?.textContent).toBe("Online"),
+	);
+	expect(mocks.invoke.mock.calls.filter(([name]) => name === "connect_terminal")).toHaveLength(2);
+});
+
 it("transports typed terminal input and acknowledges rendered output, then closes on unmount", async () => {
 	const view = setup();
 	await vi.waitFor(() =>
@@ -156,9 +179,9 @@ it("keeps a fast-exiting SSH session closed when the launch response arrives lat
 	pending.resolve({ status: "ready", data: null });
 	await tick();
 	await vi.waitFor(() =>
-		expect(document.querySelector('[role="status"]')?.textContent).toBe("Disconnected"),
+		expect(document.querySelector('[role="status"]')?.textContent).toBe("Offline"),
 	);
-	expect(document.body.textContent).toContain("Reconnect");
+	expect(document.querySelector('[aria-label="Connect SSH terminal"]')).not.toBeNull();
 });
 
 it("records user keyboard activity separately from automatic terminal replies", async () => {
@@ -211,7 +234,7 @@ it("preserves the idle timeout reason when pending input fails before exit", asy
 	await vi.waitFor(() =>
 		expect(document.querySelector('[role="alert"]')?.textContent).toBe(reason),
 	);
-	expect(document.querySelector('[role="status"]')?.textContent).toBe("Disconnected");
+	expect(document.querySelector('[role="status"]')?.textContent).toBe("Offline");
 	request.output.onmessage({ kind: "exit", code: 1 });
 	await tick();
 	expect(document.querySelector('[role="alert"]')?.textContent).toBe(reason);
@@ -246,10 +269,10 @@ it("ignores a previous disconnect failure after a new connection starts", async 
 	);
 	setup();
 	await vi.waitFor(() =>
-		expect(document.querySelector('[role="status"]')?.textContent).toBe("SSH running"),
+		expect(document.querySelector('[role="status"]')?.textContent).toBe("Online"),
 	);
-	const disconnect = [...document.querySelectorAll("button")].find((button) =>
-		button.textContent?.includes("Disconnect"),
+	const disconnect = [...document.querySelectorAll("button")].find(
+		(button) => button.getAttribute("aria-label") === "Disconnect SSH terminal",
 	);
 	if (disconnect === undefined) throw new Error("Expected disconnect button");
 	disconnect.click();
@@ -264,7 +287,7 @@ it("ignores a previous disconnect failure after a new connection starts", async 
 	await tick();
 	await tick();
 	expect(document.querySelector('[role="alert"]')).toBeNull();
-	expect(document.querySelector('[role="status"]')?.textContent).toBe("SSH running");
+	expect(document.querySelector('[role="status"]')?.textContent).toBe("Online");
 });
 
 it("remembers the login username per device", async () => {
@@ -278,8 +301,8 @@ it("remembers the login username per device", async () => {
 		deviceId: "node",
 		username: "root",
 	});
-	const disconnect = [...document.querySelectorAll("button")].find((button) =>
-		button.textContent?.includes("Disconnect"),
+	const disconnect = [...document.querySelectorAll("button")].find(
+		(button) => button.getAttribute("aria-label") === "Disconnect SSH terminal",
 	);
 	if (disconnect === undefined) throw new Error("Expected disconnect button");
 	disconnect.click();

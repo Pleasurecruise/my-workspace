@@ -112,19 +112,30 @@ Settings accepts bucket-scoped R2 credentials and separate Bearer keys generated
 my-moment, and my-knowledge. Memo and Knowledge use their APIs; direct R2 access cannot bypass
 server metadata and cache coordination. [Workflow](WORKFLOW.md) covers publication and recovery.
 
-The sidebar’s This device entry starts the current account’s default local shell (a login shell on
-Unix), using the native PTY. It does not require Tailscale and has no idle timeout; App Lock, window
-reload/close, and application shutdown end it.
+Chat requires a system installation of `@earendil-works/pi-coding-agent` with RPC support. Install
+and authenticate Pi outside this workspace; Vesper packages no Pi npm dependency. The current
+account's login-shell PATH resolves Pi and Node, including mise installations. The connection icon
+starts Pi in `~/` with its existing configuration. Enter sends, Shift+Enter inserts a newline, Stop
+cancels the response and New Chat resets the conversation. Startup uses `--no-session` to avoid
+conversation files and `--no-approve` to ignore project-local resources. Unsupported extension
+dialogs are cancelled with a visible explanation.
 
-Embedded SSH requires a signed-in Tailscale CLI and system OpenSSH. Enable Tailscale SSH on
-`tag:server` devices and authorize the remote account in the tailnet policy. Tailscale does not
-supply a remote OS username; Vesper prefills the last username used for that device, defaulting to
-the local OS user on first connect. The terminal handles authentication and host-key prompts and
-opens the account's login shell.
-Host-key checking stays enabled; SSH configuration files, agent forwarding and port forwarding
-are disabled. Sessions disconnect after five minutes without user interaction; use tmux for
-unattended commands. Selecting a device in the sidebar always starts a fresh connection with its
-remembered username, replacing any previous terminal for that device.
+The sidebar's This device entry automatically starts the account's default local shell in a native
+PTY, without Tailscale or an idle timeout. Remote entries require a signed-in Tailscale CLI and system
+OpenSSH. Enable Tailscale SSH on `tag:server` devices and authorize the remote account in the tailnet
+policy. Vesper remembers a login username per device, initially using the local OS user; edit it while
+offline. Host-key and authentication prompts appear in the terminal. Host-key checking stays enabled;
+SSH configuration files, agent forwarding and port forwarding are disabled. Remote sessions expire
+after five minutes without user interaction; use tmux for unattended commands.
+
+Chat and Terminal show Online while connected and Offline after disconnecting; their status icon
+connects or disconnects. Chat initially opens offline and discards messages, drafts and its process
+when leaving the page. Terminal connects automatically when selected and survives navigation;
+selecting its sidebar device again replaces it with a fresh connection. App Lock, main-window
+reload/close and shutdown end both process runtimes.
+
+Dynamic Island starts hidden on each launch. Dashboard Edit displays it only after a widget is pinned
+and Show Dynamic Island is selected. Hide retains the saved layout and pin.
 
 For ntfy, save a token with read access to `mail-summary`. Vesper consumes the fixed
 `https://ntfy.you-find.me/mail-summary/sse` endpoint only while Inbox is active. It does not configure
