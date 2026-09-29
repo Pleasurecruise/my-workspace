@@ -77,10 +77,11 @@ may own internal typography through `data-content-typography`; their page titles
 shared scale. Newspaper's 58rem paper surface remains an internal composition. Do not place
 containment around viewport-fixed dialogs or override page spacing to compensate for local content.
 
-Chat places user bubbles on the right and assistant Markdown on the left, with expandable thinking
-and tool details. The thread scrolls independently; new output follows only while the reader is near
-the bottom. Enter sends, Shift+Enter inserts a newline, and IME composition does not submit. Stop
-remains available during a response. Failed sends retain the draft; leaving the page discards both
+Chat places user bubbles on the right and assistant Markdown on the left. Consecutive assistant
+messages form one response with one avatar, including expandable thinking, tool activity and the
+final text. The thread scrolls independently; new output follows only while the reader is near the
+bottom. Enter sends, Shift+Enter inserts a newline, and IME composition does not submit. Stop remains
+available during a response. Failed sends retain the draft; leaving the page discards both
 draft and conversation. New Chat resets the temporary conversation.
 
 ## Dashboard layout

@@ -4,6 +4,7 @@
 	import ConnectionStatus from "../layout/ConnectionStatus.svelte";
 	import { tick } from "svelte";
 	import { openUrl } from "@tauri-apps/plugin-opener";
+	import type { ChatSnapshot } from "../../consumer";
 	import type { createChatSession } from "../chat/session.svelte";
 	import "../knowledge/prose.css";
 
@@ -12,6 +13,18 @@
 	let atBottom = $state(true);
 	let interactionError = $state<string | null>(null);
 	const snapshot = $derived(session.snapshot);
+	const turns = $derived.by(() => {
+		const turns: [ChatSnapshot["messages"][number], ...ChatSnapshot["messages"]][] = [];
+		for (const message of snapshot.messages) {
+			const previous = turns.at(-1);
+			if (previous !== undefined && message.role === "assistant" && previous[0].role === "assistant") {
+				previous.push(message);
+			} else {
+				turns.push([message]);
+			}
+		}
+		return turns;
+	});
 
 	$effect(() => {
 		void snapshot.revision;
@@ -45,22 +58,25 @@
 		{#if snapshot.messages.length === 0}
 			<div class="empty"><p>喵？今天过得怎么样</p></div>
 		{:else}
-			{#each snapshot.messages as message (message.id)}
-				<div class="message" class:user={message.role === "user"}>
-					<img class="avatar" src={profileAvatar} alt={message.role === "user" ? "You" : "Pi"} />
-					<div class="body" class:bubble={message.role === "user"}>
-						{#each message.parts as part, index (index)}
-							{#if part.kind === "text"}
-								{#if message.role === "assistant" && part.html}
-									<div class="knowledge-prose" data-content-typography use:externalLinks>{@html part.html}</div>
-								{:else}<span class="text">{part.text}</span>{/if}
-							{:else if part.kind === "thinking" && part.text}
-								<details class="tool"><summary>Thinking</summary><pre>{part.text}</pre></details>
-							{:else if part.kind === "tool"}
-								<details class="tool"><summary><code>{part.name}</code><span>{part.state}</span></summary><div><small>Arguments</small><pre>{part.arguments}</pre>{#if part.output}<small>Result</small><pre>{part.output}</pre>{/if}</div></details>
-							{/if}
+			{#each turns as turn (turn[0].id)}
+				{@const role = turn[0].role}
+				<div class="message" class:user={role === "user"}>
+					<img class="avatar" src={profileAvatar} alt={role === "user" ? "You" : "Pi"} />
+					<div class="body" class:bubble={role === "user"}>
+						{#each turn as message (message.id)}
+							{#each message.parts as part, index (index)}
+								{#if part.kind === "text"}
+									{#if message.role === "assistant" && part.html}
+										<div class="knowledge-prose" data-content-typography use:externalLinks>{@html part.html}</div>
+									{:else}<span class="text">{part.text}</span>{/if}
+								{:else if part.kind === "thinking" && part.text}
+									<details class="tool"><summary>Thinking</summary><pre>{part.text}</pre></details>
+								{:else if part.kind === "tool"}
+									<details class="tool"><summary><code>{part.name}</code><span>{part.state}</span></summary><div><small>Arguments</small><pre>{part.arguments}</pre>{#if part.output}<small>Result</small><pre>{part.output}</pre>{/if}</div></details>
+								{/if}
+							{/each}
+							{#if snapshot.busy && message.role === "assistant" && message === snapshot.messages.at(-1) && message.parts.length === 0}<span class="thinking" role="status">Thinking…</span>{/if}
 						{/each}
-						{#if snapshot.busy && message.role === "assistant" && message === snapshot.messages.at(-1) && message.parts.length === 0}<span class="thinking" role="status">Thinking…</span>{/if}
 
 					</div>
 				</div>
