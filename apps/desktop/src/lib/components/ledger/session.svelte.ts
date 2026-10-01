@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { onMount } from "svelte";
-import type { CommandResponse } from "../../contracts/command";
-import type { ExpenseSnapshot } from "../../contracts/ledger";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { ExpenseSnapshot } from "@/lib/contracts/ledger";
 
 export function createLedgerSession() {
 	let data = $state<ExpenseSnapshot | null>(null);

@@ -1,8 +1,8 @@
 import { expect, it, vi } from "vite-plus/test";
 import { mount, unmount } from "svelte";
-import type { CommandResponse } from "../../../contracts/command";
-import type { ExpenseSnapshot } from "../../../contracts/ledger";
-import type { CheckIn, TodoList } from "../../../contracts/todo";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { ExpenseSnapshot } from "@/lib/contracts/ledger";
+import type { CheckIn, TodoList } from "@/lib/contracts/todo";
 import { createDashboardSession } from "../session.svelte";
 import WidgetContent from "../WidgetContent.svelte";
 

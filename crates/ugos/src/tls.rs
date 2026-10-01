@@ -3,7 +3,7 @@ use der::{Reader, SliceReader, Tag, TagNumber};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{CryptoProvider, ring, verify_tls13_signature_with_raw_key};
 use rustls::pki_types::{CertificateDer, ServerName, SubjectPublicKeyInfoDer, UnixTime};
-use rustls::{DigitallySignedStruct, Error as RustlsError, SignatureScheme};
+use rustls::{DigitallySignedStruct, Error, SignatureScheme};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
 
@@ -57,11 +57,11 @@ impl ServerCertVerifier for PinnedVerifier {
         _server_name: &ServerName<'_>,
         _ocsp_response: &[u8],
         _now: UnixTime,
-    ) -> Result<ServerCertVerified, RustlsError> {
+    ) -> Result<ServerCertVerified, Error> {
         if CertFingerprint::of(end_entity.as_ref()) == self.fingerprint {
             return Ok(ServerCertVerified::assertion());
         }
-        Err(RustlsError::General(
+        Err(Error::General(
             "UGOS certificate fingerprint changed".to_owned(),
         ))
     }
@@ -71,7 +71,7 @@ impl ServerCertVerifier for PinnedVerifier {
         _message: &[u8],
         _certificate: &CertificateDer<'_>,
         _signature: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, RustlsError> {
+    ) -> Result<HandshakeSignatureValid, Error> {
         Ok(HandshakeSignatureValid::assertion())
     }
 
@@ -80,14 +80,14 @@ impl ServerCertVerifier for PinnedVerifier {
         message: &[u8],
         certificate: &CertificateDer<'_>,
         signature: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, RustlsError> {
+    ) -> Result<HandshakeSignatureValid, Error> {
         if CertFingerprint::of(certificate.as_ref()) != self.fingerprint {
-            return Err(RustlsError::General(
+            return Err(Error::General(
                 "UGOS certificate changed during the TLS handshake".to_owned(),
             ));
         }
         let subject_public_key = subject_public_key(certificate.as_ref())
-            .map_err(|error| RustlsError::General(error.to_string()))?;
+            .map_err(|error| Error::General(error.to_string()))?;
         verify_tls13_signature_with_raw_key(
             message,
             &SubjectPublicKeyInfoDer::from(subject_public_key.as_slice()),
@@ -111,11 +111,11 @@ impl ServerCertVerifier for LearningVerifier {
         _server_name: &ServerName<'_>,
         _ocsp_response: &[u8],
         _now: UnixTime,
-    ) -> Result<ServerCertVerified, RustlsError> {
+    ) -> Result<ServerCertVerified, Error> {
         let mut fingerprint = self
             .fingerprint
             .lock()
-            .map_err(|error| RustlsError::General(error.to_string()))?;
+            .map_err(|error| Error::General(error.to_string()))?;
         *fingerprint = Some(CertFingerprint::of(end_entity.as_ref()));
         Ok(ServerCertVerified::assertion())
     }
@@ -125,7 +125,7 @@ impl ServerCertVerifier for LearningVerifier {
         _message: &[u8],
         _certificate: &CertificateDer<'_>,
         _signature: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, RustlsError> {
+    ) -> Result<HandshakeSignatureValid, Error> {
         Ok(HandshakeSignatureValid::assertion())
     }
 
@@ -134,9 +134,9 @@ impl ServerCertVerifier for LearningVerifier {
         message: &[u8],
         certificate: &CertificateDer<'_>,
         signature: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, RustlsError> {
+    ) -> Result<HandshakeSignatureValid, Error> {
         let subject_public_key = subject_public_key(certificate.as_ref())
-            .map_err(|error| RustlsError::General(error.to_string()))?;
+            .map_err(|error| Error::General(error.to_string()))?;
         verify_tls13_signature_with_raw_key(
             message,
             &SubjectPublicKeyInfoDer::from(subject_public_key.as_slice()),

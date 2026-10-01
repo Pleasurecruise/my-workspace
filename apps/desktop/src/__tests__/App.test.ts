@@ -2,11 +2,11 @@ import { beforeEach, afterEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import { listen } from "@tauri-apps/api/event";
 import App from "../App.svelte";
-import type { ChatSnapshot } from "../lib/contracts/chat";
-import type { CommandResponse } from "../lib/contracts/command";
-import type { ChannelView, InitialViews, MemoTagCount, MemoView } from "../lib/contracts/content";
-import type { ConfigurationStatus } from "../lib/contracts/settings";
-import type { TerminalOutput } from "../lib/contracts/terminal";
+import type { ChatSnapshot } from "@/lib/contracts/chat";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { ChannelView, InitialViews, MemoTagCount, MemoView } from "@/lib/contracts/content";
+import type { ConfigurationStatus } from "@/lib/contracts/settings";
+import type { TerminalOutput } from "@/lib/contracts/terminal";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({
@@ -491,7 +491,7 @@ it("keeps one newspaper loading surface from index lookup through article compil
 	setupCommands();
 	const fallback = invoke.getMockImplementation()!;
 	const index = deferred<CommandResponse<ChannelView>>();
-	const detail = deferred<CommandResponse<import("../lib/contracts/content").KnowledgeDocument>>();
+	const detail = deferred<CommandResponse<import("@/lib/contracts/content").KnowledgeDocument>>();
 	invoke.mockImplementation((command: string, args: unknown) => {
 		if (command === "read_channel") return index.promise;
 		if (command === "read_knowledge") return detail.promise;

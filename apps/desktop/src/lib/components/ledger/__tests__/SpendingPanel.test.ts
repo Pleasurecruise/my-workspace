@@ -1,8 +1,8 @@
 import { beforeEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import { fromStore, writable } from "svelte/store";
-import type { CommandResponse } from "../../../contracts/command";
-import type { ExpenseSnapshot } from "../../../contracts/ledger";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { ExpenseSnapshot } from "@/lib/contracts/ledger";
 import SpendingPanel from "../SpendingPanel.svelte";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));

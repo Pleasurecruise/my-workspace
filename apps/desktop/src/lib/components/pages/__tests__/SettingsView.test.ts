@@ -1,8 +1,8 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import { fromStore, writable } from "svelte/store";
-import type { CommandResponse } from "../../../contracts/command";
-import type { GameConnections } from "../../../contracts/games";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { GameConnections } from "@/lib/contracts/games";
 import type {
 	ApiConfiguration,
 	CodexResets,
@@ -11,7 +11,7 @@ import type {
 	NotionCalendar,
 	R2Configuration,
 	UgosConfiguration,
-} from "../../../contracts/settings";
+} from "@/lib/contracts/settings";
 import SettingsView from "../SettingsView.svelte";
 
 vi.mock("@tauri-apps/api/core", () => ({

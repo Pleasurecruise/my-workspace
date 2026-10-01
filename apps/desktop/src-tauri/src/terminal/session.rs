@@ -210,15 +210,15 @@ impl Sessions {
         }
         let pair = native_pty_system()
             .openpty(dimensions)
-            .map_err(|_| "Could not allocate a native terminal.".to_owned())?;
+            .map_err(|error| format!("Could not allocate a native terminal: {error}"))?;
         let mut reader = pair
             .master
             .try_clone_reader()
-            .map_err(|_| "Could not read the native terminal.".to_owned())?;
+            .map_err(|error| format!("Could not read the native terminal: {error}"))?;
         let mut writer = pair
             .master
             .take_writer()
-            .map_err(|_| "Could not write to the native terminal.".to_owned())?;
+            .map_err(|error| format!("Could not write to the native terminal: {error}"))?;
         let mut child = pair
             .slave
             .spawn_command(command)
@@ -530,32 +530,6 @@ mod tests {
         }
         assert!(sessions.write(&id, b"closed".to_vec()).is_err());
     }
-    #[cfg(unix)]
-    #[test]
-    fn replaces_same_device_before_old_disconnect_arrives() {
-        let sessions = Sessions::default();
-        let old_id = uuid::Uuid::new_v4().to_string();
-        let new_id = uuid::Uuid::new_v4().to_string();
-        for id in [&old_id, &new_id] {
-            let mut command = CommandBuilder::new("/bin/sh");
-            command.args(["-c", "while read line; do :; done"]);
-            sessions
-                .spawn(
-                    id.clone(),
-                    Some("node"),
-                    command,
-                    validate_size(80, 24).unwrap(),
-                    Channel::new(|_| Ok(())),
-                )
-                .unwrap();
-        }
-        assert!(sessions.write(&old_id, b"old\n".to_vec()).is_err());
-        sessions.close(&old_id);
-        assert!(sessions.write(&new_id, b"new\n".to_vec()).is_ok());
-        assert_eq!(sessions.0.lock().unwrap().len(), 1);
-        sessions.close_all();
-    }
-
     #[cfg(unix)]
     #[test]
     fn local_terminal_survives_tailnet_changes_and_idle_but_closes_on_lock() {

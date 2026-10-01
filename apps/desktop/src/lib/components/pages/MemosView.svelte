@@ -18,8 +18,8 @@
 	import { openUrl } from "@tauri-apps/plugin-opener";
 	import type { Snippet } from "svelte";
 	import { onMount, tick } from "svelte";
-	import type { CommandResponse } from "../../contracts/command";
-	import type { MemoTagCount, MemoUpdate, MemoView, PublishedPost } from "../../contracts/content";
+	import type { CommandResponse } from "@/lib/contracts/command";
+	import type { MemoTagCount, MemoUpdate, MemoView, PublishedPost } from "@/lib/contracts/content";
 	import MemoEditor from "../memos/MemoEditor.svelte";
 
 	let {

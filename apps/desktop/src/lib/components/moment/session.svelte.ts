@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { onMount } from "svelte";
-import type { CommandResponse } from "../../contracts/command";
-import type { ChannelView, PhotoUpload, PhotoUpdate, PhotoItem } from "../../contracts/content";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { ChannelView, PhotoUpload, PhotoUpdate, PhotoItem } from "@/lib/contracts/content";
 
 export function createMomentTags() {
 	let tags = $state<string[]>([]);

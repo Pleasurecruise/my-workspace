@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { CommandResponse } from "../../contracts/command";
-import type { KnowledgeDocument } from "../../contracts/content";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { KnowledgeDocument } from "@/lib/contracts/content";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 // Desktop routes carry IDs; Rust extracts article IDs from canonical web URLs.

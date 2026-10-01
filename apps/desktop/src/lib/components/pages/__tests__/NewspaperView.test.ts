@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import NewspaperView from "../NewspaperView.svelte";
-import type { KnowledgeDocument } from "../../../contracts/content";
+import type { KnowledgeDocument } from "@/lib/contracts/content";
 
 const opener = vi.hoisted(() => ({ openUrl: vi.fn().mockResolvedValue(null) }));
 vi.mock("@tauri-apps/plugin-opener", () => opener);

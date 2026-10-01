@@ -3,7 +3,7 @@
 	import { Select } from "@my-workspace/ui";
 	import { ChevronLeft, ChevronRight, Check, Pencil, Plus, Trash2, WalletCards, X } from "@lucide/svelte";
 	import { untrack } from "svelte";
-	import type { ExpenseEntry } from "../../contracts/ledger";
+	import type { ExpenseEntry } from "@/lib/contracts/ledger";
 	import { createLedgerSession } from "./session.svelte";
 	let { selectedDate, todayDate, onselect, embedded = false }: { selectedDate: string; todayDate: string; onselect: (date: string) => void; embedded?: boolean } = $props();
 	const ledger = createLedgerSession();

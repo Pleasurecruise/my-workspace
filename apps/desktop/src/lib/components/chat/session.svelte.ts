@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { onMount } from "svelte";
-import type { ChatSnapshot } from "../../contracts/chat";
-import type { CommandResponse } from "../../contracts/command";
+import type { ChatSnapshot } from "@/lib/contracts/chat";
+import type { CommandResponse } from "@/lib/contracts/command";
 
 export function createChatSession() {
 	let snapshot = $state<ChatSnapshot>({

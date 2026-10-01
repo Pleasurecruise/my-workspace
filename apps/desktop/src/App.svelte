@@ -9,7 +9,7 @@
 	import PageSkeleton from "./lib/components/layout/PageSkeleton.svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
-	import { Archive, ArrowLeft, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, MessageCircle, Lock, Menu, Moon, Music2, Newspaper as NewspaperIcon, Settings, Sun, X } from "@lucide/svelte";
+	import { Archive, ArrowLeft, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, MessageCircle, Lock, Menu, Moon, Music2, Newspaper, Settings, Sun, X } from "@lucide/svelte";
 	import { onMount, untrack } from "svelte";
 	import MemosView from "./lib/components/pages/MemosView.svelte";
 	import MomentView from "./lib/components/pages/MomentView.svelte";
@@ -23,9 +23,9 @@
 	import DashboardView from "./lib/components/pages/DashboardView.svelte";
 	import SettingsView from "./lib/components/pages/SettingsView.svelte";
 	import ScrollToTop from "./lib/components/layout/ScrollToTop.svelte";
-	import type { CommandResponse } from "./lib/contracts/command";
-	import type { Channel, InitialViews } from "./lib/contracts/content";
-	import type { TerminalTarget } from "./lib/contracts/terminal";
+	import type { CommandResponse } from "@/lib/contracts/command";
+	import type { Channel, InitialViews } from "@/lib/contracts/content";
+	import type { TerminalTarget } from "@/lib/contracts/terminal";
 	import { createDashboardSession } from "./lib/components/dashboard/session.svelte";
 	import { createInboxSession } from "./lib/components/inbox/session.svelte";
 	import { createSettingsSession } from "./lib/components/settings/session.svelte";
@@ -278,7 +278,7 @@
 					title={item.label}
 					onclick={() => void select(item.id)}
 				>
-					{#if item.id === "dashboard"}<LayoutDashboard size={15} />{:else if item.id === "chat"}<MessageCircle size={15} />{:else if item.id === "memos"}<Home size={15} />{:else if item.id === "moment"}<Image size={15} />{:else if item.id === "music"}<Music2 size={15} />{:else if item.id === "newspaper"}<NewspaperIcon size={15} />{:else if item.id === "knowledge"}<BookOpen size={15} />{:else}<Settings size={15} />{/if}
+					{#if item.id === "dashboard"}<LayoutDashboard size={15} />{:else if item.id === "chat"}<MessageCircle size={15} />{:else if item.id === "memos"}<Home size={15} />{:else if item.id === "moment"}<Image size={15} />{:else if item.id === "music"}<Music2 size={15} />{:else if item.id === "newspaper"}<Newspaper size={15} />{:else if item.id === "knowledge"}<BookOpen size={15} />{:else}<Settings size={15} />{/if}
 					<span>{item.label}</span>
 				</button>
 			{/each}

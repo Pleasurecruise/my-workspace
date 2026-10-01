@@ -1,8 +1,8 @@
 import { expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import { fromStore, writable } from "svelte/store";
-import type { CommandResponse } from "../../../contracts/command";
-import type { CheckIn } from "../../../contracts/todo";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { CheckIn } from "@/lib/contracts/todo";
 import HabitsPanel from "../HabitsPanel.svelte";
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { StarRailReport } from "../../contracts/games";
+	import type { StarRailReport } from "@/lib/contracts/games";
 	let { report }: { report: StarRailReport } = $props();
 	const total = $derived(report.pools.reduce((sum, pool) => sum + pool.total, 0));
 	const distribution = $derived(report.pools.map((pool, index) => ({

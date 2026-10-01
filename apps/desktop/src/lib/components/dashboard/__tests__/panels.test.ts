@@ -5,7 +5,7 @@ import QuotationPanel from "../QuotationPanel.svelte";
 import ServiceStatusPanel from "../ServiceStatusPanel.svelte";
 import StocksPanel from "../StocksPanel.svelte";
 import WeatherPanel from "../WeatherPanel.svelte";
-import type { ExchangeRate, StockReport } from "../../../contracts/dashboard";
+import type { ExchangeRate, StockReport } from "@/lib/contracts/dashboard";
 
 const target = document.createElement("div");
 let view: ReturnType<typeof mount> | null = null;

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::sync::{Mutex as AsyncMutex, watch};
+use tokio::sync::{self, watch};
 use tokio::task::JoinSet;
 use tokio::time::{Instant, interval_at};
 
@@ -84,20 +84,30 @@ enum DashboardEvent {
 }
 
 impl DashboardEvent {
-    async fn read(source: Source, app: &AppHandle, refresh_games: bool) -> Self {
-        if let Source::Games = source {
-            return Self::Games(crate::games::refresh(app, refresh_games).await.into());
-        }
-        let layout = layout();
+    async fn read(
+        source: Source,
+        app: &AppHandle,
+        layout: &Result<Layout, String>,
+        refresh_games: bool,
+    ) -> Self {
         let has = |check: fn(&Layout) -> bool| layout.as_ref().map(check).map_err(Clone::clone);
         let provider = |provider: Provider| {
-            let layout = layout.as_ref().map_err(Clone::clone)?;
-            Ok(layout.has_provider(provider))
+            layout
+                .as_ref()
+                .map(|layout| layout.has_provider(provider))
+                .map_err(Clone::clone)
         };
         let list =
             |items: fn(&Layout) -> Vec<String>| layout.as_ref().map(items).map_err(Clone::clone);
         match source {
-            Source::Games => unreachable!("game sources return before reading the layout"),
+            Source::Games => Self::Games(match layout {
+                Ok(layout) => crate::games::refresh(app, layout, refresh_games)
+                    .await
+                    .into(),
+                Err(message) => CommandResponse::Failed {
+                    message: message.clone(),
+                },
+            }),
             Source::TaskManager => Self::TaskManager(
                 optional(source, has(Layout::has_ugos), ugos::task_manager()).await,
             ),
@@ -230,7 +240,7 @@ async fn listed<T, F: Future<Output = Result<T, String>>>(
 
 struct RuntimeState {
     active: watch::Sender<bool>,
-    sources: [Arc<AsyncMutex<()>>; SOURCE_COUNT],
+    sources: [Arc<sync::Mutex<()>>; SOURCE_COUNT],
     polling: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -241,21 +251,23 @@ impl Default for Runtime {
     fn default() -> Self {
         Self(Arc::new(RuntimeState {
             active: watch::channel(false).0,
-            sources: std::array::from_fn(|_| Arc::new(AsyncMutex::new(()))),
+            sources: std::array::from_fn(|_| Arc::new(sync::Mutex::new(()))),
             polling: Mutex::new(None),
         }))
     }
 }
 
 impl Runtime {
-    fn refresh_if_idle(&self, app: AppHandle, source: Source) {
+    fn poll(&self, app: &AppHandle, layout: &Arc<Result<Layout, String>>, source: Source) {
         let active = self.0.active.subscribe();
         let Ok(source_guard) = Arc::clone(&self.0.sources[source as usize]).try_lock_owned() else {
             return;
         };
+        let app = app.clone();
+        let layout = Arc::clone(layout);
         tauri::async_runtime::spawn(async move {
             if let Some(event) =
-                read_while_active(active, DashboardEvent::read(source, &app, false)).await
+                read_while_active(active, DashboardEvent::read(source, &app, &layout, false)).await
             {
                 event.emit(&app);
             }
@@ -314,17 +326,21 @@ fn island_sources(widget: &Widget) -> Vec<Source> {
 
 #[tauri::command]
 pub(crate) async fn refresh_island(app: AppHandle) -> CommandResponse<()> {
-    let layout = match layout() {
-        Ok(layout) => layout,
-        Err(message) => return CommandResponse::Failed { message },
-    };
-    let Some(widget) = layout.island() else {
-        return CommandResponse::Ready { data: () };
+    let layout = layout();
+    let sources = match &layout {
+        Ok(layout) => layout.island().map(island_sources).unwrap_or_default(),
+        Err(message) => {
+            return CommandResponse::Failed {
+                message: message.clone(),
+            };
+        }
     };
     let runtime = app.state::<Runtime>();
-    futures_util::future::join_all(island_sources(widget).into_iter().map(async |source| {
+    futures_util::future::join_all(sources.into_iter().map(async |source| {
         let _guard = runtime.0.sources[source as usize].lock().await;
-        DashboardEvent::read(source, &app, false).await.emit(&app);
+        DashboardEvent::read(source, &app, &layout, false)
+            .await
+            .emit(&app);
     }))
     .await;
     CommandResponse::Ready { data: () }
@@ -340,17 +356,23 @@ pub(crate) async fn refresh_dashboard(
     if !*active.borrow_and_update() {
         return CommandResponse::Ready { data: () };
     }
+    let layout = Arc::new(layout());
     let mut requests = JoinSet::new();
     for source in Source::ALL {
         let source_lock = Arc::clone(&runtime.0.sources[source as usize]);
         let request_app = app.clone();
         let source_active = active.clone();
+        let layout = Arc::clone(&layout);
         requests.spawn(async move {
             read_while_active(source_active, async {
                 let source_guard = source_lock.lock_owned().await;
-                let event =
-                    DashboardEvent::read(source, &request_app, refresh_games.unwrap_or(false))
-                        .await;
+                let event = DashboardEvent::read(
+                    source,
+                    &request_app,
+                    &layout,
+                    refresh_games.unwrap_or(false),
+                )
+                .await;
                 event.emit(&request_app);
                 drop(source_guard);
             })
@@ -416,24 +438,25 @@ pub(crate) fn set_dashboard_active(
         // Steam keeps its polling interval; daily notes only replay their cache.
         let mut games = interval_at(now + Duration::from_secs(300), Duration::from_secs(300));
         loop {
-            tokio::select! {
-                _ = games.tick() => runtime.refresh_if_idle(app.clone(), Source::Games),
-                _ = task_manager.tick() => {
-                    runtime.refresh_if_idle(app.clone(), Source::TaskManager);
-                    runtime.refresh_if_idle(app.clone(), Source::DeviceTelemetry);
-                },
-                _ = subscriptions.tick() => {
-                    runtime.refresh_if_idle(app.clone(), Source::Codex);
-                    runtime.refresh_if_idle(app.clone(), Source::OpenCode);
-                    runtime.refresh_if_idle(app.clone(), Source::Claude);
-                    runtime.refresh_if_idle(app.clone(), Source::Grok);
-                    runtime.refresh_if_idle(app.clone(), Source::Copilot);
-                    runtime.refresh_if_idle(app.clone(), Source::DeepSeek);
-                    runtime.refresh_if_idle(app.clone(), Source::CherryIn);
-                    runtime.refresh_if_idle(app.clone(), Source::TokenFlux);
-                    runtime.refresh_if_idle(app.clone(), Source::DimAgent);
-                    runtime.refresh_if_idle(app.clone(), Source::ServiceStatus);
-                }
+            let sources: &[Source] = tokio::select! {
+                _ = games.tick() => &[Source::Games],
+                _ = task_manager.tick() => &[Source::TaskManager, Source::DeviceTelemetry],
+                _ = subscriptions.tick() => &[
+                    Source::Codex,
+                    Source::OpenCode,
+                    Source::Claude,
+                    Source::Grok,
+                    Source::Copilot,
+                    Source::DeepSeek,
+                    Source::CherryIn,
+                    Source::TokenFlux,
+                    Source::DimAgent,
+                    Source::ServiceStatus,
+                ],
+            };
+            let layout = Arc::new(layout());
+            for source in sources {
+                runtime.poll(&app, &layout, *source);
             }
         }
     }));

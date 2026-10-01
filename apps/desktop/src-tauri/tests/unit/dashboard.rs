@@ -44,7 +44,7 @@ async fn navigation_drops_inflight_read_and_reentry_can_read_again() {
 
 #[tokio::test]
 async fn navigation_cancels_reads_waiting_for_a_source_lock() {
-    let lock = Arc::new(AsyncMutex::new(()));
+    let lock = Arc::new(sync::Mutex::new(()));
     let guard = lock.lock().await;
     let (active, receiver) = watch::channel(true);
     let reads = AtomicUsize::new(0);

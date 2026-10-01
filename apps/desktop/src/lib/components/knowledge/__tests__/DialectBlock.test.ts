@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import { writable } from "svelte/store";
-import type { CommandResponse } from "../../../contracts/command";
+import type { CommandResponse } from "@/lib/contracts/command";
 import DialectBlock from "../DialectBlock.svelte";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));

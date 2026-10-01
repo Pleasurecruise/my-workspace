@@ -539,7 +539,8 @@ pub(crate) async fn pulls(session: &Session, game: Game) -> Result<(Account, Vec
         }
         let Some(session) = response
             .cookies()
-            .find(|cookie| cookie.name() == "ak-user-center")
+            .filter(|cookie| cookie.name() == "ak-user-center")
+            .last()
         else {
             return Err("Arknights history login did not return a session".into());
         };

@@ -3,8 +3,8 @@
 	import { Select } from "@my-workspace/ui";
 	import { RefreshCw } from "@lucide/svelte";
 	import { onDestroy, onMount } from "svelte";
-	import type { CommandResponse } from "../../contracts/command";
-	import type { GachaArchive, Game } from "../../contracts/games";
+	import type { CommandResponse } from "@/lib/contracts/command";
+	import type { GachaArchive, Game } from "@/lib/contracts/games";
 	import { gameNames } from "../../dashboard";
 	import "./games.css";
 	import StarRailGachaReport from "./StarRailGachaReport.svelte";

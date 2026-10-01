@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
-import type { WidgetLayout } from "../../../contracts/dashboard";
+import type { WidgetLayout } from "@/lib/contracts/dashboard";
 import { createDashboardSession } from "../../dashboard/session.svelte";
 import { createLayoutSession } from "../../dashboard/layout.svelte";
 import DashboardView from "../DashboardView.svelte";

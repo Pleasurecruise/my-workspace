@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vite-plus/test";
-import type { CommandResponse } from "../../../contracts/command";
-import type { WidgetLayout } from "../../../contracts/dashboard";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { WidgetLayout } from "@/lib/contracts/dashboard";
 import { createLayoutSession } from "../layout.svelte";
 
 const { invoke, mounts } = vi.hoisted(() => ({

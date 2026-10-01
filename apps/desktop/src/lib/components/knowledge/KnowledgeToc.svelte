@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { ListTree } from "@lucide/svelte";
-	import type { TocEntry } from "../../contracts/content";
+	import type { TocEntry } from "@/lib/contracts/content";
 
 	let { entries, content }: { entries: TocEntry[]; content: HTMLElement | null } = $props();
 	let panel = $state<HTMLDetailsElement | null>(null);

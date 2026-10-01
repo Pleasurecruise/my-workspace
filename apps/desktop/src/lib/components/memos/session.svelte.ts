@@ -1,14 +1,14 @@
 import { SvelteSet } from "svelte/reactivity";
 import { invoke } from "@tauri-apps/api/core";
 import { onMount, tick } from "svelte";
-import type { CommandResponse } from "../../contracts/command";
+import type { CommandResponse } from "@/lib/contracts/command";
 import type {
 	ChannelView,
 	MemoView,
 	MemoUpdate,
 	PublishedPost,
 	MemoTagCount,
-} from "../../contracts/content";
+} from "@/lib/contracts/content";
 
 type MemoDisplay = "active" | "favorites" | "archived";
 

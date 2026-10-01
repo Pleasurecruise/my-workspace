@@ -40,7 +40,7 @@ import type { EditorView } from "@milkdown/kit/prose/view";
 import type { Root, RootContent, Literal } from "mdast";
 import type { MarkdownNode } from "@milkdown/kit/transformer";
 import remarkFrontmatter from "remark-frontmatter";
-import type { MarkdownSpan } from "../../contracts/content";
+import type { MarkdownSpan } from "@/lib/contracts/content";
 
 declare module "mdast" {
 	interface RootContentMap {

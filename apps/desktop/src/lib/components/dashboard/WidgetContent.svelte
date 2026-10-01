@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Habit, WidgetPlacement, ServiceStatusCatalogEntry } from "../../contracts/dashboard";
+	import type { Habit, WidgetPlacement, ServiceStatusCatalogEntry } from "@/lib/contracts/dashboard";
 	import type { createDashboardSession } from "./session.svelte";
 	import InvalidWidget from "./InvalidWidget.svelte";
 	import TelemetryPanel from "./TelemetryPanel.svelte";

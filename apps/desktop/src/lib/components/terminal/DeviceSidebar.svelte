@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { RefreshCw, Terminal } from "@lucide/svelte";
 	import type { createTerminalSession } from "./session.svelte";
-	import type { TerminalTarget } from "../../contracts/terminal";
+	import type { TerminalTarget } from "@/lib/contracts/terminal";
 	let { session, compact, active, onopen }: {
 		session: ReturnType<typeof createTerminalSession>;
 		compact: boolean;

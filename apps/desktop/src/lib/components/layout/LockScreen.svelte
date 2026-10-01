@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke } from "@tauri-apps/api/core";
 	import { onMount } from "svelte";
-	import type { CommandResponse } from "../../contracts/command";
+	import type { CommandResponse } from "@/lib/contracts/command";
 
 	let { onunlock }: { onunlock: () => void } = $props();
 

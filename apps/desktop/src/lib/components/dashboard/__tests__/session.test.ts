@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import type { CommandResponse } from "../../../contracts/command";
-import type { TodoList } from "../../../contracts/todo";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { TodoList } from "@/lib/contracts/todo";
 import { createDashboardSession } from "../session.svelte";
 
 const { invoke, listen, mounts, listeners } = vi.hoisted(() => ({

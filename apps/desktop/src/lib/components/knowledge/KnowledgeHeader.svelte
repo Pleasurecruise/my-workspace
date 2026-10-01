@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
 	import { Clock, Type } from "@lucide/svelte";
-	import type { ReadingStats } from "../../contracts/content";
+	import type { ReadingStats } from "@/lib/contracts/content";
 
 	let { title, stats, actions }: { title: string; stats: ReadingStats; actions: Snippet } = $props();
 </script>

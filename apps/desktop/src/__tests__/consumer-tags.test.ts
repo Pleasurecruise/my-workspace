@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vite-plus/test";
-import type { CommandResponse } from "../lib/contracts/command";
-import type { MemoTagCount } from "../lib/contracts/content";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { MemoTagCount } from "@/lib/contracts/content";
 import { createMemosTags } from "../lib/components/memos/session.svelte";
 import { createMomentTags } from "../lib/components/moment/session.svelte";
 

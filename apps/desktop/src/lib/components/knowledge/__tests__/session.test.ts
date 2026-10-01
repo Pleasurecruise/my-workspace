@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vite-plus/test";
-import type { CommandResponse } from "../../../contracts/command";
-import type { ChannelView, KnowledgeDocument } from "../../../contracts/content";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { ChannelView, KnowledgeDocument } from "@/lib/contracts/content";
 import { createKnowledgeSession } from "../session.svelte";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));

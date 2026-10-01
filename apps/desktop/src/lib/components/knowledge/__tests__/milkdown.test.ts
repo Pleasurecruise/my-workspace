@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { TextSelection } from "@milkdown/kit/prose/state";
 import { createEditor } from "../milkdown";
-import type { MarkdownSpan } from "../../../contracts/content";
+import type { MarkdownSpan } from "@/lib/contracts/content";
 import fixtures from "@workspace/crates/markdown/tests/fixtures/editor.json";
 
 async function setup(source: string, ranges: MarkdownSpan[] = [], maxLength = 500_000) {

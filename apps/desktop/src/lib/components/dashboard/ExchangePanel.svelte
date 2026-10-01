@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { ArrowLeftRight, TrendingDown, TrendingUp } from "@lucide/svelte";
-	import type { ExchangeRate, ExchangeReport } from "../../contracts/dashboard";
+	import type { ExchangeRate, ExchangeReport } from "@/lib/contracts/dashboard";
 
 	let { report, error }: { report: ExchangeReport | null; error: string | null } = $props();
 	const pairs = ["USD", "GBP", "EUR"] as const;

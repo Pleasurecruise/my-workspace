@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import type { MusicProvider, MusicTrack } from "../../contracts/music";
+	import type { MusicProvider, MusicTrack } from "@/lib/contracts/music";
 
 	let settledProvider: MusicProvider = "qqMusic";
 	let settledSpotifyRevision = 0;
@@ -14,8 +14,8 @@
 	import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 	import { ListOrdered, Music2, Pause, Play, Repeat1, Shuffle, SkipBack, SkipForward } from "@lucide/svelte";
 	import { onMount, untrack } from "svelte";
-	import type { CommandResponse } from "../../contracts/command";
-	import type { MusicLyrics, MusicPlayback } from "../../contracts/music";
+	import type { CommandResponse } from "@/lib/contracts/command";
+	import type { MusicLyrics, MusicPlayback } from "@/lib/contracts/music";
 
 	let {
 		spotifyRevision = 0,

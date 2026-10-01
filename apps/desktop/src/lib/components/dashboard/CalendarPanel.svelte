@@ -4,9 +4,9 @@
 
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
-	import type { CommandResponse } from "../../contracts/command";
-	import type { Habit } from "../../contracts/dashboard";
-	import type { TodoList } from "../../contracts/todo";
+	import type { CommandResponse } from "@/lib/contracts/command";
+	import type { Habit } from "@/lib/contracts/dashboard";
+	import type { TodoList } from "@/lib/contracts/todo";
 
 	let { todayDate, selectedDate, habits = [], todos = null, onselect }: { todayDate: string; selectedDate: string; habits?: Habit[]; todos?: TodoList | null; onselect: (date: string) => void | Promise<void> } = $props();
 	const id = $props.id();

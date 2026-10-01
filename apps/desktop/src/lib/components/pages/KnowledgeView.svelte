@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import type { KnowledgeDocument } from "../../contracts/content";
+	import type { KnowledgeDocument } from "@/lib/contracts/content";
 
 	let selected = $state<KnowledgeDocument | null>(null);
 	let destination = $state<{ id: string; fragment: string } | null>(null);
@@ -35,8 +35,8 @@
 	import { openArticleLinks, preloadArticles } from "../knowledge/links";
 	import { mediaPlayers } from "../knowledge/media";
 	import { ArrowLeft, Check, Link, Pencil, Plus } from "@lucide/svelte";
-	import type { CommandResponse } from "../../contracts/command";
-	import type { KnowledgeDraft, KnowledgeUpdate, KnowledgeEntry } from "../../contracts/content";
+	import type { CommandResponse } from "@/lib/contracts/command";
+	import type { KnowledgeDraft, KnowledgeUpdate, KnowledgeEntry } from "@/lib/contracts/content";
 	import KnowledgeHeader from "../knowledge/KnowledgeHeader.svelte";
 	import KnowledgeToc from "../knowledge/KnowledgeToc.svelte";
 	import "../knowledge/prose.css";

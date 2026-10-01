@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { CommandResponse } from "../../contracts/command";
-import type { Channel } from "../../contracts/content";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { Channel } from "@/lib/contracts/content";
 import type {
 	ApiConfiguration,
 	CodexResets,
@@ -9,7 +9,7 @@ import type {
 	NotionCalendar,
 	R2Configuration,
 	UgosConfiguration,
-} from "../../contracts/settings";
+} from "@/lib/contracts/settings";
 
 export function createSettingsSession(effects: {
 	resetChannel: (channel: Channel) => void;

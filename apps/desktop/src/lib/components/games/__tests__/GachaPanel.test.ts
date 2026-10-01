@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
-import type { CommandResponse } from "../../../contracts/command";
-import type { GachaArchive } from "../../../contracts/games";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { GachaArchive } from "@/lib/contracts/games";
 import GachaPanel from "../GachaPanel.svelte";
 
 const commands = vi.hoisted(() => ({ invoke: vi.fn() }));

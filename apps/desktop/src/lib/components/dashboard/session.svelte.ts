@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { onMount } from "svelte";
-import type { CommandResponse } from "../../contracts/command";
-import type { DashboardState, DashboardEvent, QueryState } from "../../contracts/dashboard";
-import type { TodoList } from "../../contracts/todo";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { DashboardState, DashboardEvent, QueryState } from "@/lib/contracts/dashboard";
+import type { TodoList } from "@/lib/contracts/todo";
 
 function applySource<T>(state: QueryState<T>, response: CommandResponse<T | null>) {
 	state.loading = false;

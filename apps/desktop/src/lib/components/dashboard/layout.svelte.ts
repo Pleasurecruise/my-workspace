@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { onMount } from "svelte";
-import type { CommandResponse } from "../../contracts/command";
-import type { ServiceStatusCatalogEntry, WidgetLayout } from "../../contracts/dashboard";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { ServiceStatusCatalogEntry, WidgetLayout } from "@/lib/contracts/dashboard";
 
 export function createLayoutSession() {
 	let layout = $state<WidgetLayout | null>(null);

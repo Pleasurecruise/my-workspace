@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import type { CommandResponse } from "../../../contracts/command";
-import type { ExpenseSnapshot } from "../../../contracts/ledger";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { ExpenseSnapshot } from "@/lib/contracts/ledger";
 import { createLedgerSession } from "../session.svelte";
 
 const { invoke, mounts, listeners } = vi.hoisted(() => ({

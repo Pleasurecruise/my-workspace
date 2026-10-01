@@ -1,8 +1,8 @@
 import { expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import { fromStore, writable } from "svelte/store";
-import type { CommandResponse } from "../../../contracts/command";
-import type { MemoView, MemoTagCount } from "../../../contracts/content";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { MemoView, MemoTagCount } from "@/lib/contracts/content";
 import MemosView from "../MemosView.svelte";
 
 function findElement<T extends Element>(target: ParentNode, selector: string): T {

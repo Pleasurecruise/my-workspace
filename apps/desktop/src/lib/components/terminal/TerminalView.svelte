@@ -7,8 +7,8 @@
 	import ConnectionStatus from "../layout/ConnectionStatus.svelte";
 	import type { Terminal } from "@xterm/xterm";
 	import type { FitAddon } from "@xterm/addon-fit";
-	import type { CommandResponse } from "../../contracts/command";
-	import type { TerminalTarget, TerminalConnection, TerminalOutput } from "../../contracts/terminal";
+	import type { CommandResponse } from "@/lib/contracts/command";
+	import type { TerminalTarget, TerminalConnection, TerminalOutput } from "@/lib/contracts/terminal";
 
 	let { target, active, locked }: { target: TerminalTarget; active: boolean; locked: boolean } = $props();
 	const device = $derived(target.kind === "ssh" ? target.device : null);

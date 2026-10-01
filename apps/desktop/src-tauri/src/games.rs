@@ -188,8 +188,12 @@ struct NotesEvent {
     result: NotesResponse,
 }
 
-pub(crate) async fn refresh(app: &tauri::AppHandle, force: bool) -> Result<(), String> {
-    let (selected, steam) = crate::dashboard::layout()?.games();
+pub(crate) async fn refresh(
+    app: &tauri::AppHandle,
+    layout: &dashboard::Layout,
+    force: bool,
+) -> Result<(), String> {
+    let (selected, steam) = layout.games();
     let mut tasks = tokio::task::JoinSet::new();
     for game in selected {
         let app = app.clone();

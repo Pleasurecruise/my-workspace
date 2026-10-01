@@ -2,7 +2,7 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { onMount, tick } from "svelte";
 	import type { Readable } from "svelte/store";
-	import type { CommandResponse } from "../../contracts/command";
+	import type { CommandResponse } from "@/lib/contracts/command";
 	import { mediaPlayers } from "./media";
 	import { openArticleLinks } from "./links";
 	import "./prose.css";

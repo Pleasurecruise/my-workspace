@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use reqwest::header::{COOKIE, LOCATION, REFERER as REFERER_HEADER};
+use reqwest::header::{self, COOKIE, LOCATION};
 
 use super::auth::{RenewData, hash33, read_time, render_cookie};
 use super::{API, QqResponse, REFERER, check};
@@ -45,7 +45,7 @@ impl QqLogin {
             .build()?;
         let response = http
             .get(QR_API)
-            .header(REFERER_HEADER, "https://xui.ptlogin2.qq.com/")
+            .header(header::REFERER, "https://xui.ptlogin2.qq.com/")
             .query(&[
                 ("appid", "716027609"),
                 ("e", "2"),
@@ -94,7 +94,7 @@ impl QqLogin {
         let response = self
             .http
             .get(POLL_API)
-            .header(REFERER_HEADER, "https://xui.ptlogin2.qq.com/")
+            .header(header::REFERER, "https://xui.ptlogin2.qq.com/")
             .header(COOKIE, format!("qrsig={};", self.qrsig))
             .query(&[
                 ("u1", "https://graph.qq.com/oauth2.0/login_jump"),
@@ -160,7 +160,7 @@ impl QqLogin {
         let response = self
             .http
             .get(jump)
-            .header(REFERER_HEADER, "https://xui.ptlogin2.qq.com/")
+            .header(header::REFERER, "https://xui.ptlogin2.qq.com/")
             .header(COOKIE, render_cookie(&cookies))
             .send()
             .await?;
@@ -173,7 +173,7 @@ impl QqLogin {
         let response = self
             .http
             .post(AUTHORIZE_API)
-            .header(REFERER_HEADER, "https://xui.ptlogin2.qq.com/")
+            .header(header::REFERER, "https://xui.ptlogin2.qq.com/")
             .header(COOKIE, render_cookie(&cookies))
             .form(&[
                 ("response_type", "code".to_owned()),
@@ -215,7 +215,7 @@ impl QqLogin {
         let response = self
             .http
             .post(API)
-            .header(REFERER_HEADER, REFERER)
+            .header(header::REFERER, REFERER)
             .json(&serde_json::json!({
                 "comm": {
                     "ct": 11, "cv": 14090008, "v": 14090008, "chid": "10003505",

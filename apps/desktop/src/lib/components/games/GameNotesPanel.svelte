@@ -4,8 +4,8 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import { onMount } from "svelte";
-	import type { CommandResponse } from "../../contracts/command";
-	import type { Game, GameNotes, GameNotesResponse } from "../../contracts/games";
+	import type { CommandResponse } from "@/lib/contracts/command";
+	import type { Game, GameNotes, GameNotesResponse } from "@/lib/contracts/games";
 	import { gameNames } from "../../dashboard";
 	import "./games.css";
 	let { game }: { game: Game } = $props();

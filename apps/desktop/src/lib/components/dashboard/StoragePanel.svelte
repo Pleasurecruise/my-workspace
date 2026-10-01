@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { HardDrive } from "@lucide/svelte";
 	import { invoke } from "@tauri-apps/api/core";
-	import type { CommandResponse } from "../../contracts/command";
-	import type { LocalStorageSample } from "../../contracts/dashboard";
+	import type { CommandResponse } from "@/lib/contracts/command";
+	import type { LocalStorageSample } from "@/lib/contracts/dashboard";
 
 	let { storage, error }: { storage: LocalStorageSample | null; error: string | null } = $props();
 	let settingsError = $state<string | null>(null);

@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
-import type { CommandResponse } from "../../../contracts/command";
-import type { QqLoginStatus, QqQr } from "../../../contracts/music";
+import type { CommandResponse } from "@/lib/contracts/command";
+import type { QqLoginStatus, QqQr } from "@/lib/contracts/music";
 import QqMusicConnection from "../QqMusicConnection.svelte";
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));

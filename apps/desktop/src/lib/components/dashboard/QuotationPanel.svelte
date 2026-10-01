@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Quote } from "@lucide/svelte";
-	import type { Quotation } from "../../contracts/dashboard";
+	import type { Quotation } from "@/lib/contracts/dashboard";
 	let { quotation, error }: { quotation: Quotation | null; error: string | null } = $props();
 </script>
 
