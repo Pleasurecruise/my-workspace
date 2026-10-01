@@ -149,6 +149,7 @@ async fn reconciles_notion() {
         description: None,
         completed: false,
         rollover: false,
+        source_owned: true,
         details: Some(Details {
             calendar: "Notion · Work".into(),
             start_date: date.into(),
@@ -171,7 +172,7 @@ async fn reconciles_notion() {
         store
             .update(date, &remote.id, "Local edit", Some("Local notes"))
             .await,
-        Err(Error::ImportedItem)
+        Err(Error::RemoteItem)
     ));
     store.set_completed(date, &remote.id, true).await.unwrap();
     remote.text = "Renamed remotely".into();
@@ -187,6 +188,7 @@ async fn reconciles_notion() {
     assert_eq!(refreshed.items[0].text, "Manual");
     assert_eq!(refreshed.items[1].text, "Renamed remotely");
     assert!(refreshed.items[1].completed);
+    store.set_completed(date, &remote.id, false).await.unwrap();
     store.delete(date, &remote.id).await.unwrap();
     assert_eq!(
         store
@@ -287,6 +289,7 @@ async fn reuses_calendar_snapshot() {
         description: None,
         completed: false,
         rollover: false,
+        source_owned: true,
         details: Some(Details {
             calendar: "Work".into(),
             start_date: "2026-09-07".into(),
@@ -391,6 +394,7 @@ async fn rollover_consolidates() {
         description: None,
         completed: false,
         rollover: false,
+        source_owned: true,
         details: None,
     };
     for date in ["2026-09-12", "2026-09-13", "2026-09-17"] {
@@ -460,6 +464,7 @@ async fn rollover_keeps_history() {
         description: None,
         completed: false,
         rollover: false,
+        source_owned: true,
         details: None,
     };
     for date in ["2026-09-12", "2026-09-13"] {
@@ -510,6 +515,7 @@ async fn codex_preserves_local_state() {
         description: Some("Original announcement".into()),
         completed: false,
         rollover: false,
+        source_owned: true,
         details: Some(Details {
             calendar: "Codex Resets".into(),
             start_date: date.into(),
@@ -549,8 +555,9 @@ async fn codex_preserves_local_state() {
     );
     assert!(matches!(
         store.update(date, &remote.id, "Edited", None).await,
-        Err(Error::ImportedItem)
+        Err(Error::CompletedItem)
     ));
+    store.set_completed(date, &remote.id, false).await.unwrap();
     store.delete(date, &remote.id).await.unwrap();
     let list = store
         .replace_remote(
@@ -568,6 +575,7 @@ async fn codex_preserves_local_state() {
         description: None,
         completed: false,
         rollover: false,
+        source_owned: true,
         details: None,
     };
     store
@@ -597,6 +605,7 @@ async fn codex_rollover_is_unique() {
         description: None,
         completed: false,
         rollover: false,
+        source_owned: true,
         details: None,
     };
     store
@@ -637,6 +646,7 @@ async fn isolates_source_failures() {
         description: None,
         completed: false,
         rollover: false,
+        source_owned: true,
         details: None,
     };
     store
@@ -754,4 +764,125 @@ async fn retains_codex_lock() {
     assert!(matches!(locked, Err(std::fs::TryLockError::WouldBlock)));
     assert!(store.read_codex().await.unwrap().enabled);
     drop(lock);
+}
+
+#[tokio::test]
+async fn ics_tasks_own_local_content() {
+    let (directory, store) = test_store();
+    let date = "2026-09-30";
+    let source = directory.path().join("work.ics");
+    let original = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:review\nSUMMARY:Original\nDESCRIPTION:Source notes\nLOCATION:Room one\nDTSTART:20260930T093000\nEND:VEVENT\nEND:VCALENDAR\n";
+    std::fs::write(&source, original).unwrap();
+    store
+        .import_schedules(std::slice::from_ref(&source))
+        .await
+        .unwrap();
+    let first = store.sync_schedule(date).await.unwrap();
+    let id = &first.items[0].id;
+    let metadata = first.items[0].details.clone();
+    let edited = store
+        .update(date, id, "Local title", Some("Local notes"))
+        .await
+        .unwrap();
+    assert_eq!(edited.items[0].details, metadata);
+    std::fs::write(&source, original.replace("Original", "Source changed")).unwrap();
+    store
+        .import_schedules(std::slice::from_ref(&source))
+        .await
+        .unwrap();
+    let refreshed = store.sync_schedule(date).await.unwrap();
+    assert_eq!(refreshed.items[0].text, "Local title");
+    assert_eq!(
+        refreshed.items[0].description.as_deref(),
+        Some("Local notes")
+    );
+    assert!(!refreshed.items[0].source_owned);
+    let reopened = Store::new(store.database_path().to_owned());
+    assert_eq!(reopened.get(date, id).await.unwrap(), refreshed.items[0]);
+    store.set_completed(date, id, true).await.unwrap();
+    assert!(matches!(
+        store.update(date, id, "Blocked", None).await,
+        Err(Error::CompletedItem)
+    ));
+    assert!(matches!(
+        store.delete(date, id).await,
+        Err(Error::CompletedItem)
+    ));
+    store.set_completed(date, id, false).await.unwrap();
+    store.set_rollover(date, id, true).await.unwrap();
+    store.roll_over("2026-10-01").await.unwrap();
+    store
+        .update("2026-10-01", id, "Follow-up", None)
+        .await
+        .unwrap();
+    store.delete("2026-10-01", id).await.unwrap();
+    assert!(store.sync_schedule(date).await.unwrap().items.is_empty());
+}
+
+#[tokio::test]
+async fn remote_followups_become_editable() {
+    let (_directory, store) = test_store();
+    let date = "2026-09-30";
+    for prefix in ["notion:", "codex:"] {
+        let remote = Item {
+            id: format!("{prefix}review"),
+            text: "Remote".into(),
+            description: Some("Source notes".into()),
+            completed: false,
+            rollover: false,
+            source_owned: true,
+            details: Some(Details {
+                calendar: "Source".into(),
+                start_date: date.into(),
+                start_time: None,
+                end_date: None,
+                end_time: None,
+                location: None,
+            }),
+        };
+        store
+            .replace_remote(
+                date,
+                prefix,
+                vec![remote.clone()],
+                store.calendar_lock().await.unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(store.get(date, &remote.id).await.unwrap().source_owned);
+        assert!(matches!(
+            store.update(date, &remote.id, "Blocked", None).await,
+            Err(Error::RemoteItem)
+        ));
+        store.set_rollover(date, &remote.id, true).await.unwrap();
+        store.roll_over("2026-10-01").await.unwrap();
+        let followup = store.list("2026-10-01").await.unwrap().items.pop().unwrap();
+        assert!(followup.id.starts_with("rollover:"));
+        assert_eq!(followup.details, remote.details);
+        assert!(!followup.source_owned);
+        store
+            .update(
+                "2026-10-01",
+                &followup.id,
+                "Local follow-up",
+                Some("My notes"),
+            )
+            .await
+            .unwrap();
+        store
+            .replace_remote(
+                date,
+                prefix,
+                vec![remote],
+                store.calendar_lock().await.unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get("2026-10-01", &followup.id).await.unwrap().text,
+            "Local follow-up"
+        );
+        assert!(store.list(date).await.unwrap().items.is_empty());
+        store.delete("2026-10-01", &followup.id).await.unwrap();
+    }
 }

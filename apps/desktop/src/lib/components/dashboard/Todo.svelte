@@ -44,9 +44,11 @@
 		const item = todos.items.find((item) => item.id === selectedItemId);
 		return item === undefined ? null : item;
 	});
+	let canEdit = $derived(selectedItem !== null && !selectedItem.completed && !selectedItem.sourceOwned);
 
 	$effect(() => {
 		if (selectedItem === null) { selectedItemId = null; editing = false; }
+		else if (!canEdit) editing = false;
 	});
 
 	$effect(() => {
@@ -67,7 +69,7 @@
 	}
 
 	function startEditing() {
-		if (selectedItem === null) return;
+		if (selectedItem === null || !canEdit) return;
 		editText = selectedItem.text;
 		editDescription = selectedItem.description === null ? "" : selectedItem.description;
 		editing = true;
@@ -75,7 +77,7 @@
 
 	async function saveEdit(event: SubmitEvent) {
 		event.preventDefault();
-		if (selectedItem === null || !editText.trim() || loading || saving) return;
+		if (selectedItem === null || !canEdit || !editText.trim() || loading || saving) return;
 		const id = selectedItem.id;
 		const date = selectedDate;
 		saving = true;
@@ -101,7 +103,7 @@
 				</div>
 				<div class="detail-title">
 					<h2 id={headingId}>{selectedItem.text}</h2>
-					{#if selectedItem.details === null && !editing}<button class="edit-button" type="button" aria-label="Edit Todo" title="Edit Todo" disabled={loading || saving} onpointerdown={(event) => event.stopPropagation()} onclick={startEditing}><Pencil size={14} /></button>{/if}
+					{#if canEdit && !editing}<button class="edit-button" type="button" aria-label="Edit Todo" title="Edit Todo" disabled={loading || saving} onpointerdown={(event) => event.stopPropagation()} onclick={startEditing}><Pencil size={14} /></button>{/if}
 				</div>
 			</header>
 			<div class="todo-detail-scroll">
@@ -112,7 +114,9 @@
 						<div class="edit-actions"><button type="button" disabled={saving} onclick={() => (editing = false)}>Cancel</button><button type="submit" disabled={loading || saving || !editText.trim()}>{saving ? "Saving…" : "Save changes"}</button></div>
 					</form>
 				{:else}
-					{#if selectedItem.details !== null}<p class="todo-manual">Imported calendar details are read-only.</p>{/if}
+					{#if selectedItem.completed}<p class="todo-manual">Reopen this task to edit, delete, or change carry-forward.</p>
+					{:else if selectedItem.sourceOwned}<p class="todo-manual">Edit this task in its source calendar. Deleting it here only hides it locally.</p>
+					{/if}
 				<dl>
 					<div><dt><CalendarDays size={13} /> Date</dt><dd>{selectedDate}</dd></div>
 					{#if selectedItem.details !== null}
@@ -130,7 +134,7 @@
 				{/if}
 			</div>
 			<label class="rollover-option" title="Repeats daily until completed or unchecked" onpointerdown={(event) => event.stopPropagation()}>
-				<Checkbox size="sm" checked={selectedItem.rollover} disabled={loading || saving} onCheckedChange={(checked: boolean) => { if (selectedItem !== null) void onrollover(selectedItem.id, checked); }} aria-label={`Carry ${selectedItem.text} forward if unfinished`} />
+				<Checkbox size="sm" checked={selectedItem.rollover} disabled={loading || saving || selectedItem.completed} onCheckedChange={(checked: boolean) => { if (selectedItem !== null) void onrollover(selectedItem.id, checked); }} aria-label={`Carry ${selectedItem.text} forward if unfinished`} />
 				<span>Move to the next day if unfinished</span>
 			</label>
 		</div>
@@ -163,7 +167,7 @@
 								aria-label={`Mark ${item.text} as ${item.completed ? "incomplete" : "complete"}`}
 							/>
 							<button class="todo-entry" type="button" aria-label={`View details for ${item.text}`} onpointerdown={(event) => event.stopPropagation()} onclick={() => (selectedItemId = item.id)}>{item.text}</button>
-							<button type="button" disabled={loading} onclick={() => void ondelete(item.id)} aria-label={`Delete ${item.text}`}><Trash2 size={13} /></button>
+							{#if !item.completed}<button type="button" disabled={loading || saving} onclick={() => void ondelete(item.id)} aria-label={`Delete ${item.text}`}><Trash2 size={13} /></button>{/if}
 						</div>
 					{/snippet}
 				</SortableList>

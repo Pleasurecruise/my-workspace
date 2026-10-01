@@ -175,6 +175,7 @@ fn project_reset(
         description: Some(description),
         completed: false,
         rollover: false,
+        source_owned: true,
         details: Some(Details {
             calendar: "Codex Resets".into(),
             start_date: local.date().to_string(),

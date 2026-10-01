@@ -60,3 +60,43 @@ async fn rejects_bad_todo_args() {
     assert!(error.contains("invalid todo arguments"));
     assert!(!directory.exists());
 }
+
+#[tokio::test]
+async fn calendar_reads_roll_over_to_today() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = todo_core::Store::new(directory.path().join("vesper.sqlite3"));
+    let today = todo_core::current_date().unwrap();
+    let previous = "2024-02-29";
+    let list = store.create(previous, "Carry", None).await.unwrap();
+    let id = &list.items[0].id;
+    store.set_rollover(previous, id, true).await.unwrap();
+    run_with_store(&store, "9999-12-31", "sync-ics", &[])
+        .await
+        .unwrap();
+    assert!(store.get(&today, id).await.is_ok());
+    assert!(store.get("9999-12-31", id).await.is_err());
+}
+
+#[tokio::test]
+async fn invalid_import_does_not_advance_tasks() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = todo_core::Store::new(directory.path().join("vesper.sqlite3"));
+    let previous = "2024-02-29";
+    let list = store
+        .create(previous, "Keep on original day", None)
+        .await
+        .unwrap();
+    let id = &list.items[0].id;
+    store.set_rollover(previous, id, true).await.unwrap();
+    let missing = directory
+        .path()
+        .join("missing.ics")
+        .to_string_lossy()
+        .into_owned();
+    assert!(
+        run_with_store(&store, previous, "import-ics", &[missing])
+            .await
+            .is_err()
+    );
+    assert!(store.get(previous, id).await.is_ok());
+}

@@ -188,6 +188,7 @@ impl Store {
                 description,
                 completed: false,
                 rollover: false,
+                source_owned: false,
                 details: None,
             });
             Ok(())
@@ -207,8 +208,9 @@ impl Store {
         let id = id.to_owned();
         self.mutate(date, move |items| {
             let item = find_item(items, &id)?;
-            if item.details.is_some() {
-                return Err(Error::ImportedItem);
+            item.ensure_open()?;
+            if item.source_owned {
+                return Err(Error::RemoteItem);
             }
             item.text = text;
             if let Some(description) = description {
@@ -236,7 +238,9 @@ impl Store {
     pub async fn set_rollover(&self, date: &str, id: &str, rollover: bool) -> Result<List, Error> {
         let id = id.to_owned();
         self.mutate(date, move |items| {
-            find_item(items, &id)?.rollover = rollover;
+            let item = find_item(items, &id)?;
+            item.ensure_open()?;
+            item.rollover = rollover;
             Ok(())
         })
         .await
@@ -276,7 +280,7 @@ impl Store {
             lists.insert(today.clone(), read_list(connection, &today)?);
             let mut carried = BTreeSet::new();
             for (source_date, mut item) in pending {
-                if item.id.starts_with("notion:") || item.id.starts_with("codex:") {
+                if item.source_owned {
                     if !carried.insert(item.id.clone()) {
                         continue;
                     }
@@ -312,6 +316,7 @@ impl Store {
                         continue;
                     }
                     item.id = format!("rollover:{}", uuid::Uuid::new_v4());
+                    item.source_owned = false;
                 }
                 let destination = lists.get_mut(&today).ok_or(Error::InvalidRecord)?;
                 if destination.items.iter().any(|entry| entry.id == item.id) {
@@ -354,12 +359,11 @@ impl Store {
         let id = id.to_owned();
         self.transaction(move |connection| {
             let mut list = read_list(connection, &date)?;
-            let original_len = list.items.len();
+            let item = find_item(&mut list.items, &id)?;
+            item.ensure_open()?;
+            let remote = item.source_owned;
             list.items.retain(|item| item.id != id);
-            if list.items.len() == original_len {
-                return Err(Error::MissingItem);
-            }
-            if id.starts_with("notion:") || id.starts_with("codex:") {
+            if remote {
                 diesel::insert_into(todo_occurrences::table)
                     .values((
                         todo_occurrences::date.eq(&date),
@@ -428,7 +432,10 @@ fn read_list(connection: &mut SqliteConnection, date: &str) -> Result<List, Erro
                 (None, None) => None,
                 _ => return Err(Error::InvalidRecord),
             };
+            // Existing source-prefixed IDs are the persisted ownership contract.
+            let source_owned = row.id.starts_with("notion:") || row.id.starts_with("codex:");
             Ok(Item {
+                source_owned,
                 id: row.id,
                 text: row.text,
                 description: row.description,

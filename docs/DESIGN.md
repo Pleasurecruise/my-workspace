@@ -98,7 +98,11 @@ The check has an accessible description; future days stay unmarked. A past or cu
 no tasks or configured habits counts as complete.
 
 Todo titles open details without changing card size. Completion uses the row checkbox; sorting uses
-a separate handle. Manual items support editing with Save and Cancel; imported content is read-only.
+a separate handle. Unfinished manual items, ICS imports and local follow-ups support editing titles
+and descriptions with Save and Cancel while retaining source metadata. Live remote content stays
+read-only; local delete hides its projection. Source ownership and completion determine the
+displayed actions. Completed items explain that reopening is required, hide Edit and Delete, and
+disable carry-forward; the completion checkbox remains available to reopen them.
 The opt-in daily carry-forward checkbox belongs at the very bottom of details, below the scroll
 area, with small muted explanatory text. Its tooltip explains repetition until completion or opt-out.
 Habit check-in/undo uses a distinct icon action, with disabled future actions and an explanation.
@@ -107,7 +111,8 @@ Spending is a separate full-width card sharing the selected date. Entry and date
 monthly charts; compact surfaces stack them. Chart changes preserve drafts and height. Labels and
 amounts must explain donut segments and daily bars without relying on color. Empty months are explicit.
 
-Provider cards prioritize the current value and supporting context. Telemetry trends are session
+Provider cards prioritize the current value and supporting context. The combined Codex and Claude
+card separates providers with spacing, without an internal divider. Telemetry trends are session
 history; storage offers system settings for category details. Service status shows affected names,
 not only a colored percentage. GitHub notification failures remain inside their section. Preserve
 settled content during background refresh; initial placeholders belong only to the affected surface.

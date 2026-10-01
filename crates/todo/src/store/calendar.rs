@@ -337,6 +337,7 @@ impl Store {
                         description: occurrence.details.description,
                         completed: false,
                         rollover: false,
+                        source_owned: false,
                         details: Some(Details {
                             calendar: occurrence.details.calendar,
                             start_date: occurrence.details.start_date,

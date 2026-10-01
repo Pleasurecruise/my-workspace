@@ -100,9 +100,13 @@ thirty seconds; focus and refresh recover missed events. Following today advance
 while explicit selections remain selected. Writes retain their submitted date; stale responses
 cannot replace a newer selection, and cross-window events invalidate affected projections.
 
-Manual tasks support titles up to 120 characters and descriptions up to 4,000. Imported content
-remains source-owned. Completion, deletion, and ordering are local; reconciliation retains surviving
-state and appends new tasks. Stale reorder membership fails atomically.
+Tasks support titles up to 120 characters and descriptions up to 4,000. Unfinished manual tasks,
+ICS imports, and carried local follow-ups support local editing and deletion. Live Notion and Codex
+projections keep source-owned titles and descriptions; deleting them only suppresses the dated local
+projection. Completed tasks must be reopened before editing, deleting, or changing carry-forward.
+Completion and ordering remain local. Mutations check source ownership and completion against
+stored state inside the transaction. Stale reorder membership fails atomically. Desktop and CLI
+calendar reads use the existing carry-forward operation with the actual local day.
 
 Opt-in carry-forward moves unfinished tasks to the actual local day until completion or opt-out,
 catching up after downtime. Remote events become one local follow-up retaining original metadata;
@@ -116,9 +120,11 @@ fetching all remote dates or persisting another completion flag. See [Persistenc
 ### Calendar sources
 
 ICS synchronization reads local `ics/` files. Imports validate all files before atomic per-file
-installation. Recurrence identities deduplicate and suppress deleted occurrences. Floating times
-stay local; UTC and IANA TZID times use the device zone. `icalendar` parses folded text, quoted
-parameters and component boundaries; alarm properties do not become event properties. `rrule`
+installation. Recurrence identities deduplicate and suppress deleted occurrences. Imported
+occurrences become local tasks: title and description edits persist across resynchronization and
+restart, while original calendar metadata remains attached. Replacing a file does not overwrite already imported occurrences.
+Floating times stay local; UTC and IANA TZID times use the device zone. `icalendar` parses folded
+text, quoted parameters and component boundaries; alarm properties do not become event properties. `rrule`
 evaluates daily, weekly, monthly and yearly rules with INTERVAL, BYDAY, BYMONTHDAY, UNTIL and COUNT.
 Rules enumerate source civil dates using a UTC surrogate; Jiff performs actual time-zone projection.
 The planner uses Jiff's compatible policy for DST gaps and folds within this supported recurrence
@@ -194,7 +200,8 @@ the stream and reconnect loop. Replays populate Inbox without producing new syst
 Codex, Grok, Copilot, and DimAgent coalesce requests and cache success and failure for five
 minutes; cancelled reads are not cached. CLI path overrides are `CODEX_BINARY`, `GROK_BINARY`,
 `GITHUB_CLI_BINARY`, and `DIM_BINARY`.
-Claude debug reads its local credential file; macOS release may also read Claude Code's Keychain item.
+Claude reads Claude Code's Keychain item on macOS in both debug and release builds, then falls back
+to its local credential file only when the Keychain item is missing. Other platforms read the file.
 Copilot preserves unlimited quotas and falls back to the account reset date when a row has none.
 
 OpenCode reports percentage used; remaining capacity is `100 - percent`. DeepSeek decimal balance
@@ -215,8 +222,9 @@ separate from Codex Resets.
 
 The widget picker offers a combined Codex & Claude card; saved standalone cards remain readable.
 Both providers retain independent data and error states, including when pinned to Dynamic Island.
-Claude reports a missing credential file as signed out; unreadable files and malformed OAuth data
-remain explicit errors.
+Claude reports missing credentials as signed out. Keychain access failures, unreadable files, malformed
+OAuth data and expired tokens remain explicit errors. Claude Code owns token renewal; Vesper does not
+refresh or write its credentials. An expired token requires renewal in Claude Code before retrying.
 
 ### TokenFlux and DimAgent
 

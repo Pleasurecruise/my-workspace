@@ -715,6 +715,7 @@ export interface TodoDetails {
 }
 
 export interface TodoItem {
+	sourceOwned: boolean;
 	rollover: boolean;
 	id: string;
 	description: string | null;

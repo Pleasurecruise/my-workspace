@@ -1,5 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
+import { fromStore, writable } from "svelte/store";
+import type { TodoList } from "../../../consumer";
 import Todo from "../Todo.svelte";
 
 it("shows sync errors beside saved tasks", async () => {
@@ -16,6 +18,7 @@ it("shows sync errors beside saved tasks", async () => {
 						id: "local",
 						text: "Saved task",
 						completed: false,
+						sourceOwned: false,
 						rollover: false,
 						description: null,
 						details: null,
@@ -44,7 +47,7 @@ it("shows sync errors beside saved tasks", async () => {
 	}
 });
 
-it("adds descriptions, edits completed tasks, and retains the editor after a failed save", async () => {
+it("adds descriptions, edits open tasks, and retains the editor after a failed save", async () => {
 	const target = document.createElement("div");
 	document.body.append(target);
 	const added: Array<[string, string]> = [];
@@ -60,7 +63,8 @@ it("adds descriptions, edits completed tasks, and retains the editor after a fai
 						id: "read",
 						text: "Read",
 						description: "Chapter one",
-						completed: true,
+						completed: false,
+						sourceOwned: false,
 						rollover: false,
 						details: null,
 					},
@@ -122,7 +126,7 @@ it("adds descriptions, edits completed tasks, and retains the editor after a fai
 		await tick();
 		expect(edited).toEqual([["read", "Read more", "Chapter two"]]);
 		expect(target.querySelector("textarea")?.value).toBe("Chapter two");
-		expect(target.textContent).toContain("Done");
+		expect(target.textContent).toContain("Open");
 		target
 			.querySelector("form")
 			?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
@@ -209,6 +213,7 @@ it("reorders with the keyboard and preserves the list while a save is pending or
 					id: text,
 					text,
 					completed: false,
+					sourceOwned: false,
 					rollover: false,
 					description: null,
 					details: null,
@@ -271,6 +276,7 @@ it("uses the final pointer position, cancels dragging, and recovers from a rejec
 					id: text,
 					text,
 					completed: false,
+					sourceOwned: false,
 					rollover: false,
 					description: null,
 					details: null,
@@ -356,6 +362,7 @@ it("keeps carry-forward separate from completion and reflects only saved prefere
 						text: "Read",
 						description: null,
 						completed: false,
+						sourceOwned: false,
 						rollover: false,
 						details: null,
 					},
@@ -395,6 +402,206 @@ it("keeps carry-forward separate from completion and reflects only saved prefere
 		expect(ontoggle).not.toHaveBeenCalled();
 		expect(checkbox.checked).toBe(false);
 		expect(target.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+	} finally {
+		await unmount(view);
+		target.remove();
+	}
+});
+
+it.each([
+	{
+		name: "manual",
+		id: "local",
+		completed: false,
+		imported: false,
+		sourceOwned: false,
+	},
+	{
+		name: "ICS import",
+		id: "ics-uuid",
+		completed: false,
+		imported: true,
+		sourceOwned: false,
+	},
+	{
+		name: "local follow-up",
+		id: "rollover:uuid",
+		completed: false,
+		imported: true,
+		sourceOwned: false,
+	},
+	{
+		name: "remote projection",
+		id: "notion:view:page",
+		completed: false,
+		imported: true,
+		sourceOwned: true,
+	},
+	{
+		name: "completed task",
+		id: "done",
+		completed: true,
+		imported: true,
+		sourceOwned: false,
+	},
+])("shows actions for $name", async ({ id, completed, imported, sourceOwned }) => {
+	const target = document.createElement("div");
+	document.body.append(target);
+	const onedit = vi.fn(async () => true);
+	const view = mount(Todo, {
+		target,
+		props: {
+			todos: {
+				date: "2026-09-30",
+				syncError: null,
+				items: [
+					{
+						id,
+						text: "Task",
+						description: "Notes",
+						completed,
+						rollover: false,
+						sourceOwned,
+						details: imported
+							? {
+									calendar: "Source",
+									startDate: "2026-09-30",
+									startTime: "09:30",
+									endDate: null,
+									endTime: null,
+									location: "Room",
+								}
+							: null,
+					},
+				],
+			},
+			selectedDate: "2026-09-30",
+			error: null,
+			loading: false,
+			onadd: async () => true,
+			onedit,
+			ontoggle: async () => {},
+			ondelete: async () => {},
+			onreorder: async () => true,
+			onrollover: async () => {},
+		},
+	});
+	try {
+		await tick();
+		expect(target.querySelector('[aria-label="Delete Task"]') !== null).toBe(!completed);
+		expect(target.querySelector<HTMLInputElement>('[aria-label^="Mark Task"]')?.disabled).toBe(
+			false,
+		);
+		target.querySelector<HTMLButtonElement>('[aria-label="View details for Task"]')?.click();
+		await tick();
+		const edit = target.querySelector<HTMLButtonElement>('[aria-label="Edit Todo"]');
+		expect(edit !== null).toBe(!completed && !sourceOwned);
+		expect(
+			target.querySelector<HTMLInputElement>('[aria-label="Carry Task forward if unfinished"]')
+				?.disabled,
+		).toBe(completed);
+		if (!completed && !sourceOwned) {
+			edit?.click();
+			await tick();
+			target
+				.querySelector("form")
+				?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+			await tick();
+			await tick();
+			expect(onedit).toHaveBeenCalledWith(id, "Task", "Notes");
+		} else {
+			expect(target.textContent).toContain(completed ? "Reopen this task" : "source calendar");
+			expect(onedit).not.toHaveBeenCalled();
+		}
+	} finally {
+		await unmount(view);
+		target.remove();
+	}
+});
+
+it("closes an editor when another window completes the task and restores actions after reopening", async () => {
+	const snapshots = writable<TodoList>({
+		date: "2026-09-30",
+		syncError: null,
+		items: [
+			{
+				id: "task",
+				text: "Read",
+				description: "Stored notes",
+				completed: false,
+				sourceOwned: false,
+				rollover: true,
+				details: null,
+			},
+		],
+	});
+	const state = fromStore(snapshots);
+	const onedit = vi.fn(async () => true);
+	const ontoggle = vi.fn(async (id: string, completed: boolean) => {
+		snapshots.update((list) => ({
+			...list,
+			items: list.items.map((item) => (item.id === id ? { ...item, completed } : item)),
+		}));
+	});
+	const target = document.createElement("div");
+	document.body.append(target);
+	const view = mount(Todo, {
+		target,
+		props: {
+			get todos() {
+				return state.current;
+			},
+			selectedDate: "2026-09-30",
+			error: null,
+			loading: false,
+			onadd: async () => true,
+			onedit,
+			ontoggle,
+			ondelete: async () => {},
+			onreorder: async () => true,
+			onrollover: async () => {},
+		},
+	});
+	try {
+		await tick();
+		target.querySelector<HTMLButtonElement>('[aria-label="View details for Read"]')?.click();
+		await tick();
+		target.querySelector<HTMLButtonElement>('[aria-label="Edit Todo"]')?.click();
+		await tick();
+		expect(target.querySelector("form")).not.toBeNull();
+		snapshots.update((list) => ({
+			...list,
+			items: list.items.map((item) => ({ ...item, completed: true })),
+		}));
+		await tick();
+		expect(target.querySelector("form")).toBeNull();
+		expect(target.querySelector('[aria-label="Edit Todo"]')).toBeNull();
+		expect(
+			target.querySelector<HTMLInputElement>('[aria-label="Carry Read forward if unfinished"]')
+				?.disabled,
+		).toBe(true);
+		expect(onedit).not.toHaveBeenCalled();
+		target.querySelector<HTMLButtonElement>('[aria-label="Back to Todo list"]')?.click();
+		await tick();
+		expect(target.querySelector('[aria-label="Delete Read"]')).toBeNull();
+		target.querySelector<HTMLInputElement>('[aria-label="Mark Read as incomplete"]')?.click();
+		await tick();
+		expect(ontoggle).toHaveBeenCalledWith("task", false);
+		expect(target.querySelector('[aria-label="Delete Read"]')).not.toBeNull();
+		target.querySelector<HTMLButtonElement>('[aria-label="View details for Read"]')?.click();
+		await tick();
+		expect(
+			target.querySelector<HTMLInputElement>('[aria-label="Carry Read forward if unfinished"]')
+				?.disabled,
+		).toBe(false);
+		target.querySelector<HTMLButtonElement>('[aria-label="Edit Todo"]')?.click();
+		await tick();
+		expect(target.querySelector("textarea")?.value).toBe("Stored notes");
+		target
+			.querySelector("form")
+			?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+		await tick();
+		expect(onedit).toHaveBeenCalledWith("task", "Read", "Stored notes");
 	} finally {
 		await unmount(view);
 		target.remove();

@@ -227,7 +227,7 @@
 	.provider-heading strong,
 	.meter > div { display: flex; align-items: center; }
 	.provider-heading { min-height: 1.2rem; justify-content: space-between; gap: 0.4rem; margin-bottom: 0.4rem; }
-	.provider-section + .provider-section { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border); }
+	.provider-section + .provider-section { margin-top: 0.75rem; }
 	.provider-heading strong { gap: 0.25rem; font-size: 0.68rem; }
 	.provider-heading > span { padding: 0.1rem 0.3rem; border-radius: var(--radius-full); background: var(--color-muted); color: var(--color-muted-foreground); font-size: 0.55rem; text-transform: uppercase; }
 	.provider-heading > span.unavailable { color: var(--color-error); }

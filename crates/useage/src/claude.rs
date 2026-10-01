@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-#[cfg(all(target_os = "macos", not(debug_assertions)))]
+#[cfg(target_os = "macos")]
 use std::process::Stdio;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const OAUTH_BETA: &str = "oauth-2025-04-20";
-#[cfg(all(target_os = "macos", not(debug_assertions)))]
+#[cfg(target_os = "macos")]
 const KEYCHAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -118,8 +118,8 @@ async fn read_credentials() -> Result<Credentials, String> {
         .join(".credentials.json");
     let file_credentials = read_credentials_file(&credentials_path).await;
 
-    #[cfg(all(target_os = "macos", not(debug_assertions)))]
-    if let Some(mut credentials) = read_keychain_credentials().await {
+    #[cfg(target_os = "macos")]
+    if let Some(mut credentials) = read_keychain_credentials().await? {
         if credentials.subscription_type.is_empty()
             && let Ok(file_credentials) = &file_credentials
         {
@@ -145,8 +145,8 @@ async fn read_credentials_file(path: &Path) -> Result<Credentials, String> {
     parse_credentials(&content)
 }
 
-#[cfg(all(target_os = "macos", not(debug_assertions)))]
-async fn read_keychain_credentials() -> Option<Credentials> {
+#[cfg(target_os = "macos")]
+async fn read_keychain_credentials() -> Result<Option<Credentials>, String> {
     let mut command = tokio::process::Command::new("/usr/bin/security");
     command
         .args([
@@ -158,25 +158,31 @@ async fn read_keychain_credentials() -> Option<Credentials> {
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .kill_on_drop(true);
-    let output = match tokio::time::timeout(KEYCHAIN_TIMEOUT, command.output()).await {
-        Ok(Ok(output)) if output.status.success() => output,
-        Ok(Ok(_)) => return None,
-        Ok(Err(error)) => {
-            tracing::debug!(%error, "could not read Claude Code credentials from Keychain");
-            return None;
-        }
-        Err(_) => {
-            tracing::debug!("timed out while reading Claude Code credentials from Keychain");
-            return None;
-        }
-    };
-    let content = String::from_utf8(output.stdout).ok()?;
-    parse_credentials(content.trim()).ok()
+    let output = tokio::time::timeout(KEYCHAIN_TIMEOUT, command.output())
+        .await
+        .map_err(|_| "Timed out while reading Claude Code credentials from Keychain".to_owned())?
+        .map_err(|error| {
+            format!("Could not read Claude Code credentials from Keychain: {error}")
+        })?;
+    parse_keychain_output(output)
+}
+
+#[cfg(target_os = "macos")]
+fn parse_keychain_output(output: std::process::Output) -> Result<Option<Credentials>, String> {
+    if output.status.code() == Some(44) {
+        return Ok(None);
+    }
+    if !output.status.success() {
+        return Err("Could not read Claude Code credentials from Keychain".to_owned());
+    }
+    let content = String::from_utf8(output.stdout)
+        .map_err(|_| "Claude Code Keychain credentials are not valid UTF-8".to_owned())?;
+    parse_credentials(content.trim()).map(Some)
 }
 
 fn parse_credentials(content: &str) -> Result<Credentials, String> {
     let file: CredentialsFile = serde_json::from_str(content)
-        .map_err(|error| format!("Could not decode Claude Code OAuth credentials: {error}"))?;
+        .map_err(|_| "Could not decode Claude Code OAuth credentials".to_owned())?;
     let oauth = file
         .claude_ai_oauth
         .ok_or_else(|| "Claude Code does not contain an OAuth session".to_owned())?;
@@ -309,6 +315,84 @@ mod tests {
     }
 
     #[test]
+    fn redacts_credential_errors() {
+        for content in [
+            r#"{"claudeAiOauth":"private-token"}"#,
+            r#"{"claudeAiOauth":{"accessToken":"private-token","expiresAt":"private-token"}}"#,
+        ] {
+            let error = parse_credentials(content)
+                .err()
+                .expect("invalid credentials");
+            assert_eq!(error, "Could not decode Claude Code OAuth credentials");
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn parses_keychain_credentials() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let output = std::process::Output {
+            status: std::process::ExitStatus::from_raw(0),
+            stdout: br#"{"claudeAiOauth":{"accessToken":"oauth-token","subscriptionType":"max","expiresAt":4102444800000}}"#.to_vec(),
+            stderr: Vec::new(),
+        };
+        let credentials = parse_keychain_output(output)
+            .expect("valid Keychain data")
+            .expect("Keychain credentials");
+        assert_eq!(credentials.access_token, "oauth-token");
+        assert_eq!(credentials.subscription_type, "max");
+
+        for content in [vec![255], b"not json".to_vec()] {
+            let output = std::process::Output {
+                status: std::process::ExitStatus::from_raw(0),
+                stdout: content,
+                stderr: Vec::new(),
+            };
+            assert!(parse_keychain_output(output).is_err());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn rejects_expired_keychain_session() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let output = std::process::Output {
+            status: std::process::ExitStatus::from_raw(0),
+            stdout: br#"{"claudeAiOauth":{"accessToken":"private-token","subscriptionType":"max","expiresAt":0}}"#.to_vec(),
+            stderr: Vec::new(),
+        };
+        let error = parse_keychain_output(output)
+            .err()
+            .expect("expired session");
+        assert!(error.contains("has expired"));
+        assert!(!error.contains("private-token"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reports_keychain_failures() {
+        use std::os::unix::process::ExitStatusExt;
+
+        for (code, missing) in [(44, true), (36, false)] {
+            let output = std::process::Output {
+                status: std::process::ExitStatus::from_raw(code << 8),
+                stdout: Vec::new(),
+                stderr: b"sensitive error details".to_vec(),
+            };
+            let result = parse_keychain_output(output);
+            if missing {
+                assert!(result.expect("missing Keychain item").is_none());
+            } else {
+                let error = result.err().expect("Keychain access failure");
+                assert!(error.contains("Could not read"));
+                assert!(!error.contains("sensitive"));
+            }
+        }
+    }
+
+    #[test]
     fn normalizes_plan_and_window() {
         assert_eq!(plan_name(" team ").as_deref(), Some("Team"));
         assert_eq!(plan_name("enterprise").as_deref(), Some("Enterprise"));
@@ -327,7 +411,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires a locally authenticated Claude Code subscription"]
-    async fn reads_live_usage() {
+    async fn reads_usage() {
         let usage = read().await.expect("Claude usage should be readable");
         assert!(usage.five_hour.is_some() || usage.seven_day.is_some());
     }

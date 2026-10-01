@@ -204,9 +204,12 @@ to Todo, not credentials. [Development](DEVELOPMENT.md#credential-resolution) de
 `rrule` validates and evaluates supported recurrence rules. Notion CLI reads and Codex Resets HTTP
 reads stay in this crate. The Notion CLI owns authentication; Codex Resets needs only a local enable
 preference. `store/calendar.rs` owns calendar snapshots, source synchronization and reconciliation into saved
-tasks; the store root owns task mutations and database transactions. Each source updates its own
-records and preserves saved data on failure. Configuration
-changes and reconciliation share locks through commit.
+tasks; the store root owns task mutations and database transactions. Source adapters mark live
+remote content as source-owned; SQLite reads reconstruct that ownership from existing source-prefixed
+IDs. ICS imports and carried follow-ups own local content, independently of attached calendar
+metadata. Completed tasks require reopening before edits, deletion or carry-forward changes.
+Each source preserves saved data on failure. Configuration changes and reconciliation share locks
+through commit.
 
 Rust moves opted-in unfinished tasks to today and computes monthly completion from stored tasks and
 current habit IDs. Completion is derived, never saved as a second state. The layout owns habit IDs

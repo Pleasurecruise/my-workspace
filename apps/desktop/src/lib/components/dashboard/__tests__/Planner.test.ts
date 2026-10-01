@@ -21,6 +21,7 @@ it("links calendar, tasks and check-ins while a previous task read is still pend
 				id: "walk",
 				text: "Leap day walk",
 				completed: false,
+				sourceOwned: false,
 				rollover: false,
 				description: null,
 				details: null,

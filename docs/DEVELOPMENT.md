@@ -98,8 +98,10 @@ binary require checking both controls. Repair only this service/account with mac
 using the installed applications' code hashes; never authorize all tools or pass a Keychain password
 on the command line. Stable signed identities are needed for authorization to survive binary updates.
 Browser and QR login do not require copied session tokens. Codex, pi, and Claude integrations retain
-their existing CLI authentication;
-Claude's debug read does not invoke macOS `security`.
+their existing CLI authentication. Claude reads its existing macOS Keychain item through
+`/usr/bin/security` in debug and release builds; this is separate from Vesper's credential store.
+Claude Code owns token renewal. If the usage card reports an expired session, renew it in Claude Code
+or run `claude auth login`, then refresh the card.
 
 Only typed Settings reads may return editable credentials to the trusted local form. Provider
 responses, logs, packaged code, commits, and bug reports must exclude secrets. Telegram's MTProto
@@ -200,7 +202,7 @@ and playback behavior are documented in [Music](MUSIC.md#qq-music-lifecycle).
 Keep manifests and lockfiles synchronized. librespot's `vergen-gitcl` 1.x requires `vergen` 9.0.6,
 and `grammers-crypto` 0.10 requires `glass_pumpkin` 2.0.0-rc0 because later shared types fail to compile.
 Keep `@vitest/coverage-v8` aligned with Vite Plus's bundled Vitest (`5.0.1` for Vite Plus
-`1.0.0-rc.0`). Reassess these constraints when upgrading the owning dependencies.
+`1.0.0`). Reassess these constraints when upgrading the owning dependencies.
 
 ## Verification
 

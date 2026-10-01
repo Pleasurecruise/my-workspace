@@ -141,7 +141,8 @@ it("retains an explicit Notion refresh requested during an edit", async () => {
 				id: "read",
 				text: "Read",
 				description: null,
-				completed: true,
+				completed: false,
+				sourceOwned: false,
 				rollover: false,
 				details: null,
 			},
@@ -155,7 +156,8 @@ it("retains an explicit Notion refresh requested during an edit", async () => {
 				id: "read",
 				text: "Read more",
 				description: "Chapter two",
-				completed: true,
+				completed: false,
+				sourceOwned: false,
 				rollover: false,
 				details: null,
 			},
@@ -180,7 +182,7 @@ it("retains an explicit Notion refresh requested during an edit", async () => {
 	expect(invoke).toHaveBeenCalledTimes(3);
 	expect(invoke).toHaveBeenLastCalledWith("read_todos", { date: before.date, refresh: true });
 	expect(session.todos.data?.items[0]?.description).toBe("Chapter two");
-	expect(session.todos.data?.items[0]?.completed).toBe(true);
+	expect(session.todos.data?.items[0]?.completed).toBe(false);
 });
 
 function deferred<T>() {
@@ -310,6 +312,7 @@ it("saves Todo order, retains settled tasks on failure, and ignores a save after
 			id: text,
 			text,
 			completed: false,
+			sourceOwned: false,
 			rollover: false,
 			description: null,
 			details: null,
@@ -356,6 +359,7 @@ it("persists carry-forward preference and retains its saved value after failure"
 				text: "Read",
 				description: null,
 				completed: false,
+				sourceOwned: false,
 				rollover: false,
 				details: null,
 			},

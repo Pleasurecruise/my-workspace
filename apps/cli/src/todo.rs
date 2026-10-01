@@ -72,26 +72,22 @@ async fn run_with_store(
                 .await
                 .map_err(|error| error.to_string())?,
         ),
-        ("list", []) => print_json(
-            &store
-                .sync_calendar(date)
+        ("list" | "sync" | "sync-ics", []) => {
+            let today = todo_core::current_date().map_err(|error| error.to_string())?;
+            store
+                .roll_over(&today)
                 .await
-                .map_err(|error| error.to_string())?,
-        ),
+                .map_err(|error| error.to_string())?;
+            let todos = if action == "sync-ics" {
+                store.sync_schedule(date).await
+            } else {
+                store.sync_calendar(date).await
+            }
+            .map_err(|error| error.to_string())?;
+            print_json(&todos)
+        }
         ("schedule-path", []) => print_json(&json!({ "directory": store.schedule_directory() })),
-        ("sync-ics", []) => print_json(
-            &store
-                .sync_schedule(date)
-                .await
-                .map_err(|error| error.to_string())?,
-        ),
         ("database-path", []) => print_json(&json!({ "database": store.database_path() })),
-        ("sync", []) => print_json(
-            &store
-                .sync_calendar(date)
-                .await
-                .map_err(|error| error.to_string())?,
-        ),
         ("import-ics", sources) if !sources.is_empty() => {
             let sources: Vec<_> = sources
                 .iter()
@@ -99,6 +95,11 @@ async fn run_with_store(
                 .collect();
             let installed = store
                 .import_schedules(&sources)
+                .await
+                .map_err(|error| error.to_string())?;
+            let today = todo_core::current_date().map_err(|error| error.to_string())?;
+            store
+                .roll_over(&today)
                 .await
                 .map_err(|error| error.to_string())?;
             let todos = store

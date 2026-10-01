@@ -17,7 +17,18 @@ pub struct Item {
     pub description: Option<String>,
     pub completed: bool,
     pub rollover: bool,
+    /// Live remote content is replaced on sync; imported and carried tasks own local content.
+    pub source_owned: bool,
     pub details: Option<Details>,
+}
+
+impl Item {
+    pub(crate) fn ensure_open(&self) -> Result<(), Error> {
+        if self.completed {
+            return Err(Error::CompletedItem);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -63,8 +74,10 @@ pub enum Error {
     MissingItem,
     #[error("Todo list changed; refresh and reorder again")]
     InvalidOrder,
-    #[error("edit imported tasks in their source calendar")]
-    ImportedItem,
+    #[error("edit remote tasks in their source calendar")]
+    RemoteItem,
+    #[error("reopen this completed task before editing, deleting, or changing carry-forward")]
+    CompletedItem,
     #[error("todo description cannot exceed 4000 characters")]
     DescriptionTooLong,
     #[error("check-in identifier is invalid")]

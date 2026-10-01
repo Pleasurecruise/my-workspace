@@ -52,6 +52,7 @@ async fn handles_crud() {
         "Ship Todo CLI"
     );
     assert!(store.set_completed(date, &id, true).await.unwrap().items[0].completed);
+    store.set_completed(date, &id, false).await.unwrap();
     assert!(store.delete(date, &id).await.unwrap().items.is_empty());
 }
 
@@ -127,12 +128,13 @@ async fn edits_preserve_task_state() {
         list.items[0].description.as_deref(),
         Some("Chapter one\nTake notes")
     );
-    store.set_completed(date, id, true).await.unwrap();
+    store.set_rollover(date, id, true).await.unwrap();
     let list = store
         .update(date, id, "Read more", Some("Chapter two"))
         .await
         .unwrap();
-    assert!(list.items[0].completed);
+    assert!(list.items[0].rollover);
+    assert!(!list.items[0].completed);
     assert_eq!(list.date, date);
     assert!(list.items[0].details.is_none());
     store.update(date, id, "Title only", None).await.unwrap();
@@ -304,6 +306,7 @@ async fn derives_completed_days() {
             .unwrap(),
         vec![date]
     );
+    store.set_completed(date, id, false).await.unwrap();
     store.delete(date, id).await.unwrap();
     assert_eq!(
         store.read_days(vec!["read".into()], date).await.unwrap(),
@@ -376,4 +379,42 @@ async fn completes_empty_days() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn completed_tasks_require_reopening() {
+    let (directory, store) = test_store();
+    let date = "2026-09-30";
+    let list = store
+        .create(date, "Original", Some("Keep notes"))
+        .await
+        .unwrap();
+    let id = &list.items[0].id;
+    store.set_completed(date, id, true).await.unwrap();
+    // A second client must check the current stored state, not its stale open projection.
+    let stale = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    assert!(matches!(
+        stale.update(date, id, "Changed", Some("Lost notes")).await,
+        Err(Error::CompletedItem)
+    ));
+    assert!(matches!(
+        stale.delete(date, id).await,
+        Err(Error::CompletedItem)
+    ));
+    assert!(matches!(
+        stale.set_rollover(date, id, true).await,
+        Err(Error::CompletedItem)
+    ));
+    let completed = stale.get(date, id).await.unwrap();
+    let wire = serde_json::to_value(&completed).unwrap();
+    assert_eq!(wire["sourceOwned"], false);
+    assert_eq!(wire["completed"], true);
+    assert_eq!(completed.text, "Original");
+    assert_eq!(completed.description.as_deref(), Some("Keep notes"));
+    assert!(!completed.rollover);
+    stale.set_completed(date, id, false).await.unwrap();
+    stale.update(date, id, "Changed", None).await.unwrap();
+    stale.set_rollover(date, id, true).await.unwrap();
+    stale.delete(date, id).await.unwrap();
+    assert!(stale.list(date).await.unwrap().items.is_empty());
 }

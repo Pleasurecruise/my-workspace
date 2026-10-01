@@ -60,9 +60,11 @@ an entire batch. Existing records survive a failed transaction.
 ## Planner
 
 `todo_items` stores tasks keyed by date and ID, with explicit position, completion, and default-off
-`rollover` fields. Source metadata belongs to the task projection. `todo_occurrences` records
-imported or suppressed occurrence identities: deleting an imported task does not allow the next
-sync to recreate it. Remote IDs are source-prefixed; a dated `rollover:<source ID>` marker suppresses
+`rollover` fields. Source metadata belongs to the task projection and does not determine editability.
+Manual/ICS UUID IDs and `rollover:` follow-up IDs own local content; `notion:` and `codex:` IDs own
+live remote projections. Rust reconstructs `sourceOwned` from those ID conventions without another stored flag.
+`todo_occurrences` records imported or suppressed occurrence identities: deleting an imported task
+does not allow the next sync to recreate it. Remote IDs are source-prefixed; a dated `rollover:<source ID>` marker suppresses
 that event from its source date onward after it becomes a local follow-up.
 
 `todo_sources` stores public calendar source preferences as `name` and `enabled`; an absent
@@ -70,9 +72,11 @@ that event from its source date onward after it becomes a local follow-up.
 view-link configuration and CLI authentication remain separate. Provider response caches are
 memory-only, while successfully reconciled tasks survive restart and failed provider reads.
 
-Task mutations reload the day in an immediate transaction. Reordering validates the entire dated
-ID set before rewriting positions. Carry-forward moves all eligible dates in one transaction,
-retains destination order, and consolidates remote projections without moving completed history.
+Task mutations reload the day in an immediate transaction. Completed tasks reject title/description
+edits, deletion, and carry-forward changes until reopened; remote projections additionally reject
+local title/description edits. Reordering validates the entire dated ID set before rewriting
+positions. Carry-forward moves all eligible dates in one transaction, retains destination order,
+and consolidates remote projections without moving completed history.
 Repeated or concurrent runs cannot create duplicate follow-ups. Remote reconciliation preserves
 completion, ordering, and carry-forward preferences while replacing source-owned content. Failed
 reads do not replace a provider's saved projection. Configuration changes and reconciliation retain
@@ -81,6 +85,8 @@ a feature lock through commit across Desktop and CLI.
 ICS source files remain in `ics/` and are read on synchronization. Imports validate every file
 before staging and atomically replacing each one; a later installation failure can leave earlier
 files installed and is reported explicitly. SQLite occurrence keys retain local deletion history.
+Existing ICS occurrence keys skip source replacement, retaining local title/description edits and
+original calendar metadata.
 
 `check_ins` is keyed by stable habit ID and date; the Dashboard layout owns the current habit IDs
 and names. Historical writes are allowed, and future writes are rejected inside the transaction.
