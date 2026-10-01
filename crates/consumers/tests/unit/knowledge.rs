@@ -384,92 +384,26 @@ async fn rejects_unsafe_article_ids() {
     }
 }
 
-#[tokio::test]
-#[ignore = "manual local index projection benchmark; writes raw samples under /private/tmp"]
-async fn benchmark_index_projection() {
-    let markdown = format!("# Sample article\n\n{}", "## Details\n\nA paragraph with **formatting**, [a link](https://example.com), and `code`.\n\n".repeat(100));
-    let articles: Vec<_> = (0..100)
-        .map(|index| Article {
-            id: format!("article-{index}"),
-            editions: HashMap::from([(
-                "zh".to_owned(),
-                Edition {
-                    title: format!("Article {index}"),
-                    summary: "A short article summary".to_owned(),
-                    markdown: markdown.clone(),
-                },
-            )]),
-            tags: vec!["benchmark".to_owned()],
-            visibility: Visibility::Private,
-            content_hash: format!("hash-{index}"),
-            created_at: "2026-09-12T10:00:00Z".to_owned(),
-            updated_at: "2026-09-12T10:00:00Z".to_owned(),
-        })
-        .collect();
-    let summaries: Vec<_> = articles
-        .iter()
-        .map(|article| Summary {
-            id: article.id.clone(),
-            editions: article
-                .editions
-                .iter()
-                .map(|(locale, edition)| {
-                    (
-                        locale.clone(),
-                        EditionSummary {
-                            title: edition.title.clone(),
-                            summary: edition.summary.clone(),
-                        },
-                    )
-                })
-                .collect(),
-            tags: article.tags.clone(),
-            visibility: article.visibility,
-            content_hash: article.content_hash.clone(),
-            created_at: article.created_at.clone(),
-            updated_at: article.updated_at.clone(),
-        })
-        .collect();
-    let mut candidate = Vec::new();
-    for index in 0..18 {
-        let started = std::time::Instant::now();
-        let entries: Vec<_> = summaries
-            .iter()
-            .cloned()
-            .map(project_summary)
-            .collect::<Result<_, _>>()
-            .unwrap();
-        let serialized = serde_json::to_vec(&entries).unwrap();
-        let elapsed = started.elapsed().as_secs_f64() * 1000.0;
-        let value: serde_json::Value = serde_json::from_slice(&serialized).unwrap();
-        assert!(value[0].get("source").is_none());
-        assert!(value[0].get("html").is_none());
-        assert!(value[0].get("toc").is_none());
-        if index >= 3 {
-            candidate.push(serde_json::json!({ "ms": elapsed, "bytes": serialized.len() }));
-        }
+#[test]
+fn index_entries_omit_document_bodies() {
+    let summary = Summary {
+        id: "article-1".to_owned(),
+        editions: HashMap::from([(
+            "zh".to_owned(),
+            EditionSummary {
+                title: "Article".to_owned(),
+                summary: "Summary".to_owned(),
+            },
+        )]),
+        tags: Vec::new(),
+        visibility: Visibility::Private,
+        content_hash: "hash".to_owned(),
+        created_at: "2026-09-12T10:00:00Z".to_owned(),
+        updated_at: "2026-09-12T10:00:00Z".to_owned(),
+    };
+    let entry = serde_json::to_value(project_summary(summary).unwrap()).unwrap();
+    assert_eq!(entry["id"], "article-1");
+    for field in ["source", "html", "toc"] {
+        assert!(entry.get(field).is_none(), "{field}");
     }
-    std::fs::write(
-        "/private/tmp/vesper-index-candidate.json",
-        serde_json::to_vec_pretty(&candidate).unwrap(),
-    )
-    .unwrap();
-    let mut samples = Vec::new();
-    for index in 0..18 {
-        let started = std::time::Instant::now();
-        let mut documents = Vec::new();
-        for article in &articles {
-            documents.push(project_article(article.clone()).await.unwrap());
-        }
-        let bytes = serde_json::to_vec(&documents).unwrap().len();
-        let elapsed = started.elapsed().as_secs_f64() * 1000.0;
-        if index >= 3 {
-            samples.push(serde_json::json!({ "ms": elapsed, "bytes": bytes }));
-        }
-    }
-    std::fs::write(
-        "/private/tmp/vesper-index-comparison-full.json",
-        serde_json::to_vec_pretty(&samples).unwrap(),
-    )
-    .unwrap();
 }

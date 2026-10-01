@@ -97,3 +97,36 @@ fn now() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn credentials(expires_at: u64) -> super::super::credentials::Credentials {
+        super::super::credentials::Credentials {
+            client_id: "client".to_owned(),
+            access_token: "access".to_owned(),
+            refresh_token: "refresh".to_owned(),
+            expires_at,
+        }
+    }
+
+    #[test]
+    fn refreshes_within_a_minute_of_expiry() {
+        assert!(expires_soon(&credentials(0)));
+        assert!(expires_soon(&credentials(now() + 30)));
+        assert!(!expires_soon(&credentials(now() + 600)));
+    }
+
+    #[test]
+    fn maps_oauth_failures_without_response_bodies() {
+        assert!(matches!(
+            oauth_error(oauth::Error::Configuration),
+            PublishError::Protocol("X authorization")
+        ));
+        assert!(matches!(
+            oauth_error(oauth::Error::Callback("denied")),
+            PublishError::XAuthorization("denied")
+        ));
+    }
+}

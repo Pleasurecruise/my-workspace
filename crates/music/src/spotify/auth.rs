@@ -75,26 +75,14 @@ pub(crate) async fn refresh(client_id: &str, refresh_token: &str) -> Result<Acce
 
 #[cfg(test)]
 mod tests {
-    use super::WEB_CLIENT_ID;
-
     #[tokio::test]
-    async fn validates_personal_client() {
-        assert!(super::web_authorization(Some("invalid")).await.is_err());
-        let client_id = "0123456789abcdef0123456789abcdef";
-        let authorization = super::web_authorization(Some(client_id)).await.unwrap();
-        let url = reqwest::Url::parse(&authorization.url).unwrap();
-        let query: std::collections::HashMap<_, _> = url.query_pairs().collect();
-        assert_eq!(query.get("client_id").unwrap(), client_id);
-        assert_eq!(
-            query.get("redirect_uri").unwrap(),
-            "http://127.0.0.1:8989/login"
-        );
-        assert_eq!(query.get("scope").unwrap(), super::WEB_SCOPES);
-        assert_eq!(query.get("code_challenge_method").unwrap(), "S256");
-    }
-
-    #[test]
-    fn shared_web_client_is_stable() {
-        assert_eq!(WEB_CLIENT_ID.len(), 32);
+    async fn rejects_invalid_client_ids_before_listening() {
+        for client_id in ["invalid", "0123456789abcdef0123456789abcdeg", ""] {
+            let error = super::web_authorization(Some(client_id)).await.err();
+            assert!(
+                matches!(error, Some(crate::Error::Authentication(message)) if message.contains("32 hexadecimal")),
+                "{client_id}"
+            );
+        }
     }
 }

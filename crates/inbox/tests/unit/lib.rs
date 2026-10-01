@@ -104,3 +104,28 @@ async fn leaving_inbox_waits_for_accepted_message_to_commit() {
     assert_eq!(disk.last_id, memory.last_id);
     assert_eq!(memory.notifications[0].id, "accepted");
 }
+
+#[tokio::test]
+async fn stream_accepts_only_valid_data_lines() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().join("inbox.sqlite3"));
+    let updates = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let received = updates.clone();
+    let listener: Listener = Arc::new(move |notifications: Vec<Notification>| {
+        received.lock().unwrap().push(notifications.len());
+    });
+    let body = concat!(
+        ": keepalive comment\n",
+        "event: message\n",
+        "data: not json\n",
+        "data: {\"id\":\"a\",\"time\":1,\"event\":\"message\",\"topic\":\"mail-summary\",\"message\":\"First\"}\r\n",
+        "data:{\"id\":\"b\",\"time\":2,\"event\":\"message\",\"topic\":\"mail-summary\",\"message\":\"Second\"}\n",
+        "data: {\"id\":\"partial\"",
+    );
+    let response = reqwest::Response::from(http::Response::new(body.to_owned()));
+    let (_sender, mut stop) = watch::channel(());
+    consume(&store, &listener, response, &mut stop).await;
+    assert_eq!(*updates.lock().unwrap(), [1, 2]);
+    let snapshot = store.snapshot.read().await;
+    assert_eq!(snapshot.as_ref().unwrap().last_id.as_deref(), Some("b"));
+}

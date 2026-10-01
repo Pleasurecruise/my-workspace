@@ -35,10 +35,6 @@ stores artifacts. This repository does not host a cloud application backend.
 | `packages/ui`           | Self-owned Svelte primitives and semantic design tokens               |
 | `packages/tsconfig`     | Shared UI TypeScript configuration                                    |
 
-Workspace crates are named after their capability without an application prefix or `core` suffix.
-Public items keep one canonical path: crates expose modules such as `social::telegram` or
-`music::spotify::credentials` instead of renaming re-exports with `as`.
-
 Create a package only for a stable independent or genuinely shared responsibility. Application
 behavior belongs in Rust; Svelte owns presentation and interaction state.
 Shared TypeScript settings and path aliases belong to `packages/tsconfig`: `@/` resolves each
@@ -59,22 +55,17 @@ CLI commands ──────────────────────�
 ```
 
 Each Rust feature owns its wire types, validation, external I/O and transactions. Tauri commands
-translate inputs and return tagged `ready` or `failed` results. Command bodies return
-`Result<T, CommandError>`; `CommandError` accepts any displayable error through `?` and converts
-to the tagged response once. CLI commands reuse these feature
+translate inputs and return tagged `ready` or `failed` results. CLI commands reuse these feature
 boundaries rather than desktop commands. Provider output excludes credentials; Settings prefill is
 the narrow exception for values the user edits locally.
 
 ## Desktop boundary
 
-Desktop Rust modules adapt the crate they are named after: `content` (with `memos`, `moment` and
-`knowledge` submodules) adapts `consumers`, `dashboard`, `games`, `inbox`, `music`, `social`,
-`todo` and `ledger` adapt their crates, `settings` reads and saves feature credentials for the
-Settings form, `app_lock` owns the App Lock state and password, and `protocol` serves the
-`vesper-asset` and `vesper-music-cover` URI schemes. Where a desktop module shadows a crate name,
-other desktop modules write `::crate_name` for the crate.
+Desktop Rust modules are named after the crate they adapt; `content` adapts `consumers`,
+`settings` serves the Settings form, `app_lock` owns App Lock and `protocol` serves the asset and
+music-cover URI schemes.
 
-`App.svelte` composes navigation, page layout, profile, theme and the `layout/LockScreen` App Lock. Feature directories own
+`App.svelte` composes navigation, page layout, profile, theme and App Lock. Feature directories own
 their views and `session.svelte.ts` state; `pages` composes complete routes and `layout` holds shell
 controls. Reusable primitives belong to `packages/ui`. [Design](DESIGN.md) defines presentation.
 
@@ -122,8 +113,8 @@ Music and game runtimes outlive route mounts. Their authentication, cancellation
 rules belong in [Music](MUSIC.md) and [Games](GAMES.md); NAS protocols belong in [UGOS](UGOS.md).
 Inbox independently activates its ntfy stream while its route is active.
 Device storage reads OS capacity only; category inspection is delegated to system storage settings.
-Knowledge and Newspaper load a summary-only index without fetching or compiling bodies. The desktop
-Rust `content::knowledge::Reader` owns lazy detail compilation, a 30-second/16-document cache, and same-ID
+Knowledge and Newspaper load a summary-only index without fetching or compiling bodies.
+`content::knowledge::Reader` owns lazy detail compilation, a 30-second/16-document cache, and same-ID
 in-flight request sharing. A changed index content hash bypasses cached content. Visible index entries, pointer intent,
 keyboard focus and touch request prefetch through Tauri, with at most two speculative reads and six
 reads overall. Writes and credential resets clear cached documents and invalidate pending results.
@@ -146,9 +137,10 @@ The updater verifies signed artifacts before installation; setup belongs in
 ## Content production
 
 The `markdown` crate owns document and Memo compilation (`publication::render`,
-`knowledge::compile`, `knowledge::fallback`, `render_memo`) and reads embed provider data. `md-dialect`
-collects embed references without I/O, then validates and renders custom `embed:*` fences, lays out structured diagrams, and normalizes source examples consistently for
-provider discovery and compilation. Annotation, quote and diff rendering require no provider reads. Inline image shortcodes use a bundled
+`knowledge::compile`, `knowledge::fallback`, `render_memo`) and reads embed provider data.
+`md-dialect` collects embed references without I/O, validates and renders custom `embed:*` fences,
+lays out structured diagrams, and normalizes source examples consistently for provider discovery
+and compilation. Annotation, quote and diff rendering require no provider reads. Inline image shortcodes use a bundled
 `md-dialect` catalog and transform prose events before HTML assembly; compilation performs no image reads.
 Article cards use host-provided index metadata; `github`, `market-data`, and `link-preview` supply
 repository, market, website and X post metadata for provider cards. [Markdown](MARKDOWN.md) owns
@@ -171,7 +163,8 @@ runtimes, R2 bindings and deployment configuration.
 ## Consumer projections
 
 `crates/consumers` owns authenticated API access and content projection. Desktop `content.rs` owns
-repository, view and image caches; its `memos`, `moment` and `knowledge` submodules adapt commands. Cache revisions prevent a late read from
+repository, view and image caches; its submodules adapt commands. Cache revisions prevent a late
+read from
 restoring invalidated content. Writes retain each consumer's server-side coordination.
 
 | Consumer  | Boundary                                                                                                                                                                                                                                         |
@@ -213,10 +206,8 @@ tables without an upgrade or reset layer. [Persistence](PERSISTENCE.md) defines 
 explicit schema rebuilds, locking and backups.
 
 Credentials use SQLite in debug builds and operating-system storage in release builds. Missing
-debug configuration never falls through to the OS store. `crates/vault` stores opaque account
-values and JSON only; each feature owns a `credentials` module (or `notion::configuration`) with its
-types, validation and account name, so `vault` does not depend on any feature. Dashboard layout
-and Inbox notification storage live in their own crates rather than in the desktop adapter. Public calendar source preferences belong
+debug configuration never falls through to the OS store. `crates/vault` stores values; each feature
+owns its credential types and validation. Public calendar source preferences belong
 to Todo, not credentials. [Development](DEVELOPMENT.md#credential-resolution) defines resolution.
 
 ### Daily Planner

@@ -1,3 +1,4 @@
+use crate::cache::Cache;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
@@ -9,8 +10,11 @@ const OAUTH_BETA: &str = "oauth-2025-04-20";
 #[cfg(target_os = "macos")]
 const KEYCHAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 
-#[derive(Debug, Deserialize, Serialize)]
+static CACHE: Cache<Result<ClaudeUsage, String>> = Cache::new();
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeUsage {
     pub plan_type: String,
@@ -18,7 +22,7 @@ pub struct ClaudeUsage {
     pub seven_day: Option<UsageWindow>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageWindow {
     pub used_percent: f64,
@@ -58,6 +62,10 @@ struct UsageResponseWindow {
 }
 
 pub async fn read() -> Result<ClaudeUsage, String> {
+    CACHE.read(CACHE_TTL, read_fresh()).await
+}
+
+async fn read_fresh() -> Result<ClaudeUsage, String> {
     let credentials = read_credentials().await?;
     let plan_type = plan_name(&credentials.subscription_type)
         .ok_or_else(|| "Claude Code is not signed in with a Claude subscription".to_owned())?;
@@ -76,6 +84,9 @@ pub async fn read() -> Result<ClaudeUsage, String> {
         .await
         .map_err(|error| format!("Could not query Claude usage: {error}"))?;
     let status = response.status();
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err("Claude usage is rate limited; retrying in five minutes".to_owned());
+    }
     if !status.is_success() {
         return Err(format!("Claude usage request failed: HTTP {status}"));
     }

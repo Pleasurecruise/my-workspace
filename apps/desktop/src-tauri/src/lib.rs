@@ -282,3 +282,24 @@ fn init_logging() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_errors_become_failed_responses() {
+        let result: Result<u8, CommandError> = (|| {
+            let value: u8 = "300".parse()?;
+            Ok(value)
+        })();
+        let CommandResponse::Failed { message } = CommandResponse::from(result) else {
+            panic!("expected a failed response");
+        };
+        assert!(message.contains("too large"));
+        let ready = CommandResponse::from(Ok::<_, CommandError>(7));
+        assert!(matches!(ready, CommandResponse::Ready { data: 7 }));
+        let displayed = CommandResponse::<u8>::from(Err::<u8, _>("offline"));
+        assert!(matches!(displayed, CommandResponse::Failed { message } if message == "offline"));
+    }
+}

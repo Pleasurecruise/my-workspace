@@ -44,35 +44,26 @@ pub(crate) async fn restart(app: &tauri::AppHandle) -> Result<(), String> {
 fn listener(app: &tauri::AppHandle) -> Listener {
     let app = app.clone();
     Arc::new(move |notifications| {
-        show_latest(&app, &notifications);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .and_then(|duration| i64::try_from(duration.as_secs()).ok());
+        if let Some(latest) = notifications.first()
+            && now.is_some_and(|now| latest.timestamp >= now - FRESH_SECONDS)
+        {
+            let title = latest.title.as_deref().unwrap_or(&latest.source);
+            let shown = app
+                .notification()
+                .builder()
+                .title(title)
+                .body(&latest.message)
+                .show();
+            if let Err(error) = shown {
+                tracing::debug!(%error, "operating-system notification was not shown");
+            }
+        }
         emit(&app, notifications);
     })
-}
-
-fn show_latest(app: &tauri::AppHandle, notifications: &[Notification]) {
-    let Some(notification) = notifications.first() else {
-        return;
-    };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()
-        .and_then(|duration| i64::try_from(duration.as_secs()).ok());
-    if !now.is_some_and(|now| notification.timestamp >= now - FRESH_SECONDS) {
-        return;
-    }
-    let title = notification
-        .title
-        .as_deref()
-        .unwrap_or(&notification.source);
-    let shown = app
-        .notification()
-        .builder()
-        .title(title)
-        .body(&notification.message)
-        .show();
-    if let Err(error) = shown {
-        tracing::debug!(%error, "operating-system notification was not shown");
-    }
 }
 
 fn emit(app: &tauri::AppHandle, notifications: Vec<Notification>) {

@@ -226,6 +226,7 @@ Both providers retain independent data and error states, including when pinned t
 Claude reports missing credentials as signed out. Keychain access failures, unreadable files, malformed
 OAuth data and expired tokens remain explicit errors. Claude Code owns token renewal; Vesper does not
 refresh or write its credentials. An expired token requires renewal in Claude Code before retrying.
+Like the other subscription providers, reads and failures such as HTTP 429 are cached for five minutes.
 
 ### TokenFlux and DimAgent
 

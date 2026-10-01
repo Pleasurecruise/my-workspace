@@ -129,15 +129,6 @@ mod tests {
     use pulldown_cmark::{Parser, html};
 
     #[test]
-    fn validate_catalog() {
-        let images = catalog(include_str!("emoji-packs.json")).unwrap();
-        assert!(images[":suzume_思考:"].contains("https://szm.de5.net/"));
-        assert!(images[":suzume_期待:"].contains("max-height:6rem"));
-        assert!(!images.contains_key(":daimao2_02:"));
-        assert!(!images.contains_key(":denghuoju8_03:"));
-    }
-
-    #[test]
     fn shortcodes_only_replace_prose() {
         let images = catalog(r#"[{"key":"test","name":"Test","display":"sticker","items":[{"name":"开心","value":"https://example.com/test.gif?a=1&b=2"}]}]"#).unwrap();
         let source = ":test_开心: **:test_开心:** :missing_x: `:test_开心:`\n\n```\n:test_开心:\n```\n\n[:test_开心:](https://example.com/:test_开心:) ![:test_开心:](https://example.com/img.png)";

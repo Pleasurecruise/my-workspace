@@ -95,3 +95,29 @@ pub(crate) fn music_cover(
         responder.respond(response);
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serves_only_supported_image_types() {
+        assert_eq!(image_type("img/a.PNG"), Some("image/png"));
+        assert_eq!(image_type("img/a.jpeg"), Some("image/jpeg"));
+        assert_eq!(image_type("img/a.webp"), Some("image/webp"));
+        assert_eq!(image_type("img/a.avif"), Some("image/avif"));
+        assert_eq!(image_type("img/a.svg"), None);
+        assert_eq!(image_type("img/no-extension"), None);
+    }
+
+    #[test]
+    fn image_responses_disable_sniffing() {
+        let response = image("image/png", "no-store", vec![1, 2]);
+        let headers = response.headers();
+        assert_eq!(headers[header::CONTENT_TYPE], "image/png");
+        assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+        assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+        assert_eq!(response.body(), &[1, 2]);
+        assert_eq!(empty(StatusCode::NOT_FOUND).status(), StatusCode::NOT_FOUND);
+    }
+}

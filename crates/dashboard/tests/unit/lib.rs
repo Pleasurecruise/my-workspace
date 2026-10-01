@@ -258,79 +258,64 @@ fn island_selection_must_reference_a_saved_widget() {
 }
 
 #[test]
-fn rejects_kind() {
-    let json = br#"{"widgets":[{"id":"bad","widget":{"kind":"unsupported"}}]}"#;
-    assert!(decode(json).is_err());
-}
-
-#[test]
-fn rejects_duplicates() {
-    let json = br#"{"widgets":[{"id":"cpu-1","widget":{"kind":"cpu"}},{"id":"cpu-2","widget":{"kind":"cpu"}}]}"#;
-    assert!(decode(json).is_err());
-}
-
-#[test]
-fn supports_weather() {
-    let json = br#"{"widgets":[{"id":"weather-shanghai","widget":{"kind":"weather","location":"shanghai"}},{"id":"weather-ningbo","widget":{"kind":"weather","location":"ningbo"}}]}"#;
-
-    assert!(decode(json).is_ok());
-}
-
-#[test]
-fn supports_custom_location() {
-    let json = br#"{"widgets":[{"id":"weather-custom","widget":{"kind":"weather","location":"Hangzhou, China"}}]}"#;
-
-    assert!(decode(json).is_ok());
-}
-
-#[test]
-fn rejects_noncanonical_location() {
-    let json = br#"{"widgets":[{"id":"weather-custom","widget":{"kind":"weather","location":" Hangzhou "}}]}"#;
-
-    assert!(decode(json).is_err());
-}
-
-#[test]
-fn supports_known_service_status() {
-    let json = br#"{"widgets":[{"id":"service-status-codex","widget":{"kind":"serviceStatus","serviceId":"codex"}}]}"#;
-
-    assert!(decode(json).is_ok());
-}
-
-#[test]
-fn supports_one_exchange_widget() {
-    let json = br#"{"widgets":[{"id":"exchange","widget":{"kind":"exchange"}}]}"#;
-
-    assert!(decode(json).is_ok());
-
-    let duplicates = br#"{"widgets":[{"id":"exchange-1","widget":{"kind":"exchange"}},{"id":"exchange-2","widget":{"kind":"exchange"}}]}"#;
-    assert!(decode(duplicates).is_err());
-}
-
-#[test]
-fn supports_current_device_widgets_as_singletons() {
-    let json = br#"{"widgets":[{"id":"local-cpu","widget":{"kind":"localCpu"}},{"id":"local-memory","widget":{"kind":"localMemory"}},{"id":"local-storage","widget":{"kind":"localStorage"}},{"id":"local-network","widget":{"kind":"localNetwork"}}]}"#;
-    assert!(decode(json).is_ok());
-
-    let duplicate = br#"{"widgets":[{"id":"local-cpu-1","widget":{"kind":"localCpu"}},{"id":"local-cpu-2","widget":{"kind":"localCpu"}}]}"#;
-    assert!(decode(duplicate).is_err());
-}
-
-#[test]
 fn default_layout_is_valid() {
     Layout::default().validate().unwrap();
 }
 
 #[test]
-fn rejects_unknown_service_status() {
-    let json = br#"{"widgets":[{"id":"service-status-other","widget":{"kind":"serviceStatus","serviceId":"other"}}]}"#;
-
-    assert!(decode(json).is_err());
+fn accepts_valid_layouts() {
+    for json in [
+        r#"{"widgets":[{"id":"weather-shanghai","widget":{"kind":"weather","location":"shanghai"}},{"id":"weather-ningbo","widget":{"kind":"weather","location":"ningbo"}}]}"#,
+        r#"{"widgets":[{"id":"weather-custom","widget":{"kind":"weather","location":"Hangzhou, China"}}]}"#,
+        r#"{"widgets":[{"id":"service-status-codex","widget":{"kind":"serviceStatus","serviceId":"codex"}}]}"#,
+        r#"{"widgets":[{"id":"exchange","widget":{"kind":"exchange"}}]}"#,
+        r#"{"widgets":[{"id":"local-cpu","widget":{"kind":"localCpu"}},{"id":"local-memory","widget":{"kind":"localMemory"}},{"id":"local-storage","widget":{"kind":"localStorage"}},{"id":"local-network","widget":{"kind":"localNetwork"}}]}"#,
+    ] {
+        assert!(decode(json.as_bytes()).is_ok(), "{json}");
+    }
 }
 
 #[test]
-fn rejects_extra_field() {
-    let json = br#"{"revision":1,"widgets":[]}"#;
+fn rejects_invalid_layouts() {
+    for json in [
+        r#"{"widgets":[{"id":"bad","widget":{"kind":"unsupported"}}]}"#,
+        r#"{"widgets":[{"id":"cpu-1","widget":{"kind":"cpu"}},{"id":"cpu-2","widget":{"kind":"cpu"}}]}"#,
+        r#"{"widgets":[{"id":"exchange-1","widget":{"kind":"exchange"}},{"id":"exchange-2","widget":{"kind":"exchange"}}]}"#,
+        r#"{"widgets":[{"id":"local-cpu-1","widget":{"kind":"localCpu"}},{"id":"local-cpu-2","widget":{"kind":"localCpu"}}]}"#,
+        r#"{"widgets":[{"id":"weather-custom","widget":{"kind":"weather","location":" Hangzhou "}}]}"#,
+        r#"{"widgets":[{"id":"service-status-other","widget":{"kind":"serviceStatus","serviceId":"other"}}]}"#,
+        r#"{"widgets":[{"id":"bad id","widget":{"kind":"cpu"}}]}"#,
+        r#"{"widgets":[{"id":"stock","widget":{"kind":"stock","symbol":"aapl"}}]}"#,
+        r#"{"revision":1,"widgets":[]}"#,
+    ] {
+        assert!(decode(json.as_bytes()).is_err(), "{json}");
+    }
+}
 
-    assert!(decode(json).is_err());
+#[test]
+fn queries_read_only_saved_widgets() {
+    let json = r#"{"widgets":[
+        {"id":"stock-aapl","widget":{"kind":"stock","symbol":"AAPL"}},
+        {"id":"weather","widget":{"kind":"weather","location":"Ningbo"}},
+        {"id":"status","widget":{"kind":"serviceStatus","serviceId":"codex"}},
+        {"id":"genshin","widget":{"kind":"game","game":"genshin"}},
+        {"id":"steam","widget":{"kind":"steam"}},
+        {"id":"exchange","widget":{"kind":"exchange"}},
+        {"id":"local-cpu","widget":{"kind":"localCpu"}}
+    ],"islandWidgetId":"weather"}"#;
+    let layout = decode(json.as_bytes()).unwrap();
+    assert_eq!(layout.stock_symbols(), ["AAPL"]);
+    assert_eq!(layout.weather_locations(), ["Ningbo"]);
+    assert_eq!(layout.service_ids(), ["codex"]);
+    assert_eq!(layout.games(), (vec![games::Game::Genshin], true));
+    assert!(matches!(layout.island(), Some(Widget::Weather { .. })));
+    assert!(layout.has_exchange());
+    assert!(layout.has_device_telemetry());
+    assert!(!layout.has_quotation());
+    assert!(!layout.has_ugos());
+
+    let empty = decode(br#"{"widgets":[],"islandWidgetId":null}"#).unwrap();
+    assert!(empty.island().is_none());
+    assert!(empty.stock_symbols().is_empty());
+    assert_eq!(empty.games(), (Vec::new(), false));
 }

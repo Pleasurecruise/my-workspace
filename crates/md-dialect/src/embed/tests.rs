@@ -669,3 +669,20 @@ fn validates_canvas_contract() {
     .unwrap();
     assert!(!html.contains("&quot;"));
 }
+
+#[test]
+fn collects_deduplicated_provider_references() {
+    let source = "```embed:github\nrepo: owner/repo\n```\n\n```embed:github\nrepo: owner/repo\nalign: wide\n```\n\n```embed:stock\ncode: msft\n```\n\n```embed:link\nurl: https://example.com/post\n```\n\n```embed:twitter\nurl: https://twitter.com/user/status/123\n```\n\n```rust\nfn main() {}\n```";
+    let references = super::references(source).unwrap();
+    assert_eq!(references.repositories.len(), 1);
+    assert!(references.repositories.contains("owner/repo"));
+    assert!(references.stocks.contains("MSFT"));
+    assert!(references.links.contains("https://example.com/post"));
+    assert_eq!(references.tweets.len(), 1);
+    assert!(
+        super::references("plain prose")
+            .unwrap()
+            .repositories
+            .is_empty()
+    );
+}

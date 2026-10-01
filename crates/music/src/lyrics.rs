@@ -126,12 +126,24 @@ pub(crate) fn from_lrc(value: &str) -> Option<Lyrics> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_lrc;
+    use super::{from_lrc, parse_lrc};
 
     #[test]
     fn parses_and_orders_timed_lines() {
         let lines = parse_lrc("[00:10.50]Second\n[00:02.00]First");
         assert_eq!(lines[0].start_ms, Some(2_000));
         assert_eq!(lines[1].text, "Second");
+        assert_eq!(lines[1].start_ms, Some(10_500));
+    }
+
+    #[test]
+    fn skips_metadata_blank_and_malformed_lines() {
+        let source = "[ar:Artist]\n[00:01.00]\n[xx:01.00]Bad minutes\n[00:aa]Bad seconds\nno stamp\n[01:02.345]  Kept  ";
+        let lines = parse_lrc(source);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text, "Kept");
+        assert_eq!(lines[0].start_ms, Some(62_345));
+        assert!(from_lrc("[ar:Artist]").is_none());
+        assert!(from_lrc("[00:01.00]Line").is_some_and(|lyrics| lyrics.synced));
     }
 }
