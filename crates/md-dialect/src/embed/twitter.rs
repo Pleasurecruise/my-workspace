@@ -1,4 +1,5 @@
-use super::{Data, EmbedError, align, escape_html, is_web_url, reject_unknown, required};
+use super::{Data, EmbedError, align, is_web_url, reject_unknown, required};
+use html_escape::{decode_html_entities, encode_quoted_attribute};
 use link_preview::twitter::Post;
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -25,8 +26,8 @@ pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String,
         Err(error) => {
             return Ok(format!(
                 "<aside class=\"content-embed content-embed-twitter content-embed-{align}\"><p>{}</p><a href=\"{}\" target=\"_blank\" rel=\"noopener noreferrer\">Open X / Twitter to read the post.</a></aside>\n",
-                escape_html(error),
-                escape_html(&url),
+                encode_quoted_attribute(error),
+                encode_quoted_attribute(&url),
             ));
         }
     };
@@ -110,40 +111,41 @@ fn card(post: &Post, quoted: bool) -> Result<String, EmbedError> {
         if from < offset || to > end || from >= to {
             continue;
         }
-        body.push_str(&escape_html(&html_escape::decode_html_entities(
+        body.push_str(&encode_quoted_attribute(&decode_html_entities(
             &text[offset..from].iter().collect::<String>(),
         )));
         if url::Url::parse(&address).is_ok_and(|url| is_web_url(&url)) {
             write!(
                 body,
                 "<a href=\"{}\" target=\"_blank\" rel=\"noopener noreferrer\">{}</a>",
-                escape_html(&address),
-                escape_html(&label)
+                encode_quoted_attribute(&address),
+                encode_quoted_attribute(&label)
             )
             .unwrap();
         } else {
-            body.push_str(&escape_html(&html_escape::decode_html_entities(
+            body.push_str(&encode_quoted_attribute(&decode_html_entities(
                 &text[from..to].iter().collect::<String>(),
             )));
         }
         offset = to;
     }
-    body.push_str(&escape_html(&html_escape::decode_html_entities(
+    body.push_str(&encode_quoted_attribute(&decode_html_entities(
         &text[offset..end].iter().collect::<String>(),
     )));
     let mut html = format!(
         "<article class=\"tweet-post{}\"><header class=\"tweet-header\"><a class=\"tweet-author\" href=\"{url}\" target=\"_blank\" rel=\"noopener noreferrer\"><img src=\"{}\" alt=\"\" loading=\"lazy\" referrerpolicy=\"no-referrer\" /><span><strong>{}</strong><span>@{}</span></span></a><a class=\"tweet-brand\" href=\"{url}\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"View post on X\">𝕏</a></header><p class=\"tweet-body\">{}</p>",
         if quoted { " tweet-quote" } else { "" },
-        escape_html(&post.user.profile_image_url_https),
-        escape_html(&post.user.name),
-        escape_html(&post.user.screen_name),
+        encode_quoted_attribute(&post.user.profile_image_url_https),
+        encode_quoted_attribute(&post.user.name),
+        encode_quoted_attribute(&post.user.screen_name),
         body,
     );
     if !post.media.is_empty() {
         html.push_str("<div class=\"tweet-media\">");
         for media in &post.media {
-            let image = escape_html(&media.media_url_https);
-            let alt = escape_html(media.ext_alt_text.as_deref().unwrap_or("Post media"));
+            let image = encode_quoted_attribute(&media.media_url_https);
+            let alt =
+                encode_quoted_attribute(media.ext_alt_text.as_deref().unwrap_or("Post media"));
             if let Some(video) = &media.video_info {
                 let variant = video
                     .variants
@@ -151,7 +153,7 @@ fn card(post: &Post, quoted: bool) -> Result<String, EmbedError> {
                     .filter(|variant| variant.content_type == "video/mp4")
                     .max_by_key(|variant| variant.bitrate);
                 if let Some(variant) = variant {
-                    write!(html, "<figure class=\"content-embed-media tweet-video\"><video controls preload=\"metadata\" playsinline poster=\"{image}\" aria-label=\"{alt}\"><source src=\"{}\" type=\"video/mp4\" /></video></figure>", escape_html(&variant.url)).unwrap();
+                    write!(html, "<figure class=\"content-embed-media tweet-video\"><video controls preload=\"metadata\" playsinline poster=\"{image}\" aria-label=\"{alt}\"><source src=\"{}\" type=\"video/mp4\" /></video></figure>", encode_quoted_attribute(&variant.url)).unwrap();
                 } else {
                     write!(html, "<a href=\"{url}\" target=\"_blank\" rel=\"noopener noreferrer\"><img src=\"{image}\" alt=\"{alt}\" loading=\"lazy\" referrerpolicy=\"no-referrer\" /><span>Watch on X</span></a>").unwrap();
                 }
@@ -164,6 +166,6 @@ fn card(post: &Post, quoted: bool) -> Result<String, EmbedError> {
     if !quoted && let Some(quote) = &post.quoted_tweet {
         html.push_str(&card(quote, true)?);
     }
-    write!(html, "<footer class=\"tweet-date\"><a href=\"{url}\" target=\"_blank\" rel=\"noopener noreferrer\"><time datetime=\"{}\">{}</time></a></footer></article>", escape_html(&post.created_at), escape_html(&date)).unwrap();
+    write!(html, "<footer class=\"tweet-date\"><a href=\"{url}\" target=\"_blank\" rel=\"noopener noreferrer\"><time datetime=\"{}\">{}</time></a></footer></article>", encode_quoted_attribute(&post.created_at), encode_quoted_attribute(&date)).unwrap();
     Ok(html)
 }

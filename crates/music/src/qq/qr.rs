@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use reqwest::header::{COOKIE, LOCATION, REFERER as REFERER_HEADER, SET_COOKIE};
+use reqwest::header::{COOKIE, LOCATION, REFERER as REFERER_HEADER};
 
 use super::auth::{RenewData, hash33, read_time, render_cookie};
 use super::{API, QqResponse, REFERER, check};
@@ -59,7 +59,7 @@ impl QqLogin {
             .send()
             .await?;
         let response = check(response, "create QQ Music login QR code")?;
-        let cookies = response_cookies(response.headers(), HashMap::new());
+        let cookies = response_cookies(&response, HashMap::new());
         let qrsig = cookies
             .get("qrsig")
             .filter(|value| !value.is_empty())
@@ -118,7 +118,7 @@ impl QqLogin {
             .await?;
         let response = check(response, "check QQ Music login QR code")?;
         let cookies = response_cookies(
-            response.headers(),
+            &response,
             HashMap::from([("qrsig".to_owned(), self.qrsig.clone())]),
         );
         let text = response.text().await?;
@@ -164,7 +164,7 @@ impl QqLogin {
             .header(COOKIE, render_cookie(&cookies))
             .send()
             .await?;
-        let cookies = response_cookies(response.headers(), cookies);
+        let cookies = response_cookies(&response, cookies);
         let skey = ["p_skey", "p_sKey", "skey", "pskey"]
             .iter()
             .find_map(|field| cookies.get(*field))
@@ -283,24 +283,15 @@ fn parse_ptui(text: &str) -> Option<PtuiResult> {
 }
 
 fn response_cookies(
-    headers: &reqwest::header::HeaderMap,
+    response: &reqwest::Response,
     mut cookies: HashMap<String, String>,
 ) -> HashMap<String, String> {
-    for value in headers.get_all(SET_COOKIE) {
-        let Ok(value) = value.to_str() else {
-            continue;
-        };
-        let Some((field, value)) = value
-            .split(';')
-            .next()
-            .and_then(|part| part.split_once('='))
-        else {
-            continue;
-        };
-        if !field.trim().is_empty() && !value.trim().is_empty() {
-            cookies.insert(field.trim().to_owned(), value.trim().to_owned());
-        }
-    }
+    cookies.extend(
+        response
+            .cookies()
+            .filter(|cookie| !cookie.name().is_empty() && !cookie.value().is_empty())
+            .map(|cookie| (cookie.name().to_owned(), cookie.value().to_owned())),
+    );
     cookies
 }
 

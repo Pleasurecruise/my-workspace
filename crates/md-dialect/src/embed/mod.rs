@@ -292,15 +292,6 @@ fn align<'a>(fields: &mut HashMap<&str, &'a str>) -> Result<&'a str, EmbedError>
     check_align(fields.remove("align").unwrap_or("wide"))
 }
 
-pub(crate) fn escape_html(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
-}
-
 fn required<'a>(
     fields: &mut HashMap<&str, &'a str>,
     kind: &'static str,

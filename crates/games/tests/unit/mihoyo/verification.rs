@@ -61,7 +61,7 @@ fn signs_challenge() {
                 body.unwrap_or("")
             );
             use md5::{Digest, Md5};
-            assert_eq!(parts[2], format!("{:x}", Md5::digest(input.as_bytes())));
+            assert_eq!(parts[2], hex::encode(Md5::digest(input.as_bytes())));
             if let Some(body) = body {
                 assert_eq!(request.method(), reqwest::Method::POST);
                 assert_eq!(request.body().unwrap().as_bytes().unwrap(), body.as_bytes());

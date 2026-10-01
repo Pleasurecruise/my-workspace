@@ -1,4 +1,5 @@
-use super::{EmbedError, align, escape_html, is_web_url, reject_unknown, required};
+use super::{EmbedError, align, is_web_url, reject_unknown, required};
+use html_escape::encode_quoted_attribute;
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use std::collections::HashMap;
 use url::{ParseError, Url};
@@ -129,11 +130,11 @@ pub(super) fn render(fields: HashMap<&str, &str>) -> Result<String, EmbedError> 
     let preload = if preview { "metadata" } else { "none" };
     let poster = media
         .poster
-        .map(|source| format!(" poster=\"{}\"", escape_html(&source.url)))
+        .map(|source| format!(" poster=\"{}\"", encode_quoted_attribute(&source.url)))
         .unwrap_or_default();
     let caption = media
         .caption
-        .map(|text| format!("<figcaption>{}</figcaption>", escape_html(text)))
+        .map(|text| format!("<figcaption>{}</figcaption>", encode_quoted_attribute(text)))
         .unwrap_or_default();
     let inline = if media.kind == "video" {
         " playsinline"
@@ -152,9 +153,9 @@ pub(super) fn render(fields: HashMap<&str, &str>) -> Result<String, EmbedError> 
         caption = caption,
         kind = media.kind,
         align = media.align,
-        src = escape_html(&src),
-        href = escape_html(&media.src.url),
+        src = encode_quoted_attribute(&src),
+        href = encode_quoted_attribute(&media.src.url),
         preload = preload,
-        title = escape_html(media.title),
+        title = encode_quoted_attribute(media.title),
     ))
 }

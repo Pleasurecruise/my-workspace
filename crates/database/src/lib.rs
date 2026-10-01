@@ -2,6 +2,8 @@ use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 use std::path::{Path, PathBuf};
 
+pub mod date;
+
 pub const APP_ID: &str = "me.you-find.vesper";
 pub const FILE_NAME: &str = "vesper.sqlite3";
 

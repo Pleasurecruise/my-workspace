@@ -1,4 +1,5 @@
-use super::{EmbedError, escape_html};
+use super::EmbedError;
+use html_escape::encode_quoted_attribute;
 
 pub(super) fn render(source: &str) -> Result<String, EmbedError> {
     let invalid = || {
@@ -112,7 +113,7 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
         }
         result.push_str(&format!(
             "<span class=\"diff-{kind}\">{}\n</span>",
-            escape_html(text)
+            encode_quoted_attribute(text)
         ));
     }
     if !hunk || !file || !file_hunk || old_header || old_remaining != 0 || new_remaining != 0 {

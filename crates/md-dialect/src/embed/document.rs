@@ -1,4 +1,5 @@
-use super::{EmbedError, align, diff, escape_html, fields, is_web_url, reject_unknown, required};
+use super::{EmbedError, align, diff, fields, is_web_url, reject_unknown, required};
+use html_escape::encode_quoted_attribute;
 use url::Url;
 
 pub(super) fn render(kind: &str, source: &str) -> Result<String, EmbedError> {
@@ -34,7 +35,7 @@ pub(super) fn render(kind: &str, source: &str) -> Result<String, EmbedError> {
     reject_unknown(kind, &values, allowed)?;
     let align = align(&mut values)?;
     if kind == "embed:diff" {
-        let title = escape_html(required(&mut values, "diff", "title")?);
+        let title = encode_quoted_attribute(required(&mut values, "diff", "title")?);
         let content = diff::render(&body)?;
         return Ok(format!(
             "<figure class=\"content-embed content-embed-diff content-embed-{align}\"><figcaption>{title}</figcaption><pre tabindex=\"0\" role=\"region\" aria-label=\"{title}\"><code>{content}</code></pre></figure>\n"
@@ -42,7 +43,7 @@ pub(super) fn render(kind: &str, source: &str) -> Result<String, EmbedError> {
     }
     if kind == "embed:annotation" {
         let mark = required(&mut values, "annotation", "mark")?;
-        let note = escape_html(required(&mut values, "annotation", "note")?);
+        let note = encode_quoted_attribute(required(&mut values, "annotation", "note")?);
         let color = values.remove("color").unwrap_or("blue");
         if !matches!(color, "blue" | "red" | "green" | "amber" | "purple") {
             return Err(EmbedError::InvalidDocument("invalid annotation color"));
@@ -60,19 +61,19 @@ pub(super) fn render(kind: &str, source: &str) -> Result<String, EmbedError> {
                 "<a href=\"{}\" target=\"_blank\" rel=\"noopener noreferrer\">{note}</a>",
                 source_url(value)?
             ),
-            None => note,
+            None => note.into_owned(),
         };
         return Ok(format!(
             "<figure class=\"content-embed content-embed-annotation content-embed-{align} annotation-{color}\"><p>{}<mark>{}</mark>{}</p><figcaption>{note}</figcaption></figure>\n",
-            escape_html(&body[..start]),
-            escape_html(mark),
-            escape_html(&body[start + mark.len()..])
+            encode_quoted_attribute(&body[..start]),
+            encode_quoted_attribute(mark),
+            encode_quoted_attribute(&body[start + mark.len()..])
         ));
     }
-    let author = escape_html(required(&mut values, "quote", "author")?);
+    let author = encode_quoted_attribute(required(&mut values, "quote", "author")?);
     let title = values
         .remove("title")
-        .map(|text| format!(" · <cite>{}</cite>", escape_html(text)))
+        .map(|text| format!(" · <cite>{}</cite>", encode_quoted_attribute(text)))
         .unwrap_or_default();
     let mut cite = String::new();
     let mut link = String::new();
@@ -84,7 +85,7 @@ pub(super) fn render(kind: &str, source: &str) -> Result<String, EmbedError> {
     }
     Ok(format!(
         "<figure class=\"content-embed content-embed-quote content-embed-{align}\"><blockquote{cite}><p>{}</p></blockquote><figcaption>{author}{title}{link}</figcaption></figure>\n",
-        escape_html(&body)
+        encode_quoted_attribute(&body)
     ))
 }
 
@@ -99,5 +100,5 @@ fn source_url(value: &str) -> Result<String, EmbedError> {
     if !is_web_url(&url) {
         return Err(invalid());
     }
-    Ok(escape_html(url.as_str()))
+    Ok(encode_quoted_attribute(url.as_str()).into_owned())
 }

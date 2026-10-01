@@ -49,7 +49,7 @@ fn starrail_headers() {
         parts[0], parts[1]
     );
     use md5::{Digest, Md5};
-    assert_eq!(parts[2], format!("{:x}", Md5::digest(input.as_bytes())));
+    assert_eq!(parts[2], hex::encode(Md5::digest(input.as_bytes())));
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn bridge_signature() {
             parts[0], parts[1]
         );
         use md5::{Digest, Md5};
-        assert_eq!(parts[2], format!("{:x}", Md5::digest(input.as_bytes())));
+        assert_eq!(parts[2], hex::encode(Md5::digest(input.as_bytes())));
     }
 }
 
@@ -148,5 +148,5 @@ fn signs_pull_authorization() {
         parts[0], parts[1]
     );
     use md5::{Digest, Md5};
-    assert_eq!(parts[2], format!("{:x}", Md5::digest(input.as_bytes())));
+    assert_eq!(parts[2], hex::encode(Md5::digest(input.as_bytes())));
 }

@@ -1,4 +1,5 @@
-use super::{EmbedError, canvas, check_align, escape_html, unquote};
+use super::{EmbedError, canvas, check_align, unquote};
+use html_escape::encode_quoted_attribute;
 
 pub(super) fn render(source: &str) -> Result<String, EmbedError> {
     let source = source.trim();
@@ -85,7 +86,7 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
     let width = 48 + steps.len() * 174 + steps.len().saturating_sub(1) * 54;
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {width} 250\" role=\"img\"><title>{}</title><desc>An Excalidraw-style sequence of {} notes.</desc>",
-        escape_html(title),
+        encode_quoted_attribute(title),
         steps.len(),
     );
     for (index, (heading, body)) in steps.iter().enumerate() {
@@ -98,8 +99,8 @@ pub(super) fn render(source: &str) -> Result<String, EmbedError> {
             x + 172, top + 130, x + 132, top + 137, x + 84, top + 126, x - 3, top + 130,
             x + 2, top + 2, x + 44, top - 1, x + 130, top + 3, x + 172, top + 4,
             x + 169, top + 128, x + 132, top + 134, x + 86, top + 132, x - 1, top + 132,
-            x + 14, top + 22, index + 1, x + 87, top + 57, escape_html(heading),
-            x + 87, top + 84, escape_html(body),
+            x + 14, top + 22, index + 1, x + 87, top + 57, encode_quoted_attribute(heading),
+            x + 87, top + 84, encode_quoted_attribute(body),
         ));
         if index + 1 < steps.len() {
             let start = x + 184;

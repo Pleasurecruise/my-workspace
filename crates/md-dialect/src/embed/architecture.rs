@@ -1,4 +1,5 @@
-use super::{EmbedError, canvas, escape_html, unquote};
+use super::{EmbedError, canvas, unquote};
+use html_escape::encode_quoted_attribute;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(super) fn render(source: &str) -> Result<String, EmbedError> {
@@ -301,7 +302,7 @@ fn render_diagram(
             svg.push_str(&format!(
                 "<tspan x=\"{}\" y=\"{baseline}\">{}</tspan>",
                 x + 80,
-                escape_html(label)
+                encode_quoted_attribute(label)
             ));
         }
         svg.push_str("</text></g>");

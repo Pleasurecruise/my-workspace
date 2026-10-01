@@ -1,4 +1,5 @@
-use super::{Data, EmbedError, align, escape_html, reject_unknown, required};
+use super::{Data, EmbedError, align, reject_unknown, required};
+use html_escape::encode_quoted_attribute;
 use std::collections::HashMap;
 
 pub(super) fn parse<'a>(
@@ -18,7 +19,7 @@ pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String,
         id: url.to_owned(),
     })?;
     let image = item.image.as_ref().map(|image| format!(
-        "<img class=\"content-embed-thumbnail\" src=\"{}\" alt=\"\" loading=\"lazy\" referrerpolicy=\"no-referrer\" />", escape_html(image)
+        "<img class=\"content-embed-thumbnail\" src=\"{}\" alt=\"\" loading=\"lazy\" referrerpolicy=\"no-referrer\" />", encode_quoted_attribute(image)
     )).unwrap_or_default();
     Ok(format!(
         concat!(
@@ -28,9 +29,9 @@ pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String,
         ),
         align = align,
         image = image,
-        url = escape_html(&item.url),
-        site = escape_html(&item.site_name),
-        title = escape_html(&item.title),
-        description = escape_html(&item.description),
+        url = encode_quoted_attribute(&item.url),
+        site = encode_quoted_attribute(&item.site_name),
+        title = encode_quoted_attribute(&item.title),
+        description = encode_quoted_attribute(&item.description),
     ))
 }

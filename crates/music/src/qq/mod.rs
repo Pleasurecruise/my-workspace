@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use base64::Engine;
 use futures_util::StreamExt;
-use rand::Rng;
+use rand::RngExt;
 use tokio::sync::{Mutex, RwLock, watch};
 
 use crate::lyrics;

@@ -4,10 +4,10 @@ use crate::{
     login::{Pending, Poll},
     transport,
 };
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use md5::{Digest, Md5};
 use serde::{Deserialize, de::DeserializeOwned};
-use sha2_legacy::Sha256;
+use sha2::Sha256;
 use std::collections::{BTreeMap, HashSet};
 
 #[derive(Deserialize)]
@@ -183,7 +183,7 @@ impl<'a> Client<'a> {
             .map_err(|_| "Invalid Skland signing key")?;
         hmac.update(input.as_bytes());
         let digest = hex::encode(hmac.finalize().into_bytes());
-        let signature = format!("{:x}", Md5::digest(digest.as_bytes()));
+        let signature = hex::encode(Md5::digest(digest.as_bytes()));
         request(self.client.get(url)
             .header("cred", self.cred)
             .header("sign", signature)
@@ -537,21 +537,13 @@ pub(crate) async fn pulls(session: &Session, game: Game) -> Result<(Account, Vec
         if !response.status().is_success() {
             return Err("Arknights history authorization failed".into());
         }
-        for value in response.headers().get_all(reqwest::header::SET_COOKIE) {
-            let Ok(value) = value.to_str() else {
-                continue;
-            };
-            if let Some(value) = value
-                .split(';')
-                .next()
-                .filter(|value| value.starts_with("ak-user-center="))
-            {
-                cookie = value.to_owned();
-            }
-        }
-        if cookie.is_empty() {
+        let Some(session) = response
+            .cookies()
+            .find(|cookie| cookie.name() == "ak-user-center")
+        else {
             return Err("Arknights history login did not return a session".into());
-        }
+        };
+        cookie = format!("ak-user-center={}", session.value());
         request::<Vec<Category>>(
             client
                 .client

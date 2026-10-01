@@ -77,7 +77,8 @@ fn signature(salt: &str, body: Option<&str>, query: &str) -> String {
         Some(body) => format!("salt={salt}&t={timestamp}&r={nonce}&b={body}&q={query}"),
         None => format!("salt={salt}&t={timestamp}&r={nonce}"),
     };
-    format!("{timestamp},{nonce},{:x}", Md5::digest(input.as_bytes()))
+    let digest = hex::encode(Md5::digest(input.as_bytes()));
+    format!("{timestamp},{nonce},{digest}")
 }
 
 #[derive(Deserialize)]

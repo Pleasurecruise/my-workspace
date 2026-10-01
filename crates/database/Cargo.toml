@@ -9,6 +9,7 @@ diesel.workspace = true
 dirs.workspace = true
 libsqlite3-sys.workspace = true
 thiserror.workspace = true
+time.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

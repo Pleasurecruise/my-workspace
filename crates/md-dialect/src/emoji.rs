@@ -1,6 +1,7 @@
 //! Image shortcodes backed by the bundled, owner-selected catalog.
 use std::{collections::HashMap, sync::OnceLock};
 
+use html_escape::encode_quoted_attribute;
 use pulldown_cmark::{Event, Tag, TagEnd};
 use regex::Regex;
 use serde::Deserialize;
@@ -54,8 +55,8 @@ fn catalog(source: &str) -> Result<HashMap<String, String>, String> {
                     "display:inline-block;width:auto;height:auto;max-width:min(6rem,100%);max-height:6rem;margin:0 .25rem;object-fit:contain;vertical-align:middle"
                 }
             };
-            let name = crate::embed::escape_html(&item.name);
-            let src = crate::embed::escape_html(&item.value);
+            let name = encode_quoted_attribute(&item.name);
+            let src = encode_quoted_attribute(&item.value);
             let html = format!(
                 r#"<img class="markdown-emoji" src="{src}" alt="[{name}]" title="{name}" loading="lazy" decoding="async" referrerpolicy="no-referrer" style="{style}" />"#
             );

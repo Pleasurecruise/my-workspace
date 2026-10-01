@@ -1,4 +1,5 @@
-use super::{Data, EmbedError, align, escape_html, reject_unknown, required};
+use super::{Data, EmbedError, align, reject_unknown, required};
+use html_escape::encode_quoted_attribute;
 use std::collections::HashMap;
 
 pub(super) fn parse<'a>(
@@ -24,11 +25,11 @@ pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String,
             });
         }
     };
-    let description = escape_html(&item.description);
-    let language = escape_html(&item.language);
-    let name = escape_html(&item.full_name);
-    let url = escape_html(&item.url);
-    let avatar = escape_html(&item.owner_avatar_url);
+    let description = encode_quoted_attribute(&item.description);
+    let language = encode_quoted_attribute(&item.language);
+    let name = encode_quoted_attribute(&item.full_name);
+    let url = encode_quoted_attribute(&item.url);
+    let avatar = encode_quoted_attribute(&item.owner_avatar_url);
     Ok(format!(
         concat!(
             "<a class=\"content-embed content-embed-github content-embed-{align}\" href=\"{url}\" target=\"_blank\" rel=\"noopener noreferrer\" aria-label=\"GitHub repository {name}\">",

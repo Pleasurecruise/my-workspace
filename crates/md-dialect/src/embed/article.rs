@@ -1,4 +1,5 @@
-use super::{Data, EmbedError, align, check_align, escape_html, is_web_url, reject_unknown};
+use super::{Data, EmbedError, align, check_align, is_web_url, reject_unknown};
+use html_escape::encode_quoted_attribute;
 use std::collections::HashMap;
 
 pub(super) struct Article<'a> {
@@ -53,7 +54,7 @@ pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String,
         .map(|description| {
             format!(
                 "<span class=\"content-embed-description\">{}</span>",
-                escape_html(description)
+                encode_quoted_attribute(description)
             )
         })
         .unwrap_or_default();
@@ -65,8 +66,8 @@ pub(super) fn render(fields: HashMap<&str, &str>, data: &Data) -> Result<String,
     };
     Ok(format!(
         "<a class=\"content-embed content-embed-article content-embed-{align}\" href=\"{}\"{target}><span class=\"content-article-icon\" aria-hidden=\"true\"></span><span class=\"content-embed-copy\"><strong>{}</strong>{description}</span></a>\n",
-        escape_html(href),
-        escape_html(title),
+        encode_quoted_attribute(href),
+        encode_quoted_attribute(title),
         align = item.align,
     ))
 }

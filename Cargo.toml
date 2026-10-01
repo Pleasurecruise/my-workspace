@@ -56,9 +56,9 @@ aws-types = "1"
 base64 = "0.23"
 der = "0.8"
 dotenvy = "0.15"
-dom_query = "0.27"
+dom_query = "0.28"
 html-escape = "0.2.15"
-dirs = "6"
+dirs = "7"
 diesel = { version = "2.3", default-features = false, features = ["sqlite"] }
 libsqlite3-sys = { version = "0.38", features = ["bundled"] }
 dashboard = { path = "crates/dashboard" }
@@ -69,9 +69,9 @@ grammers-session = { version = "0.10.0", default-features = false, features = ["
 cms = { path = "crates/cms" }
 consumers = { path = "crates/consumers" }
 games = { path = "crates/games" }
-hmac = "0.12"
+hmac = "0.13"
 inbox = { path = "crates/inbox" }
-md-5 = "0.10"
+md-5 = "0.11"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 markdown = { path = "crates/markdown" }
 md-dialect = { path = "crates/md-dialect" }
@@ -96,7 +96,7 @@ market-data = { path = "crates/market-data" }
 service-status = { path = "crates/service-status" }
 weather = { path = "crates/weather" }
 pulldown-cmark = "0.13.4"
-rand = "0.9"
+rand = "0.10"
 rodio = "0.21"
 useage = { path = "crates/useage" }
 reqwest = { version = "0.13", default-features = false, features = [
@@ -130,7 +130,6 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
-sha2-legacy = { package = "sha2", version = "0.10" }
 syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
 sysinfo = "0.39.6"
 svg-hush = "0.9.7"

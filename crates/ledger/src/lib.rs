@@ -101,7 +101,7 @@ impl Store {
     }
 
     pub async fn read(&self, date: &str) -> Result<Snapshot, Error> {
-        parse_date(date)?;
+        database::date::parse(date).ok_or(Error::Date)?;
         let date = date.to_owned();
         let path = self.path.clone();
         tokio::task::spawn_blocking(move || {
@@ -199,7 +199,7 @@ impl Store {
         date: &str,
         operation: impl FnOnce(&mut SqliteConnection, &str) -> Result<(), Error> + Send + 'static,
     ) -> Result<Snapshot, Error> {
-        parse_date(date)?;
+        database::date::parse(date).ok_or(Error::Date)?;
         let date = date.to_owned();
         let path = self.path.clone();
         tokio::task::spawn_blocking(move || {
@@ -212,19 +212,6 @@ impl Store {
         .await
         .map_err(|error| Error::Task(error.to_string()))?
     }
-}
-
-// Mirrors todo's parse_date (crates/todo/src/date.rs); keep both policies in sync.
-fn parse_date(value: &str) -> Result<time::Date, Error> {
-    let date = time::Date::parse(
-        value,
-        &time::macros::format_description!("[year]-[month]-[day]"),
-    )
-    .map_err(|_| Error::Date)?;
-    if !(1..=9999).contains(&date.year()) || date.to_string() != value {
-        return Err(Error::Date);
-    }
-    Ok(date)
 }
 
 fn parse_amount(value: &str) -> Result<i64, Error> {
@@ -290,7 +277,7 @@ fn canonical_category(connection: &mut SqliteConnection, category: &str) -> Resu
 }
 
 fn snapshot(connection: &mut SqliteConnection, date: &str) -> Result<Snapshot, Error> {
-    let selected = parse_date(date)?;
+    let selected = database::date::parse(date).ok_or(Error::Date)?;
     let first = selected.replace_day(1).map_err(|_| Error::Date)?;
     let count = selected.month().length(selected.year());
     let last = selected.replace_day(count).map_err(|_| Error::Date)?;

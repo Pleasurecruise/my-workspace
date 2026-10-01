@@ -129,7 +129,7 @@ fn ltoken_signature() {
         "salt=JwYDpKvLj6MrMqqYU6jTKF17KNO2PXoS&t={}&r={}&b={{}}&q=",
         parts[0], parts[1]
     );
-    assert_eq!(parts[2], format!("{:x}", Md5::digest(input.as_bytes())));
+    assert_eq!(parts[2], hex::encode(Md5::digest(input.as_bytes())));
 }
 
 #[test]
@@ -240,7 +240,7 @@ fn notes_signature() {
         "salt=xV8v4Qu54lUKrEYFZkJhB8cuOh9Asafs&t={}&r={}&b=&q=role_id=100&server=cn_gf01",
         parts[0], parts[1]
     );
-    assert_eq!(parts[2], format!("{:x}", Md5::digest(input.as_bytes())));
+    assert_eq!(parts[2], hex::encode(Md5::digest(input.as_bytes())));
 }
 
 #[test]

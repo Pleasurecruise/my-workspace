@@ -1,7 +1,7 @@
 use super::{Identity, Roles, TokenKind, passport, request, signature};
 use crate::session::{RecordDevice, Session};
 use crate::{Account, Game, transport};
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

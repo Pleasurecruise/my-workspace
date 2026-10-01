@@ -14,7 +14,7 @@ stores artifacts. This repository does not host a cloud application backend.
 | `crates/markdown`       | Markdown compilation for publications, Knowledge, Memos and chat      |
 | `crates/md-dialect`     | Custom fence and shortcode validation and rendering, without I/O      |
 | `crates/consumers`      | Memo, Moment and Knowledge APIs and projections                       |
-| `crates/database`       | Application identifier, shared Diesel/SQLite path, connection, schema |
+| `crates/database`       | Application identifier, Diesel/SQLite path, connection, schema, dates |
 | `crates/vault`          | Generic credential storage and development overrides                  |
 | `crates/dashboard`      | Dashboard widget layout records, validation and source selection      |
 | `crates/inbox`          | ntfy mail-summary subscription and notification records               |
@@ -200,8 +200,9 @@ Telegram session persistence and X OAuth credentials use their respective storag
 ## Local persistence
 
 `crates/database` owns the application identifier and `vesper.sqlite3` in local application data;
-Desktop and CLI both resolve it with `database::path()`. Feature crates own typed records,
-validation and transactions. `schema.sql` is the sole schema definition; startup creates missing
+Desktop and CLI both resolve it with `database::path()`. Date columns store `YYYY-MM-DD` text and
+`database::date::parse` owns that format. Feature crates own typed records, validation and
+transactions. `schema.sql` is the sole schema definition; startup creates missing
 tables without an upgrade or reset layer. [Persistence](PERSISTENCE.md) defines table ownership,
 explicit schema rebuilds, locking and backups.
 

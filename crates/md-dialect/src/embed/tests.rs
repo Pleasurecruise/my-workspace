@@ -85,7 +85,7 @@ fn twitter_entities_decode_after_indexing() {
         "../../../link-preview/tests/fixtures/tweet.json"
     ))
     .unwrap();
-    let prefix = "😀 A &amp; B &lt;script&gt; &#39; &amp;lt; ";
+    let prefix = "😀 A &amp; B &lt;script&gt; &#x27; &amp;lt; ";
     post.text = format!("{prefix}https://t.co/example");
     post.display_text_range = [0, post.text.chars().count()];
     post.entities.urls.push(link_preview::twitter::Link {
@@ -100,7 +100,9 @@ fn twitter_entities_decode_after_indexing() {
         .unwrap()
         .unwrap();
     assert!(
-        html.contains("😀 A &amp; B &lt;script&gt; &#39; &amp;lt; <a href=\"https://example.com\""),
+        html.contains(
+            "😀 A &amp; B &lt;script&gt; &#x27; &amp;lt; <a href=\"https://example.com\""
+        ),
         "{html}"
     );
     assert!(!html.contains("<script>"));
