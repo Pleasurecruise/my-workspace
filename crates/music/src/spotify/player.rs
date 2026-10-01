@@ -201,9 +201,10 @@ impl LocalPlayer {
 
     pub async fn seek(&self, position_ms: u64) {
         let mut state = self.state.write().await;
-        let position_ms = position_ms.min(state.duration_ms).min(u32::MAX as u64);
-        state.progress_ms = position_ms;
-        self.player.seek(position_ms as u32);
+        let position_ms = position_ms.min(state.duration_ms);
+        let position = u32::try_from(position_ms).unwrap_or(u32::MAX);
+        state.progress_ms = u64::from(position);
+        self.player.seek(position);
     }
 
     pub async fn shutdown(&self) {

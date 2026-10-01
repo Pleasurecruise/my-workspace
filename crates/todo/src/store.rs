@@ -69,11 +69,11 @@ impl Store {
     }
 
     pub fn shared() -> Result<Self, Error> {
-        let mut store = Self::new(vesper_database::shared_path()?);
+        let mut store = Self::new(database::path()?);
         // ICS remains a user-managed input in its original application-data directory.
         store.schedule_directory = dirs::data_dir()
             .ok_or(Error::DataDirectoryUnavailable)?
-            .join("me.you-find.vesper")
+            .join(database::APP_ID)
             .join("ics");
         Ok(store)
     }
@@ -88,7 +88,7 @@ impl Store {
     ) -> Result<T, Error> {
         let path = self.path.clone();
         tokio::task::spawn_blocking(move || {
-            let mut connection = vesper_database::open(&path)?;
+            let mut connection = database::open(&path)?;
             connection.immediate_transaction(operation)
         })
         .await
@@ -100,7 +100,7 @@ impl Store {
         let date = date.to_owned();
         let path = self.path.clone();
         tokio::task::spawn_blocking(move || {
-            let mut connection = vesper_database::open(&path)?;
+            let mut connection = database::open(&path)?;
             connection.transaction(|connection| read_list(connection, &date))
         })
         .await
@@ -120,7 +120,7 @@ impl Store {
         let ids: BTreeSet<String> = ids.into_iter().collect();
         let path = self.path.clone();
         tokio::task::spawn_blocking(move || {
-            let mut connection = vesper_database::open(&path)?;
+            let mut connection = database::open(&path)?;
             connection.transaction::<_, Error, _>(|connection| {
                 let today = crate::current_date()?;
                 let end = std::cmp::min(end, today);

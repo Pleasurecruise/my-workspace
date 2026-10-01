@@ -1,8 +1,8 @@
 use crate::CommandResponse;
 use tauri::{Emitter, Manager};
 
-pub(crate) async fn roll_over(app: &tauri::AppHandle, date: &str) -> Result<(), todo_core::Error> {
-    let changed = app.state::<todo_core::Store>().roll_over(date).await?;
+pub(crate) async fn roll_over(app: &tauri::AppHandle, date: &str) -> Result<(), ::todo::Error> {
+    let changed = app.state::<::todo::Store>().roll_over(date).await?;
     for date in changed {
         if let Err(error) = app.emit("todo-updated", &date) {
             tracing::warn!(%error, "failed to notify Todo rollover");
@@ -16,8 +16,8 @@ pub(crate) async fn read_todos(
     date: String,
     refresh: Option<bool>,
     app: tauri::AppHandle,
-) -> CommandResponse<todo_core::List> {
-    let today = match todo_core::current_date() {
+) -> CommandResponse<::todo::List> {
+    let today = match ::todo::current_date() {
         Ok(date) => date,
         Err(error) => {
             return CommandResponse::Failed {
@@ -31,7 +31,7 @@ pub(crate) async fn read_todos(
         };
     }
     match app
-        .state::<todo_core::Store>()
+        .state::<::todo::Store>()
         .read_calendar(&date, refresh.unwrap_or(false))
         .await
     {
@@ -49,9 +49,9 @@ pub(crate) async fn add_todo(
     description: String,
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
-) -> CommandResponse<todo_core::List> {
+) -> CommandResponse<::todo::List> {
     match app
-        .state::<todo_core::Store>()
+        .state::<::todo::Store>()
         .create(&date, &text, Some(&description))
         .await
     {
@@ -75,9 +75,9 @@ pub(crate) async fn set_todo_completed(
     completed: bool,
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
-) -> CommandResponse<todo_core::List> {
+) -> CommandResponse<::todo::List> {
     match app
-        .state::<todo_core::Store>()
+        .state::<::todo::Store>()
         .set_completed(&date, &id, completed)
         .await
     {
@@ -101,9 +101,9 @@ pub(crate) async fn set_todo_rollover(
     rollover: bool,
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
-) -> CommandResponse<todo_core::List> {
+) -> CommandResponse<::todo::List> {
     match app
-        .state::<todo_core::Store>()
+        .state::<::todo::Store>()
         .set_rollover(&date, &id, rollover)
         .await
     {
@@ -126,8 +126,8 @@ pub(crate) async fn reorder_todos(
     ids: Vec<String>,
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
-) -> CommandResponse<todo_core::List> {
-    match app.state::<todo_core::Store>().reorder(&date, ids).await {
+) -> CommandResponse<::todo::List> {
+    match app.state::<::todo::Store>().reorder(&date, ids).await {
         Ok(data) => {
             let _ = app.emit_filter("todo-updated", &data.date, |target| match target {
                 tauri::EventTarget::WebviewWindow { label } => label != window.label(),
@@ -147,8 +147,8 @@ pub(crate) async fn delete_todo(
     id: String,
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
-) -> CommandResponse<todo_core::List> {
-    match app.state::<todo_core::Store>().delete(&date, &id).await {
+) -> CommandResponse<::todo::List> {
+    match app.state::<::todo::Store>().delete(&date, &id).await {
         Ok(data) => {
             let _ = app.emit_filter("todo-updated", &data.date, |target| match target {
                 tauri::EventTarget::WebviewWindow { label } => label != window.label(),
@@ -170,9 +170,9 @@ pub(crate) async fn update_todo(
     description: String,
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
-) -> CommandResponse<todo_core::List> {
+) -> CommandResponse<::todo::List> {
     match app
-        .state::<todo_core::Store>()
+        .state::<::todo::Store>()
         .update(&date, &id, &text, Some(&description))
         .await
     {
@@ -195,9 +195,9 @@ pub(crate) async fn set_check_in(
     date: String,
     completed: bool,
     app: tauri::AppHandle,
-) -> CommandResponse<todo_core::CheckIn> {
+) -> CommandResponse<::todo::CheckIn> {
     match app
-        .state::<todo_core::Store>()
+        .state::<::todo::Store>()
         .set_check_in(&id, &date, completed)
         .await
     {
@@ -216,9 +216,9 @@ pub(crate) async fn read_check_ins(
     ids: Vec<String>,
     date: String,
     app: tauri::AppHandle,
-) -> CommandResponse<Vec<todo_core::CheckIn>> {
+) -> CommandResponse<Vec<::todo::CheckIn>> {
     match app
-        .state::<todo_core::Store>()
+        .state::<::todo::Store>()
         .read_check_ins(ids, &date)
         .await
     {
@@ -231,7 +231,7 @@ pub(crate) async fn read_check_ins(
 
 #[tauri::command]
 pub(crate) fn read_planner_date() -> CommandResponse<String> {
-    match todo_core::current_date() {
+    match ::todo::current_date() {
         Ok(data) => CommandResponse::Ready { data },
         Err(error) => CommandResponse::Failed {
             message: error.to_string(),
@@ -245,7 +245,7 @@ pub(crate) async fn read_planner_days(
     date: String,
     app: tauri::AppHandle,
 ) -> CommandResponse<Vec<String>> {
-    match app.state::<todo_core::Store>().read_days(ids, &date).await {
+    match app.state::<::todo::Store>().read_days(ids, &date).await {
         Ok(data) => CommandResponse::Ready { data },
         Err(error) => CommandResponse::Failed {
             message: error.to_string(),

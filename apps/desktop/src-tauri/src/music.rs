@@ -4,12 +4,14 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 
-use crate::CommandResponse;
+use crate::{CommandError, CommandResponse};
+use music::{Provider, QqMusic, Spotify};
+use vault::Stored;
 
 #[derive(Default)]
-pub(crate) struct MusicState {
-    spotify: tokio::sync::Mutex<Option<Arc<music::Spotify>>>,
-    qq_music: tokio::sync::Mutex<Option<Arc<music::QqMusic>>>,
+pub(crate) struct Music {
+    spotify: tokio::sync::Mutex<Option<Arc<Spotify>>>,
+    qq_music: tokio::sync::Mutex<Option<Arc<QqMusic>>>,
     qq_login: tokio::sync::Mutex<Option<music::QqLogin>>,
     spotify_authorization: OperationGate,
     qq_login_operation: OperationGate,
@@ -80,69 +82,129 @@ impl Drop for OperationLease<'_> {
     }
 }
 
-impl MusicState {
-    async fn spotify(&self) -> Result<Arc<music::Spotify>, String> {
+enum Player {
+    Spotify(Arc<Spotify>),
+    QqMusic(Arc<QqMusic>),
+}
+
+impl Player {
+    async fn tracks(&self) -> music::Result<Vec<music::Track>> {
+        match self {
+            Self::Spotify(spotify) => spotify.liked_songs().await,
+            Self::QqMusic(qq_music) => qq_music.daily_songs().await,
+        }
+    }
+
+    async fn playback(&self) -> music::Result<Option<music::Playback>> {
+        match self {
+            Self::Spotify(spotify) => spotify.playback().await,
+            Self::QqMusic(qq_music) => qq_music.playback().await,
+        }
+    }
+
+    async fn play(&self, track_id: &str) -> music::Result<()> {
+        match self {
+            Self::Spotify(spotify) => spotify.play(track_id).await,
+            Self::QqMusic(qq_music) => qq_music.play(track_id).await,
+        }
+    }
+
+    async fn resume(&self) -> music::Result<()> {
+        match self {
+            Self::Spotify(spotify) => spotify.resume().await,
+            Self::QqMusic(qq_music) => qq_music.resume().await,
+        }
+    }
+
+    async fn pause(&self) -> music::Result<()> {
+        match self {
+            Self::Spotify(spotify) => spotify.pause().await,
+            Self::QqMusic(qq_music) => qq_music.pause().await,
+        }
+    }
+
+    async fn seek(&self, position_ms: u64) -> music::Result<()> {
+        match self {
+            Self::Spotify(spotify) => spotify.seek(position_ms).await,
+            Self::QqMusic(qq_music) => qq_music.seek(position_ms).await,
+        }
+    }
+
+    async fn set_playback_order(&self, order: music::PlaybackOrder) -> music::Result<()> {
+        match self {
+            Self::Spotify(spotify) => spotify.set_playback_order(order).await,
+            Self::QqMusic(qq_music) => qq_music.set_playback_order(order).await,
+        }
+    }
+
+    async fn lyrics(&self, track_id: &str) -> music::Result<Option<music::Lyrics>> {
+        match self {
+            Self::Spotify(spotify) => spotify.lyrics(track_id).await,
+            Self::QqMusic(qq_music) => qq_music.lyrics(track_id).await,
+        }
+    }
+}
+
+impl Music {
+    async fn spotify(&self) -> Result<Arc<Spotify>, String> {
         let mut runtime = self.spotify.lock().await;
         if let Some(spotify) = runtime.as_ref() {
             return Ok(Arc::clone(spotify));
         }
-        let credentials = match vesper_credentials::spotify().map_err(|error| error.to_string())? {
-            vesper_credentials::Stored::Ready(credentials) => credentials,
-            vesper_credentials::Stored::Missing => {
-                return Err("Spotify is not connected. Open Settings to connect it.".to_owned());
-            }
-        };
-        let spotify =
-            Arc::new(music::Spotify::new(credentials).map_err(|error| error.to_string())?);
+        let credentials =
+            match music::spotify::credentials::read().map_err(|error| error.to_string())? {
+                Stored::Ready(credentials) => credentials,
+                Stored::Missing => {
+                    return Err("Spotify is not connected. Open Settings to connect it.".to_owned());
+                }
+            };
+        let spotify = Arc::new(Spotify::new(credentials).map_err(|error| error.to_string())?);
         *runtime = Some(Arc::clone(&spotify));
         Ok(spotify)
     }
 
-    async fn qq_music(&self) -> Result<Arc<music::QqMusic>, String> {
+    async fn qq_music(&self) -> Result<Arc<QqMusic>, String> {
         let mut runtime = self.qq_music.lock().await;
         if let Some(qq_music) = runtime.as_ref() {
             return Ok(Arc::clone(qq_music));
         }
-        let credentials = match vesper_credentials::qq_music().map_err(|error| error.to_string())? {
-            vesper_credentials::Stored::Ready(credentials) => credentials,
-            vesper_credentials::Stored::Missing => {
+        let credentials = match music::qq::credentials::read().map_err(|error| error.to_string())? {
+            Stored::Ready(credentials) => credentials,
+            Stored::Missing => {
                 return Err("QQ Music is not connected. Connect it in Settings.".to_owned());
             }
         };
-        let qq_music =
-            Arc::new(music::QqMusic::new(credentials).map_err(|error| error.to_string())?);
+        let qq_music = Arc::new(QqMusic::new(credentials).map_err(|error| error.to_string())?);
         *runtime = Some(Arc::clone(&qq_music));
         Ok(qq_music)
     }
 
-    pub(crate) async fn cover(&self, key: &str) -> Result<music::Cover, String> {
-        if key.starts_with("spotify/") {
-            return self
-                .spotify()
-                .await?
-                .cover(key)
-                .await
-                .map_err(|error| error.to_string());
-        }
-        if key.starts_with("qq/") {
-            return self
-                .qq_music()
-                .await?
-                .cover(key)
-                .await
-                .map_err(|error| error.to_string());
-        }
-        Err("Unknown music cover provider".to_owned())
+    async fn player(&self, provider: Provider) -> Result<Player, String> {
+        Ok(match provider {
+            Provider::Spotify => Player::Spotify(self.spotify().await?),
+            Provider::QqMusic => Player::QqMusic(self.qq_music().await?),
+        })
     }
 
-    async fn pause_inactive(&self, provider: music::Provider) -> music::Result<()> {
+    pub(crate) async fn cover(&self, key: &str) -> Result<music::Cover, String> {
+        let cover = if key.starts_with("spotify/") {
+            self.spotify().await?.cover(key).await
+        } else if key.starts_with("qq/") {
+            self.qq_music().await?.cover(key).await
+        } else {
+            return Err("Unknown music cover provider".to_owned());
+        };
+        cover.map_err(|error| error.to_string())
+    }
+
+    async fn pause_inactive(&self, provider: Provider) -> music::Result<()> {
         match provider {
-            music::Provider::Spotify => {
+            Provider::Spotify => {
                 if let Some(qq_music) = self.qq_music.lock().await.as_ref() {
                     qq_music.pause().await?;
                 }
             }
-            music::Provider::QqMusic => {
+            Provider::QqMusic => {
                 let spotify = self.spotify.lock().await.clone();
                 if let Some(spotify) = spotify {
                     spotify.pause_if_playing().await;
@@ -151,83 +213,85 @@ impl MusicState {
         }
         Ok(())
     }
+
+    async fn select(&self, provider: Provider) -> Result<Player, CommandError> {
+        self.pause_inactive(provider).await?;
+        Ok(self.player(provider).await?)
+    }
+}
+
+fn provider_name(provider: Provider) -> String {
+    match provider {
+        Provider::Spotify => "spotify",
+        Provider::QqMusic => "qqMusic",
+    }
+    .to_owned()
 }
 
 #[tauri::command]
 pub(crate) async fn begin_qq_music_login(app: tauri::AppHandle) -> CommandResponse<music::QqQr> {
-    let state = app.state::<MusicState>();
+    let state = app.state::<Music>();
     let Some(_operation) = state.qq_login_operation.enter() else {
         return CommandResponse::Failed {
             message: "Another QQ Music login operation is already running".to_owned(),
         };
     };
     let generation = state.qq_login_generation.fetch_add(1, Ordering::AcqRel) + 1;
-    match music::QqLogin::start().await {
-        Ok((login, qr)) if state.qq_login_generation.load(Ordering::Acquire) == generation => {
-            *state.qq_login.lock().await = Some(login);
-            CommandResponse::Ready { data: qr }
+    let result = async {
+        let (login, qr) = music::QqLogin::start().await?;
+        if state.qq_login_generation.load(Ordering::Acquire) != generation {
+            return Err("QQ Music login was cancelled".into());
         }
-        Ok(_) => CommandResponse::Failed {
-            message: "QQ Music login was cancelled".to_owned(),
-        },
-        Err(error) => CommandResponse::Failed {
-            message: error.to_string(),
-        },
-    }
+        *state.qq_login.lock().await = Some(login);
+        Ok::<_, CommandError>(qr)
+    };
+    result.await.into()
 }
 
 #[tauri::command]
 pub(crate) async fn poll_qq_music_login(
     app: tauri::AppHandle,
 ) -> CommandResponse<music::QqLoginStatus> {
-    let state = app.state::<MusicState>();
+    let state = app.state::<Music>();
     let Some(_operation) = state.qq_login_operation.enter() else {
         return CommandResponse::Failed {
             message: "Another QQ Music login operation is already running".to_owned(),
         };
     };
     let generation = state.qq_login_generation.load(Ordering::Acquire);
-    let Some(mut active) = state.qq_login.lock().await.take() else {
-        return CommandResponse::Failed {
-            message: "QQ Music login is not active".to_owned(),
-        };
-    };
-    match active.poll().await {
-        Ok((status, credentials)) => {
-            let mut login = state.qq_login.lock().await;
-            if state.qq_login_generation.load(Ordering::Acquire) != generation {
-                return CommandResponse::Failed {
-                    message: "QQ Music login was cancelled".to_owned(),
-                };
-            }
-            if let Some(credentials) = credentials {
-                let mut runtime = state.qq_music.lock().await;
-                if let Some(previous) = runtime.take() {
-                    previous.shutdown().await;
-                }
-                if let Err(error) = vesper_credentials::save_qq_music(credentials) {
-                    return CommandResponse::Failed {
-                        message: error.to_string(),
-                    };
-                }
-            }
-            if !matches!(
-                status,
-                music::QqLoginStatus::Complete | music::QqLoginStatus::Expired
-            ) {
-                *login = Some(active);
-            }
-            CommandResponse::Ready { data: status }
+    let result = async {
+        let mut active = state
+            .qq_login
+            .lock()
+            .await
+            .take()
+            .ok_or("QQ Music login is not active")?;
+        let (status, credentials) = active.poll().await?;
+        let mut login = state.qq_login.lock().await;
+        if state.qq_login_generation.load(Ordering::Acquire) != generation {
+            return Err("QQ Music login was cancelled".into());
         }
-        Err(error) => CommandResponse::Failed {
-            message: error.to_string(),
-        },
-    }
+        if let Some(credentials) = credentials {
+            let mut runtime = state.qq_music.lock().await;
+            if let Some(previous) = runtime.take() {
+                previous.shutdown().await;
+            }
+            music::qq::credentials::save(&credentials)?;
+        }
+        if !matches!(
+            status,
+            music::QqLoginStatus::Complete | music::QqLoginStatus::Expired
+        ) {
+            *login = Some(active);
+        }
+        Ok::<_, CommandError>(status)
+    };
+    result.await.into()
 }
 
 #[tauri::command]
 pub(crate) async fn cancel_qq_music_login(app: tauri::AppHandle) -> CommandResponse<()> {
-    let state = app.state::<MusicState>();
+    let state = app.state::<Music>();
     let mut login = state.qq_login.lock().await;
     state.qq_login_generation.fetch_add(1, Ordering::AcqRel);
     *login = None;
@@ -239,7 +303,7 @@ pub(crate) async fn connect_spotify(
     app: tauri::AppHandle,
     client_id: Option<String>,
 ) -> CommandResponse<String> {
-    let state = app.state::<MusicState>();
+    let state = app.state::<Music>();
     let Some(_operation) = state.spotify_authorization.enter() else {
         return CommandResponse::Failed {
             message: "Spotify authorization is already running".to_owned(),
@@ -248,298 +312,153 @@ pub(crate) async fn connect_spotify(
     let client_id = client_id
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty());
-    let authorization = match music::web_authorization(client_id.as_deref()).await {
-        Ok(authorization) => authorization,
-        Err(error) => {
-            return CommandResponse::Failed {
-                message: error.to_string(),
-            };
-        }
-    };
-    if let Err(error) = app.opener().open_url(&authorization.url, None::<String>) {
-        return CommandResponse::Failed {
-            message: format!("Could not open Spotify sign-in: {error}"),
+    let result = async {
+        let authorization = music::web_authorization(client_id.as_deref()).await?;
+        app.opener()
+            .open_url(&authorization.url, None::<String>)
+            .map_err(|error| format!("Could not open Spotify sign-in: {error}"))?;
+        let web_token = music::authenticate(authorization).await?;
+        let authorization = music::playback_authorization().await?;
+        app.opener()
+            .open_url(&authorization.url, None::<String>)
+            .map_err(|error| format!("Could not open Spotify playback authorization: {error}"))?;
+        let playback_token = music::authenticate(authorization).await?;
+        let credentials = music::spotify::credentials::Credentials {
+            web_client_id: client_id,
+            web_refresh_token: web_token.refresh_token,
+            playback_refresh_token: playback_token.refresh_token,
         };
-    }
-    let web_token = match music::authenticate(authorization).await {
-        Ok(token) => token,
-        Err(error) => {
-            return CommandResponse::Failed {
-                message: error.to_string(),
-            };
+        let mut runtime = state.spotify.lock().await;
+        if let Some(previous) = runtime.take() {
+            previous.shutdown().await;
         }
+        music::spotify::credentials::save(&credentials)?;
+        Ok::<_, CommandError>("spotify".to_owned())
     };
-    let authorization = match music::playback_authorization().await {
-        Ok(authorization) => authorization,
-        Err(error) => {
-            return CommandResponse::Failed {
-                message: error.to_string(),
-            };
-        }
-    };
-    if let Err(error) = app.opener().open_url(&authorization.url, None::<String>) {
-        return CommandResponse::Failed {
-            message: format!("Could not open Spotify playback authorization: {error}"),
-        };
-    }
-    let playback_token = match music::authenticate(authorization).await {
-        Ok(token) => token,
-        Err(error) => {
-            return CommandResponse::Failed {
-                message: error.to_string(),
-            };
-        }
-    };
-    let credentials = vesper_credentials::SpotifyCredentials {
-        web_client_id: client_id,
-        web_refresh_token: web_token.refresh_token,
-        playback_refresh_token: playback_token.refresh_token,
-    };
-    let mut runtime = state.spotify.lock().await;
-    if let Some(previous) = runtime.take() {
-        previous.shutdown().await;
-    }
-    if let Err(error) = vesper_credentials::save_spotify(credentials) {
-        return CommandResponse::Failed {
-            message: error.to_string(),
-        };
-    }
-    CommandResponse::Ready {
-        data: "spotify".to_owned(),
-    }
+    result.await.into()
 }
 
 #[tauri::command]
 pub(crate) async fn read_music_tracks(
-    provider: music::Provider,
+    provider: Provider,
     app: tauri::AppHandle,
 ) -> CommandResponse<Vec<music::Track>> {
-    let state = app.state::<MusicState>();
+    let state = app.state::<Music>();
     let selection = state
         .playback_actions
-        .run(async {
-            match state.pause_inactive(provider).await {
-                Ok(()) => CommandResponse::Ready { data: () },
-                Err(error) => CommandResponse::Failed {
-                    message: error.to_string(),
-                },
-            }
-        })
+        .run(async { CommandResponse::from(state.pause_inactive(provider).await) })
         .await;
     if let CommandResponse::Failed { message } = selection {
         return CommandResponse::Failed { message };
     }
-    let result = match provider {
-        music::Provider::Spotify => match state.spotify().await {
-            Ok(spotify) => spotify.liked_songs().await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-        music::Provider::QqMusic => match state.qq_music().await {
-            Ok(qq_music) => qq_music.daily_songs().await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-    };
-    match result {
-        Ok(data) => CommandResponse::Ready { data },
-        Err(error) => CommandResponse::Failed {
-            message: error.to_string(),
-        },
-    }
+    let result = async { Ok::<_, CommandError>(state.player(provider).await?.tracks().await?) };
+    result.await.into()
 }
 
 #[tauri::command]
 pub(crate) async fn read_music_playback(
-    provider: music::Provider,
+    provider: Provider,
     app: tauri::AppHandle,
 ) -> CommandResponse<Option<music::Playback>> {
-    let state = app.state::<MusicState>();
-    let result = match provider {
-        music::Provider::Spotify => match state.spotify().await {
-            Ok(spotify) => spotify.playback().await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-        music::Provider::QqMusic => match state.qq_music().await {
-            Ok(qq_music) => qq_music.playback().await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-    };
-    match result {
-        Ok(data) => CommandResponse::Ready { data },
-        Err(error) => CommandResponse::Failed {
-            message: error.to_string(),
-        },
-    }
+    let state = app.state::<Music>();
+    let result = async { Ok::<_, CommandError>(state.player(provider).await?.playback().await?) };
+    result.await.into()
 }
 
 #[tauri::command]
 pub(crate) async fn play_music_track(
-    provider: music::Provider,
+    provider: Provider,
     track_id: String,
     app: tauri::AppHandle,
 ) -> CommandResponse<String> {
-    let state = app.state::<MusicState>();
+    let state = app.state::<Music>();
+    let action = async {
+        state.select(provider).await?.play(&track_id).await?;
+        Ok::<_, CommandError>(provider_name(provider))
+    };
     state
         .playback_actions
-        .run(async {
-            if let Err(error) = state.pause_inactive(provider).await {
-                return CommandResponse::Failed {
-                    message: error.to_string(),
-                };
-            }
-            let result = match provider {
-                music::Provider::Spotify => match state.spotify().await {
-                    Ok(spotify) => spotify.play(&track_id).await,
-                    Err(message) => return CommandResponse::Failed { message },
-                },
-                music::Provider::QqMusic => match state.qq_music().await {
-                    Ok(qq_music) => qq_music.play(&track_id).await,
-                    Err(message) => return CommandResponse::Failed { message },
-                },
-            };
-            action_response(provider, result)
-        })
+        .run(async { action.await.into() })
         .await
 }
 
 #[tauri::command]
 pub(crate) async fn resume_music(
-    provider: music::Provider,
+    provider: Provider,
     app: tauri::AppHandle,
 ) -> CommandResponse<String> {
-    let state = app.state::<MusicState>();
+    let state = app.state::<Music>();
+    let action = async {
+        state.select(provider).await?.resume().await?;
+        Ok::<_, CommandError>(provider_name(provider))
+    };
     state
         .playback_actions
-        .run(async {
-            if let Err(error) = state.pause_inactive(provider).await {
-                return CommandResponse::Failed {
-                    message: error.to_string(),
-                };
-            }
-            let result = match provider {
-                music::Provider::Spotify => match state.spotify().await {
-                    Ok(spotify) => spotify.resume().await,
-                    Err(message) => return CommandResponse::Failed { message },
-                },
-                music::Provider::QqMusic => match state.qq_music().await {
-                    Ok(qq_music) => qq_music.resume().await,
-                    Err(message) => return CommandResponse::Failed { message },
-                },
-            };
-            action_response(provider, result)
-        })
+        .run(async { action.await.into() })
         .await
 }
 
 #[tauri::command]
 pub(crate) async fn pause_music(
-    provider: music::Provider,
+    provider: Provider,
     app: tauri::AppHandle,
 ) -> CommandResponse<String> {
-    let state = app.state::<MusicState>();
+    let state = app.state::<Music>();
+    let action = async {
+        state.player(provider).await?.pause().await?;
+        Ok::<_, CommandError>(provider_name(provider))
+    };
     state
         .playback_actions
-        .run(async {
-            let result = match provider {
-                music::Provider::Spotify => match state.spotify().await {
-                    Ok(spotify) => spotify.pause().await,
-                    Err(message) => return CommandResponse::Failed { message },
-                },
-                music::Provider::QqMusic => match state.qq_music().await {
-                    Ok(qq_music) => qq_music.pause().await,
-                    Err(message) => return CommandResponse::Failed { message },
-                },
-            };
-            action_response(provider, result)
-        })
+        .run(async { action.await.into() })
         .await
 }
 
 #[tauri::command]
 pub(crate) async fn seek_music(
-    provider: music::Provider,
+    provider: Provider,
     position_ms: u64,
     app: tauri::AppHandle,
 ) -> CommandResponse<String> {
-    let state = app.state::<MusicState>();
+    let state = app.state::<Music>();
+    let action = async {
+        state.player(provider).await?.seek(position_ms).await?;
+        Ok::<_, CommandError>(provider_name(provider))
+    };
     state
         .playback_actions
-        .run(async {
-            let result = match provider {
-                music::Provider::Spotify => match state.spotify().await {
-                    Ok(spotify) => spotify.seek(position_ms).await,
-                    Err(message) => return CommandResponse::Failed { message },
-                },
-                music::Provider::QqMusic => match state.qq_music().await {
-                    Ok(qq_music) => qq_music.seek(position_ms).await,
-                    Err(message) => return CommandResponse::Failed { message },
-                },
-            };
-            action_response(provider, result)
-        })
+        .run(async { action.await.into() })
         .await
 }
 
 #[tauri::command]
 pub(crate) async fn set_music_playback_order(
-    provider: music::Provider,
+    provider: Provider,
     order: music::PlaybackOrder,
     app: tauri::AppHandle,
 ) -> CommandResponse<String> {
-    let state = app.state::<MusicState>();
-    let result = match provider {
-        music::Provider::Spotify => match state.spotify().await {
-            Ok(spotify) => spotify.set_playback_order(order).await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-        music::Provider::QqMusic => match state.qq_music().await {
-            Ok(qq_music) => qq_music.set_playback_order(order).await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
+    let state = app.state::<Music>();
+    let result = async {
+        state
+            .player(provider)
+            .await?
+            .set_playback_order(order)
+            .await?;
+        Ok::<_, CommandError>(provider_name(provider))
     };
-    action_response(provider, result)
+    result.await.into()
 }
 
 #[tauri::command]
 pub(crate) async fn read_music_lyrics(
-    provider: music::Provider,
+    provider: Provider,
     track_id: String,
     app: tauri::AppHandle,
 ) -> CommandResponse<Option<music::Lyrics>> {
-    let state = app.state::<MusicState>();
-    let result = match provider {
-        music::Provider::Spotify => match state.spotify().await {
-            Ok(spotify) => spotify.lyrics(&track_id).await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-        music::Provider::QqMusic => match state.qq_music().await {
-            Ok(qq_music) => qq_music.lyrics(&track_id).await,
-            Err(message) => return CommandResponse::Failed { message },
-        },
-    };
-    match result {
-        Ok(data) => CommandResponse::Ready { data },
-        Err(error) => CommandResponse::Failed {
-            message: error.to_string(),
-        },
-    }
-}
-
-fn action_response(
-    provider: music::Provider,
-    result: music::Result<()>,
-) -> CommandResponse<String> {
-    match result {
-        Ok(()) => CommandResponse::Ready {
-            data: match provider {
-                music::Provider::Spotify => "spotify",
-                music::Provider::QqMusic => "qqMusic",
-            }
-            .to_owned(),
-        },
-        Err(error) => CommandResponse::Failed {
-            message: error.to_string(),
-        },
-    }
+    let state = app.state::<Music>();
+    let result =
+        async { Ok::<_, CommandError>(state.player(provider).await?.lyrics(&track_id).await?) };
+    result.await.into()
 }
 
 #[cfg(test)]

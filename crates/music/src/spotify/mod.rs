@@ -10,6 +10,7 @@ use self::player::LocalPlayer;
 use crate::{Cover, Error, Lyrics, Playback, PlaybackOrder, Result, Track, lyrics};
 
 mod auth;
+pub mod credentials;
 mod player;
 
 pub use auth::{authenticate, playback_authorization, web_authorization};
@@ -88,7 +89,7 @@ impl LibraryCache {
 pub struct Spotify {
     http: reqwest::Client,
     api: String,
-    credentials: Mutex<vesper_credentials::SpotifyCredentials>,
+    credentials: Mutex<credentials::Credentials>,
     token: Mutex<Option<Token>>,
     player: Mutex<Option<Arc<LocalPlayer>>>,
     covers: RwLock<HashMap<String, String>>,
@@ -101,7 +102,7 @@ pub struct Spotify {
 }
 
 impl Spotify {
-    pub fn new(credentials: vesper_credentials::SpotifyCredentials) -> Result<Self> {
+    pub fn new(credentials: credentials::Credentials) -> Result<Self> {
         let http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
@@ -463,14 +464,14 @@ impl Spotify {
     // Spotify rotates refresh tokens on use. Persist the replacement before the credentials
     // lock is released so a restart resumes with the newest token.
     fn rotate_refresh_token(
-        credentials: &mut vesper_credentials::SpotifyCredentials,
+        credentials: &mut credentials::Credentials,
         rotated: Option<String>,
-        apply: impl FnOnce(&mut vesper_credentials::SpotifyCredentials, String),
+        apply: impl FnOnce(&mut credentials::Credentials, String),
     ) -> Result<()> {
         if let Some(rotated) = rotated {
             let mut next_credentials = credentials.clone();
             apply(&mut next_credentials, rotated);
-            vesper_credentials::save_spotify(next_credentials.clone())?;
+            credentials::save(&next_credentials)?;
             *credentials = next_credentials;
         }
         Ok(())
@@ -569,7 +570,7 @@ mod tests {
             }
             requests
         });
-        let mut spotify = Spotify::new(vesper_credentials::SpotifyCredentials {
+        let mut spotify = Spotify::new(super::credentials::Credentials {
             web_client_id: None,
             web_refresh_token: "unused-test-token".to_owned(),
             playback_refresh_token: "unused-test-token".to_owned(),
@@ -747,7 +748,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancels_stale_play() {
-        let spotify = Spotify::new(vesper_credentials::SpotifyCredentials {
+        let spotify = Spotify::new(super::credentials::Credentials {
             web_client_id: None,
             web_refresh_token: "unused-test-token".to_owned(),
             playback_refresh_token: "unused-test-token".to_owned(),

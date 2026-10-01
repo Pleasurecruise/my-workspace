@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { QueryState, CherryInBalance, ClaudeUsage, CodexUsage, CopilotQuota, CopilotUsage, DeepSeekBalance, DimAgentUsage, GrokUsage, OpenCodeUsage, RateLimitWindow, TokenFluxUsage } from "../../consumer";
+	import type { QueryState, CherryInBalance, ClaudeUsage, CodexUsage, CopilotQuota, CopilotUsage, DeepSeekBalance, DimAgentUsage, GrokUsage, OpenCodeUsage, RateLimitWindow, TokenFluxUsage } from "../../contracts/dashboard";
 
 	type RateWindow = { label: string; usedPercent: number; resetsAt: number | string | null };
 	type RateSection = { title: string; planType: string | null; windows: RateWindow[]; hasData: boolean; error: string | null };

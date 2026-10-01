@@ -15,7 +15,7 @@ pub(crate) fn set_island_visible(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
 ) -> CommandResponse<()> {
-    if window.label() != "main" || app.state::<crate::configuration::AppLockState>().locked() {
+    if window.label() != "main" || app.state::<crate::app_lock::AppLock>().locked() {
         return CommandResponse::Failed {
             message: "Unlock Vesper to change Dynamic Island visibility.".into(),
         };
@@ -109,8 +109,8 @@ mod macos {
             .state::<super::Visibility>()
             .0
             .load(std::sync::atomic::Ordering::SeqCst)
-            && !app.state::<crate::configuration::AppLockState>().locked()
-            && crate::widgets::island_widget(app)?.is_some();
+            && !app.state::<crate::app_lock::AppLock>().locked()
+            && crate::dashboard::layout()?.island().is_some();
         if !visible {
             if let Some(window) = app.get_webview_window("island") {
                 window.destroy().map_err(|error| error.to_string())?;
@@ -147,7 +147,7 @@ mod macos {
     }
 
     pub(super) fn resize(app: &tauri::AppHandle, expanded: bool) -> Result<Geometry, String> {
-        if app.state::<crate::configuration::AppLockState>().locked() {
+        if app.state::<crate::app_lock::AppLock>().locked() {
             return Err("Vesper is locked".to_owned());
         }
         let mtm = MainThreadMarker::new().ok_or("Dynamic Island requires the main thread")?;

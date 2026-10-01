@@ -1,4 +1,5 @@
-import type { Game, WidgetKind, WidgetPlacement } from "./consumer";
+import type { WidgetKind, WidgetPlacement } from "./contracts/dashboard";
+import type { Game } from "./contracts/games";
 
 export const gameNames: Record<Game, string> = {
 	genshin: "Genshin Impact",

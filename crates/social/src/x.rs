@@ -1,4 +1,5 @@
 mod auth;
+pub mod credentials;
 
 pub use auth::{authenticate, authorization};
 
@@ -7,7 +8,7 @@ use super::{MemoPublication, PublicationProvider, PublishError, PublishedPost, m
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use vesper_credentials::Stored;
+use vault::Stored;
 
 const ENDPOINT: &str = "https://api.x.com/2/tweets";
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -29,13 +30,13 @@ struct Post {
 
 pub async fn publish(memo: &MemoPublication) -> Result<PublishedPost, PublishError> {
     let memo_url = memo_url(memo)?;
-    let mut credentials = match vesper_credentials::x()? {
+    let mut credentials = match credentials::read()? {
         Stored::Ready(credentials) => credentials,
         Stored::Missing => return Err(PublishError::MissingCredentials("X")),
     };
     if auth::expires_soon(&credentials) {
         credentials = auth::refresh(&credentials).await?;
-        vesper_credentials::save_x(credentials.clone())?;
+        credentials::save(credentials.clone())?;
     }
     let text = render_x(&memo.content, &memo_url);
     let client = reqwest::Client::builder()

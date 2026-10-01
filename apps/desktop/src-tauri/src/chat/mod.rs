@@ -140,7 +140,7 @@ fn publish_snapshot(
 }
 
 fn authorize(app: &tauri::AppHandle, window: &tauri::WebviewWindow) -> Result<(), String> {
-    if window.label() != "main" || app.state::<crate::configuration::AppLockState>().locked() {
+    if window.label() != "main" || app.state::<crate::app_lock::AppLock>().locked() {
         return Err("Unlock the main Vesper window to use Chat.".into());
     }
     Ok(())

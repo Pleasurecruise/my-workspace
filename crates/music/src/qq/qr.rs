@@ -85,10 +85,7 @@ impl QqLogin {
 
     pub async fn poll(
         &mut self,
-    ) -> Result<(
-        QqLoginStatus,
-        Option<vesper_credentials::QqMusicCredentials>,
-    )> {
+    ) -> Result<(QqLoginStatus, Option<super::credentials::Credentials>)> {
         if Instant::now() >= self.expires_at {
             return Ok((QqLoginStatus::Expired, None));
         }
@@ -144,7 +141,7 @@ impl QqLogin {
         &self,
         jump_url: &str,
         cookies: HashMap<String, String>,
-    ) -> Result<vesper_credentials::QqMusicCredentials> {
+    ) -> Result<super::credentials::Credentials> {
         let jump = reqwest::Url::parse(jump_url).map_err(|_| {
             Error::Authentication("QQ login returned an invalid redirect".to_owned())
         })?;
@@ -246,7 +243,7 @@ impl QqLogin {
         fields
             .entry("psrf_musickey_createtime".to_owned())
             .or_insert_with(|| read_time().as_secs().to_string());
-        Ok(vesper_credentials::QqMusicCredentials {
+        Ok(super::credentials::Credentials {
             cookie: render_cookie(&fields),
         })
     }

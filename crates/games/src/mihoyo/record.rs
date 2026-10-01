@@ -1,11 +1,11 @@
 use super::{Identity, Roles, TokenKind, passport, request, signature};
+use crate::session::{RecordDevice, Session};
 use crate::{Account, Game, transport};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use vesper_credentials::games::{RecordDevice, Session};
 
-pub const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 13; Pixel 5 Build/TQ3A.230901.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/118.0.0.0 Mobile Safari/537.36 miHoYoBBS/2.90.1";
+pub const RECORD_USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 13; Pixel 5 Build/TQ3A.230901.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/118.0.0.0 Mobile Safari/537.36 miHoYoBBS/2.90.1";
 
 #[derive(Clone)]
 pub struct RecordSession {
@@ -184,17 +184,17 @@ impl RecordSession {
         if let Session::Mihoyo { record: saved, .. } = &mut session {
             *saved = Some(record.clone());
         }
-        vesper_credentials::games::accounts::update(|accounts| {
+        crate::session::mihoyo::update(|accounts| {
             let Some(Session::Mihoyo {
                 stoken: current,
                 record: saved,
                 ..
             }) = accounts.sessions.get_mut(account_id)
             else {
-                return Err(vesper_credentials::CredentialError::InvalidStore);
+                return Err(vault::Error::InvalidStore);
             };
             if current != stoken {
-                return Err(vesper_credentials::CredentialError::InvalidValue(
+                return Err(vault::Error::InvalidValue(
                     "miHoYo session",
                     "login changed; retry the request",
                 ));
@@ -240,7 +240,7 @@ impl RecordSession {
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) miHoYoBBS/2.95.1",
             )
         } else {
-            ("2.90.1", USER_AGENT)
+            ("2.90.1", RECORD_USER_AGENT)
         };
         let request = if game == Game::StarRail {
             request

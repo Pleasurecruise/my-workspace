@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { mount, unmount } from "svelte";
-import type { Game, GameNotesResponse } from "../../../consumer";
+import type { Game, GameNotesResponse } from "../../../contracts/games";
 import GameNotesPanel from "../GameNotesPanel.svelte";
 
 const commands = vi.hoisted(() => ({ invoke: vi.fn() }));

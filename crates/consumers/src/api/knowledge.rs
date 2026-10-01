@@ -2,14 +2,14 @@ mod render;
 
 pub use render::{preview, project_article};
 
+use super::credentials::ConsumerApi;
 use super::{ApiError, Client, send};
-use cms_core::markdown::{ReadingStats, TocEntry};
+use markdown::knowledge::{ReadingStats, TocEntry};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
-use vesper_credentials::ConsumerApi;
 
 const ENDPOINT: &str = "https://knowledge.you-find.me/api/articles";
 const OVERVIEW_PAGE_SIZE: usize = 100;

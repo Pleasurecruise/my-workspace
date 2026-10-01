@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import TerminalView from "../TerminalView.svelte";
-import type { CommandResponse, TerminalOutput, TerminalConnection } from "../../../consumer";
+import type { CommandResponse } from "../../../contracts/command";
+import type { TerminalOutput, TerminalConnection } from "../../../contracts/terminal";
 
 type CommandArguments =
 	| {

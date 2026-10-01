@@ -1,6 +1,6 @@
+use crate::session::Session;
 use crate::transport;
 use serde::{Deserialize, Serialize};
-use vesper_credentials::games::Session;
 
 #[derive(Deserialize)]
 struct Response<T> {

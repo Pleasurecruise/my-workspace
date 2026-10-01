@@ -2,7 +2,7 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { Bold, Code, FileCode2, Heading2, Italic, Link, List, ListOrdered, Pilcrow, Quote, Redo2, Strikethrough, Undo2, Unlink, Table, ListChecks, ImagePlus } from "@lucide/svelte";
 	import { onMount } from "svelte";
-	import type { MarkdownSpan } from "../../consumer";
+	import type { MarkdownSpan } from "../../contracts/content";
 	import type { createEditor, readSelection } from "./milkdown";
 
 	let { value = $bindable(), maxLength = 500_000 }: { value: string; maxLength?: number } = $props();

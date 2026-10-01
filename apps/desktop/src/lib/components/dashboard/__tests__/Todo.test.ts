@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import { fromStore, writable } from "svelte/store";
-import type { TodoList } from "../../../consumer";
+import type { TodoList } from "../../../contracts/todo";
 import Todo from "../Todo.svelte";
 
 it("shows sync errors beside saved tasks", async () => {

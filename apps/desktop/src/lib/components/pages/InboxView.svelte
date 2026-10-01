@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Bell, Check } from "@lucide/svelte";
-	import type { CommandResponse, NtfyNotification } from "../../consumer";
+	import type { CommandResponse } from "../../contracts/command";
+	import type { NtfyNotification } from "../../contracts/inbox";
 
 	let {
 		notifications,

@@ -6,31 +6,38 @@ stores artifacts. This repository does not host a cloud application backend.
 
 ## Repository layout
 
-| Path                    | Responsibility                                                    |
-| ----------------------- | ----------------------------------------------------------------- |
-| `apps/desktop`          | Tauri v2 shell, Svelte 5 views and Rust command adapters          |
-| `apps/cli`              | The `vesper` command-line interface                               |
-| `crates/cms-core`       | Markdown compilation, content builds, publication and R2          |
-| `crates/consumers`      | Memo, Moment and Knowledge APIs and projections                   |
-| `crates/database`       | Shared Diesel/SQLite connection and schema                        |
-| `crates/credentials`    | Typed validation and build-specific credential storage            |
-| `crates/social`         | Telegram Channel and X publication                                |
-| `crates/todo`           | Tasks, habits, ICS, Notion and Codex Resets calendar sources      |
-| `crates/ledger`         | Local GBP expenses and monthly statistics                         |
-| `crates/md-dialect`     | Custom publication and Knowledge Markdown fences                  |
-| `crates/music`          | Spotify and QQ Music authentication, library and playback         |
-| `crates/oauth`          | Shared OAuth PKCE, loopback callbacks and token transport         |
-| `crates/games`          | Game accounts, daily notes, Steam and pull archives               |
-| `crates/github`         | GitHub CLI dashboard and repository reads                         |
-| `crates/link-preview`   | SSRF-safe link metadata and fixed-endpoint X previews             |
-| `crates/market-data`    | ECB exchange and Yahoo stock reads                                |
-| `crates/quotes`         | Random quotation reads                                            |
-| `crates/service-status` | Statuspage service catalog and health reads                       |
-| `crates/weather`        | Open-Meteo weather, astronomy, and geocoding reads                |
-| `crates/ugos`           | Read-only UGOS Pro authentication and telemetry                   |
-| `crates/useage`         | AI subscriptions and account credits; the spelling is intentional |
-| `packages/ui`           | Self-owned Svelte primitives and semantic design tokens           |
-| `packages/tsconfig`     | Shared UI TypeScript configuration                                |
+| Path                    | Responsibility                                                        |
+| ----------------------- | --------------------------------------------------------------------- |
+| `apps/desktop`          | Tauri v2 shell, Svelte 5 views and Rust command adapters              |
+| `apps/cli`              | The `vesper` command-line interface                                   |
+| `crates/cms`            | Content builds, publication and R2 object storage                     |
+| `crates/markdown`       | Markdown compilation for publications, Knowledge, Memos and chat      |
+| `crates/md-dialect`     | Custom fence and shortcode validation and rendering, without I/O      |
+| `crates/consumers`      | Memo, Moment and Knowledge APIs and projections                       |
+| `crates/database`       | Application identifier, shared Diesel/SQLite path, connection, schema |
+| `crates/vault`          | Generic credential storage and development overrides                  |
+| `crates/dashboard`      | Dashboard widget layout records, validation and source selection      |
+| `crates/inbox`          | ntfy mail-summary subscription and notification records               |
+| `crates/social`         | Telegram Channel and X publication                                    |
+| `crates/todo`           | Tasks, habits, ICS, Notion and Codex Resets calendar sources          |
+| `crates/ledger`         | Local GBP expenses and monthly statistics                             |
+| `crates/music`          | Spotify and QQ Music authentication, library and playback             |
+| `crates/oauth`          | Shared OAuth PKCE, loopback callbacks and token transport             |
+| `crates/games`          | Game accounts, daily notes, Steam and pull archives                   |
+| `crates/github`         | GitHub CLI dashboard and repository reads                             |
+| `crates/link-preview`   | SSRF-safe link metadata and fixed-endpoint X previews                 |
+| `crates/market-data`    | ECB exchange and Yahoo stock reads                                    |
+| `crates/quotes`         | Random quotation reads                                                |
+| `crates/service-status` | Statuspage service catalog and health reads                           |
+| `crates/weather`        | Open-Meteo weather, astronomy, and geocoding reads                    |
+| `crates/ugos`           | Read-only UGOS Pro authentication and telemetry                       |
+| `crates/useage`         | AI subscriptions and account credits; the spelling is intentional     |
+| `packages/ui`           | Self-owned Svelte primitives and semantic design tokens               |
+| `packages/tsconfig`     | Shared UI TypeScript configuration                                    |
+
+Workspace crates are named after their capability without an application prefix or `core` suffix.
+Public items keep one canonical path: crates expose modules such as `social::telegram` or
+`music::spotify::credentials` instead of renaming re-exports with `as`.
 
 Create a package only for a stable independent or genuinely shared responsibility. Application
 behavior belongs in Rust; Svelte owns presentation and interaction state.
@@ -52,13 +59,22 @@ CLI commands ──────────────────────�
 ```
 
 Each Rust feature owns its wire types, validation, external I/O and transactions. Tauri commands
-translate inputs and return tagged `ready` or `failed` results. CLI commands reuse these feature
+translate inputs and return tagged `ready` or `failed` results. Command bodies return
+`Result<T, CommandError>`; `CommandError` accepts any displayable error through `?` and converts
+to the tagged response once. CLI commands reuse these feature
 boundaries rather than desktop commands. Provider output excludes credentials; Settings prefill is
 the narrow exception for values the user edits locally.
 
 ## Desktop boundary
 
-`App.svelte` composes navigation, page layout, profile, theme and App Lock. Feature directories own
+Desktop Rust modules adapt the crate they are named after: `content` (with `memos`, `moment` and
+`knowledge` submodules) adapts `consumers`, `dashboard`, `games`, `inbox`, `music`, `social`,
+`todo` and `ledger` adapt their crates, `settings` reads and saves feature credentials for the
+Settings form, `app_lock` owns the App Lock state and password, and `protocol` serves the
+`vesper-asset` and `vesper-music-cover` URI schemes. Where a desktop module shadows a crate name,
+other desktop modules write `::crate_name` for the crate.
+
+`App.svelte` composes navigation, page layout, profile, theme and the `layout/LockScreen` App Lock. Feature directories own
 their views and `session.svelte.ts` state; `pages` composes complete routes and `layout` holds shell
 controls. Reusable primitives belong to `packages/ui`. [Design](DESIGN.md) defines presentation.
 
@@ -79,7 +95,7 @@ preserve invalid widget configurations for repair while rejecting dangling refer
 `apps/desktop/src-tauri/src/chat` owns one system Pi RPC subprocess in the current account's home
 directory. Tokio and `tokio-util::codec::LinesCodec` own process and JSONL pipe I/O; Serde decodes
 records. The runtime correlates responses by ID, projects text, thinking and tool activity, and uses
-`cms-core::markdown` for completed assistant messages. Typed Tauri commands and revisioned events
+the `markdown` crate for completed assistant messages. Typed Tauri commands and revisioned events
 connect Rust to the main WebView; Svelte owns drafts and presentation. Pi owns authentication and
 configuration. Vesper neither embeds its npm SDK nor exposes its credentials to the WebView.
 Unsupported extension dialogs are cancelled through Pi's UI subprotocol.
@@ -107,7 +123,7 @@ rules belong in [Music](MUSIC.md) and [Games](GAMES.md); NAS protocols belong in
 Inbox independently activates its ntfy stream while its route is active.
 Device storage reads OS capacity only; category inspection is delegated to system storage settings.
 Knowledge and Newspaper load a summary-only index without fetching or compiling bodies. The desktop
-Rust `KnowledgeReader` owns lazy detail compilation, a 30-second/16-document cache, and same-ID
+Rust `content::knowledge::Reader` owns lazy detail compilation, a 30-second/16-document cache, and same-ID
 in-flight request sharing. A changed index content hash bypasses cached content. Visible index entries, pointer intent,
 keyboard focus and touch request prefetch through Tauri, with at most two speculative reads and six
 reads overall. Writes and credential resets clear cached documents and invalidate pending results.
@@ -129,8 +145,9 @@ The updater verifies signed artifacts before installation; setup belongs in
 
 ## Content production
 
-`cms-core::markdown` owns document and Memo compilation. `md-dialect` validates and renders custom
-`embed:*` fences, lays out structured diagrams, and normalizes source examples consistently for
+The `markdown` crate owns document and Memo compilation (`publication::render`,
+`knowledge::compile`, `knowledge::fallback`, `render_memo`) and reads embed provider data. `md-dialect`
+collects embed references without I/O, then validates and renders custom `embed:*` fences, lays out structured diagrams, and normalizes source examples consistently for
 provider discovery and compilation. Annotation, quote and diff rendering require no provider reads. Inline image shortcodes use a bundled
 `md-dialect` catalog and transform prose events before HTML assembly; compilation performs no image reads.
 Article cards use host-provided index metadata; `github`, `market-data`, and `link-preview` supply
@@ -153,8 +170,8 @@ runtimes, R2 bindings and deployment configuration.
 
 ## Consumer projections
 
-`crates/consumers` owns authenticated API access and content projection. Desktop `cms.rs` owns
-repository and image caches; `consumer.rs` adapts commands. Cache revisions prevent a late read from
+`crates/consumers` owns authenticated API access and content projection. Desktop `content.rs` owns
+repository, view and image caches; its `memos`, `moment` and `knowledge` submodules adapt commands. Cache revisions prevent a late read from
 restoring invalidated content. Writes retain each consumer's server-side coordination.
 
 | Consumer  | Boundary                                                                                                                                                                                                                                         |
@@ -165,11 +182,11 @@ restoring invalidated content. Writes retain each consumer's server-side coordin
 
 Knowledge keeps API contracts and index policy in `api/knowledge.rs`; its `render` submodule owns
 document compilation, editor previews and authorized reference enrichment.
-Knowledge stores Markdown. Milkdown owns browser editing and selection, while `cms-core::markdown`
+Knowledge stores Markdown. Milkdown owns browser editing and selection, while the `markdown` crate
 owns dialect classification and semantic compatibility. The editor uses Rust source spans to retain
 special syntax as source blocks with inline compiled rendering. The `preview_knowledge` transport
 calls `consumers::api::knowledge::preview`, which resolves authorized article references and uses
-the existing Rust dialect compiler. `cms-core::markdown::fragment` includes document reference
+the existing Rust dialect compiler. `markdown::fragment` includes document reference
 and footnote definitions when compiling a block. Preview returns HTML or an explicit failure and
 never persists the draft. [Markdown](MARKDOWN.md#editing) defines the round-trip contract;
 [Design](DESIGN.md#knowledge-interaction) defines the editing surface.
@@ -189,13 +206,17 @@ Telegram session persistence and X OAuth credentials use their respective storag
 
 ## Local persistence
 
-`crates/database` owns `vesper.sqlite3` in local application data. Feature crates own typed records,
+`crates/database` owns the application identifier and `vesper.sqlite3` in local application data;
+Desktop and CLI both resolve it with `database::path()`. Feature crates own typed records,
 validation and transactions. `schema.sql` is the sole schema definition; startup creates missing
 tables without an upgrade or reset layer. [Persistence](PERSISTENCE.md) defines table ownership,
 explicit schema rebuilds, locking and backups.
 
 Credentials use SQLite in debug builds and operating-system storage in release builds. Missing
-debug configuration never falls through to the OS store. Public calendar source preferences belong
+debug configuration never falls through to the OS store. `crates/vault` stores opaque account
+values and JSON only; each feature owns a `credentials` module (or `notion::configuration`) with its
+types, validation and account name, so `vault` does not depend on any feature. Dashboard layout
+and Inbox notification storage live in their own crates rather than in the desktop adapter. Public calendar source preferences belong
 to Todo, not credentials. [Development](DEVELOPMENT.md#credential-resolution) defines resolution.
 
 ### Daily Planner

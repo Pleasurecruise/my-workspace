@@ -84,8 +84,9 @@ to Keychain. Storage, locking, and backup rules belong to [Persistence](PERSISTE
 | CherryIN                                                     | Existing Cherry Studio OAuth session                        |
 
 Copy needed entries from [`.env.example`](../.env.example) into the ignored root `.env`.
-Desktop and CLI load it in debug builds; inherited variables take precedence. Empty values and
-incomplete groups fail validation. Settings writes the database, never `.env` or the environment;
+Desktop and CLI load it in debug builds; inherited variables take precedence. Feature
+`credentials` modules read overrides through `vault::variables`, so empty values and incomplete
+groups fail validation. Settings writes the database, never `.env` or the environment;
 restart after changing an overriding environment value. Define only features under development.
 
 On macOS, release credentials share Keychain service `me.you-find.vesper`, account `credentials`.

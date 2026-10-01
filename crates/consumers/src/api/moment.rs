@@ -1,8 +1,8 @@
+use super::credentials::ConsumerApi;
 use super::{ApiError, Client, send};
-use cms_core::r2::Store;
+use cms::r2::Store;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use vesper_credentials::ConsumerApi;
 
 mod exif;
 mod media;

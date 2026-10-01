@@ -80,14 +80,16 @@
 		}
 	}
 
-	function seek(event: Event) {
+	type RangeEvent = Event & { currentTarget: EventTarget & HTMLInputElement };
+
+	function seek(event: RangeEvent) {
 		if (!canSeek) return;
-		media.currentTime = Number((event.currentTarget as HTMLInputElement).value);
+		media.currentTime = Number(event.currentTarget.value);
 		current = media.currentTime;
 	}
 
-	function changeVolume(event: Event) {
-		media.volume = Number((event.currentTarget as HTMLInputElement).value);
+	function changeVolume(event: RangeEvent) {
+		media.volume = Number(event.currentTarget.value);
 		media.muted = false;
 	}
 

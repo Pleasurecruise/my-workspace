@@ -97,11 +97,11 @@ impl Store {
 
     pub async fn configure_notion(
         &self,
-        configuration: vesper_credentials::NotionCalendar,
+        configuration: crate::notion::configuration::Configuration,
     ) -> Result<(), Error> {
         let mut cache = self.calendar_read.lock().await;
         let _file = self.calendar_lock().await?;
-        vesper_credentials::save_notion_calendar(configuration)?;
+        crate::notion::configuration::save(configuration)?;
         cache.notion = None;
         Ok(())
     }
@@ -150,20 +150,19 @@ impl Store {
         let file_guard = self.calendar_lock().await?;
         let CalendarCache { notion, codex } = &mut *cache;
         let notion_read = async {
-            let configuration = vesper_credentials::notion_calendar()?;
+            let configuration = crate::notion::configuration::read()?;
             let remote = match &configuration {
-                vesper_credentials::Stored::Ready(configuration) => {
+                vault::Stored::Ready(configuration) => {
                     read_notion(notion, configuration, date, refresh).await?
                 }
-                vesper_credentials::Stored::Missing => Vec::new(),
+                vault::Stored::Missing => Vec::new(),
             };
-            let current = vesper_credentials::notion_calendar()?;
+            let current = crate::notion::configuration::read()?;
             let unchanged = match (&configuration, &current) {
-                (
-                    vesper_credentials::Stored::Ready(first),
-                    vesper_credentials::Stored::Ready(second),
-                ) => first.view_url == second.view_url,
-                (vesper_credentials::Stored::Missing, vesper_credentials::Stored::Missing) => true,
+                (vault::Stored::Ready(first), vault::Stored::Ready(second)) => {
+                    first.view_url == second.view_url
+                }
+                (vault::Stored::Missing, vault::Stored::Missing) => true,
                 _ => false,
             };
             if !unchanged {
@@ -244,7 +243,7 @@ impl Store {
         tokio::task::spawn_blocking(move || {
             // Cancellation must not release the calendar lock before this commit finishes.
             let _file = file_guard;
-            let mut connection = vesper_database::open(&path)?;
+            let mut connection = database::open(&path)?;
             connection.immediate_transaction(move |connection| {
                 let mut list = read_list(connection, &date)?;
                 let removed: BTreeSet<String> = todo_occurrences::table
@@ -418,7 +417,7 @@ impl Store {
 // Own the remote snapshot lifecycle independently of dated SQLite projections.
 async fn read_notion(
     cache: &mut Option<CalendarSnapshot>,
-    configuration: &vesper_credentials::NotionCalendar,
+    configuration: &crate::notion::configuration::Configuration,
     date: &str,
     refresh: bool,
 ) -> Result<Vec<Item>, Error> {

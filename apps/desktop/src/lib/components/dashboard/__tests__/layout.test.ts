@@ -1,10 +1,11 @@
 import { beforeEach, expect, it, vi } from "vite-plus/test";
-import type { CommandResponse, WidgetLayout } from "../../../consumer";
+import type { CommandResponse } from "../../../contracts/command";
+import type { WidgetLayout } from "../../../contracts/dashboard";
 import { createLayoutSession } from "../layout.svelte";
 
 const { invoke, mounts } = vi.hoisted(() => ({
 	invoke: vi.fn(),
-	mounts: [] as Array<() => () => void>,
+	mounts: new Array<() => () => void>(),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));

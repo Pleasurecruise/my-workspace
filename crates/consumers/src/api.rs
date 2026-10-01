@@ -1,11 +1,13 @@
+pub mod credentials;
 pub mod knowledge;
 pub mod memos;
 pub mod moment;
 
+use credentials::ConsumerApi;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
-use vesper_credentials::{ConsumerApi, Stored};
+use vault::Stored;
 
 pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -17,15 +19,9 @@ struct Client {
 
 impl Client {
     fn load(service: ConsumerApi) -> Result<Self, ApiError> {
-        // Matches the credential field names used by the credentials store.
-        let service_name = match service {
-            ConsumerApi::Memos => "my-memos",
-            ConsumerApi::Moment => "my-moment",
-            ConsumerApi::Knowledge => "my-knowledge",
-        };
-        let api_key = match vesper_credentials::consumer_api(service)? {
+        let api_key = match credentials::read(service)? {
             Stored::Ready(api_key) => api_key,
-            Stored::Missing => return Err(ApiError::MissingCredentials(service_name)),
+            Stored::Missing => return Err(ApiError::MissingCredentials(service.service())),
         };
         Ok(Self {
             api_key,
@@ -52,10 +48,10 @@ async fn send(
 
 #[derive(Debug)]
 pub enum ApiError {
-    Credentials(vesper_credentials::CredentialError),
+    Credentials(vault::Error),
     MissingCredentials(&'static str),
     Media(moment::MediaError),
-    Store(cms_core::r2::StoreError),
+    Store(cms::r2::StoreError),
     Request(reqwest::Error),
     Status {
         operation: &'static str,
@@ -106,14 +102,14 @@ impl Error for ApiError {
     }
 }
 
-impl From<vesper_credentials::CredentialError> for ApiError {
-    fn from(source: vesper_credentials::CredentialError) -> Self {
+impl From<vault::Error> for ApiError {
+    fn from(source: vault::Error) -> Self {
         Self::Credentials(source)
     }
 }
 
-impl From<cms_core::r2::StoreError> for ApiError {
-    fn from(source: cms_core::r2::StoreError) -> Self {
+impl From<cms::r2::StoreError> for ApiError {
+    fn from(source: cms::r2::StoreError) -> Self {
         Self::Store(source)
     }
 }

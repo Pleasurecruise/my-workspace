@@ -2,7 +2,7 @@
 	import { ArrowLeft, CalendarDays, Clock, FileText, ListTodo, MapPin, Pencil, Plus, Trash2 } from "@lucide/svelte";
 	import { Checkbox, SortableList } from "@my-workspace/ui";
 	import { tick } from "svelte";
-	import type { TodoItem, TodoList } from "../../consumer";
+	import type { TodoItem, TodoList } from "../../contracts/todo";
 
 	let {
 		todos,

@@ -1,8 +1,7 @@
+pub mod credentials;
+
 use super::text::render_telegram;
-use super::{
-    MemoPublication, PublicationProvider, PublishError, PublishedPost, TelegramAuthorizationStatus,
-    memo_url,
-};
+use super::{MemoPublication, PublicationProvider, PublishError, PublishedPost, memo_url};
 use diesel::prelude::*;
 use grammers_client::{
     Client, SenderPool, SignInError,
@@ -18,7 +17,16 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
-use vesper_credentials::Stored;
+use vault::Stored;
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum Authorization {
+    Disconnected,
+    Ready,
+    CodeRequired,
+    PasswordRequired { hint: Option<String> },
+}
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -56,7 +64,7 @@ enum SessionError {
     #[error("session lock is poisoned")]
     Lock,
     #[error(transparent)]
-    Database(#[from] vesper_database::Error),
+    Database(#[from] database::Error),
     #[error("session database operation failed")]
     Query(#[from] diesel::result::Error),
     #[error("session data is invalid")]
@@ -65,7 +73,7 @@ enum SessionError {
 
 impl DatabaseSession {
     fn open(path: &Path) -> Result<Self, SessionError> {
-        let mut connection = vesper_database::open(path)?;
+        let mut connection = database::open(path)?;
         let encoded = telegram_session::table
             .find(1)
             .select(telegram_session::data)
@@ -96,7 +104,7 @@ impl DatabaseSession {
 
     fn persist(&self, data: &StoredSession) -> Result<(), SessionError> {
         let encoded = serde_json::to_string(data)?;
-        let mut connection = vesper_database::open(&self.path)?;
+        let mut connection = database::open(&self.path)?;
         diesel::insert_into(telegram_session::table)
             .values((
                 telegram_session::id.eq(1),
@@ -192,27 +200,24 @@ enum LoginStep {
     Password(Box<PasswordToken>),
 }
 
-pub struct TelegramLogin {
+pub struct Login {
     client: Client,
     _runner: Runner,
     step: Option<LoginStep>,
 }
 
-impl Drop for TelegramLogin {
+impl Drop for Login {
     fn drop(&mut self) {
         self.client.disconnect();
     }
 }
 
-impl TelegramLogin {
+impl Login {
     pub fn can_continue(&self) -> bool {
         self.step.is_some()
     }
 
-    pub async fn complete_code(
-        &mut self,
-        code: &str,
-    ) -> Result<TelegramAuthorizationStatus, PublishError> {
+    pub async fn complete_code(&mut self, code: &str) -> Result<Authorization, PublishError> {
         let code = code.trim();
         if code.is_empty() || code.len() > 16 || code.chars().any(char::is_whitespace) {
             return Err(PublishError::Authorization("the login code is invalid"));
@@ -226,12 +231,12 @@ impl TelegramLogin {
         match result {
             Ok(_) => {
                 self.step = None;
-                Ok(TelegramAuthorizationStatus::Ready)
+                Ok(Authorization::Ready)
             }
             Err(SignInError::PasswordRequired(token)) => {
                 let hint = token.hint().map(str::to_owned);
                 self.step = Some(LoginStep::Password(Box::new(token)));
-                Ok(TelegramAuthorizationStatus::PasswordRequired { hint })
+                Ok(Authorization::PasswordRequired { hint })
             }
             Err(SignInError::InvalidCode) => {
                 Err(PublishError::Authorization("the login code is invalid"))
@@ -248,7 +253,7 @@ impl TelegramLogin {
     pub async fn complete_password(
         &mut self,
         password: &str,
-    ) -> Result<TelegramAuthorizationStatus, PublishError> {
+    ) -> Result<Authorization, PublishError> {
         if password.is_empty() {
             return Err(PublishError::Authorization("the 2FA password is empty"));
         }
@@ -264,7 +269,7 @@ impl TelegramLogin {
         .await
         .map_err(|_| PublishError::Authorization("the 2FA request timed out"))?;
         match result {
-            Ok(_) => Ok(TelegramAuthorizationStatus::Ready),
+            Ok(_) => Ok(Authorization::Ready),
             Err(SignInError::InvalidPassword(token))
             | Err(SignInError::PasswordRequired(token)) => {
                 self.step = Some(LoginStep::Password(Box::new(token)));
@@ -282,14 +287,14 @@ impl TelegramLogin {
 pub async fn begin_login(
     session_path: &Path,
     phone: &str,
-) -> Result<(TelegramAuthorizationStatus, Option<TelegramLogin>), PublishError> {
-    let credentials = telegram_credentials()?;
+) -> Result<(Authorization, Option<Login>), PublishError> {
+    let credentials = read_credentials()?;
     let phone =
         normalize_phone(phone).ok_or(PublishError::Authorization("the phone number is invalid"))?;
     let (client, runner, authorized) = connect_and_check(session_path, credentials.api_id).await?;
     if authorized {
         client.disconnect();
-        return Ok((TelegramAuthorizationStatus::Ready, None));
+        return Ok((Authorization::Ready, None));
     }
     let token = tokio::time::timeout(
         TIMEOUT,
@@ -299,8 +304,8 @@ pub async fn begin_login(
     .map_err(|_| PublishError::Authorization("the login-code request timed out"))?
     .map_err(|_| PublishError::Authorization("Telegram rejected the login-code request"))?;
     Ok((
-        TelegramAuthorizationStatus::CodeRequired,
-        Some(TelegramLogin {
+        Authorization::CodeRequired,
+        Some(Login {
             client,
             _runner: runner,
             step: Some(LoginStep::Code(token)),
@@ -308,22 +313,22 @@ pub async fn begin_login(
     ))
 }
 
-pub async fn read_auth(session_path: &Path) -> Result<TelegramAuthorizationStatus, PublishError> {
-    let credentials = telegram_credentials()?;
-    let mut connection = vesper_database::open(session_path)
+pub async fn read_auth(session_path: &Path) -> Result<Authorization, PublishError> {
+    let credentials = read_credentials()?;
+    let mut connection = database::open(session_path)
         .map_err(|_| PublishError::Session("could not open local storage"))?;
     let exists = diesel::select(diesel::dsl::exists(telegram_session::table.find(1)))
         .get_result::<bool>(&mut connection)
         .map_err(|_| PublishError::Session("could not read local session"))?;
     if !exists {
-        return Ok(TelegramAuthorizationStatus::Disconnected);
+        return Ok(Authorization::Disconnected);
     }
     let (client, _runner, authorized) = connect_and_check(session_path, credentials.api_id).await?;
     client.disconnect();
     Ok(if authorized {
-        TelegramAuthorizationStatus::Ready
+        Authorization::Ready
     } else {
-        TelegramAuthorizationStatus::Disconnected
+        Authorization::Disconnected
     })
 }
 
@@ -332,7 +337,7 @@ pub async fn publish(
     session_path: &Path,
 ) -> Result<PublishedPost, PublishError> {
     let memo_url = memo_url(memo)?;
-    let credentials = telegram_credentials()?;
+    let credentials = read_credentials()?;
     let text = render_telegram(&memo.content, &memo_url);
     let (client, _runner, authorized) = connect_and_check(session_path, credentials.api_id).await?;
     if !authorized {
@@ -399,8 +404,8 @@ fn normalize_phone(phone: &str) -> Option<String> {
         .then(|| format!("+{digits}"))
 }
 
-fn telegram_credentials() -> Result<vesper_credentials::TelegramCredentials, PublishError> {
-    match vesper_credentials::telegram()? {
+fn read_credentials() -> Result<credentials::Credentials, PublishError> {
+    match credentials::read()? {
         Stored::Ready(credentials) => Ok(credentials),
         Stored::Missing => Err(PublishError::MissingCredentials("Telegram")),
     }
@@ -451,7 +456,7 @@ mod tests {
         let directory =
             std::env::temp_dir().join(format!("vesper-session-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();
-        let path = directory.join(vesper_database::FILE_NAME);
+        let path = directory.join(database::FILE_NAME);
         let session = DatabaseSession::open(&path).unwrap();
         session.set_home_dc_id(4).await.unwrap();
         std::fs::remove_dir_all(&directory).unwrap();
@@ -467,7 +472,7 @@ mod tests {
         let directory =
             std::env::temp_dir().join(format!("vesper-session-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();
-        let path = directory.join(vesper_database::FILE_NAME);
+        let path = directory.join(database::FILE_NAME);
         let session = DatabaseSession::open(&path).unwrap();
         session.set_home_dc_id(4).await.unwrap();
         drop(session);

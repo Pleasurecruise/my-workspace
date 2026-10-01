@@ -2,7 +2,8 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import { onMount, tick } from "svelte";
-	import type { CommandResponse, UpdateInfo, UpdateProgress } from "../../consumer";
+	import type { UpdateInfo, UpdateProgress } from "../../contracts/app";
+	import type { CommandResponse } from "../../contracts/command";
 	let { locked, onmodalchange }: { locked: boolean; onmodalchange: (open: boolean) => void } = $props();
 	let updateAvailable = $state<UpdateInfo | null>(null);
 	let updateProgress = $state<UpdateProgress | null>(null);

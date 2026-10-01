@@ -7,8 +7,8 @@ rust-version.workspace = true
 [dependencies]
 diesel.workspace = true
 thiserror.workspace = true
-vesper-database.workspace = true
-vesper-oauth.workspace = true
+database.workspace = true
+oauth.workspace = true
 grammers-client.workspace = true
 grammers-session.workspace = true
 pulldown-cmark.workspace = true
@@ -17,4 +17,4 @@ serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["net"] }
 uuid.workspace = true
-vesper-credentials.workspace = true
+vault.workspace = true

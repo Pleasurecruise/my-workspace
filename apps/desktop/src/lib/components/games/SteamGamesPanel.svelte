@@ -4,7 +4,8 @@
 	import { listen } from "@tauri-apps/api/event";
 	import { openUrl } from "@tauri-apps/plugin-opener";
 	import { onMount } from "svelte";
-	import type { CommandResponse, SteamGames } from "../../consumer";
+	import type { CommandResponse } from "../../contracts/command";
+	import type { SteamGames } from "../../contracts/games";
 	import "./games.css";
 	let games = $state<SteamGames | null>(null);
 	let error = $state<string | null>(null);

@@ -39,7 +39,7 @@ pub struct Summary {
     pub last_record: Option<String>,
     pub pools: Vec<Pool>,
     pub recent: Vec<Pull>,
-    pub official: Option<crate::StarRailReport>,
+    pub official: Option<crate::mihoyo::rail_gacha::Report>,
 }
 
 diesel::table! {
@@ -108,7 +108,7 @@ fn save_account(
 pub(crate) fn save_official(
     path: &Path,
     account: &Account,
-    mut report: crate::StarRailReport,
+    mut report: crate::mihoyo::rail_gacha::Report,
 ) -> Result<Summary, String> {
     if account.game != Game::StarRail || account.uid.is_empty() {
         return Err("Invalid Star Rail report account".into());
@@ -125,7 +125,7 @@ pub(crate) fn save_official(
             return Err("Invalid Star Rail report; the previous archive is unchanged.".into());
         }
     }
-    let mut connection = vesper_database::open(path).map_err(|error| error.to_string())?;
+    let mut connection = database::open(path).map_err(|error| error.to_string())?;
     let added = connection
         .immediate_transaction::<_, StoreError, _>(|connection| {
             let previous = game_reports::table
@@ -134,7 +134,7 @@ pub(crate) fn save_official(
                 .first::<String>(connection)
                 .optional()?;
             let previous = previous
-                .map(|body| serde_json::from_str::<crate::StarRailReport>(&body))
+                .map(|body| serde_json::from_str::<crate::mihoyo::rail_gacha::Report>(&body))
                 .transpose()
                 .map_err(|_| {
                     StoreError::Invalid("Previous Star Rail report is invalid; it was preserved")
@@ -229,7 +229,7 @@ pub fn merge(path: &Path, account: &Account, pulls: &[Pull]) -> Result<Summary, 
             return Err("Repeated pull ID in game response; archive was not changed".to_owned());
         }
     }
-    let mut connection = vesper_database::open(path).map_err(|error| error.to_string())?;
+    let mut connection = database::open(path).map_err(|error| error.to_string())?;
     let added = connection
         .immediate_transaction::<_, StoreError, _>(|connection| {
             save_account(connection, account)?;
@@ -320,7 +320,7 @@ fn records(connection: &mut SqliteConnection, game: Game, uid: &str) -> Result<V
 }
 
 pub fn summary(path: &Path, game: Game, requested_uid: Option<&str>) -> Result<Summary, String> {
-    let mut connection = vesper_database::open(path).map_err(|error| error.to_string())?;
+    let mut connection = database::open(path).map_err(|error| error.to_string())?;
     let rows = game_accounts::table
         .filter(game_accounts::game.eq(game.key()))
         .order((game_accounts::synced_at.desc(), game_accounts::uid.asc()))

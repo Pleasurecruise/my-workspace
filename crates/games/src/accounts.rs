@@ -1,6 +1,7 @@
+use crate::session::mihoyo;
 use crate::{Game, Provider};
 use serde::Serialize;
-use vesper_credentials::{Stored, games::accounts};
+use vault::Stored;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,14 +18,14 @@ pub struct Connections {
 }
 
 pub fn connections() -> Result<Connections, String> {
-    let accounts = accounts::read().map_err(|error| error.to_string())?;
+    let accounts = mihoyo::read().map_err(|error| error.to_string())?;
     let mut providers = Vec::new();
     if !accounts.sessions.is_empty() {
         providers.push(Provider::Mihoyo);
     }
     for provider in [Provider::Skland, Provider::Steam] {
         if matches!(
-            vesper_credentials::games::read(provider).map_err(|error| error.to_string())?,
+            crate::session::read(provider).map_err(|error| error.to_string())?,
             Stored::Ready(_)
         ) {
             providers.push(provider);

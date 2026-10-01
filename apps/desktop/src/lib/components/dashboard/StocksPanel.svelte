@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { ChartNoAxesCombined, TrendingDown, TrendingUp } from "@lucide/svelte";
-	import type { StockReport } from "../../consumer";
+	import type { StockReport } from "../../contracts/dashboard";
 
 	let { stocks, symbol, error }: { stocks: StockReport | null; symbol: string; error: string | null } = $props();
 	let stock = $derived.by(() => {

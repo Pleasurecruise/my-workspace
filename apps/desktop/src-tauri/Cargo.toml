@@ -24,14 +24,16 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-diesel.workspace = true
-vesper-database.workspace = true
-cms-core.workspace = true
+dashboard.workspace = true
+database.workspace = true
+cms.workspace = true
 consumers.workspace = true
 github.workspace = true
 games.workspace = true
+inbox.workspace = true
 futures-util.workspace = true
 link-preview.workspace = true
+markdown.workspace = true
 market-data.workspace = true
 quotes.workspace = true
 service-status.workspace = true
@@ -52,12 +54,12 @@ tauri-plugin-updater = "2"
 tempfile.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-todo-core.workspace = true
+todo.workspace = true
 tracing.workspace = true
 weather.workspace = true
 ugos.workspace = true
 useage.workspace = true
-vesper-credentials.workspace = true
+vault.workspace = true
 tauri-plugin-notification = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -2,14 +2,16 @@
 members = [
   "apps/cli",
   "apps/desktop/src-tauri",
-  "crates/cms-core",
+  "crates/cms",
   "crates/consumers",
-  "crates/credentials",
+  "crates/dashboard",
   "crates/database",
   "crates/games",
+  "crates/inbox",
   "crates/github",
   "crates/ledger",
   "crates/link-preview",
+  "crates/markdown",
   "crates/market-data",
   "crates/md-dialect",
   "crates/music",
@@ -20,6 +22,7 @@ members = [
   "crates/todo",
   "crates/ugos",
   "crates/useage",
+  "crates/vault",
   "crates/weather",
 ]
 resolver = "3"
@@ -37,7 +40,7 @@ icalendar = { version = "0.17.13", default-features = false, features = ["parser
 rrule = "0.14"
 oauth2 = { version = "5", default-features = false }
 httparse = "1.10"
-vesper-oauth = { path = "crates/oauth" }
+oauth = { path = "crates/oauth" }
 regex = "1.13.1"
 url = "2.5"
 aws-config = { version = "1", default-features = false, features = [
@@ -58,22 +61,25 @@ html-escape = "0.2.15"
 dirs = "6"
 diesel = { version = "2.3", default-features = false, features = ["sqlite"] }
 libsqlite3-sys = { version = "0.38", features = ["bundled"] }
-vesper-database = { path = "crates/database" }
+dashboard = { path = "crates/dashboard" }
+database = { path = "crates/database" }
 futures-util = "0.3"
 grammers-client = "0.10.0"
 grammers-session = { version = "0.10.0", default-features = false, features = ["serde"] }
-cms-core = { path = "crates/cms-core" }
+cms = { path = "crates/cms" }
 consumers = { path = "crates/consumers" }
 games = { path = "crates/games" }
 hmac = "0.12"
+inbox = { path = "crates/inbox" }
 md-5 = "0.10"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+markdown = { path = "crates/markdown" }
 md-dialect = { path = "crates/md-dialect" }
 music = { path = "crates/music" }
 ledger = { path = "crates/ledger" }
 quotes = { path = "crates/quotes" }
 social = { path = "crates/social" }
-todo-core = { package = "todo", path = "crates/todo" }
+todo = { path = "crates/todo" }
 hex = "0.4"
 heic = { version = "0.1.6", features = ["av1"] }
 http = "1"
@@ -144,7 +150,7 @@ tokio-util = { version = "0.7", features = ["codec"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 ugos = { path = "crates/ugos" }
-vesper-credentials = { path = "crates/credentials" }
+vault = { path = "crates/vault" }
 time = { version = "0.3", features = ["formatting", "local-offset", "macros", "parsing"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 walkdir = "2.5"

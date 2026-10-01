@@ -4,7 +4,8 @@
 	import { onDestroy, tick } from "svelte";
 	import { LoaderCircle, Music2, QrCode, X } from "@lucide/svelte";
 	import { Alert, AlertDescription, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Label } from "@my-workspace/ui";
-	import type { CommandResponse, QqLoginStatus, QqQr } from "../../consumer";
+	import type { CommandResponse } from "../../contracts/command";
+	import type { QqLoginStatus, QqQr } from "../../contracts/music";
 	import ConfigurationBadge from "./ConfigurationBadge.svelte";
 	let { connected, onconnected }: { connected: boolean; onconnected: () => Promise<void> } = $props();
 	let starting = $state(false);

@@ -1,6 +1,6 @@
 mod lyrics;
-mod qq;
-mod spotify;
+pub mod qq;
+pub mod spotify;
 
 pub use lyrics::{Lyrics, LyricsLine};
 pub use qq::{QqLogin, QqLoginStatus, QqMusic, QqQr};
@@ -73,7 +73,7 @@ pub enum Error {
     #[error("Music provider playback failed: {0}")]
     Playback(String),
     #[error("Music provider credentials could not be stored: {0}")]
-    Credentials(#[from] vesper_credentials::CredentialError),
+    Credentials(#[from] vault::Error),
 }
 
 impl From<reqwest::Error> for Error {

@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vite-plus/test";
-import type { CommandResponse, ConfigurationStatus } from "../../../consumer";
+import type { CommandResponse } from "../../../contracts/command";
+import type { ConfigurationStatus } from "../../../contracts/settings";
 import { createSettingsSession } from "../session.svelte";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));

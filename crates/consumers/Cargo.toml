@@ -5,11 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-cms-core.workspace = true
+cms.workspace = true
 futures-util.workspace = true
 heic.workspace = true
 hex.workspace = true
 image.workspace = true
+markdown.workspace = true
 kamadak-exif.workspace = true
 percent-encoding.workspace = true
 reqwest.workspace = true
@@ -21,4 +22,4 @@ time.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true
-vesper-credentials.workspace = true
+vault.workspace = true

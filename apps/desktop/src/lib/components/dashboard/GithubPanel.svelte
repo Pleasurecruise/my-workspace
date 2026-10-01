@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { openUrl } from "@tauri-apps/plugin-opener";
 	import { Bell, BadgeCheck, GitCommitHorizontal, GitFork, GitPullRequest, MessageSquareText } from "@lucide/svelte";
-	import type { GithubActivity, GithubSnapshot } from "../../consumer";
+	import type { GithubActivity, GithubSnapshot } from "../../contracts/dashboard";
 
 	let { github, error }: { github: GithubSnapshot | null; error: string | null } = $props();
 

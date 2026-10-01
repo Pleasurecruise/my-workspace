@@ -1,8 +1,8 @@
+use super::credentials::ConsumerApi;
 use super::{ApiError, Client, send};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use vesper_credentials::ConsumerApi;
 
 const ENDPOINT: &str = "https://memos.you-find.me/api/v1";
 pub const PAGE_SIZE: usize = 25;
@@ -147,7 +147,7 @@ struct RemoteMemo {
 
 impl RemoteMemo {
     fn into_view(self) -> MemoView {
-        let html = cms_core::markdown::render_memo(&strip_tags(&self.content));
+        let html = markdown::render_memo(&strip_tags(&self.content));
         MemoView {
             metadata_complete: true,
             memo: Memo {
@@ -613,7 +613,7 @@ mod tests {
         assert!(content.contains("\\<script\\>alert\\(1\\)\\</script\\>"));
         assert!(content.contains("\\[click\\]\\(javascript:alert\\(1\\)\\)"));
         assert!(content.contains("— Cloudflare \\*team\\* (@Cloudflare)"));
-        let html = cms_core::markdown::render_memo(&content);
+        let html = markdown::render_memo(&content);
         assert!(!html.contains("<script>"));
         assert!(!html.contains("href=\"javascript:"));
     }

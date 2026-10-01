@@ -2,9 +2,9 @@
 // Copyright (c) 2022-2025 DGP Studio; (c) 2026 Snap.HutaoRemasteringProject.
 // Licensed under MIT. Star Rail uses the official RPG toolcomsrv protocol.
 use super::{Envelope, record::RecordSession};
+use crate::session::Session;
 use crate::{Game, Runtime, transport};
 use serde::{Deserialize, Serialize};
-use vesper_credentials::games::Session;
 
 const REGISTER: &str = "https://api-takumi-record.mihoyo.com/game_record/app/card/wapi/createVerification?is_high=true";
 const VERIFY: &str =
@@ -141,7 +141,7 @@ impl Diagnostic {
         let path = path.to_owned();
         let diagnostic = self.clone();
         tokio::task::spawn_blocking(move || {
-            let mut connection = vesper_database::open(&path).map_err(|error| error.to_string())?;
+            let mut connection = database::open(&path).map_err(|error| error.to_string())?;
             let values = (
                 game_diagnostic::game.eq(diagnostic.game.key()),
                 game_diagnostic::stage.eq(diagnostic.stage),

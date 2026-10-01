@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import MomentUpload from "../MomentUpload.svelte";
-import type { CommandResponse, PhotoMetadata } from "../../../consumer";
+import type { CommandResponse } from "../../../contracts/command";
+import type { PhotoMetadata } from "../../../contracts/content";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));

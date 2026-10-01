@@ -1,3 +1,4 @@
+use crate::session::Session;
 use crate::{
     Account, Game, Meter, Notes, Pull, Task,
     login::{Pending, Poll},
@@ -7,7 +8,6 @@ use md5::{Digest, Md5};
 use serde::{Deserialize, de::DeserializeOwned};
 use std::collections::{BTreeMap, HashSet};
 use tracing::Instrument;
-use vesper_credentials::games::Session;
 pub(crate) mod record;
 pub(crate) mod verification;
 

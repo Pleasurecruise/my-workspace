@@ -25,8 +25,8 @@ impl QqMusic {
             credentials.renewal_attempt = Some(Instant::now());
             match self.renew(&credentials.value.cookie).await {
                 Ok(cookie) => {
-                    let renewed = vesper_credentials::QqMusicCredentials { cookie };
-                    if let Err(error) = vesper_credentials::save_qq_music(renewed.clone()) {
+                    let renewed = super::credentials::Credentials { cookie };
+                    if let Err(error) = super::credentials::save(&renewed) {
                         tracing::warn!(%error, "could not store renewed QQ Music session");
                     }
                     credentials.value = renewed;

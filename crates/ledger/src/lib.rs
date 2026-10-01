@@ -46,7 +46,7 @@ pub enum Error {
     #[error("Expense storage contains an invalid record")]
     InvalidRecord,
     #[error(transparent)]
-    Database(#[from] vesper_database::Error),
+    Database(#[from] database::Error),
     #[error("Expense storage operation failed: {0}")]
     Query(#[from] diesel::result::Error),
     #[error("Expense storage task failed: {0}")]
@@ -105,7 +105,7 @@ impl Store {
         let date = date.to_owned();
         let path = self.path.clone();
         tokio::task::spawn_blocking(move || {
-            let mut connection = vesper_database::open(&path)?;
+            let mut connection = database::open(&path)?;
             connection.transaction(|connection| snapshot(connection, &date))
         })
         .await
@@ -203,7 +203,7 @@ impl Store {
         let date = date.to_owned();
         let path = self.path.clone();
         tokio::task::spawn_blocking(move || {
-            let mut connection = vesper_database::open(&path)?;
+            let mut connection = database::open(&path)?;
             connection.immediate_transaction(|connection| {
                 operation(connection, &date)?;
                 snapshot(connection, &date)

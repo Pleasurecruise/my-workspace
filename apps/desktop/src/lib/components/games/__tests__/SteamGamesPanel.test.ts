@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
-import type { CommandResponse, SteamGames } from "../../../consumer";
+import type { CommandResponse } from "../../../contracts/command";
+import type { SteamGames } from "../../../contracts/games";
 import SteamGamesPanel from "../SteamGamesPanel.svelte";
 
 const commands = vi.hoisted(() => ({ invoke: vi.fn(), listen: vi.fn(), openUrl: vi.fn() }));

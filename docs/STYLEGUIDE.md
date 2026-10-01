@@ -57,9 +57,16 @@ transport types, projections, and create, read, update, and delete operations to
 splitting directories by CRUD verb. Shared authentication belongs in `auth.rs` only when multiple
 providers use the same credential format and resolution policy.
 
-Stable capabilities retain their own boundaries: `r2.rs` owns object storage,
-`cms-core::markdown` owns general Markdown compilation and article/Memo rendering; `md-dialect`
-owns custom fence validation, provider data, and rendering. `build.rs` owns local artifact assembly.
+Stable capabilities retain their own boundaries: `cms::r2` owns object storage and `cms::build`
+owns local artifact assembly; the `markdown` crate owns general Markdown compilation, article/Memo
+rendering and embed provider reads; `md-dialect` owns custom fence validation and rendering from
+supplied snapshots and performs no I/O.
+
+Credentials belong to the feature that uses them. A feature exposes a `credentials` module (for
+example `ugos::credentials` or `social::telegram::credentials`) with its `Credentials` type,
+validation, account name, debug override, `read` and `save`. `crates/vault` only stores opaque
+values and JSON; it never names a feature. Dashboard layout and Inbox records live in their crates;
+desktop modules only adapt them to Tauri.
 
 ## Helpers and abstractions
 
@@ -81,6 +88,11 @@ simple transformations and explicit request flow next to the code that uses them
 
 Prefer compact names that retain the domain meaning. Do not encode an entire implementation or test
 assertion in an identifier. Keep a longer externally mandated field name only at its wire boundary.
+Let the module carry context instead of the function name: `knowledge::compile`,
+`knowledge::fallback` and `publication::render` rather than `compile_knowledge_with_articles` or
+`render_publication_enriched`; `ugos::credentials::read` rather than `ugos_credentials`. Each public
+item has one canonical path; do not rename re-exports with `as` to add a prefix. Add a comment only
+when it records a reason, invariant or external constraint the code cannot state.
 
 Rust's `?`, closures, and wildcard patterns are normal when their meaning is local and obvious. Do
 not stack nested `Result` propagation as `??`, combine pattern binding into a long boolean chain, or
@@ -93,6 +105,11 @@ early returns. Do not create a one-call helper merely to avoid ordinary Rust syn
 - Provider modules may return a focused user-facing `String` when the only consumer is a Tauri
   command and no caller needs to branch by variant.
 - Use `Result`, `?`, `map_err`, pattern matching, and explicit response states.
+- Tauri command bodies return `Result<T, CommandError>` and convert once with `.into()`;
+  `CommandError` accepts any displayable error through `?`. Do not hand-write
+  `match … { Err(error) => CommandResponse::Failed { … } }` chains.
+- Use checked conversions (`try_from`, `u64::from`) for numbers that can narrow or change sign;
+  reserve `as` for lossless casts whose range is obvious at the call site.
 - Do not add broad frontend `try/catch` blocks around normal command flows when Tauri already returns
   a tagged `ready` or `failed` response.
 - Use a catch only when an actual exception boundary remains and the code can recover or add useful
@@ -125,7 +142,9 @@ early returns. Do not create a one-call helper merely to avoid ordinary Rust syn
   unused arguments with an underscore.
 - Use `PascalCase` for components and types, `camelCase` for variables and functions, and concrete
   nouns for state.
-- Define serialized command contracts in `apps/desktop/src/lib/consumer.ts`.
+- Define serialized command contracts in `apps/desktop/src/lib/contracts/<feature>.ts`, one file per
+  Rust boundary (`content`, `dashboard`, `games`, `settings`, …). `contracts/command.ts` owns the
+  shared `CommandResponse` envelope.
 - Prefer inferred local types; add explicit types at component props, shared interfaces, and command
   boundaries.
 - Keep provider states independent. Do not add one global loading boolean that erases settled cards.
@@ -145,6 +164,9 @@ early returns. Do not create a one-call helper merely to avoid ordinary Rust syn
 
 ## Naming
 
+- Name workspace crates after their capability, without an application prefix (`vesper-`) or a
+  `core` suffix. The shared credential store is `vault`, so feature `credentials` modules never
+  collide with it.
 - Name database tables and credential accounts after the feature they own. The shared database is
   `vesper.sqlite3`; do not introduce feature JSON files or build-mode filename prefixes. Build
   configuration selects the credential backend.

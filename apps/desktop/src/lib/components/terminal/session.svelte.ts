@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { onMount } from "svelte";
-import type { CommandResponse, SshDevice, SshSnapshot, TerminalTarget } from "../../consumer";
+import type { CommandResponse } from "../../contracts/command";
+import type { SshDevice, SshSnapshot, TerminalTarget } from "../../contracts/terminal";
 
 export function createTerminalSession(isLocked: () => boolean) {
 	let devices = $state<SshDevice[]>([]);

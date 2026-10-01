@@ -1,16 +1,11 @@
-mod telegram;
+pub mod telegram;
 mod text;
-mod x;
+pub mod x;
 
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
-use vesper_credentials::Stored;
-
-pub use telegram::{TelegramLogin, begin_login, publish as publish_telegram, read_auth};
-pub use x::{
-    authenticate as authenticate_x, authorization as x_authorization, publish as publish_x,
-};
+use vault::Stored;
 
 const MEMO_ORIGIN: &str = "https://memos.you-find.me/memo";
 
@@ -46,23 +41,14 @@ pub struct PublishedPost {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PublicationConfigurationStatus {
+pub struct Configured {
     pub telegram: bool,
     pub x: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(tag = "status", rename_all = "camelCase")]
-pub enum TelegramAuthorizationStatus {
-    Disconnected,
-    Ready,
-    CodeRequired,
-    PasswordRequired { hint: Option<String> },
-}
-
 #[derive(Debug)]
 pub enum PublishError {
-    Credentials(vesper_credentials::CredentialError),
+    Credentials(vault::Error),
     MissingCredentials(&'static str),
     InvalidMemo(&'static str),
     Request(&'static str),
@@ -119,16 +105,16 @@ impl std::error::Error for PublishError {
     }
 }
 
-impl From<vesper_credentials::CredentialError> for PublishError {
-    fn from(source: vesper_credentials::CredentialError) -> Self {
+impl From<vault::Error> for PublishError {
+    fn from(source: vault::Error) -> Self {
         Self::Credentials(source)
     }
 }
 
-pub fn read_config() -> Result<PublicationConfigurationStatus, PublishError> {
-    Ok(PublicationConfigurationStatus {
-        telegram: matches!(vesper_credentials::telegram()?, Stored::Ready(_)),
-        x: matches!(vesper_credentials::x()?, Stored::Ready(_)),
+pub fn configured() -> Result<Configured, PublishError> {
+    Ok(Configured {
+        telegram: matches!(telegram::credentials::read()?, Stored::Ready(_)),
+        x: matches!(x::credentials::read()?, Stored::Ready(_)),
     })
 }
 

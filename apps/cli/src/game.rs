@@ -1,7 +1,7 @@
 use games::{Game, Runtime};
 
 pub(super) async fn run(arguments: &[String]) -> Result<(), String> {
-    let path = vesper_database::shared_path().map_err(|error| error.to_string())?;
+    let path = database::path().map_err(|error| error.to_string())?;
     let runtime = Runtime::new(path);
     if let [source] = arguments
         && source == "steam"

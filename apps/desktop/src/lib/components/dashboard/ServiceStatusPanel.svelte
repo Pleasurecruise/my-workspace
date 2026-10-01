@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Activity, CircleAlert, CircleCheck, Wrench } from "@lucide/svelte";
-	import type { ServiceStatusCatalogEntry, ServiceStatusLevel, ServiceStatusReport } from "../../consumer";
+	import type { ServiceStatusCatalogEntry, ServiceStatusLevel, ServiceStatusReport } from "../../contracts/dashboard";
 
 	let { report, catalog, serviceId, error }: { report: ServiceStatusReport | null; catalog: ServiceStatusCatalogEntry[]; serviceId: string; error: string | null } = $props();
 	let service = $derived.by(() => {

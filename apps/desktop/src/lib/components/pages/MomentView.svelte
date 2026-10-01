@@ -4,7 +4,8 @@
 	import type { Snippet } from "svelte";
 	import { tick } from "svelte";
 	import { innerWidth } from "svelte/reactivity/window";
-	import type { CommandResponse, PhotoItem, PhotoUpdate, PhotoUpload } from "../../consumer";
+	import type { CommandResponse } from "../../contracts/command";
+	import type { PhotoItem, PhotoUpdate, PhotoUpload } from "../../contracts/content";
 	import MomentUpload from "../moment/MomentUpload.svelte";
 	import R2Image from "../moment/R2Image.svelte";
 

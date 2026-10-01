@@ -2,7 +2,9 @@
 	import { Check, ListChecks, Plus, Settings2, Trash2, Undo2 } from "@lucide/svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
-	import type { CheckIn, CommandResponse, Habit } from "../../consumer";
+	import type { CommandResponse } from "../../contracts/command";
+	import type { Habit } from "../../contracts/dashboard";
+	import type { CheckIn } from "../../contracts/todo";
 	let { habits, selectedDate, onchange = null }: { habits: Habit[]; selectedDate: string; onchange?: ((habits: Habit[]) => Promise<boolean>) | null } = $props();
 	let progress = $state<CheckIn[]>([]);
 	let error = $state<string | null>(null);

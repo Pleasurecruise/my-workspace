@@ -12,8 +12,7 @@ pub async fn run(
             .date()
             .to_string(),
     };
-    let store =
-        ledger::Store::new(vesper_database::shared_path().map_err(|error| error.to_string())?);
+    let store = ledger::Store::new(database::path().map_err(|error| error.to_string())?);
     let snapshot = execute(&store, &date, action, arguments).await?;
     print_json(&snapshot)
 }

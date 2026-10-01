@@ -179,7 +179,7 @@ fn message_parts(content: Content) -> Vec<MessagePart> {
         .into_iter()
         .filter_map(|block| match block {
             Block::Text { text } => Some(MessagePart::Text {
-                html: cms_core::markdown::render(&text),
+                html: markdown::render(&text),
                 text,
             }),
             Block::Thinking { thinking } => Some(MessagePart::Thinking { text: thinking }),

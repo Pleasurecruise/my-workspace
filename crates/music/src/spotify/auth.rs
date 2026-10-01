@@ -1,5 +1,5 @@
 use crate::{Error, Result};
-pub use vesper_oauth::Authorization;
+pub use oauth::Authorization;
 
 const AUTHORIZE_ENDPOINT: &str = "https://accounts.spotify.com/authorize";
 const TOKEN_ENDPOINT: &str = "https://accounts.spotify.com/api/token";
@@ -26,7 +26,7 @@ pub async fn web_authorization(client_id: Option<&str>) -> Result<Authorization>
             "Spotify Client ID must contain 32 hexadecimal characters".to_owned(),
         ));
     }
-    vesper_oauth::authorize(
+    oauth::authorize(
         client_id,
         AUTHORIZE_ENDPOINT,
         TOKEN_ENDPOINT,
@@ -38,7 +38,7 @@ pub async fn web_authorization(client_id: Option<&str>) -> Result<Authorization>
 }
 
 pub async fn playback_authorization() -> Result<Authorization> {
-    vesper_oauth::authorize(
+    oauth::authorize(
         PLAYBACK_CLIENT_ID,
         AUTHORIZE_ENDPOINT,
         TOKEN_ENDPOINT,
@@ -50,7 +50,7 @@ pub async fn playback_authorization() -> Result<Authorization> {
 }
 
 pub async fn authenticate(authorization: Authorization) -> Result<GrantToken> {
-    let token = vesper_oauth::authenticate(authorization)
+    let token = oauth::authenticate(authorization)
         .await
         .map_err(|error| Error::Authentication(format!("Spotify: {error}")))?;
     let refresh_token = token.refresh_token.ok_or_else(|| {
@@ -63,7 +63,7 @@ pub async fn authenticate(authorization: Authorization) -> Result<GrantToken> {
 }
 
 pub(crate) async fn refresh(client_id: &str, refresh_token: &str) -> Result<AccessToken> {
-    let token = vesper_oauth::refresh(client_id, TOKEN_ENDPOINT, refresh_token)
+    let token = oauth::refresh(client_id, TOKEN_ENDPOINT, refresh_token)
         .await
         .map_err(|error| Error::Authentication(format!("Spotify: {error}")))?;
     Ok(AccessToken {

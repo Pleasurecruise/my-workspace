@@ -103,7 +103,7 @@ fn authorize(app: &tauri::AppHandle, window: &tauri::WebviewWindow) -> Result<()
     if window.label() != "main" {
         return Err("The terminal is only available in the main application window.".into());
     }
-    if app.state::<crate::configuration::AppLockState>().locked() {
+    if app.state::<crate::app_lock::AppLock>().locked() {
         return Err("Unlock Vesper to use the terminal.".into());
     }
     Ok(())

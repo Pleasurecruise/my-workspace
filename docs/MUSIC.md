@@ -10,9 +10,9 @@ queue order, decoding, and audio output. There is no music proxy server in this 
 SettingsView -> settings/session.svelte.ts ──┐
 MusicView ──────────────────────────────────┤
   -> typed Tauri commands in desktop music.rs
-  -> MusicState: lazily initialized Spotify and QQ runtimes
-  -> crates/music: provider APIs, lyrics, and local audio
-  -> crates/credentials: renewable provider credentials
+  -> Music state: lazily initialized Spotify and QQ runtimes behind one Player dispatch
+  -> crates/music: provider APIs, lyrics, local audio, and spotify/qq credentials modules
+  -> crates/vault: credential storage
 ```
 
 | Source                                                                              | Responsibility                                                                                                    |
@@ -182,7 +182,7 @@ reproduces librespot's non-Premium process exit.
 
 Frontend tests cover Settings prefill and Client ID submission, music controls, library retry,
 reconnection cache invalidation, and late responses from a previous account. Run the Music,
-credentials, and desktop Rust tests with `cargo test -p music -p vesper-credentials -p vesper --lib`
+credentials, and desktop Rust tests with `cargo test -p music -p vault -p vesper --lib`
 and the frontend suite through `pnpm test:frontend`. The HTTP tests use loopback listeners and
 synthetic credentials.
 

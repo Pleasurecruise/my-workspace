@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from "svelte";
-	import type { Habit } from "../../consumer";
+	import type { Habit } from "../../contracts/dashboard";
 	import type { createDashboardSession } from "./session.svelte";
 	import CalendarPanel from "./CalendarPanel.svelte";
 	import Todo from "./Todo.svelte";

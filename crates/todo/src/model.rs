@@ -59,7 +59,7 @@ pub enum Error {
     #[error("Notion calendar: {0}")]
     Notion(String),
     #[error(transparent)]
-    Credentials(#[from] vesper_credentials::CredentialError),
+    Credentials(#[from] vault::Error),
     #[error("the operating-system application data directory is unavailable")]
     DataDirectoryUnavailable,
     #[error("could not determine the local date: {0}")]
@@ -91,7 +91,7 @@ pub enum Error {
     #[error("multiple Todo schedule sources use the same file name: {0}")]
     DuplicateScheduleName(String),
     #[error(transparent)]
-    Database(#[from] vesper_database::Error),
+    Database(#[from] database::Error),
     #[error("Todo database operation failed: {0}")]
     Query(#[from] diesel::result::Error),
     #[error("Todo database contains an invalid item")]

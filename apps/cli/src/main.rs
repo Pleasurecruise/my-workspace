@@ -15,7 +15,7 @@ fn main() -> ExitCode {
     let arguments = match arguments::parse(std::env::args_os()) {
         Ok(arguments) => arguments,
         Err(error) => {
-            let code = error.exit_code() as u8;
+            let code = u8::try_from(error.exit_code()).unwrap_or(u8::MAX);
             if error.print().is_err() {
                 return ExitCode::FAILURE;
             }
@@ -28,7 +28,7 @@ fn main() -> ExitCode {
 #[tokio::main]
 async fn execute(arguments: Vec<String>) -> ExitCode {
     #[cfg(debug_assertions)]
-    if let Err(error) = vesper_credentials::load_dev_environment() {
+    if let Err(error) = vault::load_dev_environment() {
         eprintln!("error: {error}");
         return ExitCode::FAILURE;
     }
@@ -66,7 +66,7 @@ async fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
 
     match arguments.as_slice() {
         [command] if command == "build" => {
-            let output = cms_core::build::build(&repository)
+            let output = cms::build::build(&repository)
                 .await
                 .map_err(|error| error.to_string())?;
             let report = output.report();
@@ -101,10 +101,10 @@ async fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
 }
 
 async fn publish(repository: &std::path::Path, live: bool) -> Result<(), String> {
-    let output = cms_core::build::build(repository)
+    let output = cms::build::build(repository)
         .await
         .map_err(|error| error.to_string())?;
-    let report = cms_core::publish::publish(output.directory(), live)
+    let report = cms::publish::publish(output.directory(), live)
         .await
         .map_err(|error| error.to_string())?;
     println!(

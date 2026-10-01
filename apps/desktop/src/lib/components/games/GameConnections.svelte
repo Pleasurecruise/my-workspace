@@ -4,7 +4,8 @@
 	import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Select } from "@my-workspace/ui";
 	import { invoke } from "@tauri-apps/api/core";
 	import { onDestroy, onMount, tick, untrack } from "svelte";
-	import type { CommandResponse, Game, GameConnections, GameLoginProgress, GameLoginQr, SteamSettings } from "../../consumer";
+	import type { CommandResponse } from "../../contracts/command";
+	import type { Game, GameConnections, GameLoginProgress, GameLoginQr, SteamSettings } from "../../contracts/games";
 	import { gameNames } from "../../dashboard";
 	let { reconnectMihoyo }: { reconnectMihoyo: boolean } = $props();
 	$effect(() => { if (reconnectMihoyo) untrack(() => { void connect("mihoyo"); }); });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { createChatSession } from "../session.svelte";
-import type { ChatSnapshot, CommandResponse } from "../../../consumer";
+import type { ChatSnapshot } from "../../../contracts/chat";
+import type { CommandResponse } from "../../../contracts/command";
 
 const { invoke, mounts, listeners } = vi.hoisted(() => ({
 	invoke: vi.fn(),

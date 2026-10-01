@@ -111,7 +111,7 @@ pub(crate) fn handle_menu_event(app: &tauri::AppHandle, event: &MenuEvent) {
     }
 
     if event.id() == TOGGLE_DEVTOOLS_MENU_ID {
-        if app.state::<crate::configuration::AppLockState>().locked() {
+        if app.state::<crate::app_lock::AppLock>().locked() {
             return;
         }
         if let Some(webview) = app.get_webview_window("main") {

@@ -2,7 +2,7 @@
 #[cfg(debug_assertions)]
 #[ignore = "requires the configured local UGOS device and operating-system credential store"]
 async fn reads_live_task_manager() {
-    vesper_credentials::load_dev_environment().expect("development environment should be readable");
+    vault::load_dev_environment().expect("development environment should be readable");
     let snapshot = ugos::task_manager()
         .await
         .expect("configured UGOS Task Manager should be available");

@@ -13,7 +13,6 @@ mod style;
 mod tests;
 mod twitter;
 
-use futures_util::stream::{self, StreamExt, TryStreamExt};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use std::collections::{HashMap, HashSet};
 
@@ -28,15 +27,14 @@ const DIFF: &str = "embed:diff";
 const STOCK: &str = "embed:stock";
 const ARCHITECTURE: &str = "embed:architecture";
 const STORYBOARD: &str = "embed:storyboard";
-const DATA_CONCURRENCY: usize = 4;
 
 /// Resolved provider snapshots used by embed rendering. Fields remain provider-owned.
 #[derive(Default)]
 pub struct Data {
-    repositories: HashMap<String, ::github::RepositorySnapshot>,
-    links: HashMap<String, link_preview::LinkMetadata>,
-    tweets: HashMap<String, Result<link_preview::twitter::Post, String>>,
-    stocks: HashMap<String, market_data::stocks::StockSeries>,
+    pub repositories: HashMap<String, ::github::RepositorySnapshot>,
+    pub links: HashMap<String, link_preview::LinkMetadata>,
+    pub tweets: HashMap<String, Result<link_preview::twitter::Post, String>>,
+    pub stocks: HashMap<String, market_data::stocks::StockSeries>,
     pub articles: HashMap<String, ArticleMetadata>,
 }
 
@@ -142,40 +140,36 @@ pub enum EmbedError {
     InvalidCanvas { kind: &'static str, message: String },
 }
 
-/// Resolve provider data referenced by namespaced fences in the document.
-pub async fn load(source: &str) -> Result<Data, EmbedError> {
-    load_with_articles(source, HashMap::new()).await
+#[derive(Debug, Default)]
+pub struct References {
+    pub repositories: HashSet<String>,
+    pub links: HashSet<String>,
+    pub tweets: HashSet<String>,
+    pub stocks: HashSet<String>,
 }
 
-/// Article cards resolve exclusively from the host-provided article index.
-pub async fn load_with_articles(
-    source: &str,
-    articles: HashMap<String, ArticleMetadata>,
-) -> Result<Data, EmbedError> {
-    let mut repositories = HashSet::new();
-    let mut stocks = HashSet::new();
-    let mut links = HashSet::new();
-    let mut tweets = HashSet::new();
+pub fn references(source: &str) -> Result<References, EmbedError> {
+    let mut references = References::default();
     for (language, source) in parse_fences(source) {
         match language.as_str() {
             GITHUB => {
                 let parsed = fields(&language, &source)?;
                 let (repo, _) = github::parse(parsed)?;
-                repositories.insert(repo.to_owned());
+                references.repositories.insert(repo.to_owned());
             }
             LINK => {
                 let parsed = fields(&language, &source)?;
                 let (url, _) = link::parse(parsed)?;
-                links.insert(url.to_owned());
+                references.links.insert(url.to_owned());
             }
             TWITTER => {
                 let (url, _) = twitter::parse(fields(&language, &source)?)?;
-                tweets.insert(url);
+                references.tweets.insert(url);
             }
             STOCK => {
                 let parsed = fields(&language, &source)?;
                 let (code, _) = stock::parse(parsed)?;
-                stocks.insert(code);
+                references.stocks.insert(code);
             }
             ARTICLE => {
                 let list = article::list(&source)?;
@@ -203,49 +197,7 @@ pub async fn load_with_articles(
             _ => {}
         }
     }
-
-    let mut data = Data {
-        articles,
-        ..Data::default()
-    };
-    let repository_data = stream::iter(repositories.into_iter().map(|repo| async move {
-        let snapshot = ::github::read_repository(&repo).await?;
-        Ok::<_, String>((repo, snapshot))
-    }))
-    .buffer_unordered(DATA_CONCURRENCY)
-    .try_collect::<Vec<_>>()
-    .await
-    .map_err(EmbedError::Data)?;
-    for (repo, snapshot) in repository_data {
-        data.repositories.insert(repo, snapshot);
-    }
-    data.links = stream::iter(links.into_iter().map(|url| async move {
-        let metadata = link_preview::read(&url).await?;
-        Ok::<_, String>((url, metadata))
-    }))
-    .buffer_unordered(DATA_CONCURRENCY)
-    .try_collect()
-    .await
-    .map_err(EmbedError::Data)?;
-    data.tweets = stream::iter(tweets.into_iter().map(|url| async move {
-        let post = link_preview::twitter::read(&url).await;
-        (url, post)
-    }))
-    .buffer_unordered(DATA_CONCURRENCY)
-    .collect()
-    .await;
-    if !stocks.is_empty() {
-        let report = market_data::stocks::read(stocks.into_iter().collect())
-            .await
-            .map_err(EmbedError::Data)?;
-        if let Some(failure) = report.failures.into_iter().next() {
-            return Err(EmbedError::Data(failure.message));
-        }
-        for stock in report.stocks {
-            data.stocks.insert(stock.symbol.clone(), stock);
-        }
-    }
-    Ok(data)
+    Ok(references)
 }
 
 /// Render a namespaced fence, or return `None` for ordinary code languages.

@@ -14,10 +14,10 @@ and archive calculations.
 | [GachaPanel.svelte](../apps/desktop/src/lib/components/games/GachaPanel.svelte)           | Local account/archive selection, manual sync, rarity rings, and recent records                                |
 | [GameConnections.svelte](../apps/desktop/src/lib/components/games/GameConnections.svelte) | QR dialogs, miHoYo logins and per-game selections, and Steam credential form                                  |
 | [SteamGamesPanel.svelte](../apps/desktop/src/lib/components/games/SteamGamesPanel.svelte) | Steam presence, library totals, recent activity, and ranked games                                             |
-| [gaming.rs](../apps/desktop/src-tauri/src/gaming.rs)                                      | Typed Tauri commands, settings prefill, and account/daily events                                              |
-| [gaming/](../apps/desktop/src-tauri/src/gaming)                                           | Isolated verification windows and restricted browser bridge                                                   |
+| [games.rs](../apps/desktop/src-tauri/src/games.rs)                                        | Typed Tauri commands, settings prefill, and account/daily events                                              |
+| [games/](../apps/desktop/src-tauri/src/games)                                             | Isolated verification windows and restricted browser bridge                                                   |
 | [crates/games](../crates/games/src/lib.rs)                                                | Runtime, provider operations, daily cache, verification lifecycle, and archive access                         |
-| [credentials/games](../crates/credentials/src/games/mod.rs)                               | Typed provider secrets, account collection, selections, and SQLite/system-store persistence                   |
+| [games::session](../crates/games/src/session.rs)                                          | Typed provider secrets, account collection, selections, and SQLite/system-store persistence                   |
 
 ```text
 Settings -> QR / account binding -> credentials

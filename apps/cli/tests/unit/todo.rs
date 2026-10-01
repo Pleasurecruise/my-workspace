@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn dated_check_ins() {
     let directory = tempfile::tempdir().unwrap();
-    let store = todo_core::Store::new(directory.path().join("vesper.sqlite3"));
+    let store = ::todo::Store::new(directory.path().join("vesper.sqlite3"));
     let ids = vec!["read".to_owned()];
     run_with_store(&store, "2024-02-29", "check-in", &ids)
         .await
@@ -51,7 +51,7 @@ async fn dated_check_ins() {
 #[tokio::test]
 async fn rejects_bad_todo_args() {
     let directory = std::env::temp_dir().join(format!("vesper-cli-todo-{}", uuid::Uuid::new_v4()));
-    let store = todo_core::Store::new(directory.join("vesper.sqlite3"));
+    let store = ::todo::Store::new(directory.join("vesper.sqlite3"));
 
     let error = run_with_store(&store, "2026-08-23", "create", &[])
         .await
@@ -64,8 +64,8 @@ async fn rejects_bad_todo_args() {
 #[tokio::test]
 async fn calendar_reads_roll_over_to_today() {
     let directory = tempfile::tempdir().unwrap();
-    let store = todo_core::Store::new(directory.path().join("vesper.sqlite3"));
-    let today = todo_core::current_date().unwrap();
+    let store = ::todo::Store::new(directory.path().join("vesper.sqlite3"));
+    let today = ::todo::current_date().unwrap();
     let previous = "2024-02-29";
     let list = store.create(previous, "Carry", None).await.unwrap();
     let id = &list.items[0].id;
@@ -80,7 +80,7 @@ async fn calendar_reads_roll_over_to_today() {
 #[tokio::test]
 async fn invalid_import_does_not_advance_tasks() {
     let directory = tempfile::tempdir().unwrap();
-    let store = todo_core::Store::new(directory.path().join("vesper.sqlite3"));
+    let store = ::todo::Store::new(directory.path().join("vesper.sqlite3"));
     let previous = "2024-02-29";
     let list = store
         .create(previous, "Keep on original day", None)

@@ -4,7 +4,7 @@
 	import ConnectionStatus from "../layout/ConnectionStatus.svelte";
 	import { tick } from "svelte";
 	import { openUrl } from "@tauri-apps/plugin-opener";
-	import type { ChatSnapshot } from "../../consumer";
+	import type { ChatSnapshot } from "../../contracts/chat";
 	import type { createChatSession } from "../chat/session.svelte";
 	import "../knowledge/prose.css";
 

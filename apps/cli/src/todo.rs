@@ -10,19 +10,19 @@ pub async fn run(
     if action == "notion" {
         return match arguments {
             [operation] if operation == "status" => {
-                match vesper_credentials::notion_calendar().map_err(|error| error.to_string())? {
-                    vesper_credentials::Stored::Missing => {
+                match ::todo::notion::configuration::read().map_err(|error| error.to_string())? {
+                    vault::Stored::Missing => {
                         print_json(&json!({ "configured": false, "viewUrl": null }))
                     }
-                    vesper_credentials::Stored::Ready(configuration) => print_json(
+                    vault::Stored::Ready(configuration) => print_json(
                         &json!({ "configured": true, "viewUrl": configuration.view_url }),
                     ),
                 }
             }
             [operation, view_url] if operation == "connect" => {
-                todo_core::Store::shared()
+                ::todo::Store::shared()
                     .map_err(|error| error.to_string())?
-                    .configure_notion(vesper_credentials::NotionCalendar {
+                    .configure_notion(::todo::notion::configuration::Configuration {
                         view_url: view_url.clone(),
                     })
                     .await
@@ -30,9 +30,9 @@ pub async fn run(
                 print_json(&json!({ "configured": true }))
             }
             [operation] if operation == "disconnect" => {
-                todo_core::Store::shared()
+                ::todo::Store::shared()
                     .map_err(|error| error.to_string())?
-                    .configure_notion(vesper_credentials::NotionCalendar {
+                    .configure_notion(::todo::notion::configuration::Configuration {
                         view_url: String::new(),
                     })
                     .await
@@ -42,19 +42,19 @@ pub async fn run(
             _ => Err("expected todo notion status | connect <view-url> | disconnect".into()),
         };
     }
-    let store = todo_core::Store::shared().map_err(|error| error.to_string())?;
+    let store = ::todo::Store::shared().map_err(|error| error.to_string())?;
     let date = match selected_date {
         Some(date) => {
-            todo_core::validate_date(date).map_err(|error| error.to_string())?;
+            ::todo::validate_date(date).map_err(|error| error.to_string())?;
             date.to_owned()
         }
-        None => todo_core::current_date().map_err(|error| error.to_string())?,
+        None => ::todo::current_date().map_err(|error| error.to_string())?,
     };
     run_with_store(&store, &date, action, arguments).await
 }
 
 async fn run_with_store(
-    store: &todo_core::Store,
+    store: &::todo::Store,
     date: &str,
     action: &str,
     arguments: &[String],
@@ -73,7 +73,7 @@ async fn run_with_store(
                 .map_err(|error| error.to_string())?,
         ),
         ("list" | "sync" | "sync-ics", []) => {
-            let today = todo_core::current_date().map_err(|error| error.to_string())?;
+            let today = ::todo::current_date().map_err(|error| error.to_string())?;
             store
                 .roll_over(&today)
                 .await
@@ -97,7 +97,7 @@ async fn run_with_store(
                 .import_schedules(&sources)
                 .await
                 .map_err(|error| error.to_string())?;
-            let today = todo_core::current_date().map_err(|error| error.to_string())?;
+            let today = ::todo::current_date().map_err(|error| error.to_string())?;
             store
                 .roll_over(&today)
                 .await

@@ -1,17 +1,17 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import { fromStore, writable } from "svelte/store";
+import type { CommandResponse } from "../../../contracts/command";
+import type { GameConnections } from "../../../contracts/games";
 import type {
 	ApiConfiguration,
-	CommandResponse,
 	CodexResets,
 	ConfigurationStatus,
-	GameConnections,
 	NtfyConfig,
 	NotionCalendar,
 	R2Configuration,
 	UgosConfiguration,
-} from "../../../consumer";
+} from "../../../contracts/settings";
 import SettingsView from "../SettingsView.svelte";
 
 vi.mock("@tauri-apps/api/core", () => ({

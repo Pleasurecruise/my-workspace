@@ -7,13 +7,14 @@ and publication artifacts are transport formats, not local database substitutes.
 
 ## Location and schema
 
-Desktop uses `app_local_data_dir()` and CLI uses `dirs::data_local_dir()` plus `me.you-find.vesper`.
-On macOS this is `~/Library/Application Support/me.you-find.vesper/`. Both applications use the same
+Desktop and CLI both call `database::path()`: `dirs::data_local_dir()` plus `database::APP_ID`
+(`me.you-find.vesper`, matching the Tauri identifier). On macOS this is
+`~/Library/Application Support/me.you-find.vesper/`. Both applications use the same
 `vesper.sqlite3`; Windows local data must not be confused with roaming application data.
 ICS keeps its original `dirs::data_dir()/me.you-find.vesper/ics` location, including the roaming
 application-data directory on Windows. ORM storage changes do not move or delete those input files.
 
-`crates/database` owns connection setup and the schema. Connections enforce foreign keys, a bounded
+`crates/database` owns the application identifier, path, connection setup and the schema. Connections enforce foreign keys, a bounded
 SQLite busy timeout, and synchronous commits. Unix database permissions are restricted to the owner.
 `schema.sql` is the only schema definition. Opening the database creates missing tables with
 `CREATE TABLE IF NOT EXISTS`; it does not upgrade or reset existing tables. This personal application
@@ -25,18 +26,18 @@ for a change confined to one feature. Normal reopen must not erase saved data.
 Corrupt databases fail without replacing their contents. Application startup neither imports retired
 file stores nor falls back to them; normal reads and writes use the shared database.
 
-| Tables                                        | Feature owner           | Contents                                                            |
-| --------------------------------------------- | ----------------------- | ------------------------------------------------------------------- |
-| `dashboard_widgets`, `dashboard_layout`       | Desktop widgets         | Ordered placements and nullable island selection                    |
-| `todo_items`, `todo_occurrences`              | Todo                    | Dated tasks and suppressed/imported occurrence keys                 |
-| `todo_sources`                                | Todo                    | Public calendar source enable preferences keyed by source name      |
-| `check_ins`                                   | Todo                    | Habit completions keyed by stable habit ID and selected date        |
-| `ledger_entries`                              | Ledger                  | Dated GBP expenses in integer pence with category and creation time |
-| `notifications`, `notification_cursor`        | Desktop Inbox           | Pending messages and SSE replay cursor                              |
-| `game_accounts`, `game_pulls`, `game_reports` | Games                   | Accounts, deduplicated history and official reports                 |
-| `game_diagnostic`                             | Games                   | Latest bounded verification metadata, excluding secrets             |
-| `telegram_session`                            | Social                  | MTProto session state                                               |
-| `credentials`                                 | Credentials, debug only | Development credentials and renewable sessions                      |
+| Tables                                        | Feature owner     | Contents                                                            |
+| --------------------------------------------- | ----------------- | ------------------------------------------------------------------- |
+| `dashboard_widgets`, `dashboard_layout`       | Dashboard         | Ordered placements and nullable island selection                    |
+| `todo_items`, `todo_occurrences`              | Todo              | Dated tasks and suppressed/imported occurrence keys                 |
+| `todo_sources`                                | Todo              | Public calendar source enable preferences keyed by source name      |
+| `check_ins`                                   | Todo              | Habit completions keyed by stable habit ID and selected date        |
+| `ledger_entries`                              | Ledger            | Dated GBP expenses in integer pence with category and creation time |
+| `notifications`, `notification_cursor`        | Inbox             | Pending messages and SSE replay cursor                              |
+| `game_accounts`, `game_pulls`, `game_reports` | Games             | Accounts, deduplicated history and official reports                 |
+| `game_diagnostic`                             | Games             | Latest bounded verification metadata, excluding secrets             |
+| `telegram_session`                            | Social            | MTProto session state                                               |
+| `credentials`                                 | Vault, debug only | Development credentials and renewable sessions                      |
 
 Typed provider unions, report payloads and credential values may use JSON inside a database field.
 Their owning module validates the payload; ordering, identity and transaction boundaries are database

@@ -8,7 +8,7 @@ fn main() {
                 let result = (|| -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     let fake_sdk = r#"window.initGeetest = (options, ready) => ready({onReady(fn){setTimeout(fn,0)},verify(){},onError(){},onSuccess(fn){setTimeout(fn,10)},getValidate(){return {geetest_challenge:'mock-challenge',geetest_validate:'mock-validate',geetest_seccode:'mock-validate|jordan'}}});"#;
                     let sdk = format!("data:text/javascript,{}", percent_encoding::utf8_percent_encode(fake_sdk, percent_encoding::NON_ALPHANUMERIC));
-                    let html = include_str!("../src/gaming/captcha.html")
+                    let html = include_str!("../src/games/captcha.html")
                         .replace("__VESPER_CAPTCHA__", r#"{"gt":"mock-gt","challenge":"mock-challenge"}"#)
                         .replace("https://static.geetest.com/static/js/gt.0.5.2.js", &sdk);
                     let url: reqwest::Url = format!("data:text/html,{}", percent_encoding::utf8_percent_encode(&html, percent_encoding::NON_ALPHANUMERIC)).parse()?;

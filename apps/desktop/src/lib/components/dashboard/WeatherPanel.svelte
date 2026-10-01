@@ -2,7 +2,7 @@
 	import { Cloud, CloudFog, CloudLightning, CloudRain, CloudSun, Snowflake, Sun } from "@lucide/svelte";
 	import { onMount } from "svelte";
 	import type { Component } from "svelte";
-	import type { Weather, WeatherLocation, WeatherReport } from "../../consumer";
+	import type { Weather, WeatherLocation, WeatherReport } from "../../contracts/dashboard";
 
 	let { weather, location, error }: { weather: WeatherReport | null; location: WeatherLocation; error: string | null } = $props();
 	let now = $state(new Date());

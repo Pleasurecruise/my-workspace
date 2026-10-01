@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { onMount } from "svelte";
-import type { CommandResponse, NtfyNotification } from "../../consumer";
+import type { CommandResponse } from "../../contracts/command";
+import type { NtfyNotification } from "../../contracts/inbox";
 
 export function createInboxSession(isActive: () => boolean) {
 	let notifications = $state<NtfyNotification[]>([]);

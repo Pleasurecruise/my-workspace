@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
-import type { CommandResponse, KnowledgeDocument } from "../../../consumer";
+import type { CommandResponse } from "../../../contracts/command";
+import type { KnowledgeDocument } from "../../../contracts/content";
 import KnowledgeView, { selectKnowledgeArticle } from "../KnowledgeView.svelte";
 
 const invoke = vi.hoisted(() => vi.fn());

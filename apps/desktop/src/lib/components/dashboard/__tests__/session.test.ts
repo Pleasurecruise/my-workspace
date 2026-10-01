@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import type { CommandResponse, TodoList } from "../../../consumer";
+import type { CommandResponse } from "../../../contracts/command";
+import type { TodoList } from "../../../contracts/todo";
 import { createDashboardSession } from "../session.svelte";
 
 const { invoke, listen, mounts, listeners } = vi.hoisted(() => ({
 	invoke: vi.fn(),
 	listen: vi.fn(),
-	mounts: [] as Array<() => () => void>,
+	mounts: new Array<() => () => void>(),
 	listeners: new Map<string, (event: { payload: unknown }) => void>(),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));

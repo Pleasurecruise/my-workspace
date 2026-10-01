@@ -1,13 +1,15 @@
 mod auth;
 mod client;
+pub mod credentials;
 mod tls;
 mod types;
 
+use credentials::Credentials;
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use vesper_credentials::{Stored, UgosCredentials};
+use vault::Stored;
 
 const HOST: &str = "ugreen";
 const PORT: u16 = 9443;
@@ -89,7 +91,7 @@ impl Timestamped for NetworkSample {
 #[derive(Debug, thiserror::Error)]
 pub enum UgosError {
     #[error("{0}")]
-    Credentials(#[from] vesper_credentials::CredentialError),
+    Credentials(#[from] vault::Error),
     #[error("UGOS credentials are not configured")]
     MissingCredentials,
     #[error("UGOS HTTP request failed: {0}")]
@@ -114,7 +116,7 @@ impl From<reqwest::Error> for UgosError {
 }
 
 pub fn configure(username: String, password: String) -> Result<(), UgosError> {
-    vesper_credentials::save_ugos(UgosCredentials { username, password })?;
+    credentials::save(Credentials { username, password })?;
     *CLIENT
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
@@ -134,18 +136,18 @@ pub async fn task_manager() -> Result<TaskManagerSnapshot, UgosError> {
     let client = match cached {
         Some(client) => client,
         None => {
-            let UgosCredentials { username, password } = match vesper_credentials::ugos()? {
+            let Credentials { username, password } = match credentials::read()? {
                 Stored::Ready(credentials) => credentials,
                 Stored::Missing => return Err(UgosError::MissingCredentials),
             };
             #[cfg(debug_assertions)]
             let fingerprint = tls::probe_fingerprint(HOST, PORT).await?;
             #[cfg(not(debug_assertions))]
-            let fingerprint = match vesper_credentials::ugos_certificate()? {
+            let fingerprint = match credentials::certificate()? {
                 Stored::Ready(fingerprint) => tls::CertFingerprint::from_hex(&fingerprint)?,
                 Stored::Missing => {
                     let fingerprint = tls::probe_fingerprint(HOST, PORT).await?;
-                    vesper_credentials::save_ugos_certificate(&fingerprint.to_hex())?;
+                    credentials::save_certificate(&fingerprint.to_hex())?;
                     fingerprint
                 }
             };

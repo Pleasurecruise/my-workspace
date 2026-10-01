@@ -1,10 +1,10 @@
 use crate::api::memos::MemoView;
-use cms_core::r2::{Store, StoreError};
+use cms::r2::{Store, StoreError};
 use serde::Serialize;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-pub use crate::api::moment::Photo as PhotoItem;
+use crate::api::moment::Photo;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Channel {
@@ -38,7 +38,7 @@ pub enum ChannelView {
         next_cursor: Option<String>,
     },
     Moment {
-        photos: Vec<PhotoItem>,
+        photos: Vec<Photo>,
         total: usize,
     },
     Knowledge {

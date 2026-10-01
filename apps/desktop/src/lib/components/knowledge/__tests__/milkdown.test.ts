@@ -1,8 +1,8 @@
 import { expect, it, vi } from "vite-plus/test";
 import { TextSelection } from "@milkdown/kit/prose/state";
 import { createEditor } from "../milkdown";
-import type { MarkdownSpan } from "../../../consumer";
-import fixtures from "@workspace/crates/cms-core/tests/fixtures/editor.json";
+import type { MarkdownSpan } from "../../../contracts/content";
+import fixtures from "@workspace/crates/markdown/tests/fixtures/editor.json";
 
 async function setup(source: string, ranges: MarkdownSpan[] = [], maxLength = 500_000) {
 	const root = document.createElement("div");

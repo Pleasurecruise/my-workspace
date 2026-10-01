@@ -3,19 +3,17 @@ pub mod archive;
 mod cache;
 mod login;
 mod mihoyo;
+pub mod session;
 mod skland;
-mod steam;
+pub mod steam;
 mod transport;
 
 pub use accounts::{Connections, connections};
 pub use login::{LoginProgress, LoginQr};
-pub use mihoyo::rail_gacha::Report as StarRailReport;
-pub use mihoyo::record::{
-    BridgeMessage, BridgeResult, USER_AGENT as RECORD_USER_AGENT, VerificationPage,
-};
+pub use mihoyo::record::{BridgeMessage, BridgeResult, RECORD_USER_AGENT, VerificationPage};
 pub use mihoyo::verification::{Captcha, CaptchaSolution};
 use serde::{Deserialize, Serialize};
-pub use vesper_credentials::games::Provider;
+pub use session::Provider;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -196,7 +194,7 @@ impl Runtime {
             .mihoyo
             .try_lock()
             .map_err(|_| "miHoYo is busy. Try again shortly.")?;
-        vesper_credentials::games::accounts::update(|accounts| accounts.select(game.key(), id))
+        crate::session::mihoyo::update(|accounts| accounts.select(game.key(), id))
             .map_err(|error| error.to_string())
     }
     pub async fn remove_account(&self, id: &str) -> Result<(), String> {
@@ -204,7 +202,7 @@ impl Runtime {
             .mihoyo
             .try_lock()
             .map_err(|_| "miHoYo is busy. Try again shortly.")?;
-        vesper_credentials::games::accounts::update(|accounts| accounts.remove(id))
+        crate::session::mihoyo::update(|accounts| accounts.remove(id))
             .map_err(|error| error.to_string())?;
         self.record.lock().await.remove(id);
         Ok(())
@@ -216,11 +214,11 @@ impl Runtime {
     }
     async fn read_notes(
         &self,
-        session: &vesper_credentials::games::Session,
+        session: &crate::session::Session,
         game: Game,
         refresh: bool,
     ) -> Result<Notes, NotesError> {
-        use vesper_credentials::games::Session;
+        use crate::session::Session;
         let (id, token) = match session {
             Session::Mihoyo {
                 account_id, stoken, ..
@@ -248,9 +246,9 @@ impl Runtime {
     // the session lock before callers resume network I/O.
     async fn load_record(
         &self,
-        session: &vesper_credentials::games::Session,
+        session: &crate::session::Session,
     ) -> Result<mihoyo::record::RecordSession, String> {
-        let vesper_credentials::games::Session::Mihoyo { account_id, .. } = session else {
+        let crate::session::Session::Mihoyo { account_id, .. } = session else {
             return Err("Invalid miHoYo account".into());
         };
         let mut records = self.record.lock().await;
@@ -274,7 +272,7 @@ impl Runtime {
         }
         let _guard = self.operation(Provider::Mihoyo).lock().await;
         let session = transport::game(game)?;
-        let vesper_credentials::games::Session::Mihoyo { account_id, .. } = &session else {
+        let crate::session::Session::Mihoyo { account_id, .. } = &session else {
             return Err("Invalid miHoYo account".into());
         };
         // Opening verification is explicit and always rebuilds the session rather than
@@ -296,7 +294,7 @@ impl Runtime {
     pub async fn sync(&self, game: Game) -> Result<archive::Summary, String> {
         enum Download {
             Records(Account, Vec<Pull>),
-            Official(Account, StarRailReport),
+            Official(Account, mihoyo::rail_gacha::Report),
         }
         let _guard = self
             .operation(game.provider())
@@ -347,13 +345,11 @@ impl Runtime {
     }
 }
 
-pub use steam::Snapshot as SteamSnapshot;
-
 pub async fn save_steam(api_key: String, steam_id: String) -> Result<(), String> {
-    let session = vesper_credentials::games::Session::Steam {
+    let session = crate::session::Session::Steam {
         api_key: api_key.trim().to_owned(),
         steam_id: steam_id.trim().to_owned(),
     };
     steam::read(&session).await?;
-    vesper_credentials::games::save(&session).map_err(|error| error.to_string())
+    crate::session::save(&session).map_err(|error| error.to_string())
 }

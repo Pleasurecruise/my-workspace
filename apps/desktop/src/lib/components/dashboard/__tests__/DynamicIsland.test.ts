@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import IslandApp from "../../../../IslandApp.svelte";
-import type { CommandResponse } from "../../../consumer";
+import type { CommandResponse } from "../../../contracts/command";
 
 const { invoke, listeners } = vi.hoisted(() => ({
 	invoke: vi.fn(),

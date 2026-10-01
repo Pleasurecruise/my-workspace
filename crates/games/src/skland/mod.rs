@@ -1,3 +1,4 @@
+use crate::session::Session;
 use crate::{
     Account, Game, Meter, Notes, Pull, Task,
     login::{Pending, Poll},
@@ -8,7 +9,6 @@ use md5::{Digest, Md5};
 use serde::{Deserialize, de::DeserializeOwned};
 use sha2_legacy::Sha256;
 use std::collections::{BTreeMap, HashSet};
-use vesper_credentials::games::Session;
 
 #[derive(Deserialize)]
 struct Envelope {

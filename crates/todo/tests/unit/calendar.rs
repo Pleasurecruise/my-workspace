@@ -280,7 +280,7 @@ fn retains_calendar_lock() {
 #[tokio::test]
 async fn reuses_calendar_snapshot() {
     // This URL cannot reach the provider: a cache miss must fail validation.
-    let configuration = vesper_credentials::NotionCalendar {
+    let configuration = crate::notion::configuration::Configuration {
         view_url: "invalid".into(),
     };
     let item = Item {
@@ -325,7 +325,7 @@ async fn reuses_calendar_snapshot() {
             .is_err()
     );
     assert_eq!(cache.as_ref().unwrap().items.len(), 1);
-    let changed = vesper_credentials::NotionCalendar {
+    let changed = crate::notion::configuration::Configuration {
         view_url: "another-invalid-view".into(),
     };
     assert!(
@@ -345,7 +345,7 @@ async fn reuses_calendar_snapshot() {
 #[tokio::test]
 async fn notion_preserves_order() {
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     let date = "2026-09-12";
     let manual = store
         .create(date, "Manual", None)
@@ -387,7 +387,7 @@ async fn notion_preserves_order() {
 #[tokio::test]
 async fn rollover_consolidates() {
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     let remote = Item {
         id: "notion:multi".into(),
         text: "Multi-day event".into(),
@@ -457,7 +457,7 @@ async fn rollover_consolidates() {
 #[tokio::test]
 async fn rollover_keeps_history() {
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     let remote = Item {
         id: "notion:completed-event".into(),
         text: "Finished event".into(),
@@ -506,7 +506,7 @@ async fn rollover_keeps_history() {
 #[tokio::test]
 async fn codex_preserves_local_state() {
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     let date = "2026-09-12";
     store.create(date, "Local task", None).await.unwrap();
     let remote = Item {
@@ -598,7 +598,7 @@ async fn codex_preserves_local_state() {
 #[tokio::test]
 async fn codex_rollover_is_unique() {
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     let remote = Item {
         id: "codex:reset".into(),
         text: "Codex usage reset".into(),
@@ -638,7 +638,7 @@ async fn codex_rollover_is_unique() {
 #[tokio::test]
 async fn isolates_source_failures() {
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     let date = "2026-09-12";
     let codex = Item {
         id: "codex:reset".into(),
@@ -701,7 +701,7 @@ async fn isolates_source_failures() {
 #[tokio::test]
 async fn codex_setting_is_local() {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join(vesper_database::FILE_NAME);
+    let path = directory.path().join(database::FILE_NAME);
     let store = Store::new(path.clone());
     assert!(!store.read_codex().await.unwrap().enabled);
     store
@@ -720,7 +720,7 @@ async fn codex_setting_is_local() {
 #[tokio::test]
 async fn codex_save_waits_for_sync() {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join(vesper_database::FILE_NAME);
+    let path = directory.path().join(database::FILE_NAME);
     let store = Store::new(path.clone());
     let lock = store.calendar_lock().await.unwrap();
     let writer = Store::new(path);
@@ -737,13 +737,13 @@ async fn codex_save_waits_for_sync() {
 async fn retains_codex_lock() {
     use diesel::connection::SimpleConnection;
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join(vesper_database::FILE_NAME);
+    let path = directory.path().join(database::FILE_NAME);
     let store = Store::new(path.clone());
     store
         .save_codex(Subscription { enabled: false })
         .await
         .unwrap();
-    let mut connection = vesper_database::open(&path).unwrap();
+    let mut connection = database::open(&path).unwrap();
     connection.batch_execute("BEGIN IMMEDIATE").unwrap();
     let competing = std::fs::OpenOptions::new()
         .read(true)

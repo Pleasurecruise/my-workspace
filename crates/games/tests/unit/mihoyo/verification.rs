@@ -255,7 +255,7 @@ fn redacts_rejection_details() {
 #[tokio::test]
 async fn redacts_diagnostics() {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join(vesper_database::FILE_NAME);
+    let path = directory.path().join(database::FILE_NAME);
     for retcode in [0, -999] {
         Diagnostic {
             game: Game::StarRail,
@@ -269,7 +269,7 @@ async fn redacts_diagnostics() {
         .unwrap();
     }
     use diesel::prelude::*;
-    let mut connection = vesper_database::open(&path).unwrap();
+    let mut connection = database::open(&path).unwrap();
     let rows = game_diagnostic::table
         .select((
             game_diagnostic::game,

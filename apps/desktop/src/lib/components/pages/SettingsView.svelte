@@ -28,18 +28,8 @@
 		{ id: "games", label: "Games", icon: QrCode },
 		{ id: "publishing", label: "Publishing", icon: Send },
 	];
-	import type {
-		ApiConfiguration,
-		CommandResponse,
-		CodexResets,
-		ConfigurationStatus,
-		NtfyConfig,
-		NotionCalendar,
-		R2Configuration,
-		TelegramAuthorizationStatus,
-		TelegramCredentials,
-		UgosConfiguration,
-	} from "../../consumer";
+	import type { CommandResponse } from "../../contracts/command";
+	import type { ApiConfiguration, CodexResets, ConfigurationStatus, NtfyConfig, NotionCalendar, R2Configuration, TelegramAuthorizationStatus, TelegramCredentials, UgosConfiguration } from "../../contracts/settings";
 
 	let {
 		reconnectMihoyo,

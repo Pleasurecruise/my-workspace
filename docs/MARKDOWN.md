@@ -1,17 +1,18 @@
 # Markdown Pipeline
 
-Rust owns Markdown compilation; Svelte receives HTML and display metadata. Consumers call
-`cms-core::markdown`, which parses documents and assembles HTML. `md-dialect` validates and renders
-custom `embed:*` fences, resolves provider snapshots, sanitizes SVG, and supplies embed styles.
+Rust owns Markdown compilation; Svelte receives HTML and display metadata. Consumers call the
+`markdown` crate, which parses documents, reads embed provider data and assembles HTML. `md-dialect`
+collects embed references, validates and renders custom `embed:*` fences from supplied snapshots,
+sanitizes SVG, and supplies embed styles; it performs no I/O.
 
 ## Compilation
 
-| Profile            | Output                                                                             |
-| ------------------ | ---------------------------------------------------------------------------------- |
-| Publication        | Syntect-highlighted code, Mermaid SVG, enriched embeds                             |
-| Knowledge          | Ordinary code/Mermaid fences, enriched embeds, stable heading IDs, TOC and excerpt |
-| Knowledge fallback | Embeds remain visible as source code                                               |
-| Memo               | Hard line breaks and indentation-based list continuations                          |
+| Profile                                    | Output                                                                             |
+| ------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Publication (`publication::render`)        | Syntect-highlighted code, Mermaid SVG, enriched embeds                             |
+| Knowledge (`knowledge::compile`)           | Ordinary code/Mermaid fences, enriched embeds, stable heading IDs, TOC and excerpt |
+| Knowledge fallback (`knowledge::fallback`) | Embeds remain visible as source code; no provider reads                            |
+| Memo (`render_memo`)                       | Hard line breaks and indentation-based list continuations                          |
 
 Knowledge strips one leading frontmatter block without using it as metadata. Publication does not.
 Embed validation precedes provider reads. Rust counts prose at 350 CJK characters or 200 other words
@@ -22,7 +23,7 @@ Consumers own storage and metadata; Vesper keeps no second Markdown mirror.
 
 Knowledge keeps authored Markdown as its storage contract. Milkdown edits ordinary prose, images,
 tables, task lists and footnotes. Rust identifies code blocks, frontmatter, math, Wiki links, image
-shortcodes and raw HTML through `cms-core::markdown::source_spans`; the thin `markdown_spans` IPC adapter returns UTF-16
+shortcodes and raw HTML through `markdown::source_spans`; the thin `markdown_spans` IPC adapter returns UTF-16
 offsets. Milkdown retains each containing top-level block and its required reference definitions as
 editable source. It does not implement the dialect compiler.
 

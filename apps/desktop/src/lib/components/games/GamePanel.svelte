@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Game } from "../../consumer";
+	import type { Game } from "../../contracts/games";
 	import { gameNames } from "../../dashboard";
 	import GameNotesPanel from "./GameNotesPanel.svelte";
 	import GachaPanel from "./GachaPanel.svelte";

@@ -2,7 +2,9 @@ import { beforeEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
 import { listen } from "@tauri-apps/api/event";
 import { fromStore, writable } from "svelte/store";
-import type { CommandResponse, Habit, TodoList } from "../../../consumer";
+import type { CommandResponse } from "../../../contracts/command";
+import type { Habit } from "../../../contracts/dashboard";
+import type { TodoList } from "../../../contracts/todo";
 import CalendarPanel from "../CalendarPanel.svelte";
 
 const { invoke, events } = vi.hoisted(() => ({

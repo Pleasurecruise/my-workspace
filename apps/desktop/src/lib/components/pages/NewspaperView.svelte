@@ -3,7 +3,8 @@
 	import PageSkeleton from "../layout/PageSkeleton.svelte";
 	import { mediaPlayers } from "../knowledge/media";
 	import { tick, untrack } from "svelte";
-	import type { KnowledgeDocument, KnowledgeEntry, CommandResponse, NewspaperIssues } from "../../consumer";
+	import type { CommandResponse } from "../../contracts/command";
+	import type { KnowledgeDocument, KnowledgeEntry, NewspaperIssues } from "../../contracts/content";
 
 	let linkError = $state<string | null>(null);
 

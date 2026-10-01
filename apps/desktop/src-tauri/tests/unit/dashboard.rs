@@ -64,9 +64,9 @@ async fn navigation_cancels_reads_waiting_for_a_source_lock() {
 async fn absent_widgets_and_invalid_layouts_never_start_provider_io() {
     let reads = AtomicUsize::new(0);
     for enabled in [Ok(false), Err("invalid layout".to_owned())] {
-        let response = read_provider(enabled.clone(), async {
+        let response = optional(Source::Codex, enabled.clone(), async {
             reads.fetch_add(1, Ordering::SeqCst);
-            Ok(42)
+            Ok::<_, String>(42)
         })
         .await;
         match enabled {
@@ -77,16 +77,19 @@ async fn absent_widgets_and_invalid_layouts_never_start_provider_io() {
     }
     assert_eq!(reads.load(Ordering::SeqCst), 0);
     assert!(matches!(
-        read_provider(Ok(true), async {
+        optional(Source::Codex, Ok(true), async {
             reads.fetch_add(1, Ordering::SeqCst);
-            Ok(42)
+            Ok::<_, String>(42)
         })
         .await,
         CommandResponse::Ready { data: Some(42) }
     ));
     assert_eq!(reads.load(Ordering::SeqCst), 1);
     assert!(matches!(
-        read_provider(Ok(true), async { Err::<u8, _>("offline".to_owned()) }).await,
+        optional(Source::Codex, Ok(true), async {
+            Err::<u8, _>("offline".to_owned())
+        })
+        .await,
         CommandResponse::Failed { .. }
     ));
 }

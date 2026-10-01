@@ -132,7 +132,7 @@ fn merges_official_history() {
     let mut real = pull("real-three-star", 3);
     real.pool = "11".into();
     merge(&path, &owner, &[real]).unwrap();
-    let report: crate::StarRailReport = serde_json::from_value(serde_json::json!({"pools":[{"id":"11","name":"Character event","total":150,"sinceHighRarity":30,"fiveStars":[{"id":"old-star","itemId":1,"name":"Character","pulls":60,"isUp":true}]}]})).unwrap();
+    let report: crate::mihoyo::rail_gacha::Report = serde_json::from_value(serde_json::json!({"pools":[{"id":"11","name":"Character event","total":150,"sinceHighRarity":30,"fiveStars":[{"id":"old-star","itemId":1,"name":"Character","pulls":60,"isUp":true}]}]})).unwrap();
     let first = save_official(&path, &owner, report.clone()).unwrap();
     assert_eq!(first.added, 1);
     assert_eq!(first.total, 1);

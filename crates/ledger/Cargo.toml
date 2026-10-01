@@ -6,7 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 diesel.workspace = true
-vesper-database.workspace = true
+database.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 time.workspace = true

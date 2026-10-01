@@ -1281,7 +1281,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
-name = "cms-core"
+name = "cms"
 version = "0.1.0"
 dependencies = [
  "aws-config",
@@ -1289,19 +1289,14 @@ dependencies = [
  "aws-sdk-s3",
  "aws-types",
  "futures-util",
- "linkify",
+ "markdown",
  "md-dialect",
- "mermaid-svg",
  "mime_guess",
  "percent-encoding",
- "pulldown-cmark",
- "regex",
  "serde",
  "serde_json",
- "syntect",
- "thiserror 2.0.20",
  "tokio",
- "vesper-credentials",
+ "vault",
 ]
 
 [[package]]
@@ -1345,12 +1340,13 @@ checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 name = "consumers"
 version = "0.1.0"
 dependencies = [
- "cms-core",
+ "cms",
  "futures-util",
  "heic",
  "hex",
  "image",
  "kamadak-exif",
+ "markdown",
  "percent-encoding",
  "reqwest 0.13.5",
  "serde",
@@ -1361,7 +1357,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
- "vesper-credentials",
+ "vault",
 ]
 
 [[package]]
@@ -1743,6 +1739,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashboard"
+version = "0.1.0"
+dependencies = [
+ "database",
+ "diesel",
+ "games",
+ "serde",
+ "serde_json",
+ "service-status",
+ "tempfile",
+]
+
+[[package]]
 name = "dasp_sample"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1759,6 +1768,17 @@ name = "data-url"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
+
+[[package]]
+name = "database"
+version = "0.1.0"
+dependencies = [
+ "diesel",
+ "dirs",
+ "libsqlite3-sys",
+ "tempfile",
+ "thiserror 2.0.20",
+]
 
 [[package]]
 name = "dbus"
@@ -2522,6 +2542,7 @@ name = "games"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "database",
  "diesel",
  "hex",
  "hmac 0.12.1",
@@ -2539,8 +2560,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
- "vesper-credentials",
- "vesper-database",
+ "vault",
 ]
 
 [[package]]
@@ -3563,6 +3583,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "inbox"
+version = "0.1.0"
+dependencies = [
+ "database",
+ "diesel",
+ "futures-util",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "vault",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3907,6 +3943,7 @@ dependencies = [
 name = "ledger"
 version = "0.1.0"
 dependencies = [
+ "database",
  "diesel",
  "serde",
  "tempfile",
@@ -3914,7 +3951,6 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
- "vesper-database",
 ]
 
 [[package]]
@@ -4279,6 +4315,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "markdown"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "github",
+ "link-preview",
+ "linkify",
+ "market-data",
+ "md-dialect",
+ "mermaid-svg",
+ "pulldown-cmark",
+ "regex",
+ "serde",
+ "serde_json",
+ "syntect",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
 name = "market-data"
 version = "0.1.0"
 dependencies = [
@@ -4333,7 +4389,6 @@ dependencies = [
 name = "md-dialect"
 version = "0.1.0"
 dependencies = [
- "futures-util",
  "github",
  "html-escape",
  "link-preview",
@@ -4501,6 +4556,7 @@ dependencies = [
  "hyper-util",
  "librespot-core",
  "librespot-playback",
+ "oauth",
  "rand 0.9.5",
  "reqwest 0.13.5",
  "rodio",
@@ -4510,8 +4566,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
- "vesper-credentials",
- "vesper-oauth",
+ "vault",
 ]
 
 [[package]]
@@ -4781,6 +4836,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "oauth"
+version = "0.1.0"
+dependencies = [
+ "httparse",
+ "oauth2",
+ "reqwest 0.13.5",
+ "thiserror 2.0.20",
+ "tokio",
 ]
 
 [[package]]
@@ -6929,9 +6995,11 @@ checksum = "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891"
 name = "social"
 version = "0.1.0"
 dependencies = [
+ "database",
  "diesel",
  "grammers-client",
  "grammers-session",
+ "oauth",
  "pulldown-cmark",
  "reqwest 0.13.5",
  "serde",
@@ -6939,9 +7007,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "uuid",
- "vesper-credentials",
- "vesper-database",
- "vesper-oauth",
+ "vault",
 ]
 
 [[package]]
@@ -7941,6 +8007,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
+ "database",
  "diesel",
  "dirs",
  "icalendar",
@@ -7956,8 +8023,7 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
- "vesper-credentials",
- "vesper-database",
+ "vault",
 ]
 
 [[package]]
@@ -8361,7 +8427,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "uuid",
- "vesper-credentials",
+ "vault",
 ]
 
 [[package]]
@@ -8534,6 +8600,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
+name = "vault"
+version = "0.1.0"
+dependencies = [
+ "database",
+ "diesel",
+ "dotenvy",
+ "keyring",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
 name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8593,14 +8674,17 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "vesper"
 version = "0.1.6"
 dependencies = [
- "cms-core",
+ "cms",
  "consumers",
- "diesel",
+ "dashboard",
+ "database",
  "futures-util",
  "games",
  "github",
+ "inbox",
  "ledger",
  "link-preview",
+ "markdown",
  "market-data",
  "music",
  "objc2",
@@ -8629,8 +8713,7 @@ dependencies = [
  "ugos",
  "useage",
  "uuid",
- "vesper-credentials",
- "vesper-database",
+ "vault",
  "weather",
 ]
 
@@ -8639,8 +8722,9 @@ name = "vesper-cli"
 version = "1.0.0"
 dependencies = [
  "clap",
- "cms-core",
+ "cms",
  "consumers",
+ "database",
  "games",
  "github",
  "ledger",
@@ -8657,48 +8741,8 @@ dependencies = [
  "ugos",
  "useage",
  "uuid",
- "vesper-credentials",
- "vesper-database",
+ "vault",
  "weather",
-]
-
-[[package]]
-name = "vesper-credentials"
-version = "0.1.0"
-dependencies = [
- "diesel",
- "dirs",
- "dotenvy",
- "keyring",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "url",
- "uuid",
- "vesper-database",
-]
-
-[[package]]
-name = "vesper-database"
-version = "0.1.0"
-dependencies = [
- "diesel",
- "dirs",
- "libsqlite3-sys",
- "tempfile",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "vesper-oauth"
-version = "0.1.0"
-dependencies = [
- "httparse",
- "oauth2",
- "reqwest 0.13.5",
- "thiserror 2.0.20",
- "tokio",
 ]
 
 [[package]]

@@ -1,28 +1,25 @@
 use std::error::Error;
 
-use cms::CmsState;
-use tauri::http::{Response, StatusCode, header};
 use tauri::{Emitter, Manager};
 use tracing_subscriber::EnvFilter;
 
+mod app_lock;
 mod chat;
-mod cms;
-mod configuration;
-mod consumer;
+mod content;
 mod dashboard;
-mod gaming;
+mod games;
+mod inbox;
 mod island;
 mod ledger;
 mod music;
-mod notifications;
-mod status;
+mod protocol;
+mod settings;
+mod social;
 mod storage;
-mod telegram;
 mod telemetry;
 mod terminal;
 mod todo;
 mod updater;
-mod widgets;
 
 #[derive(Clone, serde::Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
@@ -31,10 +28,40 @@ pub(crate) enum CommandResponse<T> {
     Failed { message: String },
 }
 
+impl<T, E: std::fmt::Display> From<Result<T, E>> for CommandResponse<T> {
+    fn from(result: Result<T, E>) -> Self {
+        match result {
+            Ok(data) => Self::Ready { data },
+            Err(error) => Self::Failed {
+                message: error.to_string(),
+            },
+        }
+    }
+}
+
+/// Command-body error: accepts any displayable error through `?`. It deliberately does not
+/// implement `Display`, which keeps both conversions below coherent.
+pub(crate) struct CommandError(String);
+
+impl<E: std::fmt::Display> From<E> for CommandError {
+    fn from(error: E) -> Self {
+        Self(error.to_string())
+    }
+}
+
+impl<T> From<Result<T, CommandError>> for CommandResponse<T> {
+    fn from(result: Result<T, CommandError>) -> Self {
+        match result {
+            Ok(data) => Self::Ready { data },
+            Err(CommandError(message)) => Self::Failed { message },
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(debug_assertions)]
-    if let Err(error) = vesper_credentials::load_dev_environment() {
+    if let Err(error) = vault::load_dev_environment() {
         panic!("failed to load development credentials: {error}");
     }
     if let Err(error) = init_logging() {
@@ -43,136 +70,15 @@ pub fn run() {
     tracing::info!("starting desktop application");
 
     let result = tauri::Builder::default()
-        .register_asynchronous_uri_scheme_protocol("vesper-asset", |context, request, responder| {
-            if context.webview_label() != "main" {
-                responder.respond(
-                    Response::builder()
-                        .status(StatusCode::FORBIDDEN)
-                        .body(Vec::new())
-                        .expect("static asset response should build"),
-                );
-                return;
-            }
-            if request.method() != tauri::http::Method::GET {
-                responder.respond(
-                    Response::builder()
-                        .status(StatusCode::METHOD_NOT_ALLOWED)
-                        .body(Vec::new())
-                        .expect("static asset response should build"),
-                );
-                return;
-            }
-            let app = context.app_handle().clone();
-            let key = match percent_encoding::percent_decode_str(
-                request.uri().path().trim_start_matches('/'),
-            )
-            .decode_utf8()
-            {
-                Ok(key) => key.into_owned(),
-                Err(_) => {
-                    responder.respond(
-                        Response::builder()
-                            .status(StatusCode::BAD_REQUEST)
-                            .body(Vec::new())
-                            .expect("static asset response should build"),
-                    );
-                    return;
-                }
-            };
-            let content_type = match key.rsplit_once('.').map(|(_, extension)| extension) {
-                Some(extension) if extension.eq_ignore_ascii_case("png") => "image/png",
-                Some(extension)
-                    if extension.eq_ignore_ascii_case("jpg")
-                        || extension.eq_ignore_ascii_case("jpeg") =>
-                {
-                    "image/jpeg"
-                }
-                Some(extension) if extension.eq_ignore_ascii_case("webp") => "image/webp",
-                Some(extension) if extension.eq_ignore_ascii_case("avif") => "image/avif",
-                _ => {
-                    responder.respond(
-                        Response::builder()
-                            .status(StatusCode::BAD_REQUEST)
-                            .body(Vec::new())
-                            .expect("static asset response should build"),
-                    );
-                    return;
-                }
-            };
-            tauri::async_runtime::spawn(async move {
-                let response = match app.state::<CmsState>().asset(&key).await {
-                    Ok(data) => Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, content_type)
-                        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-                        .header(header::CACHE_CONTROL, "no-store")
-                        .body(data.as_ref().clone())
-                        .expect("static asset response should build"),
-                    Err(error) => {
-                        tracing::warn!(%error, %key, "could not serve a Moment image");
-                        Response::builder()
-                            .status(StatusCode::NOT_FOUND)
-                            .body(Vec::new())
-                            .expect("static asset response should build")
-                    }
-                };
-                responder.respond(response);
-            });
-        })
-        .register_asynchronous_uri_scheme_protocol(
-            "vesper-music-cover",
-            |context, request, responder| {
-                if context.webview_label() != "main" || request.method() != tauri::http::Method::GET
-                {
-                    responder.respond(
-                        Response::builder()
-                            .status(StatusCode::FORBIDDEN)
-                            .body(Vec::new())
-                            .expect("music cover response should build"),
-                    );
-                    return;
-                }
-                let key = percent_encoding::percent_decode_str(
-                    request.uri().path().trim_start_matches('/'),
-                )
-                .decode_utf8()
-                .map(|key| key.into_owned());
-                let app = context.app_handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    let response = match key {
-                        Ok(key) => match app.state::<music::MusicState>().cover(&key).await {
-                            Ok(cover) => Response::builder()
-                                .status(StatusCode::OK)
-                                .header(header::CONTENT_TYPE, cover.content_type)
-                                .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-                                .header(header::CACHE_CONTROL, "private, max-age=86400")
-                                .body(cover.bytes)
-                                .expect("music cover response should build"),
-                            Err(error) => {
-                                tracing::warn!(%error, %key, "could not serve a music album cover");
-                                Response::builder()
-                                    .status(StatusCode::NOT_FOUND)
-                                    .body(Vec::new())
-                                    .expect("music cover response should build")
-                            }
-                        },
-                        Err(_) => Response::builder()
-                            .status(StatusCode::BAD_REQUEST)
-                            .body(Vec::new())
-                            .expect("music cover response should build"),
-                    };
-                    responder.respond(response);
-                });
-            },
-        )
+        .register_asynchronous_uri_scheme_protocol("vesper-asset", protocol::asset)
+        .register_asynchronous_uri_scheme_protocol("vesper-music-cover", protocol::music_cover)
         .manage(island::Visibility::default())
         .manage(chat::Runtime::default())
-        .manage(CmsState::default())
-        .manage(configuration::AppLockState::default())
-        .manage(configuration::PublicationState::default())
-        .manage(telegram::TelegramAuthorizationState::default())
-        .manage(music::MusicState::default())
-        .manage(dashboard::DashboardRuntime::default())
+        .manage(content::Content::default())
+        .manage(app_lock::AppLock::default())
+        .manage(social::Social::default())
+        .manage(music::Music::default())
+        .manage(dashboard::Runtime::default())
         .manage(updater::UpdateState::default())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
@@ -208,24 +114,16 @@ pub fn run() {
         .setup(|app| {
             app.manage(terminal::Runtime::default());
             terminal::start_monitoring(app.handle().clone());
-            app.manage(games::Runtime::new(
-                app.path()
-                    .app_local_data_dir()?
-                    .join(vesper_database::FILE_NAME),
-            ));
-            app.manage(todo_core::Store::shared()?);
-            app.manage(::ledger::Store::new(vesper_database::shared_path()?));
-            let notifications_path = app
-                .path()
-                .app_local_data_dir()?
-                .join(vesper_database::FILE_NAME);
-            app.manage(notifications::NotificationState::new(notifications_path));
+            app.manage(::games::Runtime::new(database::path()?));
+            app.manage(::todo::Store::shared()?);
+            app.manage(::ledger::Store::new(database::path()?));
+            app.manage(::inbox::Inbox::new(database::path()?));
             island::sync(app.handle());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let mut previous_date = None;
                 loop {
-                    match todo_core::current_date() {
+                    match ::todo::current_date() {
                         Ok(date) => {
                             if let Err(error) = todo::roll_over(&handle, &date).await {
                                 tracing::error!(%error, "failed to roll over unfinished Todos");
@@ -246,103 +144,65 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            app_lock::save_app_lock,
+            app_lock::remove_app_lock,
+            app_lock::unlock_app,
+            app_lock::lock_app,
+            app_lock::read_app_lock,
             chat::read_chat,
             chat::connect_chat,
             chat::send_chat,
             chat::control_chat,
-            terminal::set_terminal_active,
-            terminal::read_ssh_devices,
-            terminal::connect_terminal,
-            terminal::write_terminal,
-            terminal::record_terminal_activity,
-            terminal::resize_terminal,
-            terminal::acknowledge_terminal,
-            terminal::disconnect_terminal,
-            consumer::initialize_views,
-            consumer::read_channel,
-            consumer::read_memo_tags,
-            consumer::read_moment_tags,
-            consumer::create_memo,
-            consumer::import_x_memo,
-            consumer::update_memo,
-            consumer::delete_memo,
-            consumer::publish_telegram,
-            consumer::publish_x,
-            consumer::read_photo_metadata,
-            consumer::create_photo,
-            consumer::update_photo,
-            consumer::delete_photo,
-            consumer::create_knowledge,
-            consumer::update_knowledge,
-            consumer::read_knowledge,
-            consumer::prefetch_knowledge,
-            consumer::markdown_matches,
-            consumer::markdown_spans,
-            consumer::preview_knowledge,
-            updater::check_for_update,
-            updater::install_update,
+            content::initialize_views,
+            content::read_channel,
+            content::memos::read_memo_tags,
+            content::memos::create_memo,
+            content::memos::import_x_memo,
+            content::memos::update_memo,
+            content::memos::delete_memo,
+            content::moment::read_moment_tags,
+            content::moment::read_photo_metadata,
+            content::moment::create_photo,
+            content::moment::update_photo,
+            content::moment::delete_photo,
+            content::knowledge::create_knowledge,
+            content::knowledge::update_knowledge,
+            content::knowledge::read_knowledge,
+            content::knowledge::prefetch_knowledge,
+            content::knowledge::markdown_matches,
+            content::knowledge::markdown_spans,
+            content::knowledge::preview_knowledge,
             dashboard::refresh_dashboard,
             dashboard::refresh_island,
+            dashboard::set_dashboard_active,
+            dashboard::read_service_catalog,
+            dashboard::read_layout,
+            dashboard::reset_layout,
+            dashboard::save_layout,
+            games::read_game_connections,
+            games::select_game_account,
+            games::remove_game_account,
+            games::begin_game_login,
+            games::poll_game_login,
+            games::cancel_game_login,
+            games::save_steam_connection,
+            games::read_steam_settings,
+            games::read_game_notes,
+            games::verify_game,
+            games::read_steam_games,
+            games::read_gacha_archive,
+            games::sync_gacha_archive,
+            inbox::set_notifications_active,
+            inbox::read_notifications,
+            inbox::mark_notification_read,
             island::island_available,
             island::read_island_visible,
             island::set_island_visible,
             island::set_island_expanded,
-            dashboard::set_dashboard_active,
-            status::read_service_catalog,
-            storage::open_storage_settings,
-            widgets::read_layout,
-            widgets::reset_layout,
-            widgets::save_layout,
             ledger::read_expenses,
             ledger::create_expense,
             ledger::update_expense,
             ledger::delete_expense,
-            todo::read_todos,
-            todo::read_planner_date,
-            todo::read_planner_days,
-            todo::read_check_ins,
-            todo::set_check_in,
-            todo::add_todo,
-            todo::update_todo,
-            todo::set_todo_completed,
-            todo::set_todo_rollover,
-            todo::delete_todo,
-            todo::reorder_todos,
-            configuration::read_configuration,
-            configuration::save_ugos_configuration,
-            configuration::save_r2_configuration,
-            configuration::save_api_configuration,
-            configuration::save_telegram,
-            configuration::connect_x,
-            telegram::read_auth,
-            telegram::begin_auth,
-            telegram::submit_code,
-            telegram::submit_password,
-            telegram::cancel_auth,
-            configuration::save_ntfy_configuration,
-            configuration::save_notion_calendar,
-            configuration::save_codex_resets,
-            notifications::set_notifications_active,
-            notifications::read_notifications,
-            notifications::mark_notification_read,
-            configuration::save_app_lock,
-            configuration::remove_app_lock,
-            configuration::unlock_app,
-            configuration::lock_app,
-            configuration::read_app_lock,
-            gaming::read_game_connections,
-            gaming::select_game_account,
-            gaming::remove_game_account,
-            gaming::begin_game_login,
-            gaming::poll_game_login,
-            gaming::cancel_game_login,
-            gaming::save_steam_connection,
-            gaming::read_steam_settings,
-            gaming::read_game_notes,
-            gaming::verify_game,
-            gaming::read_steam_games,
-            gaming::read_gacha_archive,
-            gaming::sync_gacha_archive,
             music::connect_spotify,
             music::begin_qq_music_login,
             music::poll_qq_music_login,
@@ -354,7 +214,45 @@ pub fn run() {
             music::pause_music,
             music::seek_music,
             music::set_music_playback_order,
-            music::read_music_lyrics
+            music::read_music_lyrics,
+            settings::read_configuration,
+            settings::save_ugos_configuration,
+            settings::save_r2_configuration,
+            settings::save_api_configuration,
+            settings::save_ntfy_configuration,
+            settings::save_notion_calendar,
+            settings::save_codex_resets,
+            social::publish_telegram,
+            social::publish_x,
+            social::save_telegram,
+            social::connect_x,
+            social::read_auth,
+            social::begin_auth,
+            social::submit_code,
+            social::submit_password,
+            social::cancel_auth,
+            storage::open_storage_settings,
+            terminal::set_terminal_active,
+            terminal::read_ssh_devices,
+            terminal::connect_terminal,
+            terminal::write_terminal,
+            terminal::record_terminal_activity,
+            terminal::resize_terminal,
+            terminal::acknowledge_terminal,
+            terminal::disconnect_terminal,
+            todo::read_todos,
+            todo::read_planner_date,
+            todo::read_planner_days,
+            todo::read_check_ins,
+            todo::set_check_in,
+            todo::add_todo,
+            todo::update_todo,
+            todo::set_todo_completed,
+            todo::set_todo_rollover,
+            todo::delete_todo,
+            todo::reorder_todos,
+            updater::check_for_update,
+            updater::install_update
         ])
         .build(tauri::generate_context!());
     let app =

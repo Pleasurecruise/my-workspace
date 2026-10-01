@@ -7,13 +7,14 @@ use tokio::sync::{Mutex as AsyncMutex, watch};
 use tokio::task::JoinSet;
 use tokio::time::{Instant, interval_at};
 
-use crate::{CommandResponse, telemetry, widgets};
+use crate::{CommandResponse, telemetry};
+use dashboard::{Layout, Provider, Widget};
 use market_data::{exchange, stocks};
 
 const EVENT: &str = "dashboard-source-updated";
 const SOURCE_COUNT: usize = 18;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(usize)]
 enum Source {
     TaskManager,
@@ -84,159 +85,95 @@ enum DashboardEvent {
 
 impl DashboardEvent {
     async fn read(source: Source, app: &AppHandle, refresh_games: bool) -> Self {
+        if let Source::Games = source {
+            return Self::Games(crate::games::refresh(app, refresh_games).await.into());
+        }
+        let layout = layout();
+        let has = |check: fn(&Layout) -> bool| layout.as_ref().map(check).map_err(Clone::clone);
+        let provider = |provider: Provider| {
+            let layout = layout.as_ref().map_err(Clone::clone)?;
+            Ok(layout.has_provider(provider))
+        };
+        let list =
+            |items: fn(&Layout) -> Vec<String>| layout.as_ref().map(items).map_err(Clone::clone);
         match source {
-            Source::Games => match crate::gaming::refresh(app, refresh_games).await {
-                Ok(data) => Self::Games(CommandResponse::Ready { data }),
-                Err(message) => Self::Games(CommandResponse::Failed { message }),
-            },
-            Source::TaskManager => match widgets::has_ugos(app) {
-                Ok(false) => Self::TaskManager(CommandResponse::Ready { data: None }),
-                Ok(true) => match ugos::task_manager().await {
-                    Ok(data) => Self::TaskManager(CommandResponse::Ready { data: Some(data) }),
-                    Err(error) => {
-                        tracing::warn!(error = %error, "failed to load UGOS Task Manager");
-                        Self::TaskManager(CommandResponse::Failed {
-                            message: error.to_string(),
-                        })
-                    }
-                },
-                Err(message) => Self::TaskManager(CommandResponse::Failed { message }),
-            },
-            Source::DeviceTelemetry => match widgets::has_device_telemetry(app) {
-                Ok(false) => Self::DeviceTelemetry(CommandResponse::Ready { data: None }),
-                Ok(true) => match telemetry::read().await {
-                    Ok(data) => Self::DeviceTelemetry(CommandResponse::Ready { data: Some(data) }),
-                    Err(message) => {
-                        tracing::warn!(error = %message, "failed to read current-device telemetry");
-                        Self::DeviceTelemetry(CommandResponse::Failed { message })
-                    }
-                },
-                Err(message) => Self::DeviceTelemetry(CommandResponse::Failed { message }),
-            },
+            Source::Games => unreachable!("game sources return before reading the layout"),
+            Source::TaskManager => Self::TaskManager(
+                optional(source, has(Layout::has_ugos), ugos::task_manager()).await,
+            ),
+            Source::DeviceTelemetry => Self::DeviceTelemetry(
+                optional(source, has(Layout::has_device_telemetry), telemetry::read()).await,
+            ),
             Source::Codex => Self::Codex(
-                read_provider(
-                    widgets::has_provider(app, widgets::ProviderWidget::Codex),
-                    useage::codex::read(),
-                )
-                .await,
+                optional(source, provider(Provider::Codex), useage::codex::read()).await,
             ),
             Source::OpenCode => Self::OpenCode(
-                read_provider(
-                    widgets::has_provider(app, widgets::ProviderWidget::OpenCode),
+                optional(
+                    source,
+                    provider(Provider::OpenCode),
                     useage::opencode::read(),
                 )
                 .await,
             ),
             Source::Claude => Self::Claude(
-                read_provider(
-                    widgets::has_provider(app, widgets::ProviderWidget::Claude),
-                    useage::claude::read(),
-                )
-                .await,
+                optional(source, provider(Provider::Claude), useage::claude::read()).await,
             ),
-            Source::Grok => Self::Grok(
-                read_provider(
-                    widgets::has_provider(app, widgets::ProviderWidget::Grok),
-                    useage::grok::read(),
-                )
-                .await,
-            ),
+            Source::Grok => {
+                Self::Grok(optional(source, provider(Provider::Grok), useage::grok::read()).await)
+            }
             Source::Copilot => Self::Copilot(
-                read_provider(
-                    widgets::has_provider(app, widgets::ProviderWidget::Copilot),
-                    useage::copilot::read(),
-                )
-                .await,
+                optional(source, provider(Provider::Copilot), useage::copilot::read()).await,
             ),
             Source::DeepSeek => Self::DeepSeek(
-                read_provider(
-                    widgets::has_provider(app, widgets::ProviderWidget::DeepSeek),
+                optional(
+                    source,
+                    provider(Provider::DeepSeek),
                     useage::deepseek::read(),
                 )
                 .await,
             ),
             Source::CherryIn => Self::CherryIn(
-                read_provider(
-                    widgets::has_provider(app, widgets::ProviderWidget::CherryIn),
+                optional(
+                    source,
+                    provider(Provider::CherryIn),
                     useage::cherryin::read(),
                 )
                 .await,
             ),
             Source::TokenFlux => Self::TokenFlux(
-                read_provider(
-                    widgets::has_provider(app, widgets::ProviderWidget::TokenFlux),
+                optional(
+                    source,
+                    provider(Provider::TokenFlux),
                     useage::tokenflux::read(),
                 )
                 .await,
             ),
             Source::DimAgent => Self::DimAgent(
-                read_provider(
-                    widgets::has_provider(app, widgets::ProviderWidget::DimAgent),
+                optional(
+                    source,
+                    provider(Provider::DimAgent),
                     useage::dimagent::read(),
                 )
                 .await,
             ),
-            Source::Weather => match widgets::weather_locations(app) {
-                Ok(locations) => match weather::read(locations).await {
-                    Ok(data) => Self::Weather(Box::new(CommandResponse::Ready { data })),
-                    Err(message) => {
-                        tracing::warn!(error = %message, "failed to load weather");
-                        Self::Weather(Box::new(CommandResponse::Failed { message }))
-                    }
-                },
-                Err(message) => Self::Weather(Box::new(CommandResponse::Failed { message })),
-            },
-            Source::Stocks => match widgets::stock_symbols(app) {
-                Ok(symbols) => match stocks::read(symbols).await {
-                    Ok(data) => Self::Stocks(Box::new(CommandResponse::Ready { data })),
-                    Err(message) => {
-                        tracing::warn!(error = %message, "failed to load stocks");
-                        Self::Stocks(Box::new(CommandResponse::Failed { message }))
-                    }
-                },
-                Err(message) => Self::Stocks(Box::new(CommandResponse::Failed { message })),
-            },
-            Source::Exchange => match widgets::has_exchange(app) {
-                Ok(false) => Self::Exchange(Box::new(CommandResponse::Ready { data: None })),
-                Ok(true) => match exchange::read().await {
-                    Ok(data) => {
-                        Self::Exchange(Box::new(CommandResponse::Ready { data: Some(data) }))
-                    }
-                    Err(message) => {
-                        tracing::warn!(error = %message, "failed to load exchange rates");
-                        Self::Exchange(Box::new(CommandResponse::Failed { message }))
-                    }
-                },
-                Err(message) => Self::Exchange(Box::new(CommandResponse::Failed { message })),
-            },
-            Source::ServiceStatus => match widgets::service_ids(app) {
-                Ok(service_ids) => match service_status::read(service_ids).await {
-                    Ok(data) => Self::ServiceStatus(Box::new(CommandResponse::Ready { data })),
-                    Err(message) => {
-                        tracing::warn!(error = %message, "failed to load service status");
-                        Self::ServiceStatus(Box::new(CommandResponse::Failed { message }))
-                    }
-                },
-                Err(message) => Self::ServiceStatus(Box::new(CommandResponse::Failed { message })),
-            },
-            Source::Github => Self::Github(
-                read_provider(
-                    widgets::has_provider(app, widgets::ProviderWidget::Github),
-                    github::read(),
-                )
-                .await,
-            ),
-            Source::Quotation => match widgets::has_quotation(app) {
-                Ok(false) => Self::Quotation(CommandResponse::Ready { data: None }),
-                Ok(true) => match quotes::read().await {
-                    Ok(data) => Self::Quotation(CommandResponse::Ready { data: Some(data) }),
-                    Err(message) => {
-                        tracing::warn!(error = %message, "failed to load random quotation");
-                        Self::Quotation(CommandResponse::Failed { message })
-                    }
-                },
-                Err(message) => Self::Quotation(CommandResponse::Failed { message }),
-            },
+            Source::Github => {
+                Self::Github(optional(source, provider(Provider::Github), github::read()).await)
+            }
+            Source::Exchange => Self::Exchange(Box::new(
+                optional(source, has(Layout::has_exchange), exchange::read()).await,
+            )),
+            Source::Quotation => {
+                Self::Quotation(optional(source, has(Layout::has_quotation), quotes::read()).await)
+            }
+            Source::Weather => Self::Weather(Box::new(
+                listed(source, list(Layout::weather_locations), weather::read).await,
+            )),
+            Source::Stocks => Self::Stocks(Box::new(
+                listed(source, list(Layout::stock_symbols), stocks::read).await,
+            )),
+            Source::ServiceStatus => Self::ServiceStatus(Box::new(
+                listed(source, list(Layout::service_ids), service_status::read).await,
+            )),
         }
     }
 
@@ -254,22 +191,40 @@ impl DashboardEvent {
     }
 }
 
+pub(crate) fn layout() -> Result<Layout, String> {
+    let path = database::path()
+        .map_err(|error| format!("Could not resolve Dashboard database: {error}"))?;
+    dashboard::read(&path)
+}
+
+fn logged<T, E: std::fmt::Display>(source: Source, result: Result<T, E>) -> Result<T, E> {
+    if let Err(error) = &result {
+        tracing::warn!(?source, %error, "Dashboard source unavailable");
+    }
+    result
+}
+
 // A removed widget must not read credentials, start a CLI, or renew an OAuth session.
-async fn read_provider<T>(
+async fn optional<T, E: std::fmt::Display>(
+    source: Source,
     enabled: Result<bool, String>,
-    read: impl std::future::Future<Output = Result<T, String>>,
+    read: impl Future<Output = Result<T, E>>,
 ) -> CommandResponse<Option<T>> {
-    let result = match enabled {
-        Ok(false) => return CommandResponse::Ready { data: None },
-        Ok(true) => read.await,
-        Err(message) => return CommandResponse::Failed { message },
-    };
-    match result {
-        Ok(data) => CommandResponse::Ready { data: Some(data) },
-        Err(message) => {
-            tracing::warn!(error = %message, "Dashboard provider unavailable");
-            CommandResponse::Failed { message }
-        }
+    match enabled {
+        Ok(false) => CommandResponse::Ready { data: None },
+        Ok(true) => logged(source, read.await).map(Some).into(),
+        Err(message) => CommandResponse::Failed { message },
+    }
+}
+
+async fn listed<T, F: Future<Output = Result<T, String>>>(
+    source: Source,
+    items: Result<Vec<String>, String>,
+    read: impl FnOnce(Vec<String>) -> F,
+) -> CommandResponse<T> {
+    match items {
+        Ok(items) => logged(source, read(items).await).into(),
+        Err(message) => CommandResponse::Failed { message },
     }
 }
 
@@ -280,9 +235,9 @@ struct RuntimeState {
 }
 
 #[derive(Clone)]
-pub(crate) struct DashboardRuntime(Arc<RuntimeState>);
+pub(crate) struct Runtime(Arc<RuntimeState>);
 
-impl Default for DashboardRuntime {
+impl Default for Runtime {
     fn default() -> Self {
         Self(Arc::new(RuntimeState {
             active: watch::channel(false).0,
@@ -292,7 +247,7 @@ impl Default for DashboardRuntime {
     }
 }
 
-impl DashboardRuntime {
+impl Runtime {
     fn refresh_if_idle(&self, app: AppHandle, source: Source) {
         let active = self.0.active.subscribe();
         let Ok(source_guard) = Arc::clone(&self.0.sources[source as usize]).try_lock_owned() else {
@@ -324,8 +279,7 @@ async fn read_while_active<T>(
     }
 }
 
-fn island_sources(widget: &widgets::Widget) -> Vec<Source> {
-    use widgets::Widget;
+fn island_sources(widget: &Widget) -> Vec<Source> {
     match widget {
         Widget::Cpu | Widget::Memory | Widget::Storage | Widget::Network => {
             vec![Source::TaskManager]
@@ -360,13 +314,15 @@ fn island_sources(widget: &widgets::Widget) -> Vec<Source> {
 
 #[tauri::command]
 pub(crate) async fn refresh_island(app: AppHandle) -> CommandResponse<()> {
-    let widget = match widgets::island_widget(&app) {
-        Ok(Some(widget)) => widget,
-        Ok(None) => return CommandResponse::Ready { data: () },
+    let layout = match layout() {
+        Ok(layout) => layout,
         Err(message) => return CommandResponse::Failed { message },
     };
-    let runtime = app.state::<DashboardRuntime>();
-    futures_util::future::join_all(island_sources(&widget).into_iter().map(async |source| {
+    let Some(widget) = layout.island() else {
+        return CommandResponse::Ready { data: () };
+    };
+    let runtime = app.state::<Runtime>();
+    futures_util::future::join_all(island_sources(widget).into_iter().map(async |source| {
         let _guard = runtime.0.sources[source as usize].lock().await;
         DashboardEvent::read(source, &app, false).await.emit(&app);
     }))
@@ -379,7 +335,7 @@ pub(crate) async fn refresh_dashboard(
     app: AppHandle,
     refresh_games: Option<bool>,
 ) -> CommandResponse<()> {
-    let runtime = app.state::<DashboardRuntime>().inner().clone();
+    let runtime = app.state::<Runtime>().inner().clone();
     let mut active = runtime.0.active.subscribe();
     if !*active.borrow_and_update() {
         return CommandResponse::Ready { data: () };
@@ -420,7 +376,7 @@ pub(crate) async fn refresh_dashboard(
 pub(crate) fn set_dashboard_active(
     active: bool,
     app: AppHandle,
-    runtime: State<'_, DashboardRuntime>,
+    runtime: State<'_, Runtime>,
 ) -> CommandResponse<()> {
     let mut polling = match runtime.0.polling.lock() {
         Ok(polling) => polling,
@@ -482,6 +438,37 @@ pub(crate) fn set_dashboard_active(
         }
     }));
     CommandResponse::Ready { data: () }
+}
+
+#[tauri::command]
+pub(crate) fn read_layout() -> CommandResponse<Layout> {
+    layout().into()
+}
+
+#[tauri::command]
+pub(crate) fn save_layout(layout: Layout, app: AppHandle) -> CommandResponse<()> {
+    write(&app, &layout).into()
+}
+
+#[tauri::command]
+pub(crate) fn reset_layout(app: AppHandle) -> CommandResponse<Layout> {
+    let layout = Layout::default();
+    write(&app, &layout).map(|()| layout).into()
+}
+
+fn write(app: &AppHandle, layout: &Layout) -> Result<(), String> {
+    let path = database::path()
+        .map_err(|error| format!("Could not resolve Dashboard database: {error}"))?;
+    dashboard::write(&path, layout)?;
+    crate::island::sync(app);
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn read_service_catalog() -> CommandResponse<Vec<service_status::ServiceCatalogEntry>> {
+    CommandResponse::Ready {
+        data: service_status::read_catalog(),
+    }
 }
 
 #[cfg(test)]

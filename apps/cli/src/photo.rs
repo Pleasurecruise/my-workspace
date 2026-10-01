@@ -72,7 +72,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             let source = tokio::fs::read(source_path).await.map_err(|error| {
                 format!("could not read photo source image {source_path}: {error}")
             })?;
-            let store = cms_core::r2::Store::from_credentials()
+            let store = cms::r2::Store::from_credentials()
                 .await
                 .map_err(|error| error.to_string())?;
             let photo = consumers::api::moment::upload(
@@ -101,7 +101,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             print_json(&json!({ "id": id, "deleted": true }))
         }
         ("object-put", [key, path]) => {
-            let store = cms_core::r2::Store::from_credentials()
+            let store = cms::r2::Store::from_credentials()
                 .await
                 .map_err(|error| error.to_string())?;
             store
@@ -111,7 +111,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             print_json(&json!({ "key": key, "uploaded": true }))
         }
         ("object-get", [key, path]) => {
-            let store = cms_core::r2::Store::from_credentials()
+            let store = cms::r2::Store::from_credentials()
                 .await
                 .map_err(|error| error.to_string())?;
             let bytes = store.get(key).await.map_err(|error| error.to_string())?;
@@ -121,7 +121,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             print_json(&json!({ "key": key, "path": path, "downloaded": true }))
         }
         ("object-delete", [key]) => {
-            let store = cms_core::r2::Store::from_credentials()
+            let store = cms::r2::Store::from_credentials()
                 .await
                 .map_err(|error| error.to_string())?;
             store.delete(key).await.map_err(|error| error.to_string())?;

@@ -2,7 +2,9 @@ use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 use std::path::{Path, PathBuf};
 
+pub const APP_ID: &str = "me.you-find.vesper";
 pub const FILE_NAME: &str = "vesper.sqlite3";
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Could not access the application database: {0}")]
@@ -17,10 +19,14 @@ pub enum Error {
     Header,
 }
 
-pub fn shared_path() -> Result<PathBuf, Error> {
+pub fn directory() -> Result<PathBuf, Error> {
     dirs::data_local_dir()
-        .map(|directory| directory.join("me.you-find.vesper").join(FILE_NAME))
+        .map(|directory| directory.join(APP_ID))
         .ok_or(Error::Path)
+}
+
+pub fn path() -> Result<PathBuf, Error> {
+    Ok(directory()?.join(FILE_NAME))
 }
 
 /// Opens the application-owned database. Feature owners use Diesel queries and

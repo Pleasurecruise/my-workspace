@@ -1,8 +1,6 @@
+use crate::session::{Provider, Session};
 use serde::de::DeserializeOwned;
-use vesper_credentials::{
-    Stored,
-    games::{Provider, Session},
-};
+use vault::Stored;
 
 pub(crate) fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
@@ -52,7 +50,7 @@ pub(crate) async fn json_with_headers<T: DeserializeOwned>(
 }
 
 pub(crate) fn session(provider: Provider) -> Result<Session, String> {
-    match vesper_credentials::games::read(provider).map_err(|error| error.to_string())? {
+    match crate::session::read(provider).map_err(|error| error.to_string())? {
         Stored::Ready(session) => Ok(session),
         Stored::Missing => Err("Connect this game provider in Settings first.".to_owned()),
     }
@@ -62,8 +60,7 @@ pub(crate) fn game(game: crate::Game) -> Result<Session, String> {
     if game.provider() != Provider::Mihoyo {
         return session(game.provider());
     }
-    let mut accounts =
-        vesper_credentials::games::accounts::read().map_err(|error| error.to_string())?;
+    let mut accounts = crate::session::mihoyo::read().map_err(|error| error.to_string())?;
     let id = accounts
         .bindings
         .get(game.key())

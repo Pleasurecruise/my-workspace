@@ -2,18 +2,15 @@ use super::{
     ApiError, Article, ArticlePage, Client, Document, EditionSummary, ListFilters,
     OVERVIEW_PAGE_SIZE, Summary, article_identity, newspaper_edition, read_summary_page,
 };
-use cms_core::markdown::{
-    ArticleMetadata, CompiledKnowledge, article_ids, article_urls, compile_knowledge_plain,
-    compile_knowledge_with_articles, knowledge_body,
-};
+use crate::api::credentials::ConsumerApi;
+use markdown::{ArticleMetadata, article_ids, article_urls, knowledge};
 use std::collections::{HashMap, HashSet};
-use vesper_credentials::ConsumerApi;
 
 pub async fn project_article(article: Article) -> Result<Document, ApiError> {
     let edition = article.editions.get("zh").ok_or_else(|| {
         ApiError::Protocol(format!("article {} has no Chinese edition", article.id))
     })?;
-    let source = knowledge_body(&edition.markdown).to_owned();
+    let source = knowledge::body(&edition.markdown).to_owned();
     let mut metadata = HashMap::new();
     let ids = article_ids(&source).unwrap_or_default();
     let urls: Vec<_> = article_urls(&source)
@@ -63,7 +60,7 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
     for summary in summaries {
         resolve_card_metadata(&summary, &ids, &urls, &mut metadata);
     }
-    let compiled = match compile_knowledge_with_articles(&source, metadata).await {
+    let compiled = match knowledge::compile(&source, metadata).await {
         Ok(compiled) => compiled,
         Err(error) => {
             tracing::warn!(
@@ -71,7 +68,7 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
                 %error,
                 "could not enrich Knowledge embeds; preserving them as code blocks"
             );
-            compile_knowledge_plain(&source)
+            knowledge::fallback(&source)
         }
     };
     let newspaper_edition = newspaper_edition(&article.tags);
@@ -93,8 +90,8 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
 }
 
 /// Compile an editor block with document definitions and authorized article references.
-pub async fn preview(source: &str, context: &str) -> Result<CompiledKnowledge, String> {
-    let source = cms_core::markdown::fragment(source, context);
+pub async fn preview(source: &str, context: &str) -> Result<knowledge::Compiled, String> {
+    let source = markdown::fragment(source, context);
     let ids = article_ids(&source).map_err(|error| error.to_string())?;
     let urls: Vec<_> = article_urls(&source)
         .map_err(|error| error.to_string())?
@@ -110,7 +107,7 @@ pub async fn preview(source: &str, context: &str) -> Result<CompiledKnowledge, S
             resolve_card_metadata(&summary, &ids, &urls, &mut metadata);
         }
     }
-    compile_knowledge_with_articles(&source, metadata)
+    knowledge::compile(&source, metadata)
         .await
         .map_err(|error| error.to_string())
 }

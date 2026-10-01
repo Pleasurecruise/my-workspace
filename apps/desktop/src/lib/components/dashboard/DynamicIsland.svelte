@@ -3,7 +3,9 @@
 	import { onMount, tick } from "svelte";
 	import { listen } from "@tauri-apps/api/event";
 	import { invoke } from "@tauri-apps/api/core";
-	import type { CommandResponse, IslandGeometry, WidgetKind } from "../../consumer";
+	import type { IslandGeometry } from "../../contracts/app";
+	import type { CommandResponse } from "../../contracts/command";
+	import type { WidgetKind } from "../../contracts/dashboard";
 	import { widgets } from "../../dashboard";
 	import type { createDashboardSession } from "./session.svelte";
 	import type { createLayoutSession } from "./layout.svelte";

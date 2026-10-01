@@ -1,13 +1,13 @@
 import { SvelteDate } from "svelte/reactivity";
 import { invoke } from "@tauri-apps/api/core";
 import { onMount, tick } from "svelte";
+import type { CommandResponse } from "../../contracts/command";
 import type {
 	ChannelView,
-	CommandResponse,
 	KnowledgeDraft,
 	KnowledgeUpdate,
 	KnowledgeDocument,
-} from "../../consumer";
+} from "../../contracts/content";
 
 export function createKnowledgeSession(context: {
 	readonly active: boolean;

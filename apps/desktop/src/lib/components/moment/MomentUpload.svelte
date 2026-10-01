@@ -3,7 +3,8 @@
 	import { Button, Input, Label, Textarea } from "@my-workspace/ui";
 	import { invoke } from "@tauri-apps/api/core";
 	import { onDestroy } from "svelte";
-	import type { CommandResponse, PhotoItem, PhotoUpload, PhotoMetadata } from "../../consumer";
+	import type { CommandResponse } from "../../contracts/command";
+	import type { PhotoItem, PhotoUpload, PhotoMetadata } from "../../contracts/content";
 
 	let { onupload, onuploaded, onclose }: { onupload: (input: PhotoUpload, file: File) => Promise<CommandResponse<PhotoItem>>; onuploaded: () => void; onclose: () => void } = $props();
 

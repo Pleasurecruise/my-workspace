@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::Command;
-use vesper_credentials::NotionCalendar;
+pub mod configuration;
+
+use configuration::Configuration;
 
 // Notion allows roughly three requests per second; keep this pause between CLI calls.
 const REQUEST_INTERVAL: Duration = Duration::from_millis(350);
@@ -98,7 +100,7 @@ struct DateRange {
     time_zone: Option<String>,
 }
 
-pub(crate) async fn read(configuration: &NotionCalendar) -> Result<Vec<Item>, Error> {
+pub(crate) async fn read(configuration: &Configuration) -> Result<Vec<Item>, Error> {
     let view_id = configuration.view_id()?;
     let binary = binary()?;
     let view_path = format!("/v1/views/{view_id}");

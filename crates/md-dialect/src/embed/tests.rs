@@ -558,8 +558,7 @@ fn finds_footnote_media() {
 }
 
 #[test]
-fn validates_before_loading() {
-    use futures_util::FutureExt;
+fn validates_before_collecting_references() {
     for source in [
         "```embed:github\nrepo: owner/repo\nalign: invalid\n```",
         "```embed:github\nrepo: owner/repo\nextra: invalid\n```",
@@ -567,9 +566,7 @@ fn validates_before_loading() {
         "```embed:stock\ncode: MSFT\nalign: invalid\n```",
         "```embed:unknown\n```",
     ] {
-        let result = super::load(source)
-            .now_or_never()
-            .expect("validation must finish before I/O");
+        let result = super::references(source);
         assert!(matches!(
             result,
             Err(EmbedError::InvalidAlignment(_))
@@ -579,12 +576,7 @@ fn validates_before_loading() {
     }
     let source =
         "```embed:github\nrepo: owner/repo\n```\n\n```embed:architecture\nnot a diagram\n```";
-    assert!(
-        super::load(source)
-            .now_or_never()
-            .expect("validate the whole document first")
-            .is_err()
-    );
+    assert!(super::references(source).is_err());
 }
 
 #[test]

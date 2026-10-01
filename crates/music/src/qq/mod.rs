@@ -13,6 +13,7 @@ use crate::{Cover, Error, Lyrics, Playback, PlaybackOrder, Result, Track};
 
 mod audio;
 mod auth;
+pub mod credentials;
 mod qr;
 
 use audio::AudioPlayer;
@@ -48,7 +49,7 @@ struct QqTrack {
 }
 
 struct CredentialState {
-    value: vesper_credentials::QqMusicCredentials,
+    value: credentials::Credentials,
     renewal_attempt: Option<Instant>,
 }
 
@@ -76,7 +77,7 @@ struct PlaybackState {
 }
 
 impl QqMusic {
-    pub fn new(credentials: vesper_credentials::QqMusicCredentials) -> Result<Self> {
+    pub fn new(credentials: credentials::Credentials) -> Result<Self> {
         let http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
@@ -865,7 +866,7 @@ mod tests {
     #[tokio::test]
     async fn releases_monitor() {
         let music = std::sync::Arc::new(
-            super::QqMusic::new(vesper_credentials::QqMusicCredentials {
+            super::QqMusic::new(super::credentials::Credentials {
                 cookie: String::new(),
             })
             .unwrap(),
@@ -880,7 +881,7 @@ mod tests {
     #[tokio::test]
     async fn cancels_stale_load() {
         let music = std::sync::Arc::new(
-            super::QqMusic::new(vesper_credentials::QqMusicCredentials {
+            super::QqMusic::new(super::credentials::Credentials {
                 cookie: String::new(),
             })
             .unwrap(),
@@ -922,7 +923,7 @@ mod tests {
     #[tokio::test]
     async fn resume_reloads_ended_audio() {
         let music = std::sync::Arc::new(
-            super::QqMusic::new(vesper_credentials::QqMusicCredentials {
+            super::QqMusic::new(super::credentials::Credentials {
                 cookie: String::new(),
             })
             .unwrap(),
@@ -941,7 +942,7 @@ mod tests {
 
     #[tokio::test]
     async fn automatic_failure_is_visible() {
-        let music = super::QqMusic::new(vesper_credentials::QqMusicCredentials {
+        let music = super::QqMusic::new(super::credentials::Credentials {
             cookie: String::new(),
         })
         .unwrap();

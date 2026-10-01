@@ -32,7 +32,7 @@ request the same Rust snapshot explicitly through its status command, outside th
 
 ## Connection and login
 
-1. Resolve the configured UGOS username and password through `crates/credentials`.
+1. Resolve the configured UGOS username and password through `ugos::credentials`, stored by `crates/vault`.
 2. Connect directly to the fixed host `ugreen`, port `9443`. Both certificate probing and API clients
    use `no_proxy()` and a thirty-second HTTP request timeout.
 3. Debug probes the current certificate whenever it creates a new client, then pins that fingerprint

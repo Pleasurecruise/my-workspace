@@ -1,4 +1,4 @@
-import html from "../../../../../src-tauri/src/gaming/captcha.html?raw";
+import html from "../../../../../src-tauri/src/games/captcha.html?raw";
 import { runInNewContext } from "node:vm";
 import { expect, it, vi } from "vite-plus/test";
 

@@ -3,10 +3,7 @@ use super::*;
 #[test]
 fn shared_paths() {
     let store = Store::shared().unwrap();
-    assert_eq!(
-        store.database_path(),
-        vesper_database::shared_path().unwrap()
-    );
+    assert_eq!(store.database_path(), database::path().unwrap());
     assert_eq!(
         store.schedule_directory(),
         dirs::data_dir().unwrap().join("me.you-find.vesper/ics"),
@@ -17,9 +14,9 @@ fn shared_paths() {
 async fn lists_while_writing() {
     use diesel::connection::SimpleConnection;
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     store.create("2026-09-07", "Committed", None).await.unwrap();
-    let mut writer = vesper_database::open(store.database_path()).unwrap();
+    let mut writer = database::open(store.database_path()).unwrap();
     writer
         .batch_execute("BEGIN IMMEDIATE; UPDATE todo_items SET text = 'Pending';")
         .unwrap();
@@ -30,7 +27,7 @@ async fn lists_while_writing() {
 
 pub(super) fn test_store() -> (tempfile::TempDir, Store) {
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     (directory, store)
 }
 
@@ -74,7 +71,7 @@ async fn isolates_dates() {
 #[tokio::test]
 async fn reloads_before_mutation() {
     let (directory, first) = test_store();
-    let second = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let second = Store::new(directory.path().join(database::FILE_NAME));
     first.create("2026-08-23", "First", None).await.unwrap();
     second.create("2026-08-23", "Second", None).await.unwrap();
     assert_eq!(first.list("2026-08-23").await.unwrap().items.len(), 2);
@@ -85,7 +82,7 @@ async fn rolls_back_failed_mutation() {
     use diesel::connection::SimpleConnection;
     let (_directory, store) = test_store();
     let original = store.create("2026-08-23", "Keep me", None).await.unwrap();
-    let mut connection = vesper_database::open(store.database_path()).unwrap();
+    let mut connection = database::open(store.database_path()).unwrap();
     connection.batch_execute("CREATE TRIGGER reject_todo BEFORE INSERT ON todo_items BEGIN SELECT RAISE(ABORT, 'injected failure'); END;").unwrap();
     assert!(store.create("2026-08-23", "Fail", None).await.is_err());
     assert_eq!(store.list("2026-08-23").await.unwrap(), original);
@@ -95,7 +92,7 @@ async fn rolls_back_failed_mutation() {
 #[tokio::test]
 async fn serializes_writers() {
     let (directory, first) = test_store();
-    let second = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let second = Store::new(directory.path().join(database::FILE_NAME));
     let (first_result, second_result) = tokio::join!(
         first.create("2026-08-23", "First", None),
         second.create("2026-08-23", "Second", None)
@@ -162,7 +159,7 @@ async fn edits_preserve_task_state() {
 #[tokio::test]
 async fn validates_saved_order() {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join(vesper_database::FILE_NAME);
+    let path = directory.path().join(database::FILE_NAME);
     let store = Store::new(path.clone());
     let date = "2026-09-12";
     store.create(date, "First", None).await.unwrap();
@@ -205,7 +202,7 @@ async fn validates_saved_order() {
 #[tokio::test]
 async fn rollover_respects_opt_out() {
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     let first = "2026-09-12";
     let ids = store
         .create(first, "Carry", Some("Keep notes"))
@@ -252,7 +249,7 @@ async fn rollover_respects_opt_out() {
 async fn rollover_is_atomic() {
     use diesel::connection::SimpleConnection;
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join(vesper_database::FILE_NAME);
+    let path = directory.path().join(database::FILE_NAME);
     let store = Store::new(path.clone());
     let other = Store::new(path.clone());
     let id = store
@@ -263,7 +260,7 @@ async fn rollover_is_atomic() {
         .id
         .clone();
     store.set_rollover("2026-09-12", &id, true).await.unwrap();
-    let mut connection = vesper_database::open(&path).unwrap();
+    let mut connection = database::open(&path).unwrap();
     connection.batch_execute("CREATE TRIGGER fail_rollover BEFORE INSERT ON todo_items WHEN NEW.date = '2026-09-13' BEGIN SELECT RAISE(FAIL, 'write failed'); END;").unwrap();
     assert!(store.roll_over("2026-09-13").await.is_err());
     assert_eq!(store.list("2026-09-12").await.unwrap().items.len(), 1);
@@ -283,7 +280,7 @@ async fn rollover_is_atomic() {
 #[tokio::test]
 async fn derives_completed_days() {
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     let date = "2024-02-29";
     let ids = vec!["read".to_owned(), "walk".to_owned()];
     assert_eq!(store.read_days(vec![], date).await.unwrap().len(), 29);
@@ -319,7 +316,7 @@ async fn derives_completed_days() {
 #[tokio::test]
 async fn completed_days_exclude_future() {
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     let list = store
         .create("9999-12-31", "Future task", None)
         .await
@@ -351,7 +348,7 @@ async fn completed_days_exclude_future() {
 #[tokio::test]
 async fn completes_empty_days() {
     let directory = tempfile::tempdir().unwrap();
-    let store = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let store = Store::new(directory.path().join(database::FILE_NAME));
     let today = crate::current_date().unwrap();
     let days = store.read_days(vec![], &today).await.unwrap();
     assert_eq!(days.last(), Some(&today));
@@ -392,7 +389,7 @@ async fn completed_tasks_require_reopening() {
     let id = &list.items[0].id;
     store.set_completed(date, id, true).await.unwrap();
     // A second client must check the current stored state, not its stale open projection.
-    let stale = Store::new(directory.path().join(vesper_database::FILE_NAME));
+    let stale = Store::new(directory.path().join(database::FILE_NAME));
     assert!(matches!(
         stale.update(date, id, "Changed", Some("Lost notes")).await,
         Err(Error::CompletedItem)

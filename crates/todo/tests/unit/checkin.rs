@@ -21,7 +21,7 @@ async fn canonical_dates() {
 #[test]
 fn streaks_and_undo() {
     let directory = tempfile::tempdir().unwrap();
-    let mut connection = vesper_database::open(&directory.path().join("test.sqlite3")).unwrap();
+    let mut connection = database::open(&directory.path().join("test.sqlite3")).unwrap();
     for date in ["2024-02-28", "2024-02-29", "2024-03-01"] {
         set(&mut connection, "read", date, true).unwrap();
     }
@@ -50,7 +50,7 @@ fn streaks_and_undo() {
         0
     );
     drop(connection);
-    let mut reopened = vesper_database::open(&directory.path().join("test.sqlite3")).unwrap();
+    let mut reopened = database::open(&directory.path().join("test.sqlite3")).unwrap();
     assert_eq!(
         read(&mut reopened, "read", "2024-03-02", "2024-03-02")
             .unwrap()
@@ -125,7 +125,7 @@ async fn historical_writes() {
 #[test]
 fn history_window() {
     let directory = tempfile::tempdir().unwrap();
-    let mut connection = vesper_database::open(&directory.path().join("test.sqlite3")).unwrap();
+    let mut connection = database::open(&directory.path().join("test.sqlite3")).unwrap();
     let date = parse_date("2026-09-10").unwrap();
     for offset in 0..40 {
         let day = (date - time::Duration::days(offset)).to_string();
@@ -173,7 +173,7 @@ async fn dated_habits() {
 #[test]
 fn future_projection() {
     let directory = tempfile::tempdir().unwrap();
-    let mut connection = vesper_database::open(&directory.path().join("test.sqlite3")).unwrap();
+    let mut connection = database::open(&directory.path().join("test.sqlite3")).unwrap();
     set(&mut connection, "read", "2026-09-10", true).unwrap();
     set(&mut connection, "read", "2026-09-11", true).unwrap();
     let future = read(&mut connection, "read", "2026-09-11", "2026-09-10").unwrap();

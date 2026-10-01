@@ -158,7 +158,7 @@ impl Activity {
             .join("; ");
         let request = transport::client()?.post(LOGIN)
             .header("Cookie", &cookie).header("Origin", "https://act.mihoyo.com")
-            .header("Referer", REFERER).header("User-Agent", super::record::USER_AGENT)
+            .header("Referer", REFERER).header("User-Agent", super::record::RECORD_USER_AGENT)
             .json(&serde_json::json!({"uid":account.uid,"region":account.region,"game_biz":"hkrpg_cn","lang":"zh-cn"}));
         let (response, headers): (Envelope, _) = transport::json_with_headers(request).await?;
         response.decode::<serde_json::Value>()?;
@@ -204,7 +204,7 @@ impl Activity {
                 .header("Cookie", &self.cookie)
                 .header("Origin", "https://act.mihoyo.com")
                 .header("Referer", REFERER)
-                .header("User-Agent", super::record::USER_AGENT)
+                .header("User-Agent", super::record::RECORD_USER_AGENT)
                 .header("x-rpc-device_id", &self.device)
                 .header("x-rpc-jump_source", "wechatmp")
                 .header("x-rpc-platform", "4"),

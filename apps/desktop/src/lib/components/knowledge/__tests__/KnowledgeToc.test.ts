@@ -15,8 +15,8 @@ it.each([false, true])(
 		const heading = content.querySelector("h2")!;
 		main.scrollTop = 100;
 		main.scrollTo = vi.fn();
-		vi.spyOn(main, "getBoundingClientRect").mockReturnValue({ top: 20 } as DOMRect);
-		vi.spyOn(heading, "getBoundingClientRect").mockReturnValue({ top: 620 } as DOMRect);
+		vi.spyOn(main, "getBoundingClientRect").mockReturnValue(DOMRect.fromRect({ y: 20 }));
+		vi.spyOn(heading, "getBoundingClientRect").mockReturnValue(DOMRect.fromRect({ y: 620 }));
 		const view = mount(KnowledgeToc, {
 			target: controls,
 			props: { entries: [{ id: "section", depth: 2, text: "Section" }], content },

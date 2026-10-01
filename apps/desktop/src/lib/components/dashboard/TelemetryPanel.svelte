@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Cpu, Database, MemoryStick, Network } from "@lucide/svelte";
-	import type { DeviceTelemetrySnapshot, TaskManagerSnapshot, QueryState } from "../../consumer";
+	import type { DeviceTelemetrySnapshot, TaskManagerSnapshot, QueryState } from "../../contracts/dashboard";
 	import StoragePanel from "./StoragePanel.svelte";
 	let source:
 		| { origin: "ugos"; kind: "cpu" | "memory" | "storage" | "network"; state: QueryState<TaskManagerSnapshot> }

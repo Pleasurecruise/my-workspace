@@ -34,7 +34,8 @@ The separate This device entry above the peer list opens a local terminal indepe
 
 The twelve-track layout stores typed placements and a nullable Dynamic Island selection. Rust
 validates unique placement and habit IDs, singleton constraints, and island references before a
-transactional save. `dashboard-default.json` owns initialization and Restore Default; neither resets
+transactional save. `crates/dashboard` owns layout records and validation; its bundled
+`default.json` owns initialization and Restore Default; neither resets
 feature records. Unsupported old widget kinds are not converted.
 
 Invalid widget configurations appear as diagnostic cards and survive unrelated edits verbatim.

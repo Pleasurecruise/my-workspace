@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Activity, ArrowLeftRight, ChartNoAxesCombined, Check, Pin, ChevronRight, CloudSun, Cpu, Gauge, HardDrive, ListTodo, MemoryStick, Network, Plus, RefreshCw, RotateCcw, Settings2, ShieldCheck, Sparkles, WalletCards, X } from "@lucide/svelte";
 	import { Button } from "@my-workspace/ui";
-	import type { WidgetPlacement, ServiceStatusCatalogEntry } from "../../consumer";
+	import type { WidgetPlacement, ServiceStatusCatalogEntry } from "../../contracts/dashboard";
 	import { widgetCategories, widgetCategoryLabel, widgetKey, widgetOptions, widgets } from "../../dashboard";
 	import type { WidgetCategory } from "../../dashboard";
 	import WidgetContent from "../dashboard/WidgetContent.svelte";

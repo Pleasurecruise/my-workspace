@@ -1,8 +1,8 @@
+use crate::session::Session;
 use crate::{Provider, transport};
 use base64::Engine;
 use serde::Serialize;
 use std::{collections::HashMap, sync::Mutex};
-use vesper_credentials::games::Session;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -119,7 +119,7 @@ impl Logins {
             Poll::Scanned => Ok(LoginProgress::Scanned),
             Poll::Expired => Ok(LoginProgress::Expired),
             Poll::Complete(session) => {
-                vesper_credentials::games::save(&session).map_err(|error| error.to_string())?;
+                crate::session::save(&session).map_err(|error| error.to_string())?;
                 slots.remove(&provider);
                 Ok(LoginProgress::Complete)
             }

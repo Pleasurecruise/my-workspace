@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { mount, tick, unmount } from "svelte";
-import type { CommandResponse, UpdateInfo } from "../../../consumer";
+import type { UpdateInfo } from "../../../contracts/app";
+import type { CommandResponse } from "../../../contracts/command";
 import UpdateDialog from "../UpdateDialog.svelte";
 const { invoke, stop } = vi.hoisted(() => ({ invoke: vi.fn(), stop: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));

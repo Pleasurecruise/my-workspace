@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from "vite-plus/test";
-import type { ChannelView, CommandResponse, MemoView } from "../../../consumer";
+import type { CommandResponse } from "../../../contracts/command";
+import type { ChannelView, MemoView } from "../../../contracts/content";
 import { createMemosSession } from "../session.svelte";
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));

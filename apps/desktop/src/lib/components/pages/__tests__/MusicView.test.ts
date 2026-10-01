@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { mount, unmount } from "svelte";
-import type { CommandResponse, MusicLyrics, MusicPlayback, MusicTrack } from "../../../consumer";
+import type { CommandResponse } from "../../../contracts/command";
+import type { MusicLyrics, MusicPlayback, MusicTrack } from "../../../contracts/music";
 import MusicView from "../MusicView.svelte";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));

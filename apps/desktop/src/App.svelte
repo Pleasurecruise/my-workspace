@@ -5,11 +5,12 @@
 	import { createTerminalSession } from "./lib/components/terminal/session.svelte";
 	import ProfileEditor from "./lib/components/layout/ProfileEditor.svelte";
 	import UpdateDialog from "./lib/components/layout/UpdateDialog.svelte";
+	import LockScreen from "./lib/components/layout/LockScreen.svelte";
 	import PageSkeleton from "./lib/components/layout/PageSkeleton.svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import { Archive, ArrowLeft, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, MessageCircle, Lock, Menu, Moon, Music2, Newspaper as NewspaperIcon, Settings, Sun, X } from "@lucide/svelte";
-	import { onMount, tick, untrack } from "svelte";
+	import { onMount, untrack } from "svelte";
 	import MemosView from "./lib/components/pages/MemosView.svelte";
 	import MomentView from "./lib/components/pages/MomentView.svelte";
 	import MusicView from "./lib/components/pages/MusicView.svelte";
@@ -22,12 +23,9 @@
 	import DashboardView from "./lib/components/pages/DashboardView.svelte";
 	import SettingsView from "./lib/components/pages/SettingsView.svelte";
 	import ScrollToTop from "./lib/components/layout/ScrollToTop.svelte";
-	import type {
-		CommandResponse,
-		Channel,
-		InitialViews,
-		TerminalTarget,
-	} from "./lib/consumer";
+	import type { CommandResponse } from "./lib/contracts/command";
+	import type { Channel, InitialViews } from "./lib/contracts/content";
+	import type { TerminalTarget } from "./lib/contracts/terminal";
 	import { createDashboardSession } from "./lib/components/dashboard/session.svelte";
 	import { createInboxSession } from "./lib/components/inbox/session.svelte";
 	import { createSettingsSession } from "./lib/components/settings/session.svelte";
@@ -122,10 +120,6 @@
 		terminals.open(target);
 		void select("terminal");
 	}
-	let unlockPassword = $state("");
-	let unlockError = $state<string | null>(null);
-	let unlocking = $state(false);
-	let unlockInput = $state<HTMLInputElement | null>(null);
 	let sidebarWidth = $state(240);
 
 	async function openMusicPlayer() {
@@ -169,27 +163,9 @@
 			return;
 		}
 		sidebarOpen = false;
-		unlockPassword = "";
-		unlockError = null;
-		await tick();
-		unlockInput?.focus();
 	}
 
-	async function unlockApp(event: SubmitEvent) {
-		event.preventDefault();
-		if (unlocking || unlockPassword === "") return;
-		unlocking = true;
-		unlockError = null;
-		const response = await invoke<CommandResponse<string>>("unlock_app", { password: unlockPassword });
-		unlocking = false;
-		if (response.status === "failed") {
-			unlockError = response.message;
-			unlockPassword = "";
-			await tick();
-			unlockInput?.focus();
-			return;
-		}
-		unlockPassword = "";
+	function unlocked() {
 		locked = false;
 		void chat.refresh();
 		void Promise.all([memos.refresh(), moment.refresh(), knowledge.refresh()]);
@@ -257,12 +233,8 @@
 
 	onMount(() => {
 		void initializeConsumers();
-		void invoke<boolean>("read_app_lock").then(async (value) => {
+		void invoke<boolean>("read_app_lock").then((value) => {
 			locked = value;
-			if (value) {
-				await tick();
-				unlockInput?.focus();
-			}
 		});
 		loadSidebarWidth();
 		void settings.loadConfiguration();
@@ -503,17 +475,7 @@
 </div>
 
 {#if locked}
-	<div class="lock-screen" role="dialog" aria-modal="true" aria-labelledby="lock-title">
-		<div class="lock-card">
-			<h1 id="lock-title">Locked</h1>
-			<form onsubmit={unlockApp}>
-				<label for="unlock-password">Password</label>
-				<input bind:this={unlockInput} id="unlock-password" type="password" bind:value={unlockPassword} autocomplete="current-password" placeholder="Enter password" />
-				{#if unlockError}<p class="unlock-error" role="alert">{unlockError}</p>{/if}
-				<button type="submit" disabled={unlocking || unlockPassword === ""}>{unlocking ? "Unlocking…" : "Unlock"}</button>
-			</form>
-		</div>
-	</div>
+	<LockScreen onunlock={unlocked} />
 {/if}
 
 <UpdateDialog {locked} onmodalchange={(open) => { updateModalOpen = open; }} />
@@ -671,34 +633,6 @@
 		padding-left: 0.0625rem;
 	}
 
-	.lock-screen {
-		position: fixed;
-		inset: 0;
-		z-index: 100;
-		display: grid;
-		place-items: center;
-		padding: 1.5rem;
-		background: color-mix(in srgb, var(--color-background) 96%, var(--color-muted));
-	}
-
-	.lock-card {
-		display: grid;
-		width: min(100%, 18rem);
-		justify-items: center;
-		gap: 0.9rem;
-		box-sizing: border-box;
-		padding: 1rem;
-		text-align: center;
-	}
-
-	.lock-card h1 { margin: 0 0 0.35rem; }
-	.lock-card form { display: grid; width: 100%; gap: 0.55rem; text-align: left; }
-	.lock-card label { color: var(--color-muted-foreground); font-size: 0.65rem; }
-	.lock-card input { min-width: 0; height: 2rem; box-sizing: border-box; padding: 0 0.625rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: none; background: var(--color-background); color: var(--color-foreground); font-size: 0.75rem; }
-	.lock-card input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 14%, transparent); }
-	.lock-card button { height: 1.75rem; margin-top: 0.15rem; padding: 0 0.625rem; border: 1px solid var(--color-accent); border-radius: var(--radius-md); background: var(--color-accent); color: var(--color-accent-foreground); cursor: pointer; font-size: 0.68rem; font-weight: 400; }
-	.lock-card button:disabled { cursor: wait; opacity: 0.55; }
-	.unlock-error { margin: 0.2rem 0 0; color: var(--color-error); font-size: 0.68rem; }
 
 	.footer-controls button,
 	.topbar button {

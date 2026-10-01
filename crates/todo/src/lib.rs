@@ -3,7 +3,7 @@ mod codex;
 pub use checkin::{CheckIn, Day};
 mod date;
 mod model;
-mod notion;
+pub mod notion;
 mod schedule;
 mod store;
 
