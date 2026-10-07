@@ -393,7 +393,7 @@
 					<NewspaperView onread={knowledge.readArticle} documents={knowledge.content?.knowledge ?? []} issues={knowledge.content?.newspaper ?? { developer: null, personal: null }} loading={knowledge.content === null || knowledge.loading} onopenarticle={(document, fragment) => { const error = selectKnowledgeArticle(document, fragment); if (error === null) selected = "knowledge"; return error; }} />
 				{:else if content !== null}
 					{#if content.channel === "memos"}
-						<MemosView memos={content.memos} tags={memos.tags.tags} display={memos.memoDisplay} onfilter={memos.filterMemos} onopenmemo={memos.revealMemo} oncreate={memos.createMemo} onimportx={memos.importXMemo} onupdate={memos.updateMemo} ondelete={memos.deleteMemo} onpublishtelegram={memos.publishMemoToTelegram} onpublishx={memos.publishMemoToX}>
+						<MemosView memos={content.memos} tags={memos.tags.tags} display={memos.memoDisplay} filters={memos.filters} onfilter={memos.filterMemos} onopenmemo={memos.revealMemo} oncreate={memos.createMemo} onimportx={memos.importXMemo} onupdate={memos.updateMemo} ondelete={memos.deleteMemo} onpublishtelegram={memos.publishMemoToTelegram} onpublishx={memos.publishMemoToX}>
 							{#snippet tagStatus()}
 						{#if memos.tags.error}
 							<div class="tag-notice" role="alert"><span>Tags unavailable: {memos.tags.error}</span><button type="button" disabled={memos.tags.loading} onclick={() => void memos.tags.refresh()}>Retry tags</button></div>

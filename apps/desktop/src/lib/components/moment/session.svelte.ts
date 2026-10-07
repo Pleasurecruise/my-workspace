@@ -89,12 +89,9 @@ export function createMomentSession(context: {
 		error = null;
 	}
 
-	async function enter(force = false) {
+	async function enter() {
 		void tags.refresh();
-		if (content === null || force) await load();
-		else {
-			error = null;
-		}
+		await load();
 	}
 
 	function leave() {
@@ -201,17 +198,20 @@ export function createMomentSession(context: {
 
 	onMount(() => {
 		void tags.refresh();
-		const timer = window.setInterval(() => {
+		function poll() {
 			if (!context.active) return;
 			void tags.refresh();
 			if (!loading && context.mainElement !== null && context.mainElement.scrollTop < 200)
 				void load();
-		}, 60_000);
+		}
+		const timer = window.setInterval(poll, 60_000);
+		window.addEventListener("focus", poll);
 
 		return () => {
 			leave();
 			tags.reset();
 			window.clearInterval(timer);
+			window.removeEventListener("focus", poll);
 		};
 	});
 	return {

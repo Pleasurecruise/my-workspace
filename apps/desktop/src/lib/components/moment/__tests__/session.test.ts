@@ -124,3 +124,16 @@ it.each(["create", "delete"])(
 		expect(session.content?.total).toBe(operation === "create" ? 1 : 0);
 	},
 );
+
+it("revalidates the gallery on every visit", async () => {
+	const session = createMomentSession({ active: true, mainElement: null });
+	session.initialize(page([original]), session.version);
+	const remote = { ...original, title: "Edited elsewhere" };
+	invoke.mockImplementation((command: string) =>
+		command === "read_channel"
+			? Promise.resolve(page([remote]))
+			: Promise.resolve({ status: "ready", data: [] }),
+	);
+	await session.enter();
+	expect(session.content?.photos).toEqual([remote]);
+});

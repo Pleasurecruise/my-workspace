@@ -143,13 +143,9 @@ export function createMemosSession(context: {
 		void load(content.nextCursor, false, showPaginationStatus);
 	}
 
-	async function enter(force = false) {
+	async function enter() {
 		void tags.refresh();
-		if (content === null || force || filtersChanged) await load(null, true);
-		else {
-			error = null;
-			await fillViewport();
-		}
+		await load(null, true);
 	}
 
 	function leave() {
@@ -341,17 +337,20 @@ export function createMemosSession(context: {
 
 	onMount(() => {
 		void tags.refresh();
-		const timer = window.setInterval(() => {
+		function poll() {
 			if (!context.active) return;
 			void tags.refresh();
 			if (!loading && context.mainElement !== null && context.mainElement.scrollTop < 200)
 				void load(null, true);
-		}, 60_000);
+		}
+		const timer = window.setInterval(poll, 60_000);
+		window.addEventListener("focus", poll);
 
 		return () => {
 			leave();
 			tags.reset();
 			window.clearInterval(timer);
+			window.removeEventListener("focus", poll);
 		};
 	});
 	return {
@@ -369,6 +368,9 @@ export function createMemosSession(context: {
 		},
 		get version() {
 			return request;
+		},
+		get filters() {
+			return { search: memoSearch, tags: memoTags, sortByUpdated: memoSortByUpdated };
 		},
 		enter,
 		leave,

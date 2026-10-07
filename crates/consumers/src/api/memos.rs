@@ -339,6 +339,7 @@ pub async fn delete(id: &str) -> Result<(), ApiError> {
         .http
         .delete(url)
         .bearer_auth(&client.api_key)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
         .send()
         .await?;
     if response.status() == StatusCode::NO_CONTENT {

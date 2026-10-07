@@ -36,6 +36,28 @@ it("preserves independent provider failures and settled quotas in the combined c
 	expect(target.querySelectorAll('[role="alert"]')).toHaveLength(2);
 });
 
+it("labels the Codex free plan quota as monthly", async () => {
+	view = mount(UsagePanel, {
+		target,
+		props: {
+			provider: "codex",
+			state: {
+				data: {
+					planType: "free",
+					primary: { usedPercent: 25, windowDurationMins: 43_200, resetsAt: null },
+					secondary: null,
+				},
+				error: null,
+				loading: false,
+			},
+		},
+	});
+	await tick();
+	expect(
+		target.querySelector('[aria-label="Codex Monthly quota"]')?.getAttribute("aria-valuenow"),
+	).toBe("75");
+});
+
 it("shows DimAgent feature allowances when the account has no credit allowance", async () => {
 	view = mount(UsagePanel, {
 		target,
@@ -160,15 +182,10 @@ it.each([null, 100])("shows TokenFlux daily usage with daily limit %s", async (d
 	await tick();
 	if (dailyLimitUsd === null) {
 		expect(target.querySelector('[aria-label="TokenFlux Daily quota"]')).toBeNull();
-		expect(target.querySelector('[aria-label="TokenFlux daily usage"]')?.textContent).toContain(
-			"10.00 USD",
-		);
-		expect(target.textContent).toContain("Daily limit not provided");
 	} else {
 		expect(
 			target.querySelector('[aria-label="TokenFlux Daily quota"]')?.getAttribute("aria-valuenow"),
 		).toBe("90");
-		expect(target.textContent).not.toContain("Daily limit not provided");
 	}
 	expect(
 		target.querySelector('[aria-label="TokenFlux Monthly quota"]')?.getAttribute("aria-valuenow"),

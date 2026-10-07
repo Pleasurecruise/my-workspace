@@ -22,6 +22,7 @@ it("retains a composer draft across navigation and keeps edits made during a sav
 		memos: [],
 		tags: [],
 		display: "active" as const,
+		filters: { search: "", tags: [], sortByUpdated: false },
 		onfilter: vi.fn().mockResolvedValue(null),
 		onopenmemo: vi.fn(),
 		oncreate: vi.fn(() => pending),
@@ -100,6 +101,7 @@ it.each(["active", "favorites"] as const)(
 			memos: [memo],
 			tags: [],
 			display,
+			filters: { search: "", tags: [], sortByUpdated: false },
 			onfilter: vi.fn().mockResolvedValue(null),
 			onopenmemo: vi.fn(),
 			oncreate: vi.fn(),
@@ -188,6 +190,7 @@ it("can remove a selected tag after it disappears from the refreshed index", asy
 				return snapshot.current;
 			},
 			display: "active",
+			filters: { search: "", tags: [], sortByUpdated: false },
 			onfilter,
 			onopenmemo: vi.fn(),
 			oncreate: vi.fn(),
@@ -238,6 +241,7 @@ it("shows tag edge controls only for hidden tags and scrolls to both ends", asyn
 				return snapshot.current;
 			},
 			display: "active",
+			filters: { search: "", tags: [], sortByUpdated: false },
 			onfilter: vi.fn().mockResolvedValue(null),
 			onopenmemo: vi.fn(),
 			oncreate: vi.fn(),
@@ -275,4 +279,33 @@ it("shows tag edge controls only for hidden tags and scrolls to both ends", asyn
 	await unmount(view);
 	target.remove();
 	vi.unstubAllGlobals();
+});
+
+it("restores the applied search after remounting so clearing it resets the feed", async () => {
+	const onfilter = vi.fn().mockResolvedValue(null);
+	const target = document.createElement("div");
+	document.body.append(target);
+	const view = mount(MemosView, {
+		target,
+		props: {
+			memos: [],
+			tags: [],
+			display: "active",
+			filters: { search: "kept", tags: [], sortByUpdated: false },
+			onfilter,
+			onopenmemo: vi.fn(),
+			oncreate: vi.fn(),
+			onimportx: vi.fn(),
+			onupdate: vi.fn(),
+			ondelete: vi.fn(),
+			onpublishtelegram: vi.fn(),
+			onpublishx: vi.fn(),
+		},
+	});
+	await tick();
+	expect(findElement<HTMLInputElement>(target, '[aria-label="Search memos"]').value).toBe("kept");
+	findElement<HTMLButtonElement>(target, ".clear-search").click();
+	await vi.waitFor(() => expect(onfilter).toHaveBeenLastCalledWith("", [], false, "active"));
+	await unmount(view);
+	target.remove();
 });

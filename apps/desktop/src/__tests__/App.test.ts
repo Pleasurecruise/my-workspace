@@ -193,6 +193,20 @@ it("preserves a completed write after navigation against older tags and startup 
 	const save = deferred<CommandResponse<MemoView>>();
 	const normal = invoke.getMockImplementation();
 	if (!normal) throw new Error("Missing command mock");
+	const created: MemoView = {
+		id: "created",
+		r2Key: "memo/created",
+		content: "Saved across navigation #new",
+		html: "<p>Saved across navigation</p>",
+		tags: ["new"],
+		createdAt: "2026-09-06T00:00:00Z",
+		updatedAt: "2026-09-06T00:00:00Z",
+		visibility: "private",
+		pinned: false,
+		favorite: false,
+		archived: false,
+		metadataComplete: true,
+	};
 	let reads = 0;
 	invoke.mockImplementation((command: string) => {
 		if (command === "initialize_views") return initial.promise;
@@ -202,6 +216,11 @@ it("preserves a completed write after navigation against older tags and startup 
 				: Promise.resolve({ status: "ready", data: [{ name: "new", count: 1 }] });
 		if (command === "read_moment_tags") return Promise.resolve({ status: "ready", data: [] });
 		if (command === "create_memo") return save.promise;
+		if (command === "read_channel")
+			return Promise.resolve({
+				status: "ready",
+				data: { ...memos, memos: [created, ...memos.memos] },
+			});
 		if (!normal) throw new Error("Missing command mock");
 		return normal(command);
 	});
@@ -221,23 +240,7 @@ it("preserves a completed write after navigation against older tags and startup 
 	await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith("create_memo", expect.anything()));
 	button(target, "Dashboard", "nav button").click();
 	await tick();
-	save.resolve({
-		status: "ready",
-		data: {
-			id: "created",
-			r2Key: "memo/created",
-			content: "Saved across navigation #new",
-			html: "<p>Saved across navigation</p>",
-			tags: ["new"],
-			createdAt: "2026-09-06T00:00:00Z",
-			updatedAt: "2026-09-06T00:00:00Z",
-			visibility: "private",
-			pinned: false,
-			favorite: false,
-			archived: false,
-			metadataComplete: true,
-		},
-	});
+	save.resolve({ status: "ready", data: created });
 	await vi.waitFor(() => expect(reads).toBe(2));
 	oldTags.resolve({ status: "ready", data: [{ name: "old", count: 4 }] });
 	initial.resolve({

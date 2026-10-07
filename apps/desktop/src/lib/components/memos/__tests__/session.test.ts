@@ -163,3 +163,16 @@ it.each(["create", "import"])(
 		expect(session.content?.memos).toEqual([original]);
 	},
 );
+
+it("revalidates the feed on every visit", async () => {
+	const session = createMemosSession({ active: true, mainElement: null });
+	session.initialize(page([original]), session.version);
+	const remote = { ...original, content: "Edited elsewhere" };
+	invoke.mockImplementation((command: string) =>
+		command === "read_channel"
+			? Promise.resolve(page([remote]))
+			: Promise.resolve({ status: "ready", data: [] }),
+	);
+	await session.enter();
+	expect(session.content?.memos).toEqual([remote]);
+});

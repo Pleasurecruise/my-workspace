@@ -280,6 +280,7 @@ fn binary() -> Result<PathBuf, Error> {
     // Finder-launched apps do not inherit the user's shell PATH.
     if let Some(home) = dirs::home_dir() {
         paths.push(home.join(".local/bin"));
+        paths.push(home.join(".local/share/mise/shims"));
     }
     paths.extend([
         PathBuf::from("/opt/homebrew/bin"),

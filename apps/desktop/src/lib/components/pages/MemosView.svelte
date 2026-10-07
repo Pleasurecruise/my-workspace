@@ -17,7 +17,7 @@
 	import { Alert, AlertDescription, Badge, Button, Input } from "@my-workspace/ui";
 	import { openUrl } from "@tauri-apps/plugin-opener";
 	import type { Snippet } from "svelte";
-	import { onMount, tick } from "svelte";
+	import { onMount, tick, untrack } from "svelte";
 	import type { CommandResponse } from "@/lib/contracts/command";
 	import type { MemoTagCount, MemoUpdate, MemoView, PublishedPost } from "@/lib/contracts/content";
 	import MemoEditor from "../memos/MemoEditor.svelte";
@@ -27,6 +27,7 @@
 		tags,
 		tagStatus,
 		display,
+		filters,
 		onfilter,
 		onopenmemo,
 		oncreate,
@@ -40,6 +41,7 @@
 		tags: MemoTagCount[];
 		tagStatus?: Snippet;
 		display: "active" | "favorites" | "archived";
+		filters: { search: string; tags: string[]; sortByUpdated: boolean };
 		onfilter: (
 			search: string,
 			tags: string[],
@@ -61,10 +63,10 @@
 	let importUrl = $state("");
 	let importVisibility = $state<"public" | "private">("private");
 	let importing = $state(false);
-	let search = $state("");
-	let selectedTags = $state<string[]>([]);
+	let search = $state(untrack(() => filters.search));
+	let selectedTags = $state<string[]>(untrack(() => filters.tags));
 	let pinnedOpen = $state(false);
-	let sortByUpdated = $state(false);
+	let sortByUpdated = $state(untrack(() => filters.sortByUpdated));
 	let filtering = $state(false);
 	let filterVersion = 0;
 	let mutatingId = $state<string | null>(null);
