@@ -1,5 +1,5 @@
 use crate::print_json;
-use consumers::api::moment::{Create, Update, Upload};
+use consumers::api::moment::{Create, PhotoQuery, Update, Upload};
 use serde_json::json;
 use std::path::Path;
 
@@ -27,10 +27,15 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             print_json(&json!({ "tags": tags }))
         }
         ("search", query) if !query.is_empty() => {
-            let query = query.join(" ");
-            let photos = consumers::api::moment::search(&query)
-                .await
-                .map_err(|error| error.to_string())?;
+            let photos = consumers::api::moment::query(&PhotoQuery {
+                from_date: None,
+                to_date: None,
+                tags: Vec::new(),
+                search: Some(query.join(" ")),
+                limit: Some(100),
+            })
+            .await
+            .map_err(|error| error.to_string())?;
             print_json(&json!({ "photos": photos }))
         }
         ("register", input) => {

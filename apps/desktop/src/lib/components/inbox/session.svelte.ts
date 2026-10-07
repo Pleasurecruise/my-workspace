@@ -17,7 +17,8 @@ export function createInboxSession(isActive: () => boolean) {
 
 	async function activate(active: boolean) {
 		const response = await invoke<CommandResponse<null>>("set_notifications_active", { active });
-		if (isActive() && response.status === "failed") notificationsError = response.message;
+		if (!isActive()) return;
+		notificationsError = response.status === "failed" ? response.message : null;
 	}
 	onMount(() => {
 		void invoke<CommandResponse<NtfyNotification[]>>("read_notifications").then((response) => {
@@ -26,6 +27,7 @@ export function createInboxSession(isActive: () => boolean) {
 		});
 		const unlistenNotifications = listen<NtfyNotification[]>("notifications-updated", (event) => {
 			notifications = event.payload;
+			notificationsError = null;
 		});
 		return () => {
 			void invoke<CommandResponse<null>>("set_notifications_active", { active: false });

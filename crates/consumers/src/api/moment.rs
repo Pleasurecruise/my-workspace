@@ -318,21 +318,6 @@ pub async fn list() -> Result<Page, ApiError> {
     })
 }
 
-pub async fn search(query: &str) -> Result<Vec<Photo>, ApiError> {
-    let client = Client::load(ConsumerApi::Moment)?;
-    let response = send(
-        client
-            .http
-            .get(format!("{ENDPOINT}/photos"))
-            .bearer_auth(&client.api_key)
-            .query(&[("limit", "100"), ("search", query)]),
-        "search photos",
-    )
-    .await?;
-    let result: PhotoList = response.json().await?;
-    Ok(result.photos)
-}
-
 pub async fn tags() -> Result<Vec<String>, ApiError> {
     let client = Client::load(ConsumerApi::Moment)?;
     let response = send(

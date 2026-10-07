@@ -74,12 +74,8 @@ export function createKnowledgeSession(context: {
 		void load(content.nextCursor, false, showPaginationStatus);
 	}
 
-	async function enter(force = false) {
-		if (content === null || force) await load(null, true);
-		else {
-			error = null;
-			await fillViewport();
-		}
+	async function enter() {
+		await load(null, true);
 	}
 
 	function leave() {
@@ -179,12 +175,13 @@ export function createKnowledgeSession(context: {
 	}
 
 	onMount(() => {
-		const timer = window.setInterval(() => {
+		function poll() {
 			if (!context.active) return;
-
 			if (!loading && context.mainElement !== null && context.mainElement.scrollTop < 200)
 				void load(null, true);
-		}, 60_000);
+		}
+		const timer = window.setInterval(poll, 60_000);
+		window.addEventListener("focus", poll);
 		const nextNewspaperRefresh = new SvelteDate();
 		nextNewspaperRefresh.setHours(9, 0, 0, 0);
 		if (nextNewspaperRefresh.getTime() <= Date.now())
@@ -198,6 +195,7 @@ export function createKnowledgeSession(context: {
 		return () => {
 			leave();
 			window.clearInterval(timer);
+			window.removeEventListener("focus", poll);
 			window.clearTimeout(newspaperStartTimer);
 			if (newspaperTimer !== null) window.clearInterval(newspaperTimer);
 		};

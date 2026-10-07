@@ -206,25 +206,6 @@ pub async fn list(cursor: Option<String>, filters: &ListFilters) -> Result<Page,
     })
 }
 
-pub async fn search(query: &str) -> Result<Page, ApiError> {
-    let client = Client::load(ConsumerApi::Memos)?;
-    let response = send(
-        client
-            .http
-            .get(format!("{ENDPOINT}/memos"))
-            .bearer_auth(&client.api_key)
-            .query(&[("limit", "20"), ("search", query)]),
-        "search memos",
-    )
-    .await?;
-    let page: RemotePage = response.json().await?;
-    let memos = page.memos.into_iter().map(RemoteMemo::into_view).collect();
-    Ok(Page {
-        memos,
-        next_cursor: page.next_cursor,
-    })
-}
-
 /// Build the memo detail URL, percent-encoding the ID instead of splicing it.
 fn build_url(id: &str) -> Result<reqwest::Url, ApiError> {
     if id.trim().is_empty() {

@@ -30,7 +30,9 @@
 		let cancelled = false;
 		readError = null;
 		if (entry === null) { issue = null; reading = false; return; }
-		if (untrack(() => issue?.id) !== entry.id) issue = null;
+		const current = untrack(() => issue);
+		if (current?.id === entry.id && current.contentHash === entry.contentHash) return;
+		if (current?.id !== entry.id) issue = null;
 		reading = true;
 		void onread(entry.id, entry.contentHash).then((response) => {
 			if (cancelled || attempt !== retry) return;

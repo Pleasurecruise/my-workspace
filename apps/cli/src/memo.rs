@@ -74,14 +74,20 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             print_json(&page)
         }
         ("search", query) if !query.is_empty() => {
-            let query = query.join(" ").trim().to_lowercase();
+            let query = query.join(" ").trim().to_owned();
             if query.is_empty() {
                 return Err("memo search query is required".to_owned());
             }
-            let result = consumers::api::memos::search(&query)
-                .await
-                .map_err(|error| error.to_string())?;
-            print_json(&result)
+            let page = consumers::api::memos::list(
+                None,
+                &consumers::api::memos::ListFilters {
+                    search: Some(query),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            print_json(&page)
         }
         ("create", content) if !content.is_empty() => {
             let content = crate::read_input(content).await?;

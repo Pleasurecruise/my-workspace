@@ -134,3 +134,12 @@ it("does not duplicate a created document already observed by a refresh", async 
 	await write;
 	expect(session.content?.knowledge).toEqual([document]);
 });
+
+it("revalidates the overview on every visit", async () => {
+	const session = createKnowledgeSession({ active: true, mainElement: null });
+	session.initialize(page(document), session.version);
+	const remote = { ...document, title: "Edited elsewhere" };
+	invoke.mockResolvedValue(page(remote));
+	await session.enter();
+	expect(session.content?.knowledge).toEqual([remote]);
+});

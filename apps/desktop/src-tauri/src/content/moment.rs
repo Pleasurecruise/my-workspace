@@ -54,7 +54,6 @@ pub(crate) async fn delete_photo(id: String, app: tauri::AppHandle) -> CommandRe
     let result = async {
         moment::delete(&id).await?;
         state.invalidate_view(Channel::Moment).await;
-        state.clear_assets().await;
         Ok::<_, CommandError>(id)
     };
     result.await.into()

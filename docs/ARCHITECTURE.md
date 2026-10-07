@@ -74,7 +74,9 @@ draft on navigation. Rust supplies an initial content snapshot; a feature
 accepts it only if a later read or write has not superseded it. Request generations reject stale
 responses, successful writes invalidate older reads, and failed refreshes retain settled data with
 an error. Content drafts survive navigation and preserve edits made during saves. Credential changes reset
-only the affected feature.
+only the affected feature. Memos, Moment and Knowledge revalidate on each visit, window focus and a
+minute tick near the top of the feed; Memos keeps already loaded pages and applied filters across mounts.
+Moment image keys are never reused, so deleting a photo leaves the asset cache intact.
 
 Dashboard and Dynamic Island share `WidgetContent` and feature panels. The Rust runtime owns source
 polling and per-source request locks; the WebView holds typed projections. The island starts hidden

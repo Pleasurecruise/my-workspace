@@ -144,7 +144,7 @@
 		void inbox.activate(view === "inbox");
 		const activation = dashboardSession.activate(view === "dashboard");
 		sidebarOpen = false;
-		await activeContent?.enter(view === "newspaper");
+		await activeContent?.enter();
 		if (view === "dashboard") await activation;
 		if (view === "chat") void chat.refresh();
 	}
