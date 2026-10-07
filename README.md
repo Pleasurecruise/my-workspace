@@ -22,7 +22,7 @@ photo stream, continue a longer draft, or publish content without switching betw
 - **Memos** — write, search, pin, favorite, archive, and restore short-form notes
 - **Moment** — browse and manage a personal photo stream with progressive R2-backed images
 - **Knowledge** — create and read long-form Markdown with a focused article experience
-- **Newspaper** — a calm daily view projected from Knowledge
+- **Newspaper** — the AIHOT AI daily on a calm paper surface
 - **Music** — browse and play Spotify and QQ Music collections
 - **Inbox** — read notifications from a configured ntfy feed
 - **Planning and spending** — manage Todo, habits, calendars, and local GBP expenses on the dashboard

@@ -1,143 +1,89 @@
 <script lang="ts">
-	import { openArticleLinks, preloadArticles } from "../knowledge/links";
+	import { openUrl } from "@tauri-apps/plugin-opener";
 	import PageSkeleton from "../layout/PageSkeleton.svelte";
-	import { mediaPlayers } from "../knowledge/media";
-	import { tick, untrack } from "svelte";
-	import type { CommandResponse } from "@/lib/contracts/command";
-	import type { KnowledgeDocument, KnowledgeEntry, NewspaperIssues } from "@/lib/contracts/content";
+	import type { NewspaperDaily } from "@/lib/contracts/newspaper";
 
-	let linkError = $state<string | null>(null);
+	let { daily, error, loading, onretry }: { daily: NewspaperDaily | null; error: string | null; loading: boolean; onretry: () => void } = $props();
 
-	let { documents, issues, loading, onread, onopenarticle }: { documents: KnowledgeEntry[]; issues: NewspaperIssues; loading: boolean; onread: (id: string, expectedHash: string | null) => Promise<CommandResponse<KnowledgeDocument>>; onopenarticle: (document: KnowledgeDocument, fragment?: string) => string | null } = $props();
+	const dayFormatter = new Intl.DateTimeFormat("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+	const timeFormatter = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" });
 
-	type EditionKind = "developer" | "personal";
-	const editionLabels: Record<EditionKind, string> = {
-		developer: "程序员日报",
-		personal: "每日日报",
-	};
-
-	let viewElement = $state<HTMLDivElement | null>(null);
-	let selectedEdition = $state<EditionKind>("developer");
-	let turnDirection = $state<"left" | "right">("right");
-	const activeEntry = $derived(documents.find((document) => document.id === issues[selectedEdition]) ?? null);
-	let issue = $state<KnowledgeDocument | null>(null);
-	let reading = $state(false);
-	let readError = $state<string | null>(null);
-	let retry = $state(0);
-	$effect(() => {
-		const attempt = retry;
-		const entry = activeEntry;
-		let cancelled = false;
-		readError = null;
-		if (entry === null) { issue = null; reading = false; return; }
-		const current = untrack(() => issue);
-		if (current?.id === entry.id && current.contentHash === entry.contentHash) return;
-		if (current?.id !== entry.id) issue = null;
-		reading = true;
-		void onread(entry.id, entry.contentHash).then((response) => {
-			if (cancelled || attempt !== retry) return;
-			reading = false;
-			if (response.status === "failed") readError = response.message;
-			else issue = response.data;
-		});
-		return () => { cancelled = true; };
-	});
-
-	async function turnPage(edition: EditionKind) {
-		const scroller = viewElement?.closest("main");
-		turnDirection = edition === "developer" ? "left" : "right";
-		selectedEdition = edition;
-		await tick();
-		scroller?.scrollTo({ top: 0, behavior: "instant" });
+	function openLink(event: MouseEvent & { currentTarget: HTMLAnchorElement }) {
+		event.preventDefault();
+		void openUrl(event.currentTarget.href);
 	}
 </script>
 
-{#if issue === null && readError === null && (loading || reading || activeEntry !== null)}
-	<PageSkeleton view="newspaper" title="Newspaper" description={editionLabels[selectedEdition]} />
+{#if daily === null && error === null}
+	<PageSkeleton view="newspaper" title="Newspaper" description="AI 日报" />
 {:else}
-<div data-content-typography bind:this={viewElement} class="newspaper-view">
-	<header class="page-header"><div><h1 class="page-title">Newspaper</h1><p class="page-description">{editionLabels[selectedEdition]}</p></div></header>
-	<button
-		class="page-arrow previous"
-		use:preloadArticles
-		data-knowledge-id={issues.developer}
-		data-content-hash={documents.find((entry) => entry.id === issues.developer)?.contentHash}
-		type="button"
-		disabled={selectedEdition === "developer"}
-		aria-label="翻到程序员日报"
-		title="程序员日报"
-		onclick={() => void turnPage("developer")}
-	><span aria-hidden="true"></span></button>
-	<button
-		class="page-arrow next"
-		use:preloadArticles
-		data-knowledge-id={issues.personal}
-		data-content-hash={documents.find((entry) => entry.id === issues.personal)?.contentHash}
-		type="button"
-		disabled={selectedEdition === "personal"}
-		aria-label="翻到每日日报"
-		title="每日日报"
-		onclick={() => void turnPage("personal")}
-	><span aria-hidden="true"></span></button>
-
-	<div class="page-stage">
-		{#key selectedEdition}
-			{#if issue === null}
-				<section class="empty edition-page" class:turn-right={turnDirection === "right"} class:turn-left={turnDirection === "left"} aria-label={editionLabels[selectedEdition]}>
-					<p>{editionLabels[selectedEdition]}</p>
-					{#if readError !== null}
-						<h2>Could not load edition</h2><p role="alert">{readError}</p><button onclick={() => retry++}>Retry</button>
-					{:else}
-						<h2>{editionLabels[selectedEdition]}尚未发布</h2><span>发布后，最新一期会出现在这里。</span>
-					{/if}
+<div class="newspaper-view">
+	<header class="page-header"><div><h1 class="page-title">Newspaper</h1><p class="page-description">AI 日报</p></div></header>
+	{#if daily === null}
+		<section class="empty" aria-label="AI 日报">
+			<p>AIHOT Daily</p>
+			<h2>Could not load the daily</h2>
+			<span role="alert">{error}</span>
+			<button type="button" disabled={loading} onclick={onretry}>Retry</button>
+		</section>
+	{:else}
+		<section class="paper" lang="zh-CN" aria-label="AI 日报">
+			<div class="edition-line">
+				<strong>AIHOT Daily</strong>
+				<span>AI 日报</span>
+				<time datetime={daily.date}>{dayFormatter.format(new Date(`${daily.date}T00:00:00`))}</time>
+			</div>
+			<div class="rule"><span></span><i></i><span></span></div>
+			{#if daily.lead !== null}
+				<header class="cover">
+					<p>Lead story · No. {daily.date.replaceAll("-", "")}</p>
+					<h2>{daily.lead.title}</h2>
+					<p class="deck">{daily.lead.paragraph}</p>
+				</header>
+			{/if}
+			{#if error !== null}<p class="notice" role="alert">{error}</p>{/if}
+			{#each daily.sections as section, index (index)}
+				<section class="section" aria-label={section.label}>
+					<h3>{section.label}</h3>
+					<ol>
+						{#each section.items as item, itemIndex (itemIndex)}
+							<li>
+								<a href={item.url} onclick={openLink} onauxclick={openLink}>{item.title}</a>
+								<p>{item.summary}</p>
+								<small>{item.source}</small>
+							</li>
+						{/each}
+					</ol>
 				</section>
-			{:else}
-				<section class="paper edition-page" class:turn-right={turnDirection === "right"} class:turn-left={turnDirection === "left"} lang="zh-CN" aria-label={editionLabels[selectedEdition]}>
-					<div class="edition-line">
-						<strong>{selectedEdition === "developer" ? "Vesper Developer Daily" : "Vesper Personal Daily"}</strong>
-						<span>{editionLabels[selectedEdition]}</span>
-						<time datetime={issue.createdAt}>{new Intl.DateTimeFormat("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date(issue.createdAt))}</time>
-					</div>
-					<div class="rule"><span></span><i></i><span></span></div>
-					<header class="cover">
-						<p>Daily intelligence · No. {new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(issue.createdAt)).replaceAll("/", "")}</p>
-						<h2>{issue.title}</h2>
-						<p class="deck">{issue.summary}</p>
-					</header>
-					{#key issue.id}
-						<article use:mediaPlayers={issue.html} class="copy" use:openArticleLinks={{ onError: (message) => { linkError = message; }, onOpen: onopenarticle }}>{@html issue.html}</article>
-					{/key}
-					{#if linkError !== null}<p role="alert">{linkError}</p>{/if}
-					{#if readError !== null}<p role="alert">{readError}</p>{/if}
-					<footer>
-						<span>Updated {new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit" }).format(new Date(issue.updatedAt))}</span>
-						<span>Vesper · my-knowledge</span>
-					</footer>
+			{/each}
+			{#if daily.flashes.length > 0}
+				<section class="section flashes" aria-label="快讯">
+					<h3>快讯</h3>
+					<ul>
+						{#each daily.flashes as flash, index (index)}
+							<li>
+								<time datetime={flash.publishedAt}>{timeFormatter.format(new Date(flash.publishedAt))}</time>
+								<a href={flash.url} onclick={openLink} onauxclick={openLink}>{flash.title}</a>
+								<small>{flash.source}</small>
+							</li>
+						{/each}
+					</ul>
 				</section>
 			{/if}
-		{/key}
-	</div>
+			<footer>
+				<span>Generated {timeFormatter.format(new Date(daily.generatedAt))}</span>
+				<a href={daily.url} onclick={openLink} onauxclick={openLink}>Source · AIHOT</a>
+			</footer>
+		</section>
+	{/if}
 </div>
-
 {/if}
 
 <style>
 	.newspaper-view { min-height: calc(100vh - 7rem); }
-	.page-stage { perspective: 1400px; }
-	.page-arrow { position: fixed; top: 50%; z-index: 5; display: grid; width: 2.25rem; height: 2.25rem; place-items: center; padding: 0; translate: 0 -50%; border: 0; border-radius: var(--radius-full); background: transparent; color: var(--color-muted-foreground); cursor: pointer; opacity: 0.55; }
-	.page-arrow.previous { left: calc(var(--sidebar-width, 15rem) + max(1rem, (100vw - var(--sidebar-width, 15rem) - 66rem) / 2) + 1.65rem); }
-	.page-arrow.next { right: calc(max(1rem, (100vw - var(--sidebar-width, 15rem) - 66rem) / 2) + 1.65rem); }
-	.page-arrow span { width: 0.5rem; height: 0.5rem; border-top: 1.5px solid currentColor; border-right: 1.5px solid currentColor; }
-	.page-arrow.previous span { rotate: -135deg; }
-	.page-arrow.next span { rotate: 45deg; }
-	.page-arrow:hover:not(:disabled) { background: color-mix(in srgb, var(--color-muted) 72%, transparent); color: var(--color-accent); opacity: 1; }
-	.page-arrow.previous:hover:not(:disabled) span { translate: -0.1rem 0; }
-	.page-arrow.next:hover:not(:disabled) span { translate: 0.1rem 0; }
-	.page-arrow:disabled { visibility: hidden; }
-	.edition-page { min-height: 0; backface-visibility: hidden; }
-	.edition-page.turn-right { transform-origin: left top; animation: page-in-right var(--duration-page-turn) ease-out both; }
-	.edition-page.turn-left { transform-origin: right top; animation: page-in-left var(--duration-page-turn) ease-out both; }
 	.paper { width: min(100%, 58rem); box-sizing: border-box; margin: 0 auto; padding: clamp(1.5rem, 4vw, 3.5rem); background: color-mix(in srgb, var(--color-muted) 42%, var(--color-background)); color: var(--color-foreground); }
+	.paper a { color: inherit; text-decoration: none; }
+	.paper a:hover { color: var(--color-accent); }
 	.edition-line { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 1rem; color: var(--color-muted-foreground); font-family: var(--font-sans); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
 	.edition-line strong { color: var(--color-accent); font-family: var(--font-serif); font-size: 0.82rem; font-weight: 500; letter-spacing: 0.12em; }
 	.edition-line time { justify-self: end; }
@@ -146,45 +92,32 @@
 	.rule i { width: 0.35rem; height: 0.35rem; rotate: 45deg; background: var(--color-accent); }
 	.cover { max-width: 48rem; margin: 0 auto 3rem; padding-bottom: 2rem; border-bottom: 1px solid var(--color-border); }
 	.cover > p:first-child { margin: 0 0 1rem; color: var(--color-accent); font-family: var(--font-sans); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
-	.cover h2 { margin: 0; font-family: var(--font-serif); font-size: clamp(2.25rem, 6vw, 4.5rem); font-weight: 500; letter-spacing: -0.035em; line-height: 1.08; }
+	.cover h2 { margin: 0; font-family: var(--font-serif); font-size: clamp(2rem, 5vw, 3.75rem); font-weight: 500; letter-spacing: -0.035em; line-height: 1.12; }
 	.deck { max-width: 42rem; margin: 1.5rem 0 0; color: var(--color-muted-foreground); font-family: var(--font-serif); font-size: 1.05rem; line-height: 1.55; }
-	.copy { max-width: 48rem; margin: 0 auto; font-family: var(--font-sans); font-size: 0.95rem; line-height: 1.62; letter-spacing: 0.018em; overflow-wrap: break-word; }
-	.copy :global(h1), .copy :global(h2), .copy :global(h3), .copy :global(h4), .copy :global(h5), .copy :global(h6) { margin: 2.25em 0 0.65em; font-family: var(--font-serif); font-weight: 500; line-height: 1.28; }
-	.copy :global(h1) { padding-left: 0.75rem; border-left: 3px solid var(--color-accent); font-size: 1.7em; }
-	.copy :global(h2) { padding-left: 0.75rem; border-left: 3px solid var(--color-accent); font-size: 1.4em; }
-	.copy :global(h3) { color: var(--color-foreground); font-size: 1.17em; }
-	.copy :global(h4) { color: var(--color-muted-foreground); font-size: 1.05em; }
-	.copy :global(p) { margin: 0 0 1em; }
-	.copy :global(ul:where(:not(.content-article-list))), .copy :global(ol) { margin: 0.75em 0 1em; padding-left: 1.4rem; }
-	.copy :global(li) { margin: 0.35em 0; }
-	.copy :global(li::marker) { color: var(--color-accent); }
-	.copy :global(strong) { font-weight: 600; }
-	.copy :global(blockquote) { margin: 1.5rem 0; padding: 0.4rem 0 0.4rem 1rem; border-left: 2px solid var(--color-accent); color: var(--color-muted-foreground); }
-	.copy :global(a) { color: var(--color-accent); text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
-	.copy :global(hr) { margin: 2.5rem 0; border: 0; border-top: 1px solid var(--color-border); }
-	.copy :global(pre) { overflow-x: auto; margin: 1.5rem 0; padding: 1rem; border-radius: var(--radius-sm); background: var(--color-background); font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6; }
-	.copy :global(:not(pre) > code) { padding: 0.15em 0.35em; border-radius: var(--radius-sm); background: var(--color-background); font-family: var(--font-mono); font-size: 0.88em; }
-	.copy :global(table) { display: block; overflow-x: auto; width: 100%; margin: 1.5rem 0; border-collapse: collapse; font-size: 0.88em; }
-	.copy :global(th), .copy :global(td) { padding: 0.6rem; border-bottom: 1px solid var(--color-border); text-align: left; }
+	.notice { max-width: 48rem; margin: 0 auto 2rem; color: var(--color-error); font-size: 0.8rem; }
+	.section { max-width: 48rem; margin: 0 auto 2.5rem; font-family: var(--font-sans); }
+	.section h3 { margin: 0 0 1rem; padding-left: 0.75rem; border-left: 3px solid var(--color-accent); font-family: var(--font-serif); font-size: 1.3rem; font-weight: 500; line-height: 1.28; }
+	.section ol, .section ul { display: grid; gap: 1.25rem; margin: 0; padding: 0; list-style: none; }
+	.section li a { font-family: var(--font-serif); font-size: 1.05rem; font-weight: 500; line-height: 1.4; }
+	.section li p { margin: 0.4rem 0; color: var(--color-muted-foreground); font-size: 0.9rem; line-height: 1.62; letter-spacing: 0.018em; }
+	.section small { color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.04em; }
+	.flashes ul { gap: 0.75rem; }
+	.flashes li { display: grid; grid-template-columns: 3rem 1fr; column-gap: 0.75rem; align-items: baseline; }
+	.flashes li a { font-family: var(--font-sans); font-size: 0.92rem; }
+	.flashes time { color: var(--color-accent); font-family: var(--font-mono); font-size: 0.72rem; }
+	.flashes small { grid-column: 2; }
 	.paper footer { display: flex; justify-content: space-between; gap: 1rem; max-width: 48rem; margin: 3rem auto 0; padding-top: 1rem; border-top: 1px solid var(--color-border-strong); color: var(--color-muted-foreground); font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.05em; text-transform: uppercase; }
-	.empty { display: grid; width: min(100%, 48rem); min-height: 18rem; align-content: center; box-sizing: border-box; margin: 0 auto; padding: 2rem 0; border-block: 1px solid var(--color-border); text-align: center; }
+	.empty { display: grid; width: min(100%, 48rem); min-height: 18rem; align-content: center; justify-items: center; gap: 0.8rem; box-sizing: border-box; margin: 0 auto; padding: 2rem 0; border-block: 1px solid var(--color-border); text-align: center; }
 	.empty p { margin: 0; color: var(--color-accent); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; }
-	.empty h2 { margin: 0.8rem 0; font-family: var(--font-serif); font-size: 2rem; font-weight: 500; }
+	.empty h2 { margin: 0; font-family: var(--font-serif); font-size: 2rem; font-weight: 500; }
 	.empty span { color: var(--color-muted-foreground); font-size: 0.8rem; }
-	@keyframes page-in-right { from { opacity: 0.32; transform: rotateY(-14deg) translateX(1rem); } to { opacity: 1; transform: rotateY(0) translateX(0); } }
-	@keyframes page-in-left { from { opacity: 0.32; transform: rotateY(14deg) translateX(-1rem); } to { opacity: 1; transform: rotateY(0) translateX(0); } }
-	@media (prefers-reduced-motion: reduce) {
-		.edition-page.turn-right, .edition-page.turn-left { animation: none; }
-	}
+	.empty button { padding: 0.35rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: transparent; color: var(--color-foreground); cursor: pointer; font-size: 0.75rem; }
+	.empty button:hover { background: var(--color-muted); }
+	.empty button:disabled { cursor: wait; opacity: 0.6; }
 	@media (max-width: 640px) {
 		.edition-line { grid-template-columns: 1fr auto; }
 		.edition-line span { display: none; }
-		.cover h2 { font-size: 2.25rem; }
+		.cover h2 { font-size: 2rem; }
 		.paper footer { align-items: flex-start; flex-direction: column; }
-		.page-arrow { width: 2rem; height: 2rem; background: color-mix(in srgb, var(--color-background) 82%, transparent); opacity: 0.72; backdrop-filter: blur(8px); }
-	}
-	@media (max-width: 767px) {
-		.page-arrow.previous { left: 2.1rem; }
-		.page-arrow.next { right: 2.1rem; }
 	}
 </style>

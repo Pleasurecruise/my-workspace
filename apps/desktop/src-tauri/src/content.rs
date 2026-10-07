@@ -248,9 +248,6 @@ impl Content {
                         None => consumers::api::knowledge::overview().await,
                     };
                     page.map(|page| ChannelView::Knowledge {
-                        newspaper: consumers::api::knowledge::latest_newspaper_issues(
-                            &page.documents,
-                        ),
                         knowledge: page.documents,
                         next_cursor: page.cursor,
                     })

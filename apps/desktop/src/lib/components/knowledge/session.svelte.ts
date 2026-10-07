@@ -1,4 +1,3 @@
-import { SvelteDate } from "svelte/reactivity";
 import { invoke } from "@tauri-apps/api/core";
 import { onMount, tick } from "svelte";
 import type { CommandResponse } from "@/lib/contracts/command";
@@ -51,7 +50,6 @@ export function createKnowledgeSession(context: {
 			content = {
 				...page,
 				knowledge: [...content.knowledge, ...page.knowledge],
-				newspaper: content.newspaper,
 			};
 		else content = page;
 		error = null;
@@ -146,7 +144,6 @@ export function createKnowledgeSession(context: {
 					...content.knowledge.filter((item) => item.id !== response.data.id),
 				],
 			};
-			if (response.data.newspaperEdition !== null) void refresh();
 		}
 		return response;
 	}
@@ -169,7 +166,6 @@ export function createKnowledgeSession(context: {
 					document.id === id ? response.data : document,
 				),
 			};
-			if (response.data.newspaperEdition !== null) void refresh();
 		}
 		return response;
 	}
@@ -182,22 +178,11 @@ export function createKnowledgeSession(context: {
 		}
 		const timer = window.setInterval(poll, 60_000);
 		window.addEventListener("focus", poll);
-		const nextNewspaperRefresh = new SvelteDate();
-		nextNewspaperRefresh.setHours(9, 0, 0, 0);
-		if (nextNewspaperRefresh.getTime() <= Date.now())
-			nextNewspaperRefresh.setDate(nextNewspaperRefresh.getDate() + 1);
-		let newspaperTimer: number | null = null;
-		const newspaperStartTimer = window.setTimeout(() => {
-			void refresh();
-			newspaperTimer = window.setInterval(() => void refresh(), 24 * 60 * 60 * 1_000);
-		}, nextNewspaperRefresh.getTime() - Date.now());
 
 		return () => {
 			leave();
 			window.clearInterval(timer);
 			window.removeEventListener("focus", poll);
-			window.clearTimeout(newspaperStartTimer);
-			if (newspaperTimer !== null) window.clearInterval(newspaperTimer);
 		};
 	});
 	return {

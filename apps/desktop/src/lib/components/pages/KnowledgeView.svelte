@@ -98,7 +98,6 @@
 	let groups = $derived.by(() => {
 		const years: KnowledgeYear[] = [];
 		for (const document of documents) {
-			if (document.newspaperEdition !== null) continue;
 			const date = new Date(document.createdAt);
 			const year = date.getFullYear();
 			const month = date.getMonth();

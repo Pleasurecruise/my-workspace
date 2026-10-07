@@ -14,7 +14,7 @@
 	import MemosView from "./lib/components/pages/MemosView.svelte";
 	import MomentView from "./lib/components/pages/MomentView.svelte";
 	import MusicView from "./lib/components/pages/MusicView.svelte";
-	import KnowledgeView, { selectKnowledgeArticle } from "./lib/components/pages/KnowledgeView.svelte";
+	import KnowledgeView from "./lib/components/pages/KnowledgeView.svelte";
 	import InboxView from "./lib/components/pages/InboxView.svelte";
 	import NewspaperView from "./lib/components/pages/NewspaperView.svelte";
 	import { createLayoutSession } from "./lib/components/dashboard/layout.svelte";
@@ -32,6 +32,7 @@
 	import { createMemosSession } from "./lib/components/memos/session.svelte";
 	import { createMomentSession } from "./lib/components/moment/session.svelte";
 	import { createKnowledgeSession } from "./lib/components/knowledge/session.svelte";
+	import { createNewspaperSession } from "./lib/components/newspaper/session.svelte";
 	import { applyTheme, initTheme } from "./lib/theme";
 
 	type View = "chat" | "terminal" | "dashboard" | "inbox" | "music" | "newspaper" | "settings" | Channel;
@@ -69,12 +70,12 @@
 		get mainElement() { return mainElement; },
 	});
 	const knowledge = createKnowledgeSession({
-		get active() { return selected === "knowledge" || selected === "newspaper"; },
+		get active() { return selected === "knowledge"; },
 		get mainElement() { return mainElement; },
 	});
 	const activeContent = $derived(
 		selected === "memos" ? memos : selected === "moment" ? moment
-			: selected === "knowledge" || selected === "newspaper" ? knowledge : null,
+			: selected === "knowledge" ? knowledge : null,
 	);
 	const paginatedContent = $derived(
 		selected === "memos" ? memos : selected === "knowledge" ? knowledge : null,
@@ -88,6 +89,7 @@
 	const layoutSession = createLayoutSession();
 	const dashboardSession = createDashboardSession(() => selected === "dashboard");
 	const inbox = createInboxSession(() => selected === "inbox");
+	const newspaper = createNewspaperSession(() => selected === "newspaper");
 	const settings = createSettingsSession({
 		resetChannel: (channel) => {
 			if (channel === "memos") memos.reset();
@@ -102,8 +104,7 @@
 		switch (view) {
 			case "memos": return configuration?.api.memos.status === "ready";
 			case "moment": return configuration?.api.moment.status === "ready";
-			case "knowledge":
-			case "newspaper": return configuration?.api.knowledge.status === "ready";
+			case "knowledge": return configuration?.api.knowledge.status === "ready";
 			case "music": return configuration?.spotify.status === "ready" || configuration?.qqMusic.status === "ready";
 			case "inbox": return configuration?.ntfy.status === "ready";
 			default: return true;
@@ -142,6 +143,7 @@
 		musicPlayerVisible = false;
 		selected = view;
 		void inbox.activate(view === "inbox");
+		if (view === "newspaper") void newspaper.refresh();
 		const activation = dashboardSession.activate(view === "dashboard");
 		sidebarOpen = false;
 		await activeContent?.enter();
@@ -380,7 +382,7 @@
 				{:else if contentError && content === null}
 					<section class="consumer-error">
 						<header class="page-header"><div>
-							{#if selected === "memos"}<h1>Memos</h1>{:else if selected === "moment"}<h1>Moment</h1>{:else if selected === "newspaper"}<h1>Newspaper</h1>{:else}<h1>Knowledge</h1>{/if}
+							{#if selected === "memos"}<h1>Memos</h1>{:else if selected === "moment"}<h1>Moment</h1>{:else}<h1>Knowledge</h1>{/if}
 							<p class="page-description">Content unavailable</p>
 						</div></header>
 						<div class="error" role="alert">
@@ -390,7 +392,7 @@
 						</div>
 					</section>
 				{:else if selected === "newspaper"}
-					<NewspaperView onread={knowledge.readArticle} documents={knowledge.content?.knowledge ?? []} issues={knowledge.content?.newspaper ?? { developer: null, personal: null }} loading={knowledge.content === null || knowledge.loading} onopenarticle={(document, fragment) => { const error = selectKnowledgeArticle(document, fragment); if (error === null) selected = "knowledge"; return error; }} />
+					<NewspaperView daily={newspaper.daily} error={newspaper.error} loading={newspaper.loading} onretry={newspaper.refresh} />
 				{:else if content !== null}
 					{#if content.channel === "memos"}
 						<MemosView memos={content.memos} tags={memos.tags.tags} display={memos.memoDisplay} filters={memos.filters} onfilter={memos.filterMemos} onopenmemo={memos.revealMemo} oncreate={memos.createMemo} onimportx={memos.importXMemo} onupdate={memos.updateMemo} ondelete={memos.deleteMemo} onpublishtelegram={memos.publishMemoToTelegram} onpublishx={memos.publishMemoToX}>

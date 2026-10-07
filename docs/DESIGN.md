@@ -192,8 +192,7 @@ Memo editors constrain content-sized textareas to their container and wrap unbro
 
 Index, reader, and editor share the page frame. The index renders metadata before article bodies
 load. Visible entries, hover, focus and touch warm destinations; pending clicks keep titles stable
-and expose busy state. Detail failures preserve the index for retry. Newspaper loads the active
-edition and preloads the other on arrow intent, rejecting stale presentation updates.
+and expose busy state. Detail failures preserve the index for retry.
 
 The reader toolbar groups contents, copying the canonical UUID URL, editing, and returning. Actions
 align with the article title. Contents entries scroll the main reader with heading clearance and
@@ -277,15 +276,10 @@ settled content. Game status and verification copy use English. [Games](GAMES.md
 
 ## Newspaper and Inbox
 
-Newspaper presents the latest two editions on a warm paper surface with a serif masthead and original
-article hierarchy. Index lookup and initial detail compilation share one continuous Newspaper
-skeleton; the finished edition replaces it directly. Background refresh retains the settled paper
-without adding a second loading indicator. Edition changes start at the top; background refresh
-preserves reading position.
-Page-turn motion respects Reduce Motion. Editions stay out of the Knowledge index and Inbox.
-Article cards open Knowledge through the shared reader navigation; ordinary external links open
-the default browser and same-article fragments stay in the reader. Opening failures appear beside
-the article.
+Newspaper presents the latest AIHOT daily on a warm paper surface: a serif masthead, the lead story,
+labelled sections of summarized items, and timed flashes. A skeleton covers only the first read;
+background refresh keeps the settled paper and shows failures beside it. Every link opens the
+default browser, and the footer credits AIHOT.
 
 Inbox is independent of Dashboard. Unreadable storage displays an error, never a false empty state.
 Replayed notifications populate history; only new live messages may trigger system notifications.

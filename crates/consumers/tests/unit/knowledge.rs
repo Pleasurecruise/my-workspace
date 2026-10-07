@@ -72,27 +72,6 @@ fn validates_write_versions() {
     assert!(serde_json::from_value::<VisibilityUpdate>(visibility).is_err());
 }
 
-async fn projected_document(id: &str, tags: &[&str], created_at: &str) -> Document {
-    project_article(Article {
-        id: id.to_owned(),
-        editions: HashMap::from([(
-            "zh".to_owned(),
-            Edition {
-                title: id.to_owned(),
-                summary: id.to_owned(),
-                markdown: format!("# {id}"),
-            },
-        )]),
-        tags: tags.iter().map(|tag| (*tag).to_owned()).collect(),
-        visibility: Visibility::Private,
-        content_hash: id.to_owned(),
-        created_at: created_at.to_owned(),
-        updated_at: created_at.to_owned(),
-    })
-    .await
-    .expect("article should project")
-}
-
 #[test]
 fn decodes_article_ids() {
     for (path, id) in [
@@ -167,87 +146,6 @@ async fn paginates_overview() {
 }
 
 #[test]
-fn projects_overview() {
-    fn summary(id: &str, tags: &[&str], created_at: &str) -> Summary {
-        Summary {
-            id: id.to_owned(),
-            editions: HashMap::new(),
-            tags: tags.iter().map(|tag| (*tag).to_owned()).collect(),
-            visibility: Visibility::Private,
-            content_hash: id.to_owned(),
-            created_at: created_at.to_owned(),
-            updated_at: created_at.to_owned(),
-        }
-    }
-
-    let summaries = vec![
-        summary(
-            "developer-latest",
-            &["developer-daily"],
-            "2026-09-02T00:00:00Z",
-        ),
-        summary("regular-one", &["rust"], "2026-09-01T00:00:00Z"),
-        summary(
-            "personal-latest",
-            &["personal-daily"],
-            "2026-08-31T00:00:00Z",
-        ),
-        summary(
-            "developer-old",
-            &["developer-daily"],
-            "2026-08-30T00:00:00Z",
-        ),
-        summary("regular-two", &[], "2026-08-29T00:00:00Z"),
-        summary("personal-old", &["personal-daily"], "2026-08-28T00:00:00Z"),
-    ];
-    let ids: Vec<_> = overview_summaries(summaries.clone())
-        .into_iter()
-        .map(|summary| summary.id)
-        .collect();
-
-    assert_eq!(
-        ids,
-        [
-            "developer-latest",
-            "regular-one",
-            "personal-latest",
-            "regular-two",
-        ]
-    );
-
-    let default_page = summaries
-        .iter()
-        .filter(|item| item.tags.is_empty() || item.tags == ["rust"]);
-    let mut daily: Vec<_> = summaries
-        .iter()
-        .filter(|item| newspaper_edition(&item.tags).is_some())
-        .cloned()
-        .collect();
-    for item in &mut daily {
-        item.tags.push("daily".to_owned());
-    }
-    daily.reverse();
-    daily[0].updated_at = "2026-09-05T00:00:00Z".to_owned();
-    let mut retained = Vec::new();
-    for page in daily.chunks(2) {
-        retained.extend_from_slice(page);
-        retained = overview_summaries(retained);
-    }
-    retained.push(retained[0].clone());
-    let merged = overview_summaries(default_page.cloned().chain(retained).collect());
-    let ids: Vec<_> = merged.iter().map(|item| item.id.as_str()).collect();
-    assert_eq!(
-        ids,
-        [
-            "regular-one",
-            "regular-two",
-            "personal-latest",
-            "developer-latest"
-        ]
-    );
-}
-
-#[test]
 fn decodes_markdown_without_slug() {
     let response: ArticleResponse<Article> = serde_json::from_value(serde_json::json!({
         "article": {
@@ -269,55 +167,6 @@ fn decodes_markdown_without_slug() {
     .expect("valid my-knowledge article response");
 
     assert_eq!(response.article.editions["zh"].markdown, "# 类型边界");
-}
-
-#[tokio::test]
-async fn classifies_news_tags() {
-    assert_eq!(
-        newspaper_edition(&[" Daily ".to_owned(), "PROGRAMMER-DAILY".to_owned()]),
-        Some(NewspaperEdition::Developer)
-    );
-    assert_eq!(
-        newspaper_edition(&["personal-daily".to_owned()]),
-        Some(NewspaperEdition::Personal)
-    );
-    assert_eq!(
-        newspaper_edition(&["personal-daily-prompt".to_owned()]),
-        None
-    );
-    assert_eq!(
-        newspaper_edition(&["developer-daily".to_owned(), "personal-daily".to_owned()]),
-        None
-    );
-
-    let document =
-        projected_document("developer", &["developer-daily"], "2026-08-25T00:00:00Z").await;
-    assert_eq!(
-        serde_json::to_value(document).expect("document should serialize")["newspaperEdition"],
-        "developer"
-    );
-}
-
-#[tokio::test]
-async fn selects_latest_issues() {
-    let documents = [
-        projected_document(
-            "older-personal",
-            &["personal-daily"],
-            "2026-08-23T00:00:00Z",
-        )
-        .await,
-        projected_document("developer", &["developer-daily"], "2026-08-25T00:00:00Z").await,
-        projected_document("personal", &["personal-daily"], "2026-08-24T00:00:00Z").await,
-    ];
-
-    assert_eq!(
-        latest_newspaper_issues(&documents.iter().map(Entry::from).collect::<Vec<_>>()),
-        NewspaperIssues {
-            developer: Some("developer".to_owned()),
-            personal: Some("personal".to_owned()),
-        }
-    );
 }
 
 #[tokio::test]

@@ -35,6 +35,7 @@ futures-util.workspace = true
 link-preview.workspace = true
 markdown.workspace = true
 market-data.workspace = true
+newspaper.workspace = true
 quotes.workspace = true
 service-status.workspace = true
 tracing-subscriber.workspace = true

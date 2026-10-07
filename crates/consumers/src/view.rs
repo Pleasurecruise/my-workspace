@@ -43,7 +43,6 @@ pub enum ChannelView {
     },
     Knowledge {
         knowledge: Vec<crate::api::knowledge::Entry>,
-        newspaper: crate::api::knowledge::NewspaperIssues,
         next_cursor: Option<String>,
     },
 }

@@ -1,6 +1,6 @@
 use super::{
     ApiError, Article, ArticlePage, Client, Document, EditionSummary, ListFilters,
-    OVERVIEW_PAGE_SIZE, Summary, article_identity, newspaper_edition, read_summary_page,
+    OVERVIEW_PAGE_SIZE, Summary, article_identity, read_summary_page,
 };
 use crate::api::credentials::ConsumerApi;
 use markdown::{ArticleMetadata, article_ids, article_urls, knowledge};
@@ -71,7 +71,6 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
             knowledge::fallback(&source)
         }
     };
-    let newspaper_edition = newspaper_edition(&article.tags);
     Ok(Document {
         id: article.id,
         title: edition.title.clone(),
@@ -81,7 +80,6 @@ pub async fn project_article(article: Article) -> Result<Document, ApiError> {
         content_hash: article.content_hash,
         created_at: article.created_at,
         updated_at: article.updated_at,
-        newspaper_edition,
         source,
         html: compiled.html,
         toc: compiled.toc,

@@ -5,6 +5,7 @@ import App from "../App.svelte";
 import type { ChatSnapshot } from "@/lib/contracts/chat";
 import type { CommandResponse } from "@/lib/contracts/command";
 import type { ChannelView, InitialViews, MemoTagCount, MemoView } from "@/lib/contracts/content";
+import type { NewspaperDaily } from "@/lib/contracts/newspaper";
 import type { ConfigurationStatus } from "@/lib/contracts/settings";
 import type { TerminalOutput } from "@/lib/contracts/terminal";
 
@@ -348,7 +349,8 @@ it("shows the destination's loading structure while its content request is pendi
 	const normal = invoke.getMockImplementation();
 	if (!normal) throw new Error("Missing command mock");
 	invoke.mockImplementation((command: string) => {
-		if (command === "initialize_views" || command === "read_channel") return new Promise(() => {});
+		if (["initialize_views", "read_channel", "read_newspaper"].includes(command))
+			return new Promise(() => {});
 		return normal(command);
 	});
 	const target = document.createElement("div");
@@ -469,7 +471,7 @@ it("shows only configured destinations after configuration loads", async () => {
 		Array.from(target.querySelectorAll('nav[aria-label="Consumer views"] button'), (item) =>
 			item.textContent?.trim(),
 		);
-	expect(labels()).toEqual(["Dashboard", "Chat", "Settings"]);
+	expect(labels()).toEqual(["Dashboard", "Chat", "Newspaper", "Settings"]);
 	pending.resolve({
 		status: "ready",
 		data: {
@@ -490,63 +492,32 @@ it("shows only configured destinations after configuration loads", async () => {
 	expect(target.querySelector("aside")?.textContent).not.toContain("Connections");
 });
 
-it("keeps one newspaper loading surface from index lookup through article compilation", async () => {
+it("loads the AIHOT daily when Newspaper opens", async () => {
 	setupCommands();
 	const fallback = invoke.getMockImplementation()!;
-	const index = deferred<CommandResponse<ChannelView>>();
-	const detail = deferred<CommandResponse<import("@/lib/contracts/content").KnowledgeDocument>>();
-	invoke.mockImplementation((command: string, args: unknown) => {
-		if (command === "read_channel") return index.promise;
-		if (command === "read_knowledge") return detail.promise;
-		return fallback(command, args);
-	});
+	const daily = deferred<CommandResponse<NewspaperDaily>>();
+	invoke.mockImplementation((command: string, args: unknown) =>
+		command === "read_newspaper" ? daily.promise : fallback(command, args),
+	);
 	const target = document.createElement("div");
 	document.body.append(target);
 	views.push(mount(App, { target }));
-	await tick();
 	await vi.waitFor(() => expect(button(target, "Newspaper", "nav button")).toBeDefined());
 	button(target, "Newspaper", "nav button").click();
 	await tick();
-	const loading = target.querySelector('[aria-label="Loading newspaper"]');
-	expect(loading).not.toBeNull();
-	const entry = {
-		id: "daily",
-		title: "Daily",
-		summary: "Summary",
-		tags: [],
-		visibility: "private" as const,
-		contentHash: "hash",
-		createdAt: "2026-09-12",
-		updatedAt: "2026-09-12",
-		newspaperEdition: "developer" as const,
-	};
-	index.resolve({
+	expect(target.querySelector('[aria-label="Loading newspaper"]')).not.toBeNull();
+	daily.resolve({
 		status: "ready",
 		data: {
-			channel: "knowledge",
-			knowledge: [entry],
-			newspaper: { developer: "daily", personal: null },
-			nextCursor: null,
+			date: "2026-10-07",
+			generatedAt: "2026-10-07T00:00:29.119Z",
+			url: "https://aihot.news/daily/2026-10-07",
+			lead: { title: "Lead story", paragraph: "Lead paragraph" },
+			sections: [],
+			flashes: [],
 		},
 	});
-	await vi.waitFor(() =>
-		expect(invoke).toHaveBeenCalledWith("read_knowledge", { id: "daily", expectedHash: "hash" }),
-	);
-	expect(target.querySelector('[aria-label="Loading newspaper"]')).toBe(loading);
-	expect(target.textContent).not.toContain("Loading edition");
-	expect(target.textContent).not.toContain("Preparing the article");
-	expect(target.querySelectorAll('[aria-label="Loading newspaper"]')).toHaveLength(1);
-	detail.resolve({
-		status: "ready",
-		data: {
-			...entry,
-			source: "Daily body",
-			html: "<p>Daily body</p>",
-			toc: [],
-			stats: { wordCount: 1, readingMinutes: 1 },
-		},
-	});
-	await vi.waitFor(() => expect(target.querySelector(".copy")?.textContent).toBe("Daily body"));
+	await vi.waitFor(() => expect(target.querySelector(".cover h2")?.textContent).toBe("Lead story"));
 	expect(target.querySelector('[aria-label="Loading newspaper"]')).toBeNull();
 });
 

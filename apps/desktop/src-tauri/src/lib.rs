@@ -12,6 +12,7 @@ mod inbox;
 mod island;
 mod ledger;
 mod music;
+mod newspaper;
 mod protocol;
 mod settings;
 mod social;
@@ -75,6 +76,7 @@ pub fn run() {
         .manage(island::Visibility::default())
         .manage(chat::Runtime::default())
         .manage(content::Content::default())
+        .manage(::newspaper::Reader::default())
         .manage(app_lock::AppLock::default())
         .manage(social::Social::default())
         .manage(music::Music::default())
@@ -155,6 +157,7 @@ pub fn run() {
             chat::control_chat,
             content::initialize_views,
             content::read_channel,
+            newspaper::read_newspaper,
             content::memos::read_memo_tags,
             content::memos::create_memo,
             content::memos::import_x_memo,

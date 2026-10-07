@@ -8,8 +8,6 @@ use markdown::knowledge::{ReadingStats, TocEntry};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
 
 const ENDPOINT: &str = "https://knowledge.you-find.me/api/articles";
 const OVERVIEW_PAGE_SIZE: usize = 100;
@@ -25,7 +23,6 @@ pub struct Entry {
     pub content_hash: String,
     pub created_at: String,
     pub updated_at: String,
-    pub newspaper_edition: Option<NewspaperEdition>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -39,43 +36,11 @@ pub struct Document {
     pub content_hash: String,
     pub created_at: String,
     pub updated_at: String,
-    pub newspaper_edition: Option<NewspaperEdition>,
     pub source: String,
     pub html: String,
     pub toc: Vec<TocEntry>,
     pub stats: ReadingStats,
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum NewspaperEdition {
-    Developer,
-    Personal,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NewspaperIssues {
-    pub developer: Option<String>,
-    pub personal: Option<String>,
-}
-
-const DEV_NEWS_TAGS: &[&str] = &[
-    "developer-daily",
-    "programmer-daily",
-    "newspaper/developer",
-    "newspaper/developer-daily",
-    "newspaper/programmer",
-    "newspaper/programmer-daily",
-    "程序员日报",
-];
-const PERSONAL_NEWS_TAGS: &[&str] = &[
-    "personal-daily",
-    "newspaper/personal",
-    "newspaper/personal-daily",
-    "个人日报",
-    "每日日报",
-];
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -245,43 +210,21 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
 pub async fn overview() -> Result<Page, ApiError> {
     let client = Client::load(ConsumerApi::Knowledge)?;
     let client_ref = &client;
-    let (regular, daily) = tokio::try_join!(
-        overview_pages(|cursor| async move {
-            read_summary_page(
-                client_ref,
-                &ListFilters {
-                    cursor,
-                    limit: Some(OVERVIEW_PAGE_SIZE),
-                    ..ListFilters::default()
-                },
-            )
-            .await
-        }),
-        overview_pages(|cursor| async move {
-            read_summary_page(
-                client_ref,
-                &ListFilters {
-                    cursor,
-                    limit: Some(OVERVIEW_PAGE_SIZE),
-                    tags: vec!["daily".to_owned()],
-                    ..ListFilters::default()
-                },
-            )
-            .await
-        }),
-    )?;
-    let summaries = regular
-        .into_iter()
-        .chain(
-            daily
-                .into_iter()
-                .filter(|summary| newspaper_edition(&summary.tags).is_some()),
+    let documents = overview_pages(|cursor| async move {
+        read_summary_page(
+            client_ref,
+            &ListFilters {
+                cursor,
+                limit: Some(OVERVIEW_PAGE_SIZE),
+                ..ListFilters::default()
+            },
         )
-        .collect();
-    let documents = overview_summaries(summaries)
-        .into_iter()
-        .map(project_summary)
-        .collect::<Result<_, _>>()?;
+        .await
+    })
+    .await?
+    .into_iter()
+    .map(project_summary)
+    .collect::<Result<_, _>>()?;
     Ok(Page {
         documents,
         cursor: None,
@@ -299,7 +242,6 @@ where
     loop {
         let page = read(cursor).await?;
         summaries.extend(page.articles);
-        summaries = overview_summaries(summaries);
         let Some(next) = page.cursor else {
             return Ok(summaries);
         };
@@ -337,7 +279,6 @@ fn project_summary(summary: Summary) -> Result<Entry, ApiError> {
     let edition = summary.editions.get("zh").ok_or_else(|| {
         ApiError::Protocol(format!("article {} has no Chinese summary", summary.id))
     })?;
-    let newspaper_edition = newspaper_edition(&summary.tags);
     Ok(Entry {
         id: summary.id,
         title: edition.title.clone(),
@@ -347,7 +288,6 @@ fn project_summary(summary: Summary) -> Result<Entry, ApiError> {
         content_hash: summary.content_hash,
         created_at: summary.created_at,
         updated_at: summary.updated_at,
-        newspaper_edition,
     })
 }
 
@@ -362,80 +302,7 @@ impl From<&Document> for Entry {
             content_hash: document.content_hash.clone(),
             created_at: document.created_at.clone(),
             updated_at: document.updated_at.clone(),
-            newspaper_edition: document.newspaper_edition,
         }
-    }
-}
-
-fn overview_summaries(summaries: Vec<Summary>) -> Vec<Summary> {
-    let mut latest_developer: Option<&Summary> = None;
-    let mut latest_personal: Option<&Summary> = None;
-    for summary in &summaries {
-        let latest = match newspaper_edition(&summary.tags) {
-            Some(NewspaperEdition::Developer) => &mut latest_developer,
-            Some(NewspaperEdition::Personal) => &mut latest_personal,
-            None => continue,
-        };
-        if latest.is_none_or(|current| is_newer(&summary.created_at, &current.created_at)) {
-            *latest = Some(summary);
-        }
-    }
-    let latest_developer = latest_developer.map(|summary| summary.id.clone());
-    let latest_personal = latest_personal.map(|summary| summary.id.clone());
-    let mut seen = HashSet::new();
-    summaries
-        .into_iter()
-        .filter(|summary| seen.insert(summary.id.clone()))
-        .filter(|summary| {
-            newspaper_edition(&summary.tags).is_none()
-                || Some(&summary.id) == latest_developer.as_ref()
-                || Some(&summary.id) == latest_personal.as_ref()
-        })
-        .collect()
-}
-
-fn newspaper_edition(tags: &[String]) -> Option<NewspaperEdition> {
-    let mut developer = false;
-    let mut personal = false;
-    for tag in tags {
-        let tag = tag.trim().to_lowercase();
-        developer |= DEV_NEWS_TAGS.contains(&tag.as_str());
-        personal |= PERSONAL_NEWS_TAGS.contains(&tag.as_str());
-    }
-    match (developer, personal) {
-        (true, false) => Some(NewspaperEdition::Developer),
-        (false, true) => Some(NewspaperEdition::Personal),
-        _ => None,
-    }
-}
-
-pub fn latest_newspaper_issues(documents: &[Entry]) -> NewspaperIssues {
-    let mut developer: Option<&Entry> = None;
-    let mut personal: Option<&Entry> = None;
-    for document in documents {
-        let issue = match document.newspaper_edition {
-            Some(NewspaperEdition::Developer) => &mut developer,
-            Some(NewspaperEdition::Personal) => &mut personal,
-            None => continue,
-        };
-        if issue.is_none_or(|current| is_newer(&document.created_at, &current.created_at)) {
-            *issue = Some(document);
-        }
-    }
-    NewspaperIssues {
-        developer: developer.map(|document| document.id.clone()),
-        personal: personal.map(|document| document.id.clone()),
-    }
-}
-
-/// Compare `created_at` stamps, falling back to string order when either is not RFC 3339.
-fn is_newer(candidate: &str, current: &str) -> bool {
-    match (
-        OffsetDateTime::parse(candidate, &Rfc3339),
-        OffsetDateTime::parse(current, &Rfc3339),
-    ) {
-        (Ok(candidate), Ok(current)) => candidate > current,
-        _ => candidate > current,
     }
 }
 

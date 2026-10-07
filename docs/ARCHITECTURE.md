@@ -22,6 +22,7 @@ stores artifacts. This repository does not host a cloud application backend.
 | `crates/todo`           | Tasks, habits, ICS, Notion and Codex Resets calendar sources          |
 | `crates/ledger`         | Local GBP expenses and monthly statistics                             |
 | `crates/music`          | Spotify and QQ Music authentication, library and playback             |
+| `crates/newspaper`      | AIHOT daily reads with ETag revalidation                              |
 | `crates/oauth`          | Shared OAuth PKCE, loopback callbacks and token transport             |
 | `crates/games`          | Game accounts, daily notes, Steam and pull archives                   |
 | `crates/github`         | GitHub CLI dashboard and repository reads                             |
@@ -115,7 +116,9 @@ Music and game runtimes outlive route mounts. Their authentication, cancellation
 rules belong in [Music](MUSIC.md) and [Games](GAMES.md); NAS protocols belong in [UGOS](UGOS.md).
 Inbox independently activates its ntfy stream while its route is active.
 Device storage reads OS capacity only; category inspection is delegated to system storage settings.
-Knowledge and Newspaper load a summary-only index without fetching or compiling bodies.
+Knowledge loads a summary-only index without fetching or compiling bodies. Newspaper is independent:
+`newspaper::Reader` reads the latest AIHOT daily, serves it for 60 seconds and then revalidates with
+its ETag, so visits and window focus cost a 304 until the next daily is published.
 `content::knowledge::Reader` owns lazy detail compilation, a 30-second/16-document cache, and same-ID
 in-flight request sharing. A changed index content hash bypasses cached content. Visible index entries, pointer intent,
 keyboard focus and touch request prefetch through Tauri, with at most two speculative reads and six
@@ -169,11 +172,11 @@ repository, view and image caches; its submodules adapt commands. Cache revision
 read from
 restoring invalidated content. Writes retain each consumer's server-side coordination.
 
-| Consumer  | Boundary                                                                                                                                                                                                                                         |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Memos     | API records include Markdown; Rust compiles it without another R2 read. CRUD and X imports use the Memo API.                                                                                                                                     |
-| Moment    | API owns metadata; Rust prepares image variants, uploads them to R2, then registers them. The list is a bounded batch without a synthetic cursor.                                                                                                |
-| Knowledge | API summaries form the metadata-only index and classify Newspaper editions. Opening a document performs an authorized detail read and Rust compilation. Writes require both the content hash and exact updated timestamp for conflict detection. |
+| Consumer  | Boundary                                                                                                                                                                                                         |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Memos     | API records include Markdown; Rust compiles it without another R2 read. CRUD and X imports use the Memo API.                                                                                                     |
+| Moment    | API owns metadata; Rust prepares image variants, uploads them to R2, then registers them. The list is a bounded batch without a synthetic cursor.                                                                |
+| Knowledge | API summaries form the metadata-only index. Opening a document performs an authorized detail read and Rust compilation. Writes require both the content hash and exact updated timestamp for conflict detection. |
 
 Knowledge keeps API contracts and index policy in `api/knowledge.rs`; its `render` submodule owns
 document compilation, editor previews and authorized reference enrichment.

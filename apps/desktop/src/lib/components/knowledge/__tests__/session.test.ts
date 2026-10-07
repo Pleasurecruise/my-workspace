@@ -20,7 +20,6 @@ const document: KnowledgeDocument = {
 	contentHash: "original",
 	createdAt: "2026-09-07T00:00:00Z",
 	updatedAt: "2026-09-07T00:00:00Z",
-	newspaperEdition: null,
 	source: "Body",
 	html: "<p>Body</p>",
 	toc: [],
@@ -32,7 +31,6 @@ function page(article: KnowledgeDocument): CommandResponse<ChannelView> {
 		data: {
 			channel: "knowledge",
 			knowledge: [article],
-			newspaper: { developer: null, personal: null },
 			nextCursor: null,
 		},
 	};

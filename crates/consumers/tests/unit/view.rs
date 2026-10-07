@@ -21,22 +21,6 @@ fn serializes_cursors() {
 }
 
 #[test]
-fn serializes_newspaper() {
-    let view = ChannelView::Knowledge {
-        knowledge: Vec::new(),
-        newspaper: crate::api::knowledge::NewspaperIssues {
-            developer: Some("developer-issue".to_owned()),
-            personal: None,
-        },
-        next_cursor: None,
-    };
-    let value = serde_json::to_value(view).expect("knowledge view should serialize");
-
-    assert_eq!(value["newspaper"]["developer"], "developer-issue");
-    assert!(value["newspaper"]["personal"].is_null());
-}
-
-#[test]
 fn serializes_gallery_contract() {
     let value = serde_json::to_value(ChannelView::Moment {
         photos: Vec::new(),

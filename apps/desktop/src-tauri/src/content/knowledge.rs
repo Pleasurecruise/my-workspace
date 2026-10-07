@@ -241,7 +241,6 @@ mod tests {
             content_hash: hash.into(),
             created_at: String::new(),
             updated_at: String::new(),
-            newspaper_edition: None,
             source: "Body".into(),
             html: "<p>Body</p>".into(),
             toc: vec![],

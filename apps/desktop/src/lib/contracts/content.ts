@@ -90,7 +90,6 @@ export type ChannelView =
 	| {
 			channel: "knowledge";
 			knowledge: KnowledgeEntry[];
-			newspaper: NewspaperIssues;
 			nextCursor: string | null;
 	  };
 
@@ -109,7 +108,6 @@ export interface KnowledgeEntry {
 	contentHash: string;
 	createdAt: string;
 	updatedAt: string;
-	newspaperEdition: "developer" | "personal" | null;
 }
 
 export interface ReadingStats {
@@ -122,11 +120,6 @@ export interface KnowledgeDocument extends KnowledgeEntry {
 	html: string;
 	toc: TocEntry[];
 	stats: ReadingStats;
-}
-
-export interface NewspaperIssues {
-	developer: string | null;
-	personal: string | null;
 }
 
 export interface MarkdownSpan {
