@@ -176,3 +176,18 @@ it("revalidates the feed on every visit", async () => {
 	await session.enter();
 	expect(session.content?.memos).toEqual([remote]);
 });
+it("records when tags last settled", async () => {
+	vi.useFakeTimers();
+	try {
+		vi.setSystemTime(600_000);
+		const session = createMemosSession({ active: true, mainElement: null });
+		invoke.mockResolvedValue({ status: "ready", data: [] });
+		expect(session.tags.settledAt).toBe(0);
+		await session.tags.refresh();
+		expect(session.tags.settledAt).toBe(600_000);
+		session.tags.reset();
+		expect(session.tags.settledAt).toBe(0);
+	} finally {
+		vi.useRealTimers();
+	}
+});

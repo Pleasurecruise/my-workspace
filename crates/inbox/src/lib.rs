@@ -103,6 +103,7 @@ impl Subscription {
 async fn run(store: Arc<Store>, token: String, listener: Listener, mut stop: watch::Receiver<()>) {
     let client = match reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15))
+        .user_agent(concat!("Vesper/", env!("CARGO_PKG_VERSION"), " inbox"))
         .build()
     {
         Ok(client) => client,

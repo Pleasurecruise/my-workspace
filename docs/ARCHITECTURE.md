@@ -76,7 +76,8 @@ accepts it only if a later read or write has not superseded it. Request generati
 responses, successful writes invalidate older reads, and failed refreshes retain settled data with
 an error. Content drafts survive navigation and preserve edits made during saves. Credential changes reset
 only the affected feature. Memos, Moment and Knowledge revalidate on each visit, window focus and a
-minute tick near the top of the feed; Memos keeps already loaded pages and applied filters across mounts.
+minute tick near the top of the feed; Memos keeps already loaded pages and applied filters across mounts,
+and its background polls revalidate tags only after ten minutes because writes refresh them directly.
 Moment image keys are never reused, so deleting a photo leaves the asset cache intact.
 
 Dashboard and Dynamic Island share `WidgetContent` and feature panels. The Rust runtime owns source
@@ -88,7 +89,8 @@ preserve invalid widget configurations for repair while rejecting dangling refer
 
 `apps/desktop/src-tauri/src/chat` owns one system Pi RPC subprocess in the current account's home
 directory. Tokio and `tokio-util::codec::LinesCodec` own process and JSONL pipe I/O; Serde decodes
-records. The runtime correlates responses by ID, projects text, thinking and tool activity, and uses
+records. The runtime correlates responses by ID, honors prompt dispositions, aborts active runs on
+request, projects text, thinking and tool activity, and uses
 the `markdown` crate for completed assistant messages. Typed Tauri commands and revisioned events
 connect Rust to the main WebView; Svelte owns drafts and presentation. Pi owns authentication and
 configuration. Vesper neither embeds its npm SDK nor exposes its credentials to the WebView.

@@ -41,6 +41,11 @@ struct NewSession {
 }
 
 #[derive(Deserialize)]
+struct PromptResult {
+    disposition: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct ExtensionRequest {
     id: String,
     method: String,
@@ -188,6 +193,16 @@ pub(super) async fn run_session(
                                 snapshot.messages.clear();
                                 snapshot.error = None;
                             }
+                            "prompt" => {
+                                let disposition = response
+                                    .data
+                                    .and_then(|data| serde_json::from_value::<PromptResult>(data).ok())
+                                    .and_then(|result| result.disposition);
+                                if disposition.as_deref() == Some("handled") {
+                                    snapshot.busy = false;
+                                }
+                            }
+                            "abort" => snapshot.busy = false,
                             _ => {}
                         }
                         publish(&mut snapshot);
@@ -358,6 +373,106 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn settles_abort() {
+        let child = fake_pi(
+            r#"
+            while IFS= read -r line; do
+                id=${line#*'"id":"'}; id=${id%%'"'*}
+                case "$line" in
+                    *'"type":"prompt"'*) printf '{"id":"%s","type":"response","success":true,"data":{"disposition":"started"}}\n' "$id";;
+                    *'"type":"abort"'*) printf '{"id":"%s","type":"response","success":true}\n' "$id";;
+                esac
+            done
+        "#,
+        );
+        let (sender, receiver) = mpsc::channel(16);
+        let (events, mut snapshots) = mpsc::unbounded_channel();
+        let task = tokio::spawn(run_session(
+            child,
+            receiver,
+            ChatSnapshot::default(),
+            move |snapshot| events.send(snapshot.clone()).is_ok(),
+        ));
+        for kind in ["prompt", "abort"] {
+            let (reply, response) = oneshot::channel();
+            sender
+                .send(RpcRequest {
+                    command: json!({"type":kind}),
+                    response: reply,
+                })
+                .await
+                .unwrap();
+            response.await.unwrap().unwrap();
+        }
+        let mut saw_busy = false;
+        let mut settled = false;
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while let Some(snapshot) = snapshots.recv().await {
+                saw_busy |= snapshot.busy;
+                if saw_busy && !snapshot.busy {
+                    settled = true;
+                    break;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert!(settled);
+        drop(sender);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn settles_handled_prompt() {
+        let child = fake_pi(
+            r#"
+            while IFS= read -r line; do
+                id=${line#*'"id":"'}; id=${id%%'"'*}
+                case "$line" in
+                    *'"type":"prompt"'*) printf '{"id":"%s","type":"response","success":true,"data":{"disposition":"handled"}}\n' "$id";;
+                esac
+            done
+        "#,
+        );
+        let (sender, receiver) = mpsc::channel(16);
+        let (events, mut snapshots) = mpsc::unbounded_channel();
+        let task = tokio::spawn(run_session(
+            child,
+            receiver,
+            ChatSnapshot::default(),
+            move |snapshot| events.send(snapshot.clone()).is_ok(),
+        ));
+        let (reply, response) = oneshot::channel();
+        sender
+            .send(RpcRequest {
+                command: json!({"type":"prompt"}),
+                response: reply,
+            })
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(3), response)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let settled = tokio::time::timeout(Duration::from_secs(3), async {
+            let mut saw_busy = false;
+            while let Some(snapshot) = snapshots.recv().await {
+                saw_busy |= snapshot.busy;
+                if saw_busy && !snapshot.busy {
+                    return true;
+                }
+            }
+            false
+        })
+        .await
+        .unwrap_or(false);
+        drop(sender);
+        task.await.unwrap();
+        assert!(settled);
+    }
+
+    #[tokio::test]
     async fn disconnects_on_protocol_error() {
         let child = fake_pi("read -r line; printf 'not json\\n'");
         let (sender, receiver) = mpsc::channel(16);
@@ -412,6 +527,7 @@ mod tests {
                 1,
             ),
             ("prompt", false, json!(null), Some("Pi rejected prompt"), 1),
+            ("prompt", true, json!({"disposition":"handled"}), None, 1),
         ] {
             let record = json!({"id":"%s","type":"response","success":success,"data":data,"error":"private-provider-error"});
             let script = format!(

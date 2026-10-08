@@ -12,12 +12,15 @@ import type {
 
 type MemoDisplay = "active" | "favorites" | "archived";
 
+const TAGS_MAX_AGE = 10 * 60_000;
+
 export function createMemosTags() {
 	let tags = $state<MemoTagCount[]>([]);
 	let error = $state<string | null>(null);
 	let loading = $state(false);
 	let session = 0;
 	let request = 0;
+	let settledAt = 0;
 	async function refresh(supersede = false) {
 		if (loading && !supersede) return;
 		const version = ++request;
@@ -34,6 +37,7 @@ export function createMemosTags() {
 		if (response.status === "ready") {
 			tags = response.data;
 			error = null;
+			settledAt = Date.now();
 		} else error = response.message;
 	}
 	return {
@@ -49,10 +53,14 @@ export function createMemosTags() {
 		get session() {
 			return session;
 		},
+		get settledAt() {
+			return settledAt;
+		},
 		refresh,
 		reset() {
 			session += 1;
 			request += 1;
+			settledAt = 0;
 			tags = [];
 			error = null;
 			loading = false;
@@ -339,7 +347,7 @@ export function createMemosSession(context: {
 		void tags.refresh();
 		function poll() {
 			if (!context.active) return;
-			void tags.refresh();
+			if (Date.now() - tags.settledAt >= TAGS_MAX_AGE) void tags.refresh();
 			if (!loading && context.mainElement !== null && context.mainElement.scrollTop < 200)
 				void load(null, true);
 		}

@@ -12,6 +12,8 @@
 	let thread = $state<HTMLDivElement | null>(null);
 	let atBottom = $state(true);
 	let interactionError = $state<string | null>(null);
+	let composing = false;
+	let composedAt = Number.NEGATIVE_INFINITY;
 	const snapshot = $derived(session.snapshot);
 	const turns = $derived.by(() => {
 		const turns: [ChatSnapshot["messages"][number], ...ChatSnapshot["messages"]][] = [];
@@ -30,6 +32,15 @@
 		void snapshot.revision;
 		if (atBottom) void tick().then(() => { if (thread !== null) thread.scrollTop = thread.scrollHeight; });
 	});
+
+	function handleComposerKeydown(event: KeyboardEvent) {
+		if (event.key !== "Enter" || event.shiftKey) return;
+		// WebKit can omit isComposing on the Enter that commits an IME candidate.
+		if (event.isComposing || event.keyCode === 229 || composing) return;
+		if (performance.now() - composedAt < 50) return;
+		event.preventDefault();
+		void session.send();
+	}
 
 	function externalLinks(node: HTMLDivElement) {
 		function openLink(event: MouseEvent) {
@@ -86,8 +97,18 @@
 
 	{#if session.error || snapshot.error || interactionError}<p class="error" role="alert">{session.error || snapshot.error || interactionError}</p>{/if}
 	<form class="composer" onsubmit={(event) => { event.preventDefault(); void session.send(); }}>
-		<Textarea class="min-h-0 resize-none" bind:value={session.draft} aria-label="Message Pi" placeholder="Message…" rows={2} disabled={!snapshot.connected} onkeydown={(event: KeyboardEvent) => { if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); void session.send(); } }} />
-		{#if snapshot.busy}<Button variant="secondary" size="icon-sm" aria-label="Stop response" onclick={() => void session.control("stop")}><Square size={14} /></Button>
+		<Textarea
+			class="min-h-0 resize-none"
+			bind:value={session.draft}
+			aria-label="Message Pi"
+			placeholder="Message…"
+			rows={2}
+			disabled={!snapshot.connected}
+			oncompositionstart={() => { composing = true; }}
+			oncompositionend={() => { composing = false; composedAt = performance.now(); }}
+			onkeydown={handleComposerKeydown}
+		/>
+		{#if snapshot.busy}<Button variant="secondary" size="icon-sm" aria-label="Stop response" disabled={session.stopping} onclick={() => void session.control("stop")}><Square size={14} /></Button>
 		{:else}<Button type="submit" size="icon-sm" aria-label="Send message" disabled={!snapshot.connected || session.pending || session.draft.trim() === ""}><ArrowUp size={16} /></Button>{/if}
 	</form>
 </section>
@@ -96,7 +117,12 @@
 	.chat { display: flex; flex: 1; flex-direction: column; width: 100%; min-height: 0; }
 	.page-header, .composer, .error { flex-shrink: 0; }
 	.actions { display: flex; align-items: center; gap: 0.25rem; }
-	.thread { display: flex; flex: 1; flex-direction: column; gap: 0.25rem; min-height: 0; overflow-y: auto; padding-block: 1rem; scrollbar-width: thin; }
+	.thread { display: flex; flex: 1; flex-direction: column; gap: 0.25rem; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-block: 1rem; scrollbar-gutter: stable; }
+	.thread, .tool pre { scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent; }
+	.thread::-webkit-scrollbar, .tool pre::-webkit-scrollbar { width: 0.5rem; height: 0.5rem; }
+	.thread::-webkit-scrollbar-track, .thread::-webkit-scrollbar-corner, .tool pre::-webkit-scrollbar-track, .tool pre::-webkit-scrollbar-corner { background: transparent; }
+	.thread::-webkit-scrollbar-thumb, .tool pre::-webkit-scrollbar-thumb { border: 0.125rem solid transparent; border-radius: var(--radius-full); background-color: var(--color-border-strong); background-clip: content-box; }
+	.thread::-webkit-scrollbar-thumb:hover, .tool pre::-webkit-scrollbar-thumb:hover { background-color: var(--color-muted-foreground); }
 	.empty { display: grid; flex: 1; place-items: center; color: var(--color-muted-foreground); font-family: var(--font-serif); font-size: 1.125rem; font-style: italic; }
 	.message { display: flex; align-items: flex-start; gap: 0.625rem; padding: 0.5rem 0.25rem; }
 	.message.user { flex-direction: row-reverse; }

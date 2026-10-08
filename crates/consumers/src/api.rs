@@ -27,6 +27,7 @@ impl Client {
             api_key,
             http: reqwest::Client::builder()
                 .timeout(REQUEST_TIMEOUT)
+                .user_agent(concat!("Vesper/", env!("CARGO_PKG_VERSION"), " consumers"))
                 .build()?,
         })
     }

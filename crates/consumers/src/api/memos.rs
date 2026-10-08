@@ -285,7 +285,7 @@ pub async fn import_x(source_url: &str, visibility: Visibility) -> Result<MemoVi
         .ok_or_else(|| ApiError::Protocol("a valid X post URL is required".to_owned()))?;
     let http = reqwest::Client::builder()
         .timeout(super::REQUEST_TIMEOUT)
-        .user_agent("vesper/1.0")
+        .user_agent(concat!("Vesper/", env!("CARGO_PKG_VERSION"), " X import"))
         .build()?;
     let response = send(
         http.get(format!("https://api.fxtwitter.com/status/{post_id}")),

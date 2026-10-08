@@ -16,6 +16,7 @@ export function createChatSession() {
 	let draft = $state("");
 	let connecting = $state(false);
 	let pending = $state(false);
+	let stopping = $state(false);
 	let error = $state<string | null>(null);
 	let disposed = false;
 	let initialized = false;
@@ -78,16 +79,20 @@ export function createChatSession() {
 
 	async function control(action: "stop" | "newSession" | "disconnect") {
 		if (pending && action !== "stop") return;
+		if (stopping && action === "stop") return;
 		const version = generation;
 		error = null;
+		if (action === "stop") stopping = true;
 		const response = await invoke<CommandResponse<null>>("control_chat", { action }).catch(
 			(): CommandResponse<null> => ({
 				status: "failed",
 				message: "Could not update the Pi session.",
 			}),
 		);
-		if (!disposed && version === generation && response.status === "failed")
-			error = response.message;
+		if (!disposed && version === generation) {
+			if (action === "stop") stopping = false;
+			if (response.status === "failed") error = response.message;
+		}
 	}
 
 	async function leave() {
@@ -95,6 +100,7 @@ export function createChatSession() {
 		draft = "";
 		error = null;
 		pending = false;
+		stopping = false;
 		connecting = false;
 		const response = await invoke<CommandResponse<null>>("control_chat", {
 			action: "disconnect",
@@ -120,6 +126,9 @@ export function createChatSession() {
 		},
 		get pending() {
 			return pending;
+		},
+		get stopping() {
+			return stopping;
 		},
 		get error() {
 			return error;

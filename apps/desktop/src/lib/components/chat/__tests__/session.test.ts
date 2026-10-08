@@ -128,3 +128,24 @@ it("ignores a control failure from a discarded conversation", async () => {
 	expect(session.error).toBeNull();
 	expect(session.snapshot.connected).toBe(false);
 });
+
+it("coalesces stop requests while an abort is pending", async () => {
+	const response = deferred<CommandResponse<null>>();
+	invoke.mockReturnValueOnce(response.promise);
+	const session = createChatSession();
+	const stop = session.control("stop");
+	expect(session.stopping).toBe(true);
+	await session.control("stop");
+	expect(invoke).toHaveBeenCalledTimes(1);
+	response.resolve({ status: "ready", data: null });
+	await stop;
+	expect(session.stopping).toBe(false);
+});
+
+it("reports a failed stop and allows retrying", async () => {
+	invoke.mockResolvedValueOnce({ status: "failed", message: "Pi did not respond in time." });
+	const session = createChatSession();
+	await session.control("stop");
+	expect(session.stopping).toBe(false);
+	expect(session.error).toBe("Pi did not respond in time.");
+});

@@ -136,6 +136,7 @@ async fn request(client: &reqwest::Client, query: &str) -> Result<Weather, Strin
 pub async fn read(queries: Vec<String>) -> Result<WeatherReport, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
+        .user_agent(concat!("Vesper/", env!("CARGO_PKG_VERSION"), " weather"))
         .build()
         .map_err(|error| format!("Could not create weather client: {error}"))?;
     let (locations, failures) = crate::collect_locations(queries.into_iter().map(|query| async {

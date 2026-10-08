@@ -81,8 +81,9 @@ Chat places user bubbles on the right and assistant Markdown on the left. Consec
 messages form one response with one avatar, including expandable thinking, tool activity and the
 final text. The thread scrolls independently; new output follows only while the reader is near the
 bottom. Enter sends, Shift+Enter inserts a newline, and IME composition does not submit. Stop remains
-available during a response. Failed sends retain the draft; leaving the page discards both
-draft and conversation. New Chat resets the temporary conversation.
+available during a response and disables itself until Pi settles the aborted run. Failed sends retain
+the draft; leaving the page discards both draft and conversation. New Chat resets the temporary
+conversation.
 
 ## Dashboard layout
 
