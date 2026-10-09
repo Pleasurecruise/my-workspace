@@ -1,5 +1,6 @@
 {
   "list": {
+    "nextCursor": null,
     "articles": [
       {
         "id": "69debffa-174f-463d-843b-0855cff9d8b2",
@@ -73,6 +74,8 @@
     }
   },
   "search": {
+    "type": "article-search-results",
+    "query": "testing/privacy",
     "articles": [
       {
         "id": "33333333-3333-4333-8333-333333333333",

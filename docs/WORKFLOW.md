@@ -42,8 +42,8 @@ their action. Use `--` to separate options from literal content that begins with
 
 Content payloads accept inline Markdown or JSON, `--file <path>`, or `--stdin` in the payload position.
 File and stdin reads preserve newlines, require UTF-8, and fail before requests if parsing fails.
-This applies to Memo create/update/page/patch, Knowledge page/create/update-draft/update-documents/
-visibility, and photo query/register/update. Photo upload accepts image and metadata flags.
+This applies to Memo create/update/query, Knowledge query/create/update-draft/update-documents/
+visibility, and photo query/create/update. Photo upload accepts image and metadata flags.
 
 ```sh
 vesper memo create --file note.md
@@ -51,6 +51,11 @@ vesper knowledge update-documents <id> --file article.json
 cat filters.json | vesper photo query --stdin
 vesper photo upload photo.heic --metadata metadata.json
 ```
+
+Memo, Knowledge and Photo share one verb set: `get`, `list` (flags), `query` (the same filters as
+JSON), `search`, `tags`, `create`, `update`, and `delete`, matching the `list_*`, `search_*`,
+`get_*`, `create_*`, `update_*`, `delete_*`, and `list_tags` MCP tools on each site. Domain commands
+such as Memo pinning, Knowledge `update-draft`, and Photo `upload` sit beside them.
 
 Successful operations return JSON; errors use stderr and a failing exit code. Desktop and CLI use
 the same Rust business operations and validation.
@@ -61,9 +66,9 @@ Memo writes pass through the my-memos Worker, coordinating R2 bodies, D1 metadat
 Lists and searches return the D1 body mirror; Vesper renders it without a second R2 read.
 
 `list` accepts `--cursor`, `--limit`, repeated `--tag`, `--search`, `--updated`, `--archived`,
-and `--favorites`. `page` accepts the corresponding JSON fields `cursor`, `limit`, `search`,
+and `--favorites`. `query` accepts the corresponding JSON fields `cursor`, `limit`, `search`,
 `tags`, `sortByUpdated`, `archivedOnly`, and `favoritesOnly`;
-the final two filters are mutually exclusive. `patch` accepts optional `content`, `visibility`,
+the final two filters are mutually exclusive. `update <id>` accepts optional `content`, `visibility`,
 `tags`, `pinned`, `favorite`, and `archived`, and rejects an empty object. Dedicated commands also
 cover tags, visibility, pinning, favorites, archive/restore, and deletion.
 
@@ -78,23 +83,27 @@ the current `expectedHash` and `expectedUpdatedAt`; a stale copy fails instead o
 article. Desktop preserves both values while editing. Complex payloads use the API's JSON contract.
 
 ```sh
-vesper knowledge page --file filters.json
+vesper knowledge query --file filters.json
+vesper knowledge search <keywords>
+vesper knowledge tags
 vesper knowledge get <id>
 vesper knowledge create --file article.json
 vesper knowledge update-documents <id> --file changes.json
 vesper knowledge delete <id> <expected-hash> <expected-updated-at>
 ```
 
-`page` accepts `cursor`, `limit` (1–100), up to five `tags`, and `visibility`, returning
-`{ articles, cursor }` without bodies. `list` uses the same summary query and response, with
-`--cursor`, `--limit`, repeated `--tag`, and `--visibility` options.
+`query` accepts `cursor`, `limit` (1–100), up to five `tags`, and `visibility`, returning
+`{ articles, nextCursor }` without bodies, or `search` with `limit`, returning keyword matches on
+titles, summaries and tags with a null `nextCursor`. `list` uses the same summary query and response, with
+`--cursor`, `--limit`, repeated `--tag`, and `--visibility` options, or `--search` alone; `search`
+is the positional shorthand. `tags` returns `{ tags: [{ path, count }] }` from `/api/tags`.
 Use `get` for source, `contentHash`, and `updatedAt` before editing; it accepts a UUID or canonical
 UUID article URL. Writes use the returned UUID, never a URL or title. `update-draft` and `visibility`
 also accept JSON payloads. REST detail/create/content updates wrap an article in `{ article }`;
 visibility wraps a body-free summary. Summaries carry `editions.zh.title` and `summary`, tags,
-visibility, hash and timestamps; details add Markdown and current translations. REST omits a terminal
-cursor; Rust exposes it as `null`. MCP keyword search uses `{ articles }` with the same summaries,
-without scores or excerpts. New articles start public on the Knowledge server. Shared Markdown syntax belongs to [Markdown](MARKDOWN.md).
+visibility, hash and timestamps; details add Markdown and current translations. The last page returns
+`nextCursor: null`. Keyword search returns the same summaries without scores or excerpts; MCP adds
+`type` and `query`. New articles start public on the Knowledge server. Shared Markdown syntax belongs to [Markdown](MARKDOWN.md).
 
 ## Photos
 
@@ -120,7 +129,7 @@ trigger cleanup of objects written by the operation. Once registration starts, r
 objects for reconciliation because the server may already have committed. Inspect partial results
 before retrying or removing objects.
 
-Low-level `photo object put <r2-key> <local-path>` and `photo register <json>` separate transfer from registration for
+Low-level `photo object put <r2-key> <local-path>` and `photo create <json>` separate transfer from registration for
 explicit recovery. An upload alone does not create metadata. If registration fails, retry it or
 remove the unreferenced object with `photo object delete <r2-key>`. Never remove an object referenced by an
 existing photo. Normal `delete <id>` delegates metadata and image removal to the consumer API.

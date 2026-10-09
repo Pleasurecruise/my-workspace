@@ -4,7 +4,7 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-const ENDPOINT: &str = "https://memos.you-find.me/api/v1";
+const ENDPOINT: &str = "https://memos.you-find.me/api";
 pub const PAGE_SIZE: usize = 25;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -502,12 +502,12 @@ mod tests {
 
     #[test]
     fn encodes_memo_ids() {
-        assert_eq!(build_url("item").unwrap().path(), "/api/v1/memos/item");
+        assert_eq!(build_url("item").unwrap().path(), "/api/memos/item");
         assert_eq!(
             build_url("../settings").unwrap().path(),
-            "/api/v1/memos/..%2Fsettings"
+            "/api/memos/..%2Fsettings"
         );
-        assert_eq!(build_url("a b").unwrap().path(), "/api/v1/memos/a%20b");
+        assert_eq!(build_url("a b").unwrap().path(), "/api/memos/a%20b");
     }
 
     #[tokio::test]

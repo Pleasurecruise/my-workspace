@@ -1,10 +1,12 @@
 use crate::print_json;
-use consumers::api::knowledge::{Create, DocumentUpdate, DraftUpdate, VisibilityUpdate};
+use consumers::api::knowledge::{
+    Create, DocumentUpdate, DraftUpdate, ListFilters, VisibilityUpdate,
+};
 use serde_json::json;
 
 pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
     match (action, arguments) {
-        ("page", input) => {
+        ("query", input) => {
             let input = crate::read_input(input).await?;
             let filters = serde_json::from_str(&input)
                 .map_err(|error| format!("invalid Knowledge filters: {error}"))?;
@@ -12,6 +14,21 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .await
                 .map_err(|error| error.to_string())?;
             print_json(&page)
+        }
+        ("search", query) if !query.is_empty() => {
+            let page = consumers::api::knowledge::summaries(&ListFilters {
+                search: Some(query.join(" ")),
+                ..ListFilters::default()
+            })
+            .await
+            .map_err(|error| error.to_string())?;
+            print_json(&page)
+        }
+        ("tags", []) => {
+            let tags = consumers::api::knowledge::tags()
+                .await
+                .map_err(|error| error.to_string())?;
+            print_json(&json!({ "tags": tags }))
         }
         ("get", [id]) => {
             let article = consumers::api::knowledge::get(id)

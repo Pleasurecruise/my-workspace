@@ -29,9 +29,20 @@ fn reads_json_from_stdin_before_consumer_requests() {
 #[test]
 fn help_lists_consumer_queries() {
     for (domain, commands) in [
-        ("memo", vec!["get", "list", "page", "patch", "import-x"]),
-        ("knowledge", vec!["page", "get", "update-documents"]),
-        ("photo", vec!["query", "get", "upload"]),
+        (
+            "memo",
+            vec![
+                "get", "list", "query", "search", "tags", "update", "import-x",
+            ],
+        ),
+        (
+            "knowledge",
+            vec!["get", "list", "query", "search", "tags", "update-documents"],
+        ),
+        (
+            "photo",
+            vec!["get", "list", "query", "search", "tags", "create", "upload"],
+        ),
         ("todo", vec!["check-ins", "undo-check-in", "notion"]),
         ("ledger", vec!["create", "list"]),
     ] {

@@ -174,7 +174,7 @@ where
                     .into_iter()
                     .filter(|summary| ids.insert(summary.id.clone())),
             );
-            let Some(cursor) = page.cursor else {
+            let Some(cursor) = page.next_cursor else {
                 break;
             };
             if !cursors.insert(cursor.clone()) {

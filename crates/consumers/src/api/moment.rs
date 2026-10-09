@@ -9,7 +9,7 @@ mod media;
 
 pub(super) use media::Error as MediaError;
 
-const ENDPOINT: &str = "https://moment.you-find.me/api/v1";
+const ENDPOINT: &str = "https://moment.you-find.me/api";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Geo {
@@ -446,13 +446,10 @@ mod tests {
 
     #[test]
     fn encodes_photo_ids() {
-        assert_eq!(
-            super::build_url("item").unwrap().path(),
-            "/api/v1/photos/item"
-        );
+        assert_eq!(super::build_url("item").unwrap().path(), "/api/photos/item");
         assert_eq!(
             super::build_url("../settings").unwrap().path(),
-            "/api/v1/photos/..%2Fsettings"
+            "/api/photos/..%2Fsettings"
         );
     }
 

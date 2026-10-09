@@ -13,7 +13,7 @@ async fn decodes_api_contracts() {
     // Captured from the local generated Knowledge Worker, never production data.
     let source = include_str!("../fixtures/knowledge-contract.json");
     let responses: Responses = serde_json::from_str(source).unwrap();
-    assert!(responses.list.cursor.is_none());
+    assert!(responses.list.next_cursor.is_none());
     assert_eq!(responses.list.articles.len(), 1);
     let summary = responses.list.articles.into_iter().next().unwrap();
     let visible = responses.visibility.article;
@@ -109,7 +109,7 @@ async fn paginates_overview() {
                 created_at: "2026-09-05T00:00:00Z".to_owned(),
                 updated_at: "2026-09-05T00:00:00Z".to_owned(),
             }],
-            cursor: next.map(str::to_owned),
+            next_cursor: next.map(str::to_owned),
         }))
     })
     .await
@@ -125,7 +125,7 @@ async fn paginates_overview() {
     let error = overview_pages(|_| async {
         Ok(ArticlePage {
             articles: vec![],
-            cursor: Some("same".to_owned()),
+            next_cursor: Some("same".to_owned()),
         })
     })
     .await
@@ -137,7 +137,7 @@ async fn paginates_overview() {
         }
         Ok(ArticlePage {
             articles: vec![],
-            cursor: Some("next".to_owned()),
+            next_cursor: Some("next".to_owned()),
         })
     })
     .await

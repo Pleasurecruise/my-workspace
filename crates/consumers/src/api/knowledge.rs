@@ -9,7 +9,7 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-const ENDPOINT: &str = "https://knowledge.you-find.me/api/articles";
+const ENDPOINT: &str = "https://knowledge.you-find.me/api";
 const OVERVIEW_PAGE_SIZE: usize = 100;
 
 #[derive(Clone, Debug, Serialize)]
@@ -147,14 +147,16 @@ pub struct VisibilityUpdate {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ArticlePage {
     pub articles: Vec<Summary>,
-    pub cursor: Option<String>,
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ListFilters {
+    pub search: Option<String>,
     pub cursor: Option<String>,
     pub limit: Option<usize>,
     pub visibility: Option<Visibility>,
@@ -171,6 +173,15 @@ pub async fn summaries(filters: &ListFilters) -> Result<ArticlePage, ApiError> {
             "article limit must be between 1 and 100".to_owned(),
         ));
     }
+    if filters
+        .search
+        .as_ref()
+        .is_some_and(|search| search.trim().is_empty())
+    {
+        return Err(ApiError::Protocol(
+            "article search cannot be empty".to_owned(),
+        ));
+    }
     if filters.tags.len() > 5 || filters.tags.iter().any(|tag| tag.trim().is_empty()) {
         return Err(ApiError::Protocol(
             "article filters accept at most five non-empty tags".to_owned(),
@@ -183,6 +194,31 @@ pub async fn summaries(filters: &ListFilters) -> Result<ArticlePage, ApiError> {
 #[derive(Deserialize)]
 struct ArticleResponse<T> {
     article: T,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TagCount {
+    pub path: String,
+    pub count: u64,
+}
+
+#[derive(Deserialize)]
+struct TagResponse {
+    tags: Vec<TagCount>,
+}
+
+pub async fn tags() -> Result<Vec<TagCount>, ApiError> {
+    let client = Client::load(ConsumerApi::Knowledge)?;
+    let response = send(
+        client
+            .http
+            .get(format!("{ENDPOINT}/tags"))
+            .bearer_auth(&client.api_key),
+        "list knowledge tags",
+    )
+    .await?;
+    let result: TagResponse = response.json().await?;
+    Ok(result.tags)
 }
 
 pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
@@ -203,7 +239,7 @@ pub async fn list(cursor: Option<String>) -> Result<Page, ApiError> {
         .collect::<Result<_, _>>()?;
     Ok(Page {
         documents,
-        cursor: page.cursor,
+        cursor: page.next_cursor,
     })
 }
 
@@ -242,7 +278,7 @@ where
     loop {
         let page = read(cursor).await?;
         summaries.extend(page.articles);
-        let Some(next) = page.cursor else {
+        let Some(next) = page.next_cursor else {
             return Ok(summaries);
         };
         if !seen_cursors.insert(next.clone()) {
@@ -258,15 +294,21 @@ async fn read_summary_page(
     client: &Client,
     filters: &ListFilters,
 ) -> Result<ArticlePage, ApiError> {
-    let mut request = client.http.get(ENDPOINT).bearer_auth(&client.api_key);
+    let mut request = client
+        .http
+        .get(format!("{ENDPOINT}/articles"))
+        .bearer_auth(&client.api_key);
+    if let Some(search) = &filters.search {
+        request = request.query(&[("search", search)]);
+    }
     if let Some(limit) = filters.limit {
         request = request.query(&[("limit", limit)]);
     }
     if let Some(visibility) = filters.visibility {
         request = request.query(&[("visibility", visibility)]);
     }
-    for tag in &filters.tags {
-        request = request.query(&[("tag", tag)]);
+    if !filters.tags.is_empty() {
+        request = request.query(&[("tags", filters.tags.join(","))]);
     }
     if let Some(cursor) = &filters.cursor {
         request = request.query(&[("cursor", cursor)]);
@@ -336,7 +378,7 @@ fn build_url(id: &str) -> Result<String, ApiError> {
             "invalid knowledge article reference".to_owned(),
         ));
     }
-    Ok(format!("{ENDPOINT}/{id}"))
+    Ok(format!("{ENDPOINT}/articles/{id}"))
 }
 
 pub async fn get(reference: &str) -> Result<Article, ApiError> {
@@ -356,7 +398,7 @@ pub async fn create(input: &Create) -> Result<Article, ApiError> {
     let client = Client::load(ConsumerApi::Knowledge)?;
     let response = client
         .http
-        .post(ENDPOINT)
+        .post(format!("{ENDPOINT}/articles"))
         .bearer_auth(&client.api_key)
         .json(input)
         .send()

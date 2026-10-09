@@ -38,7 +38,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
             .map_err(|error| error.to_string())?;
             print_json(&json!({ "photos": photos }))
         }
-        ("register", input) => {
+        ("create", input) => {
             let input = crate::read_input(input).await?;
             let input: Create = serde_json::from_str(&input)
                 .map_err(|error| format!("invalid photo create JSON: {error}"))?;

@@ -86,7 +86,7 @@ async fn paginates_reference_index() {
                 created_at: String::new(),
                 updated_at: String::new(),
             }],
-            cursor: if daily && filters.cursor.is_none() {
+            next_cursor: if daily && filters.cursor.is_none() {
                 Some("older".into())
             } else {
                 None
@@ -107,7 +107,7 @@ async fn paginates_reference_index() {
     assert!(
         reference_pages(|_| std::future::ready(Ok(ArticlePage {
             articles: vec![],
-            cursor: Some("loop".into())
+            next_cursor: Some("loop".into())
         })))
         .await
         .is_err()
@@ -251,11 +251,11 @@ fn decodes_slugless_summaries() {
             "createdAt": "2026-08-23T10:00:00.000Z",
             "updatedAt": "2026-08-23T11:00:00.000Z"
         }],
-        "cursor": "next-page"
+        "nextCursor": "next-page"
     }))
     .expect("valid my-knowledge list response");
 
-    assert_eq!(page.cursor.as_deref(), Some("next-page"));
+    assert_eq!(page.next_cursor.as_deref(), Some("next-page"));
     assert_eq!(page.articles[0].tags, ["rust", "api"]);
     let summary = &page.articles[0];
     let url = format!(

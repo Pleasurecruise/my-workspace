@@ -180,6 +180,30 @@ restoring invalidated content. Writes retain each consumer's server-side coordin
 | Moment    | API owns metadata; Rust prepares image variants, uploads them to R2, then registers them. The list is a bounded batch without a synthetic cursor.                                                                |
 | Knowledge | API summaries form the metadata-only index. Opening a document performs an authorized detail read and Rust compilation. Writes require both the content hash and exact updated timestamp for conflict detection. |
 
+### Consumer open API
+
+The three consumer sites share one API shape. The browser and external clients call the same
+`/api/*` routes; there is no separate versioned surface. A request that sends
+`Authorization: Bearer <key>` is checked only against the site's API key (`MEMOS_API_KEY`,
+`MOMENT_API_KEY`, `KNOWLEDGE_API_KEY`); otherwise the owner session applies.
+
+| Site                    | REST resources                                                     | Anonymous reads                                                                     |
+| ----------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `memos.you-find.me`     | `/api/memos`, `/api/memos/{id}`, `/api/tags`                       | Public memos from `/api/memos`                                                      |
+| `moment.you-find.me`    | `/api/photos`, `/api/photos/{id}`, `/api/tags`                     | Photos, tags, `/api/media?kind=anime\|film`, `/api/haul`, `/api/wish`, `/api/music` |
+| `knowledge.you-find.me` | `/api/articles` (with `search`), `/api/articles/{id}`, `/api/tags` | None; public articles are published through pages, RSS and `llms.txt`               |
+
+Lists take `cursor`, `limit`, `search`, and comma-separated `tags`, and return
+`{ <items>, nextCursor }` with `nextCursor: null` on the last page. Single records are wrapped as
+`{ memo }`, `{ photo }`, or `{ article }`; creation returns `201` and deletion `204`.
+
+Each site serves `/api/openapi.json`, `/.well-known/api-catalog`, and an `llms.txt` whose `## API`
+section lists these entry points before the content index. `/api/mcp` takes the same key and names
+tools `list_*`, `search_*`, `get_*`, `create_*`, `update_*`, `delete_*`, and `list_tags`, with arguments
+named after the REST fields and the same wrapped results (searches add `type` and `query`, deletions
+return `{ id, deleted: true }`); Vesper's
+`get`, `list`, `query`, `search`, `tags`, `create`, `update`, and `delete` commands mirror them.
+
 Knowledge keeps API contracts and index policy in `api/knowledge.rs`; its `render` submodule owns
 document compilation, editor previews and authorized reference enrichment.
 Knowledge stores Markdown. Milkdown owns browser editing and selection, while the `markdown` crate

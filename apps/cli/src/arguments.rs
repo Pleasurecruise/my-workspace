@@ -56,14 +56,9 @@ fn normalize(command: &Command, matches: &ArgMatches, output: &mut Vec<String>) 
                 filters.insert(field.into(), true.into());
             }
         }
-        let action = if domain == Some("photo") {
-            "query"
-        } else {
-            "page"
-        };
         output.pop();
         output.extend([
-            action.to_owned(),
+            "query".to_owned(),
             serde_json::Value::Object(filters).to_string(),
         ]);
         return;
@@ -162,7 +157,7 @@ fn command() -> Command {
             ]),
         )
         .subcommand(content(
-            Command::new("page").about("List a filtered page using JSON"),
+            Command::new("query").about("Query memos using JSON filters"),
         ))
         .subcommand(
             Command::new("search")
@@ -182,11 +177,6 @@ fn command() -> Command {
         )
         .subcommand(content(
             Command::new("update")
-                .about("Replace a memo's Markdown")
-                .args([arg!(<ID>)]),
-        ))
-        .subcommand(content(
-            Command::new("patch")
                 .about("Update memo fields using JSON")
                 .args([arg!(<ID>)]),
         ))
@@ -227,6 +217,8 @@ fn command() -> Command {
                         .action(ArgAction::Append),
                     arg!(--visibility <VISIBILITY> "Filter visibility")
                         .value_parser(["public", "private"]),
+                    arg!(--search <TEXT> "Search titles, summaries, and tags")
+                        .conflicts_with_all(["cursor", "tag", "visibility"]),
                 ]),
         )
         .subcommand(
@@ -234,8 +226,14 @@ fn command() -> Command {
                 .about("Read an article by UUID or URL")
                 .args([arg!(<ID_OR_URL>)]),
         )
+        .subcommand(Command::new("tags").about("List tag paths and counts"))
+        .subcommand(
+            Command::new("search")
+                .about("Search titles, summaries, and tags")
+                .args([arg!(<QUERY> ...)]),
+        )
         .subcommand(content(
-            Command::new("page").about("List summaries using JSON filters"),
+            Command::new("query").about("Query summaries using JSON filters"),
         ))
         .subcommand(content(
             Command::new("create").about("Create an article using JSON"),
@@ -293,7 +291,7 @@ fn command() -> Command {
             Command::new("query").about("Query photos using JSON filters"),
         ))
         .subcommand(content(
-            Command::new("register").about("Register existing image objects using JSON"),
+            Command::new("create").about("Create a photo from existing image objects using JSON"),
         ))
         .subcommand(content(
             Command::new("update")

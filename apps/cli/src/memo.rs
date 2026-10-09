@@ -13,7 +13,7 @@ enum MemoFlag {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PageInput {
+struct QueryInput {
     cursor: Option<String>,
     #[serde(default)]
     limit: Option<usize>,
@@ -43,20 +43,22 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&json!({ "tags": tags }))
         }
-        ("page", input) => {
+        ("query", input) => {
             let input = crate::read_input(input).await?;
-            let input: PageInput = serde_json::from_str(&input)
-                .map_err(|error| format!("invalid memo page JSON: {error}"))?;
+            let input: QueryInput = serde_json::from_str(&input)
+                .map_err(|error| format!("invalid memo query JSON: {error}"))?;
             if input.archived_only && input.favorites_only {
                 return Err(
-                    "memo page cannot request archivedOnly and favoritesOnly together".to_owned(),
+                    "memo query cannot request archivedOnly and favoritesOnly together".to_owned(),
                 );
             }
             if input
                 .limit
                 .is_some_and(|limit| !(1..=MAX_LIMIT).contains(&limit))
             {
-                return Err(format!("memo page limit must be between 1 and {MAX_LIMIT}"));
+                return Err(format!(
+                    "memo query limit must be between 1 and {MAX_LIMIT}"
+                ));
             }
             let page = consumers::api::memos::list(
                 input.cursor,
@@ -120,24 +122,10 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             print_json(&memo)
         }
-        ("update", [id, content @ ..]) if !content.is_empty() => {
-            update(
-                id,
-                Update {
-                    content: Some(crate::read_input(content).await?),
-                    visibility: None,
-                    tags: None,
-                    pinned: None,
-                    favorite: None,
-                    archived: None,
-                },
-            )
-            .await
-        }
-        ("patch", [id, input @ ..]) => {
+        ("update", [id, input @ ..]) => {
             let input = crate::read_input(input).await?;
             let input: Update = serde_json::from_str(&input)
-                .map_err(|error| format!("invalid memo patch JSON: {error}"))?;
+                .map_err(|error| format!("invalid memo update JSON: {error}"))?;
             if input.content.is_none()
                 && input.visibility.is_none()
                 && input.tags.is_none()
@@ -145,7 +133,7 @@ pub async fn run(action: &str, arguments: &[String]) -> Result<(), String> {
                 && input.favorite.is_none()
                 && input.archived.is_none()
             {
-                return Err("memo patch must set at least one field".to_owned());
+                return Err("memo update must set at least one field".to_owned());
             }
             update(id, input).await
         }
@@ -214,12 +202,12 @@ mod tests {
     use super::run;
 
     #[tokio::test]
-    async fn rejects_empty_patch() {
-        let error = run("patch", &["memo-id".to_owned(), "{}".to_owned()])
+    async fn rejects_empty_update() {
+        let error = run("update", &["memo-id".to_owned(), "{}".to_owned()])
             .await
-            .expect_err("an empty patch should fail");
+            .expect_err("an empty update should fail");
 
-        assert_eq!(error, "memo patch must set at least one field");
+        assert_eq!(error, "memo update must set at least one field");
     }
 
     #[tokio::test]
@@ -234,7 +222,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_filter_conflict() {
         let error = run(
-            "page",
+            "query",
             &[r#"{"archivedOnly":true,"favoritesOnly":true}"#.to_owned()],
         )
         .await
@@ -242,7 +230,7 @@ mod tests {
 
         assert_eq!(
             error,
-            "memo page cannot request archivedOnly and favoritesOnly together"
+            "memo query cannot request archivedOnly and favoritesOnly together"
         );
     }
 

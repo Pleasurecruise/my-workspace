@@ -15,6 +15,8 @@ description: Use vesper to inspect providers, manage Todo and Ledger, publish lo
   uploads, object removal, and `publish --live`. Investigate with reads and publication previews.
 - Content payloads accept quoted inline Markdown/JSON, `--file <path>`, or `--stdin`; prefer files
   for multiline input. Parsing finishes before requests. Use `--` before literal dash-prefixed input.
+- Memo, Knowledge and Photo share verbs: `get`, `list` (flags), `query` (JSON filters), `search`,
+  `tags`, `create`, `update`, `delete`; domain-specific commands sit beside them.
 - Data commands return JSON; build and publish commands print status text. Failures use stderr
   and a nonzero exit. Report partial success without secrets.
 - Read [Workflow](../../../docs/WORKFLOW.md) for delivery/recovery changes,
@@ -29,7 +31,9 @@ There is no `slug` or title alias. `get` accepts a UUID or canonical URL; writes
 New articles are public.
 
 ```sh
-vesper knowledge page --file filters.json
+vesper knowledge query --file filters.json
+vesper knowledge search <keywords>
+vesper knowledge tags
 vesper knowledge get <id-or-url>
 vesper knowledge create --file article.json
 vesper knowledge update-draft <id> --file changes.json
@@ -38,19 +42,21 @@ vesper knowledge visibility <id> --file visibility.json
 vesper knowledge delete <id> <expected-hash> <expected-updated-at>
 ```
 
-| Read   | Output                   | Content                                          |
-| ------ | ------------------------ | ------------------------------------------------ |
-| `page` | `{ articles, cursor }`   | Summary `editions.<locale>.{title,summary}`      |
-| `list` | `{ articles, cursor }`   | Same summaries as `page`, selected through flags |
-| `get`  | Article, without wrapper | `editions.<locale>.{title,summary,markdown}`     |
+| Read     | Output                     | Content                                           |
+| -------- | -------------------------- | ------------------------------------------------- |
+| `query`  | `{ articles, nextCursor }` | Summary `editions.<locale>.{title,summary}`       |
+| `list`   | `{ articles, nextCursor }` | Same summaries as `query`, selected through flags |
+| `search` | `{ articles, nextCursor }` | Keyword matches on titles, summaries, tags        |
+| `tags`   | `{ tags: [{path,count}] }` | Hierarchical tag paths                            |
+| `get`    | Article, without wrapper   | `editions.<locale>.{title,summary,markdown}`      |
 
 Articles/summaries include `id`, `tags`, `visibility`, `contentHash`, `createdAt`, and `updatedAt`.
-`knowledge list` accepts `--limit`, `--cursor`, repeated `--tag`, and `--visibility`.
+`knowledge list` accepts `--limit`, `--cursor`, repeated `--tag`, and `--visibility`, or `--search` alone.
 Locales include required `zh` and optional `en`/`ja`; never assume a translation exists. CLI output
 has no desktop `source`, `html`, `toc`, `stats`, or `newspaperEdition`.
-`page` filters: `cursor`, `limit` (1–100, default 20), up to five `tags`, and `visibility`
-(public/private). Tags use AND matching with descendants; no tag filter excludes daily articles.
-Use `tags: ["daily"]` to read those separately. A null cursor ends pagination.
+`query` filters: `cursor`, `limit` (1–100, default 20), up to five `tags`, and `visibility`
+(public/private), or `search` with `limit`; search results have a null `nextCursor`. Tags use AND matching with descendants; no tag filter excludes daily articles.
+Use `tags: ["daily"]` to read those separately. A null `nextCursor` ends pagination.
 
 | Write            | JSON fields                                                              |
 | ---------------- | ------------------------------------------------------------------------ |
@@ -76,7 +82,7 @@ Use GitHub/stock cards when the repository/ticker matters to the explanation, no
 
 Shared article cards use 1–50 canonical UUID URL lines or one `url` field, preserving order.
 Vesper's `id`, title and description overrides are local-only; do not submit them to my-knowledge.
-Use authorized `page`/`get` IDs, never title-derived addresses. Unresolved cards stay disabled.
+Use authorized `query`/`get` IDs, never title-derived addresses. Unresolved cards stay disabled.
 
 `vesper build` validates `content/` into disposable artifacts; `vesper publish` previews uploads.
 Only `vesper publish --live` uploads under R2 `blog/`; destination-only objects remain. Validate
@@ -86,8 +92,8 @@ before publication and use the [recovery rules](../../../docs/WORKFLOW.md#static
 
 The API coordinates R2, D1 and KV; list/search already contain Markdown. `list --limit <count>` accepts 1–25 and supports `--cursor`, repeated `--tag`,
 `--search`, `--updated`, `--archived`, and `--favorites`.
-`page` JSON accepts `cursor`, `limit`, `search`, `tags`, `sortByUpdated`, `archivedOnly`,
-`favoritesOnly`; the final two are mutually exclusive. `patch` accepts optional `content`,
+`query` JSON accepts `cursor`, `limit`, `search`, `tags`, `sortByUpdated`, `archivedOnly`,
+`favoritesOnly`; the final two are mutually exclusive. `update <id>` JSON accepts optional `content`,
 `visibility`, `tags`, `pinned`, `favorite`, `archived` and rejects an empty object.
 `import-x <url> [public|private]` creates a favorite and defaults to private.
 See `vesper memo --help` and [input types](../../../crates/consumers/src/api/memos.rs).
@@ -96,7 +102,7 @@ See `vesper memo --help` and [input types](../../../crates/consumers/src/api/mem
 
 Use `vesper photo upload photo.heic --title "Weekend walk" --tag travel`, or
 `vesper photo upload photo.heic --metadata metadata.json`: Rust applies orientation and
-EXIF defaults, creates normalized PNG/JPEG thumbnail/ThumbHash, uploads to R2, then registers metadata.
+EXIF defaults, creates normalized PNG/JPEG thumbnail/ThumbHash, uploads to R2, then creates the photo metadata.
 PNG, JPEG, WebP, AVIF and HEIC inputs are limited to 20 MB. JSON follows
 [Upload](../../../crates/consumers/src/api/moment.rs).
 
