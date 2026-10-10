@@ -190,7 +190,12 @@ struct PhotoResponse {
 
 #[derive(Deserialize)]
 struct TagList {
-    tags: Vec<String>,
+    tags: Vec<TagCount>,
+}
+
+#[derive(Deserialize)]
+struct TagCount {
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -329,7 +334,7 @@ pub async fn tags() -> Result<Vec<String>, ApiError> {
     )
     .await?;
     let result: TagList = response.json().await?;
-    Ok(result.tags)
+    Ok(result.tags.into_iter().map(|tag| tag.name).collect())
 }
 
 pub async fn create(input: &Create) -> Result<Photo, ApiError> {

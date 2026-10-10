@@ -83,7 +83,17 @@ pub(super) async fn start_process(directory: &std::path::Path) -> Result<Child, 
     }
     let mut command = Command::new(executable);
     command
-        .args(["--mode", "rpc", "--no-session", "--no-approve"])
+        .args([
+            "--mode",
+            "rpc",
+            "--no-session",
+            "--no-mcp",
+            "--no-extensions",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-context-files",
+            "--no-approve",
+        ])
         .env("PATH", path)
         .current_dir(directory)
         .stdin(Stdio::piped())

@@ -120,8 +120,10 @@ and authenticate Pi outside this workspace; Vesper packages no Pi npm dependency
 account's login-shell PATH resolves Pi and Node, including mise installations. The connection icon
 starts Pi in `~/` with its existing configuration. Enter sends, Shift+Enter inserts a newline, Stop
 cancels the response and New Chat resets the conversation. Startup uses `--no-session` to avoid
-conversation files and `--no-approve` to ignore project-local resources. Unsupported extension
-dialogs are cancelled with a visible explanation.
+conversation files, `--no-extensions` so installed Pi packages cannot record or sync the conversation,
+`--no-mcp`, `--no-skills`, `--no-prompt-templates` and `--no-context-files` to keep the chat free of
+user-level resources, and `--no-approve` to ignore project-local ones. Pi's model, authentication and
+built-in tools still apply. Unsupported extension dialogs are cancelled with a visible explanation.
 
 The sidebar's This device entry automatically starts the account's default local shell in a native
 PTY, without Tailscale or an idle timeout. Remote entries require a signed-in Tailscale CLI and system

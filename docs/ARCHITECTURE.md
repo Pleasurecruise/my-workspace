@@ -103,8 +103,9 @@ hidden terminals. Rust bounds resources, expires idle SSH sessions and rejects s
 local shells remain open while idle and survive tailnet identity changes.
 
 Both process runtimes cancel pending launches and close on App Lock, main-window reload/destruction
-and shutdown. Chat also closes when leaving its page and runs with `--no-session`, so no conversation
-is persisted. Terminal state survives navigation until its device is selected again or disconnected.
+and shutdown. Chat also closes when leaving its page and runs with `--no-session` and
+without extensions, MCP servers, skills, prompt templates or context files, so neither Pi nor its
+installed packages persist the conversation. Terminal state survives navigation until its device is selected again or disconnected.
 [Development](DEVELOPMENT.md#service-setup) owns installation, authentication and user-facing controls.
 
 `crates/oauth` adapts `oauth2` to the workspace reqwest transport and uses `httparse` for loopback
