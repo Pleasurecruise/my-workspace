@@ -257,6 +257,12 @@ fn resolve_grok_binary() -> Result<PathBuf, String> {
     }) {
         return Ok(path);
     }
+    if let Some(path) = std::env::var_os("HOME")
+        .map(|home| PathBuf::from(home).join(".grok/bin/grok"))
+        .filter(|path| path.is_file())
+    {
+        return Ok(path);
+    }
     Err("Grok runtime was not found. Install it, run `grok login --device-auth`, and optionally set GROK_BINARY.".to_owned())
 }
 

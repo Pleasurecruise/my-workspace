@@ -387,7 +387,6 @@ export type WidgetKind =
 	| "codex"
 	| "openCode"
 	| "claude"
-	| "codexClaude"
 	| "grok"
 	| "copilot"
 	| "deepSeek"

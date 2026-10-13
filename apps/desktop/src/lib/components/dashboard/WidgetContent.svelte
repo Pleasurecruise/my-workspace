@@ -51,8 +51,6 @@
 		<UsagePanel provider="openCode" state={session.dashboard.openCode} />
 	{:else if kind === "claude"}
 		<UsagePanel provider="claude" state={session.dashboard.claude} />
-	{:else if kind === "codexClaude"}
-		<UsagePanel provider="codexClaude" codex={session.dashboard.codex} claude={session.dashboard.claude} />
 	{:else if kind === "grok"}
 		<UsagePanel provider="grok" state={session.dashboard.grok} />
 	{:else if kind === "copilot"}

@@ -112,9 +112,9 @@ Spending is a separate full-width card sharing the selected date. Entry and date
 monthly charts; compact surfaces stack them. Chart changes preserve drafts and height. Labels and
 amounts must explain donut segments and daily bars without relying on color. Empty months are explicit.
 
-Provider cards prioritize the current value and supporting context. The combined Codex and Claude
-card separates providers with spacing, without an internal divider. Telemetry trends are session
-history; storage offers system settings for category details. Service status shows affected names,
+Provider cards prioritize the current value and supporting context. Each subscription provider
+has its own card; three fill one row. Telemetry trends are session history; storage offers system
+settings for category details. Service status shows affected names,
 not only a colored percentage. GitHub notification failures remain inside their section. Preserve
 settled content during background refresh; initial placeholders belong only to the affected surface.
 

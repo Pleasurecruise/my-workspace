@@ -28,7 +28,7 @@
 		storage: HardDrive, localStorage: HardDrive, network: Network, localNetwork: Network,
 		weather: CloudSun, stock: ChartNoAxesCombined, exchange: ArrowLeftRight,
 		serviceStatus: ShieldCheck, github: GitBranch, quotation: Quote,
-		codex: Gauge, openCode: Gauge, claude: Gauge, codexClaude: Gauge, grok: Gauge, copilot: Gauge,
+		codex: Gauge, openCode: Gauge, claude: Gauge, grok: Gauge, copilot: Gauge,
 		deepSeek: WalletCards, cherryIn: WalletCards, tokenFlux: Gauge, dimAgent: Gauge,
 	};
 	const Icon = $derived(placement === null ? Layers : icons[placement.widget.kind]);

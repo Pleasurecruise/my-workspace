@@ -57,7 +57,6 @@ pub enum Widget {
     Codex,
     OpenCode,
     Claude,
-    CodexClaude,
     Grok,
     Copilot,
     DeepSeek,
@@ -195,7 +194,6 @@ impl Layout {
                 Widget::Codex => "codex".to_owned(),
                 Widget::OpenCode => "open-code".to_owned(),
                 Widget::Claude => "claude".to_owned(),
-                Widget::CodexClaude => "codex-claude".to_owned(),
                 Widget::Grok => "grok".to_owned(),
                 Widget::Copilot => "copilot".to_owned(),
                 Widget::DeepSeek => "deep-seek".to_owned(),
@@ -450,8 +448,6 @@ impl Layout {
                     | (Provider::CherryIn, Widget::CherryIn)
                     | (Provider::Github, Widget::Github)
                     | (Provider::Claude, Widget::Claude)
-                    | (Provider::Codex, Widget::CodexClaude)
-                    | (Provider::Claude, Widget::CodexClaude)
                     | (Provider::Grok, Widget::Grok)
                     | (Provider::Copilot, Widget::Copilot)
                     | (Provider::TokenFlux, Widget::TokenFlux)

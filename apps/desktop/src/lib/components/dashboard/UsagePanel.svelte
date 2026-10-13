@@ -8,7 +8,6 @@
 		| { provider: "codex"; state: QueryState<CodexUsage> }
 		| { provider: "openCode"; state: QueryState<OpenCodeUsage> }
 		| { provider: "claude"; state: QueryState<ClaudeUsage> }
-		| { provider: "codexClaude"; codex: QueryState<CodexUsage>; claude: QueryState<ClaudeUsage> }
 		| { provider: "grok"; state: QueryState<GrokUsage> }
 		| { provider: "copilot"; state: QueryState<CopilotUsage> }
 		| { provider: "deepSeek"; state: QueryState<DeepSeekBalance> }
@@ -34,12 +33,6 @@
 			{ label: "Completions", quota: copilot.quotaSnapshots.completions },
 		];
 		return quotas.filter((item): item is { label: string; quota: CopilotQuota } => item.quota !== null && item.quota.unlimited !== true);
-	});
-	let rateSections = $derived.by((): RateSection[] => {
-		if (source.provider === "codex") return [codexSection(source.state)];
-		if (source.provider === "claude") return [claudeSection(source.state)];
-		if (source.provider === "codexClaude") return [codexSection(source.codex), claudeSection(source.claude)];
-		return [];
 	});
 	let tokenFluxMeters = $derived.by((): Array<{ label: string; percent: number; remaining: number; limit: number }> => {
 		if (source.provider !== "tokenFlux" || source.state.data === null) return [];
@@ -104,7 +97,6 @@
 		if (value === "codex") return "Codex quota";
 		if (value === "openCode") return "OpenCode Go quota";
 		if (value === "claude") return "Claude quota";
-		if (value === "codexClaude") return "Codex & Claude quota";
 		if (value === "grok") return "Grok quota";
 		if (value === "copilot") return "Copilot quota";
 		if (value === "deepSeek") return "DeepSeek balance";
@@ -135,6 +127,11 @@
 			if (claude.sevenDay !== null) windows.push({ label: "Weekly", usedPercent: claude.sevenDay.usedPercent, resetsAt: claude.sevenDay.resetsAt });
 		}
 		return { title: "Claude", planType: claude?.planType ?? null, windows, hasData: claude !== null, error: state.error };
+	}
+	function grokSection(state: QueryState<GrokUsage>): RateSection {
+		const grok = state.data;
+		const windows: RateWindow[] = grok === null ? [] : [{ label: grok.window.windowDurationMins === 10_080 ? "Weekly" : "Current period", usedPercent: grok.window.usedPercent, resetsAt: grok.window.resetsAt }];
+		return { title: "Grok", planType: grok?.planType ?? null, windows, hasData: grok !== null, error: state.error };
 	}
 	function resetLabel(timestamp: number | string | null): string {
 		if (timestamp === null) return "Reset time unavailable";
@@ -167,18 +164,16 @@
 
 <section class="usage-panel" aria-label={panelLabel}>
 	<article>
-		{#if source.provider === "codex" || source.provider === "claude" || source.provider === "codexClaude"}
-			{#each rateSections as section (section.title)}
-				{@render providerSection(section)}
-			{/each}
+		{#if source.provider === "codex"}
+			{@render providerSection(codexSection(source.state))}
+		{:else if source.provider === "claude"}
+			{@render providerSection(claudeSection(source.state))}
+		{:else if source.provider === "grok"}
+			{@render providerSection(grokSection(source.state))}
 		{:else if source.provider === "openCode"}
 			{@const openCode = source.state.data}
 			<div class="provider-heading"><strong>OpenCode Go</strong><span>Go</span></div>
 			{#if openCode !== null}<div class="meter-list">{#each openCodeWindows as item (item.label)}<div class="meter"><div><span>{item.label}</span><strong>{percentFormatter.format(item.available)}%</strong></div><div class:limited={item.window.status === "rate-limited"} class="progress" role="progressbar" aria-label={`OpenCode Go ${item.label} quota`} aria-valuenow={item.available} aria-valuemin="0" aria-valuemax="100"><span style:width={`${item.available}%`}></span></div><small>{resetLabel(item.window.resetsAt)}</small></div>{/each}</div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
-		{:else if source.provider === "grok"}
-			{@const grok = source.state.data}
-			<div class="provider-heading"><strong>Grok</strong>{#if grok !== null && grok.planType !== null}<span>{grok.planType}</span>{/if}</div>
-			{#if grok !== null}<div class="meter-list"><div class="meter"><div><span>{grok.window.windowDurationMins === 10_080 ? "Weekly" : "Current period"}</span><strong>{percentFormatter.format(remaining(grok.window))}%</strong></div><div class="progress" role="progressbar" aria-label="Grok quota" aria-valuenow={remaining(grok.window)} aria-valuemin="0" aria-valuemax="100"><span style:width={`${remaining(grok.window)}%`}></span></div><small>{resetLabel(grok.window.resetsAt)}</small></div></div>{:else}<p>{loadingMessage(source.state.error)}</p>{/if}
 		{:else if source.provider === "copilot"}
 			{@const copilot = source.state.data}
 			<div class="provider-heading"><strong>Copilot</strong>{#if copilot !== null && copilot.copilotPlan !== null}<span>{copilot.copilotPlan}</span>{/if}</div>
@@ -227,7 +222,6 @@
 	.provider-heading strong,
 	.meter > div { display: flex; align-items: center; }
 	.provider-heading { min-height: 1.2rem; justify-content: space-between; gap: 0.4rem; margin-bottom: 0.4rem; }
-	.provider-section + .provider-section { margin-top: 0.75rem; }
 	.provider-heading strong { gap: 0.25rem; font-size: 0.68rem; }
 	.provider-heading > span { padding: 0.1rem 0.3rem; border-radius: var(--radius-full); background: var(--color-muted); color: var(--color-muted-foreground); font-size: 0.55rem; text-transform: uppercase; }
 	.provider-heading > span.unavailable { color: var(--color-error); }

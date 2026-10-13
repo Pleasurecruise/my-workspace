@@ -11,13 +11,12 @@ afterEach(async () => {
 	target.replaceChildren();
 });
 
-it("preserves independent provider failures and settled quotas in the combined card", async () => {
+it("keeps settled Claude quotas visible beside a refresh failure", async () => {
 	view = mount(UsagePanel, {
 		target,
 		props: {
-			provider: "codexClaude",
-			codex: { data: null, error: "Codex timed out", loading: false },
-			claude: {
+			provider: "claude",
+			state: {
 				data: {
 					planType: "Pro",
 					fiveHour: { usedPercent: 20, windowDurationMins: 300, resetsAt: null },
@@ -29,11 +28,32 @@ it("preserves independent provider failures and settled quotas in the combined c
 		},
 	});
 	await tick();
-	expect(target.textContent).toContain("Codex timed out");
 	expect(target.textContent).toContain("Claude refresh failed");
 	expect(target.textContent).toContain("80%");
 	expect(target.textContent).not.toContain("Not signed in");
-	expect(target.querySelectorAll('[role="alert"]')).toHaveLength(2);
+	expect(target.querySelectorAll('[role="alert"]')).toHaveLength(1);
+});
+
+it("shows the Grok weekly quota and plan", async () => {
+	view = mount(UsagePanel, {
+		target,
+		props: {
+			provider: "grok",
+			state: {
+				data: {
+					planType: "SuperGrok",
+					window: { usedPercent: 3, windowDurationMins: 10_080, resetsAt: null },
+				},
+				error: null,
+				loading: false,
+			},
+		},
+	});
+	await tick();
+	expect(target.textContent).toContain("SuperGrok");
+	expect(
+		target.querySelector('[aria-label="Grok Weekly quota"]')?.getAttribute("aria-valuenow"),
+	).toBe("97");
 });
 
 it("labels the Codex free plan quota as monthly", async () => {

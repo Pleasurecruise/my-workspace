@@ -200,7 +200,8 @@ the stream and reconnect loop. Replays populate Inbox without producing new syst
 
 Codex, Grok, Copilot, and DimAgent coalesce requests and cache success and failure for five
 minutes; cancelled reads are not cached. CLI path overrides are `CODEX_BINARY`, `GROK_BINARY`,
-`GITHUB_CLI_BINARY`, and `DIM_BINARY`.
+`GITHUB_CLI_BINARY`, and `DIM_BINARY`. Grok discovery checks PATH, then the official installer's
+`~/.grok/bin/grok`, because desktop launches do not inherit the login shell PATH.
 Claude reads Claude Code's Keychain item on macOS in both debug and release builds, then falls back
 to its local credential file only when the Keychain item is missing. Other platforms read the file.
 Copilot preserves unlimited quotas and falls back to the account reset date when a row has none.
@@ -214,15 +215,16 @@ Resolve case-insensitive provider IDs from pi `auth.json`, then custom providers
 under `${PI_CODING_AGENT_DIR}` or `~/.pi/agent`. Require `api_key` entries or nonempty `apiKey` values.
 Bearer secrets must never enter frontend projections, Vesper files, or logs.
 
-### Codex and Claude
+### Codex, Claude, and Grok
 
 Codex initializes JSON-RPC with `experimentalApi`, calls `account/rateLimits/read`, and terminates the child.
 Protocol I/O has a fifteen-second deadline. The card uses the primary and secondary windows from
 `rateLimits`; additional model-specific limits are not projected. This account integration is
 separate from Codex Resets.
 
-The widget picker offers a combined Codex & Claude card; saved standalone cards remain readable.
-Both providers retain independent data and error states, including when pinned to Dynamic Island.
+Codex, Claude, and Grok are separate cards with independent data and error states; there is no
+combined card. Grok projects the single unified billing period, labelled Weekly when the runtime
+reports a weekly period.
 Claude reports missing credentials as signed out. Keychain access failures, unreadable files, malformed
 OAuth data and expired tokens remain explicit errors. Claude Code owns token renewal; Vesper does not
 refresh or write its credentials. An expired token requires renewal in Claude Code before retrying.

@@ -73,8 +73,6 @@ fn every_provider_follows_saved_widget_presence() {
         (Provider::Codex, Widget::Codex),
         (Provider::OpenCode, Widget::OpenCode),
         (Provider::Claude, Widget::Claude),
-        (Provider::Codex, Widget::CodexClaude),
-        (Provider::Claude, Widget::CodexClaude),
         (Provider::Grok, Widget::Grok),
         (Provider::Copilot, Widget::Copilot),
         (Provider::DeepSeek, Widget::DeepSeek),

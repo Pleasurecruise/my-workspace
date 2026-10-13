@@ -307,7 +307,6 @@ fn island_sources(widget: &Widget) -> Vec<Source> {
         Widget::Codex => vec![Source::Codex],
         Widget::OpenCode => vec![Source::OpenCode],
         Widget::Claude => vec![Source::Claude],
-        Widget::CodexClaude => vec![Source::Codex, Source::Claude],
         Widget::Grok => vec![Source::Grok],
         Widget::Copilot => vec![Source::Copilot],
         Widget::DeepSeek => vec![Source::DeepSeek],
