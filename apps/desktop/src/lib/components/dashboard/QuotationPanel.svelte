@@ -8,7 +8,7 @@
 	<header><Quote size={15} /><h2>Random Quotation</h2></header>
 	{#if quotation !== null}
 		<blockquote>{quotation.content}</blockquote>
-		<footer><span>— {quotation.author}</span>{#if quotation.tags.length > 0}<small>{quotation.tags.join(" · ")}</small>{/if}</footer>
+		<footer><span>— {quotation.author}</span></footer>
 	{:else}<p>{error === null ? "Loading…" : error}</p>{/if}
 </article>
 
@@ -18,7 +18,6 @@
 
 	h2 { margin: 0; font-size: 0.72rem; font-weight: 500; text-transform: uppercase; }
 	blockquote { margin: 0; font-family: var(--font-serif); font-size: 0.9rem; line-height: 1.5; }
-	footer { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.7rem; color: var(--color-muted-foreground); font-size: 0.6rem; }
-	footer small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	footer { margin-top: 0.7rem; color: var(--color-muted-foreground); font-size: 0.6rem; }
 	p { margin: 0; color: var(--color-muted-foreground); font-size: 0.65rem; text-align: center; }
 </style>

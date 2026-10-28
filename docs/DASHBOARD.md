@@ -70,12 +70,12 @@ metadata through the authorized summary index.
 Provider failures remain independent; authenticated GitHub reads and Markdown link previews have
 separate boundaries.
 
-| Module      | Source and meaning                                                                   |
-| ----------- | ------------------------------------------------------------------------------------ |
-| `weather`   | `crates/weather`: Open-Meteo geocoding and forecast; local time and six hourly cells |
-| `stocks`    | `crates/market-data`: Yahoo Finance chart endpoint; bounded concurrency              |
-| `exchange`  | `crates/market-data`: Latest two ECB working days and derived cross rates            |
-| `quotation` | `crates/quotes`: One quotation from [FreeAPI](https://freeapi.app/)                  |
+| Module      | Source and meaning                                                                           |
+| ----------- | -------------------------------------------------------------------------------------------- |
+| `weather`   | `crates/weather`: Open-Meteo geocoding and forecast; local time and six hourly cells         |
+| `stocks`    | `crates/market-data`: Yahoo Finance chart endpoint; bounded concurrency                      |
+| `exchange`  | `crates/market-data`: Latest two ECB working days and derived cross rates                    |
+| `quotation` | `crates/quotes`: Keyless [DummyJSON](https://dummyjson.com/docs/quotes) quotation; one retry |
 
 ## Service status
 

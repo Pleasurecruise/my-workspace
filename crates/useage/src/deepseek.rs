@@ -21,10 +21,17 @@ pub struct BalanceInfo {
 
 pub async fn read() -> Result<DeepSeekBalance, String> {
     let api_key = crate::auth::api_key("deepseek").await?;
-    let response = reqwest::Client::new()
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent(concat!(
+            "Vesper/",
+            env!("CARGO_PKG_VERSION"),
+            " deepseek balance"
+        ))
+        .build()
+        .map_err(|error| format!("Could not create DeepSeek client: {error}"))?
         .get(BALANCE_URL)
         .bearer_auth(api_key)
-        .timeout(Duration::from_secs(15))
         .send()
         .await
         .map_err(|error| format!("Could not query DeepSeek balance: {error}"))?;

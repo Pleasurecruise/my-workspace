@@ -36,11 +36,16 @@ struct ErrorDetail {
 pub async fn read() -> Result<OpenCodeUsage, String> {
     let api_key = crate::auth::api_key("opencode-go").await?;
     let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent(concat!(
+            "Vesper/",
+            env!("CARGO_PKG_VERSION"),
+            " opencode usage"
+        ))
         .build()
         .map_err(|error| format!("Could not create OpenCode Go client: {error}"))?
         .get(USAGE_URL)
         .bearer_auth(api_key)
-        .timeout(Duration::from_secs(15))
         .send()
         .await
         .map_err(|error| format!("Could not query OpenCode Go usage: {error}"))?;

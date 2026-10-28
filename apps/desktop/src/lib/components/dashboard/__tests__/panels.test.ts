@@ -173,7 +173,7 @@ it("renders the matching location forecast and its failure otherwise", async () 
 	expect(target.textContent).toContain("No location matched atlantis");
 });
 
-it("shows a quotation with its tags, or the read error", async () => {
+it("shows a quotation with its author, or the read error", async () => {
 	view = mount(QuotationPanel, {
 		target,
 		props: {
@@ -181,15 +181,13 @@ it("shows a quotation with its tags, or the read error", async () => {
 				id: 1,
 				content: "Stay hungry.",
 				author: "Someone",
-				authorSlug: "someone",
-				tags: ["life", "work"],
 			},
 			error: null,
 		},
 	});
 	await tick();
 	expect(target.textContent).toContain("Stay hungry.");
-	expect(target.textContent).toContain("life · work");
+	expect(target.textContent).toContain("— Someone");
 	await unmount(view);
 
 	view = mount(QuotationPanel, { target, props: { quotation: null, error: "Quotes offline" } });

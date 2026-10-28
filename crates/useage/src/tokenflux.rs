@@ -86,10 +86,17 @@ pub struct TokenFluxWindow {
 
 pub async fn read() -> Result<TokenFluxUsage, String> {
     let api_key = crate::auth::api_key("tokenflux").await?;
-    let response = reqwest::Client::new()
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent(concat!(
+            "Vesper/",
+            env!("CARGO_PKG_VERSION"),
+            " tokenflux usage"
+        ))
+        .build()
+        .map_err(|error| format!("Could not create TokenFlux client: {error}"))?
         .get(USAGE_URL)
         .bearer_auth(api_key)
-        .timeout(Duration::from_secs(15))
         .send()
         .await
         .map_err(|error| format!("Could not query TokenFlux usage: {error}"))?;

@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-const ENDPOINT: &str = "https://api.freeapi.app/api/v1/public/quotes/quote/random";
+const ENDPOINT: &str = "https://dummyjson.com/quotes/random";
+const TIMEOUT: Duration = Duration::from_secs(15);
+const RETRY_DELAY: Duration = Duration::from_millis(300);
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -9,62 +11,29 @@ pub struct Quotation {
     pub id: u64,
     pub content: String,
     pub author: String,
-    pub author_slug: String,
-    pub tags: Vec<String>,
 }
 
 #[derive(Deserialize)]
-struct Envelope {
-    success: bool,
-    data: QuotationWire,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct QuotationWire {
     id: u64,
-    content: String,
+    quote: String,
     author: String,
-    author_slug: String,
-    #[serde(default)]
-    tags: Vec<String>,
 }
 
-fn project(envelope: Envelope) -> Result<Quotation, String> {
-    if !envelope.success {
-        return Err("Random quotation provider reported a failure".to_owned());
-    }
-    let content = envelope.data.content.trim();
-    let author = envelope.data.author.trim();
-    let author_slug = envelope.data.author_slug.trim();
-    if content.is_empty() || author.is_empty() || author_slug.is_empty() {
+fn project(wire: QuotationWire) -> Result<Quotation, String> {
+    let content = wire.quote.trim();
+    let author = wire.author.trim();
+    if content.is_empty() || author.is_empty() {
         return Err("Random quotation provider returned incomplete data".to_owned());
     }
     Ok(Quotation {
-        id: envelope.data.id,
+        id: wire.id,
         content: content.to_owned(),
         author: author.to_owned(),
-        author_slug: author_slug.to_owned(),
-        tags: envelope
-            .data
-            .tags
-            .into_iter()
-            .map(|tag| tag.trim().to_owned())
-            .filter(|tag| !tag.is_empty())
-            .collect(),
     })
 }
 
-pub async fn read() -> Result<Quotation, String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .user_agent(concat!(
-            "Vesper/",
-            env!("CARGO_PKG_VERSION"),
-            " random quotation"
-        ))
-        .build()
-        .map_err(|error| format!("Could not create random quotation client: {error}"))?;
+async fn fetch(client: &reqwest::Client) -> Result<Quotation, String> {
     let response = client
         .get(ENDPOINT)
         .send()
@@ -76,44 +45,67 @@ pub async fn read() -> Result<Quotation, String> {
             response.status()
         ));
     }
-    let envelope = response.json().await.map_err(|error| {
+    let wire = response.json().await.map_err(|error| {
         format!("Random quotation provider returned an unsupported payload: {error}")
     })?;
-    project(envelope)
+    project(wire)
+}
+
+pub async fn read() -> Result<Quotation, String> {
+    let client = reqwest::Client::builder()
+        .timeout(TIMEOUT)
+        .user_agent(concat!(
+            "Vesper/",
+            env!("CARGO_PKG_VERSION"),
+            " random quotation"
+        ))
+        .build()
+        .map_err(|error| format!("Could not create random quotation client: {error}"))?;
+    // One retry absorbs a transient timeout or gateway error without hiding an outage.
+    match fetch(&client).await {
+        Ok(quotation) => Ok(quotation),
+        Err(first) => {
+            tokio::time::sleep(RETRY_DELAY).await;
+            fetch(&client)
+                .await
+                .map_err(|second| format!("{first}; retry failed: {second}"))
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn payload(content: &str) -> Envelope {
+    fn payload(quote: &str, author: &str) -> QuotationWire {
         serde_json::from_value(serde_json::json!({
-            "success": true,
-            "data": {
-                "id": 195,
-                "content": content,
-                "author": "Peter Drucker",
-                "authorSlug": "peter-drucker",
-                "tags": ["Business", ""]
-            }
+            "id": 195,
+            "quote": quote,
+            "author": author
         }))
         .expect("valid quotation response")
     }
 
     #[test]
     fn projects_quotation() {
-        let quotation =
-            project(payload("Change creates opportunity.")).expect("valid quotation projection");
+        let quotation = project(payload(" Change creates opportunity. ", " Peter Drucker "))
+            .expect("valid quotation projection");
 
         assert_eq!(quotation.id, 195);
         assert_eq!(quotation.content, "Change creates opportunity.");
         assert_eq!(quotation.author, "Peter Drucker");
-        assert_eq!(quotation.tags, ["Business"]);
     }
 
     #[test]
     fn rejects_empty_content() {
-        let error = project(payload("  ")).expect_err("empty quotation should fail");
+        let error = project(payload("  ", "Peter Drucker")).expect_err("empty quote should fail");
+
+        assert!(error.contains("incomplete"));
+    }
+
+    #[test]
+    fn rejects_empty_author() {
+        let error = project(payload("Change creates opportunity.", " ")).expect_err("empty author");
 
         assert!(error.contains("incomplete"));
     }

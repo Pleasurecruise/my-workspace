@@ -329,8 +329,6 @@ export interface Quotation {
 	id: number;
 	content: string;
 	author: string;
-	authorSlug: string;
-	tags: string[];
 }
 
 export interface GithubActivity {

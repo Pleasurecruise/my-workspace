@@ -60,6 +60,11 @@ pub async fn read() -> Result<CherryInBalance, String> {
     let mut stored = read_task?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
+        .user_agent(concat!(
+            "Vesper/",
+            env!("CARGO_PKG_VERSION"),
+            " cherryin balance"
+        ))
         .build()
         .map_err(|error| format!("Could not create CherryIN client: {error}"))?;
     let access_token = valid_access_token(&client, &mut stored, false).await?;
