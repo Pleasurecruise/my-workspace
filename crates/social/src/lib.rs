@@ -52,6 +52,7 @@ pub struct PublishedPost {
 #[serde(rename_all = "camelCase")]
 pub struct Configured {
     pub x: bool,
+    pub x_available: bool,
 }
 
 #[derive(Debug)]
@@ -125,6 +126,7 @@ impl From<vault::Error> for PublishError {
 pub fn configured() -> Result<Configured, PublishError> {
     Ok(Configured {
         x: matches!(x::credentials::read()?, Stored::Ready(_)),
+        x_available: x::CLIENT_ID.is_some(),
     })
 }
 

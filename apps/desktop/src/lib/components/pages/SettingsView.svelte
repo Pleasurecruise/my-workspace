@@ -487,9 +487,6 @@
 		<div><h1>Settings</h1><p class="page-description">Manage your accounts and make Vesper your own.</p></div>
 	</header>
 
-	{#each Object.values(formErrors).filter((message) => message !== null) as message, index (index)}
-		<Alert class="settings-alert" variant="error"><AlertDescription class="settings-alert-copy">{message}</AlertDescription></Alert>
-	{/each}
 	{#if error !== null}
 		<Alert class="settings-alert" variant="error"><AlertDescription class="settings-alert-copy">{error}</AlertDescription></Alert>
 	{/if}
@@ -513,6 +510,7 @@
 			<div><CardTitle class="settings-card-title">Spotify Music</CardTitle><CardDescription class="settings-card-description">Read Liked Songs and control playback through your Spotify account.</CardDescription></div>
 			{#if configuration?.spotify.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
+		{@render failure(formErrors["spotify"])}
 		<CardContent class="settings-card-content">
 			<div class="settings-row">
 				<div><Label for="spotify-client-id">Personal Spotify Client ID</Label><p>Optional. Use your own app to reduce shared quota delays. Leave empty for shared access.</p><p>Create a Web API app in the Spotify developer dashboard with redirect URI <code>http://127.0.0.1:8989/login</code>.</p></div>
@@ -536,6 +534,8 @@
 			<div><CardTitle class="settings-card-title">Telegram Channel</CardTitle><CardDescription class="settings-card-description">Publish public Memos through an authorized Telegram user account.</CardDescription></div>
 			{#if configuration?.telegram.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
+		{@render failure(formErrors["telegram"])}
+		{@render failure(formErrors["telegram-auth"])}
 		<form onsubmit={saveTelegram}>
 			<CardContent class="settings-card-content">
 				<div class="settings-row">
@@ -596,10 +596,11 @@
 			<div><CardTitle class="settings-card-title">X / Twitter</CardTitle><CardDescription class="settings-card-description">Publish public Memos through the X user-context API.</CardDescription></div>
 			{#if configuration?.publication.x}<ConfigurationBadge />{/if}
 		</CardHeader>
+		{@render failure(formErrors["x"])}
 		<CardContent class="settings-card-content">
 			<div class="settings-row">
-				<div><Label>Browser authorization</Label><p>Vesper opens X and requests permission to publish from your account.</p></div>
-				<Button class="settings-save-button" size="sm" type="button" disabled={saving.x} onclick={connectX}>{saving.x ? "Waiting for X…" : configuration?.publication.x ? "Reconnect" : "Connect"}</Button>
+				<div><Label>Browser authorization</Label><p>{configuration?.publication.xAvailable === false ? "This build has no X OAuth Client ID. Rebuild with VESPER_X_CLIENT_ID to connect." : "Vesper opens X and requests permission to publish from your account."}</p></div>
+				<Button class="settings-save-button" size="sm" type="button" disabled={saving.x || configuration?.publication.xAvailable !== true} onclick={connectX}>{saving.x ? "Waiting for X…" : configuration?.publication.x ? "Reconnect" : "Connect"}</Button>
 			</div>
 		</CardContent>
 	</Card>
@@ -642,6 +643,7 @@
 			<div><CardTitle class="settings-card-title">Notifications</CardTitle><CardDescription class="settings-card-description">Subscribe to notifications through ntfy.</CardDescription></div>
 			{#if configuration?.ntfyDev}<ConfigurationBadge label="Environment" />{:else if configuration?.ntfy.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
+		{@render failure(formErrors["ntfy"])}
 		<form onsubmit={saveNtfy}>
 			<CardContent class="settings-card-content">
 				<div class="settings-row">
@@ -662,6 +664,7 @@
 			<div><CardTitle class="settings-card-title">App Lock</CardTitle><CardDescription class="settings-card-description">Hide Vesper behind a local password while it remains open.</CardDescription></div>
 			{#if configuration?.appLockDev}<ConfigurationBadge label="Environment" />{:else if configuration?.appLock.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
+		{@render failure(formErrors["app-lock"])}
 		<form onsubmit={saveAppLock}>
 			<CardContent class="settings-card-content">
 			<div class="settings-row">
@@ -690,6 +693,7 @@
 			<div><CardTitle class="settings-card-title">UGOS</CardTitle><CardDescription class="settings-card-description">Connect to Task Manager through ugreen:9443.</CardDescription></div>
 			{#if configuration !== null && configuration.ugos.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
+		{@render failure(formErrors["ugos"])}
 		<form onsubmit={saveUgos}>
 			<CardContent class="settings-card-content">
 			<div class="settings-row">
@@ -713,6 +717,9 @@
 			<span class="settings-icon"><KeyRound size={16} /></span>
 			<div><CardTitle class="settings-card-title">Content services</CardTitle><CardDescription class="settings-card-description">Connect your Memos, Moment and Knowledge collections.</CardDescription></div>
 		</CardHeader>
+		{@render failure(formErrors["memos"])}
+		{@render failure(formErrors["moment"])}
+		{@render failure(formErrors["knowledge"])}
 		<div class="api-settings">
 			<div class="settings-row">
 				<div><Label for="memos-api-key">my-memos API key</Label><p>Bearer key generated by the my-memos REST API settings.</p></div>
@@ -758,6 +765,7 @@
 			<div><CardTitle class="settings-card-title">Cloudflare R2</CardTitle><CardDescription class="settings-card-description">Read and publish content in cherry-studio.</CardDescription></div>
 			{#if configuration !== null && configuration.r2.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
+		{@render failure(formErrors["r2"])}
 		<form onsubmit={saveR2}>
 			<CardContent class="settings-card-content">
 			<div class="settings-row">
@@ -779,6 +787,10 @@
 	</div>
 	</div>
 </section>
+
+{#snippet failure(message: string | null)}
+	{#if message !== null}<Alert class="settings-card-alert" variant="error"><AlertDescription class="settings-alert-copy">{message}</AlertDescription></Alert>{/if}
+{/snippet}
 
 {#snippet XLogo()}
 	<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>

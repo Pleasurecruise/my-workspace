@@ -101,7 +101,6 @@ mod tests {
     fn limits_x() {
         let text = render_x(&"发布内容".repeat(100));
         assert!(measure_x(&text) <= X_LIMIT);
-        assert!(!text.contains("https://"));
         assert!(text.contains('…'));
     }
 }

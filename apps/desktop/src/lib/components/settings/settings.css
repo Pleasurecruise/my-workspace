@@ -1,6 +1,9 @@
 .settings-alert {
   margin-bottom: 0.75rem;
 }
+.settings-card-alert {
+  margin: 0 1.25rem 1rem;
+}
 .settings-alert-copy {
   font-size: 0.75rem;
 }

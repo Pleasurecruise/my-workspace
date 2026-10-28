@@ -25,7 +25,7 @@ it.each<"ready" | "failed">(["ready", "failed"])(
 			appLockDev: false,
 			spotify: { status: "missing" },
 			qqMusic: { status: "ready", data: "Connected" },
-			publication: { x: false },
+			publication: { x: false, xAvailable: true },
 			telegram: { status: "missing" },
 		};
 		let finish: (response: CommandResponse<ConfigurationStatus>) => void = () => {

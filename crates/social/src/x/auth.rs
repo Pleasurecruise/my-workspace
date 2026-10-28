@@ -6,7 +6,7 @@ const AUTHORIZE_ENDPOINT: &str = "https://x.com/i/oauth2/authorize";
 const TOKEN_ENDPOINT: &str = "https://api.x.com/2/oauth2/token";
 const REDIRECT_URI: &str = "http://127.0.0.1:8792/callback";
 const SCOPES: &str = "tweet.read tweet.write users.read offline.access";
-const CLIENT_ID: Option<&str> = option_env!("VESPER_X_CLIENT_ID");
+pub const CLIENT_ID: Option<&str> = option_env!("VESPER_X_CLIENT_ID");
 
 pub struct Authorization {
     pub url: String,

@@ -1,7 +1,7 @@
 mod auth;
 pub mod credentials;
 
-pub use auth::{authenticate, authorization};
+pub use auth::{CLIENT_ID, authenticate, authorization};
 
 use super::text::render_x;
 use super::{MemoPublication, PublicationProvider, PublishError, PublishedPost, validate};

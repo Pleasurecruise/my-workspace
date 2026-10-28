@@ -41,7 +41,7 @@ const initial: ConfigurationStatus = {
 	appLockDev: false,
 	spotify: { status: "missing" },
 	qqMusic: { status: "missing" },
-	publication: { x: false },
+	publication: { x: false, xAvailable: true },
 	telegram: { status: "missing" },
 };
 

@@ -161,7 +161,8 @@ verification code, and 2FA password when requested. The account must be able to 
 Login codes and passwords are not persisted.
 
 For X, enable OAuth 2.0 in the Developer Console and register `http://127.0.0.1:8792/callback` exactly.
-Compile with the public Client ID in `VESPER_X_CLIENT_ID`, then use Settings → Connect/Reconnect.
+Compile with the public Client ID in `VESPER_X_CLIENT_ID` (locally through Cargo `[env]` config; the
+release workflow reads the `VESPER_X_CLIENT_ID` repository variable), then use Settings → Connect/Reconnect.
 The browser PKCE flow requests `tweet.read`, `tweet.write`, `users.read`, and `offline.access`;
 Rust stores and rotates the grants. The UI accepts no Client Secret or manually copied token.
 
