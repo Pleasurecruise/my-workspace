@@ -430,7 +430,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn startup_uses_fresh_cache_but_refresh_and_expiry_fetch() {
+    async fn startup_cache() {
         let state = Content::default();
         let channel = Channel::Memos;
         assert_eq!(
@@ -497,7 +497,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invalidation_prevents_pending_reads_from_repopulating_startup_cache() {
+    async fn pending_invalidation() {
         for reset_all in [false, true] {
             let state = Content::default();
             let channel = Channel::Memos;
@@ -524,7 +524,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn late_reads_never_replace_newer_cache_entries() {
+    async fn late_reads() {
         let state = Content::default();
         let channel = Channel::Memos;
         let (send, reply) = tokio::sync::oneshot::channel();
@@ -549,7 +549,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failed_refresh_preserves_settled_cache() {
+    async fn failed_refresh() {
         let state = Content::default();
         let channel = Channel::Memos;
         state
@@ -649,7 +649,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shares_asset_errors_without_caching_them() {
+    async fn asset_errors() {
         let state = Content::default();
         let request = Arc::new(AssetRequest::new(None));
         state
@@ -676,7 +676,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cleared_assets_stay_invalidated() {
+    async fn cleared_assets() {
         let state = Content::default();
         let request = Arc::new(AssetRequest::new(None));
         state

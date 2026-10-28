@@ -42,7 +42,7 @@ fn planner_habits() {
 }
 
 #[test]
-fn spending_is_a_persisted_singleton_that_can_be_pinned() {
+fn spending_singleton() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join(database::FILE_NAME);
     let mut layout = Layout {
@@ -68,7 +68,7 @@ fn spending_is_a_persisted_singleton_that_can_be_pinned() {
 }
 
 #[test]
-fn every_provider_follows_saved_widget_presence() {
+fn provider_presence() {
     for (provider, widget) in [
         (Provider::Codex, Widget::Codex),
         (Provider::OpenCode, Widget::OpenCode),
@@ -99,7 +99,7 @@ fn every_provider_follows_saved_widget_presence() {
 }
 
 #[test]
-fn replaces_layout_and_preserves_it_when_validation_fails() {
+fn layout_replacement() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join(database::FILE_NAME);
     let mut layout = Layout::default();
@@ -122,7 +122,7 @@ fn replaces_layout_and_preserves_it_when_validation_fails() {
 }
 
 #[test]
-fn database_failure_rolls_back_the_complete_layout() {
+fn layout_rollback() {
     use diesel::connection::SimpleConnection;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join(database::FILE_NAME);
@@ -239,7 +239,7 @@ fn isolates_invalid_widgets() {
 }
 
 #[test]
-fn island_selection_must_reference_a_saved_widget() {
+fn island_selection() {
     let mut layout = Layout::default();
     assert!(layout.island_widget_id.is_none());
     let planner = layout
@@ -256,7 +256,7 @@ fn island_selection_must_reference_a_saved_widget() {
 }
 
 #[test]
-fn default_layout_is_valid() {
+fn default_layout() {
     Layout::default().validate().unwrap();
 }
 
@@ -291,7 +291,7 @@ fn rejects_invalid_layouts() {
 }
 
 #[test]
-fn queries_read_only_saved_widgets() {
+fn saved_widget_queries() {
     let json = r#"{"widgets":[
         {"id":"stock-aapl","widget":{"kind":"stock","symbol":"AAPL"}},
         {"id":"weather","widget":{"kind":"weather","location":"Ningbo"}},

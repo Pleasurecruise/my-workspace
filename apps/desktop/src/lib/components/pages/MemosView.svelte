@@ -19,7 +19,7 @@
 	import type { Snippet } from "svelte";
 	import { onMount, tick, untrack } from "svelte";
 	import type { CommandResponse } from "@/lib/contracts/command";
-	import type { MemoTagCount, MemoUpdate, MemoView, PublishedPost } from "@/lib/contracts/content";
+	import type { MemoTagCount, MemoUpdate, MemoView, PublicationProvider, PublishedPost } from "@/lib/contracts/content";
 	import MemoEditor from "../memos/MemoEditor.svelte";
 
 	let {
@@ -34,8 +34,8 @@
 		onimportx,
 		onupdate,
 		ondelete,
-		onpublishtelegram,
-		onpublishx,
+		publications,
+		onpublish,
 	}: {
 		memos: MemoView[];
 		tags: MemoTagCount[];
@@ -53,8 +53,8 @@
 		onimportx: (url: string, visibility: "public" | "private") => Promise<CommandResponse<MemoView>>;
 		onupdate: (id: string, input: MemoUpdate) => Promise<CommandResponse<MemoView>>;
 		ondelete: (id: string) => Promise<CommandResponse<string>>;
-		onpublishtelegram: (memo: MemoView) => Promise<CommandResponse<PublishedPost>>;
-		onpublishx: (memo: MemoView) => Promise<CommandResponse<PublishedPost>>;
+		publications: ReadonlySet<string>;
+		onpublish: (memo: MemoView, provider: PublicationProvider) => Promise<CommandResponse<PublishedPost>>;
 	} = $props();
 
 	const relativeFormatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
@@ -73,7 +73,7 @@
 	let sharedId = $state<string | null>(null);
 	let confirmingDelete = $state<string | null>(null);
 	let deleting = $state(false);
-	let publishing = $state<{ memoId: string; provider: "telegram" | "x" } | null>(null);
+	let publishing = $state<{ memoId: string; provider: PublicationProvider } | null>(null);
 	let highlightedId = $state<string | null>(null);
 	let memoList = $state<HTMLDivElement | null>(null);
 	let tagStrip = $state<HTMLDivElement | null>(null);
@@ -325,11 +325,11 @@
 		);
 	}
 
-	async function publish(memo: MemoView, provider: "telegram" | "x") {
-		if (memo.visibility !== "public" || publishing !== null) return;
+	async function publish(memo: MemoView, provider: PublicationProvider) {
+		if (memo.visibility !== "public" || publishing !== null || publications.has(`${provider}:${memo.id}`)) return;
 		publishing = { memoId: memo.id, provider };
 		error = "";
-		const response = await (provider === "telegram" ? onpublishtelegram(memo) : onpublishx(memo));
+		const response = await onpublish(memo, provider);
 		publishing = null;
 		if (response.status === "failed") {
 			error = response.message;
@@ -509,11 +509,13 @@
 							{#if memo.visibility === "public"}<Globe size={11} /> Public{:else}<Lock size={11} /> Private{/if}
 						</span>
 						{#if memo.visibility === "public"}
+							{@const telegramPublished = publications.has(`telegram:${memo.id}`)}
+							{@const xPublished = publications.has(`x:${memo.id}`)}
 							<span class="publication-actions" aria-label="Publish memo">
-								<button type="button" disabled={publishing !== null} onclick={() => publish(memo, "telegram")} aria-label="Publish to Telegram" title="Publish to Telegram">
+								<button type="button" class:published={telegramPublished} disabled={publishing !== null || telegramPublished} onclick={() => publish(memo, "telegram")} aria-label={telegramPublished ? "Published to Telegram" : "Publish to Telegram"} title={telegramPublished ? "Published to Telegram" : "Publish to Telegram"}>
 									<Send size={11} />
 								</button>
-								<button type="button" disabled={publishing !== null} onclick={() => publish(memo, "x")} aria-label="Publish to X" title="Publish to X">
+								<button type="button" class:published={xPublished} disabled={publishing !== null || xPublished} onclick={() => publish(memo, "x")} aria-label={xPublished ? "Published to X" : "Publish to X"} title={xPublished ? "Published to X" : "Publish to X"}>
 									{@render XLogo()}
 								</button>
 							</span>
@@ -956,6 +958,13 @@
 	.publication-actions button:disabled {
 		cursor: default;
 		opacity: 0.35;
+	}
+
+	.publication-actions button.published,
+	.publication-actions button.published:hover {
+		background: transparent;
+		color: var(--color-success);
+		opacity: 1;
 	}
 
 	.publication-actions button:focus-visible {

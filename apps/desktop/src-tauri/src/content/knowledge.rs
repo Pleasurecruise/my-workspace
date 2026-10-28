@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prefetch_and_click_share_one_fetch_then_hash_changes_refresh() {
+    async fn shared_prefetch() {
         let reader = Reader::default();
         let calls = AtomicUsize::new(0);
         let fetch = || async {
@@ -280,7 +280,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invalidation_discards_inflight_results_and_failures_retry() {
+    async fn invalidation() {
         let reader = Reader::default();
         let result = reader
             .read_with("article", None, false, async {
@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cache_is_bounded_and_expired_entries_reload() {
+    async fn cache_bounds() {
         let reader = Reader::default();
         for index in 0..20 {
             reader
@@ -330,7 +330,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn saturated_prefetch_does_not_block_foreground() {
+    async fn saturated_prefetch() {
         let reader = Reader::default();
         let _capacity = reader.prefetches.acquire_many(2).await.unwrap();
         assert!(

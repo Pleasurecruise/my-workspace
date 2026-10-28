@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn captcha_page_contains_no_account_bridge_or_credentials() {
+fn captcha_page() {
     let captcha = Captcha {
         id: "private-id".into(),
         gt: "gt</script>".into(),
@@ -23,7 +23,7 @@ fn captcha_page_contains_no_account_bridge_or_credentials() {
 }
 
 #[test]
-fn captcha_callback_accepts_only_bounded_typed_proofs() {
+fn captcha_callback() {
     let proof = r#"{"geetest_challenge":"challenge","geetest_validate":"validate","geetest_seccode":"validate|jordan"}"#;
     let mut url = reqwest::Url::parse("vesper-captcha://result").unwrap();
     url.query_pairs_mut().append_pair("data", proof);

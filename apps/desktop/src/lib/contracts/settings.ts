@@ -56,5 +56,6 @@ export interface ConfigurationStatus {
 	appLockDev: boolean;
 	spotify: StoredConfiguration<string>;
 	qqMusic: StoredConfiguration<string>;
-	publication: { telegram: boolean; x: boolean };
+	publication: { x: boolean };
+	telegram: StoredConfiguration<TelegramCredentials>;
 }

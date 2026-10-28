@@ -1,7 +1,8 @@
 use crate::{CommandError, CommandResponse};
 use consumers::api::memos::{self, Visibility};
+use social::publications::Publication;
 use social::telegram::Authorization;
-use social::{MemoPublication, PublicationVisibility, PublishedPost};
+use social::{MemoPublication, PublicationProvider, PublicationVisibility, PublishedPost};
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Mutex;
@@ -61,15 +62,11 @@ pub(crate) async fn publish_telegram(
     let state = app.state::<Social>();
     let result = async {
         let memo = publication(&id).await?;
+        let path = database::path()?;
         state.begin().await?;
-        let published = match database::path() {
-            Ok(path) => social::telegram::publish(&memo, &path)
-                .await
-                .map_err(CommandError::from),
-            Err(error) => Err(error.into()),
-        };
+        let published = social::publish(&memo, PublicationProvider::Telegram, &path).await;
         state.finish(Telegram::Idle).await;
-        published
+        Ok::<_, CommandError>(published?)
     };
     result.await.into()
 }
@@ -79,10 +76,20 @@ pub(crate) async fn publish_x(id: String, app: tauri::AppHandle) -> CommandRespo
     let state = app.state::<Social>();
     let _operation = state.x.lock().await;
     let result = async {
-        let memo = publication(&id).await?;
-        Ok::<_, CommandError>(social::x::publish(&memo).await?)
+        let mut memo = publication(&id).await?;
+        memo.content = memos::strip_tags(&memo.content);
+        let path = database::path()?;
+        Ok::<_, CommandError>(social::publish(&memo, PublicationProvider::X, &path).await?)
     };
     result.await.into()
+}
+
+#[tauri::command]
+pub(crate) fn read_publications() -> CommandResponse<Vec<Publication>> {
+    let result = database::path()
+        .map_err(CommandError::from)
+        .and_then(|path| Ok(social::publications::list(&path)?));
+    result.into()
 }
 
 #[tauri::command]

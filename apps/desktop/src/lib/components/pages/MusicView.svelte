@@ -196,7 +196,7 @@
 		const version = ++playbackRequest;
 		const order: MusicPlayback["order"] = playbackOrder === "sequential" ? "repeatOne" : playbackOrder === "repeatOne" ? "shuffle" : "sequential";
 		acting = true;
-		const response = await invoke<CommandResponse<string>>("set_music_playback_order", { provider, order });
+		const response = await invoke<CommandResponse<string>>("set_playback_order", { provider, order });
 		if (version !== playbackRequest) return;
 		acting = false;
 		if (response.status === "failed") {

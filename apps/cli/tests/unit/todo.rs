@@ -5,10 +5,10 @@ async fn dated_check_ins() {
     let directory = tempfile::tempdir().unwrap();
     let store = ::todo::Store::new(directory.path().join("vesper.sqlite3"));
     let ids = vec!["read".to_owned()];
-    run_with_store(&store, "2024-02-29", "check-in", &ids)
+    dispatch(&store, "2024-02-29", "check-in", &ids)
         .await
         .unwrap();
-    run_with_store(&store, "2024-02-29", "check-ins", &ids)
+    dispatch(&store, "2024-02-29", "check-ins", &ids)
         .await
         .unwrap();
     assert!(
@@ -25,7 +25,7 @@ async fn dated_check_ins() {
             .unwrap()[0]
             .completed
     );
-    run_with_store(&store, "2024-02-29", "undo-check-in", &ids)
+    dispatch(&store, "2024-02-29", "undo-check-in", &ids)
         .await
         .unwrap();
     assert!(
@@ -36,12 +36,12 @@ async fn dated_check_ins() {
             .completed
     );
     assert!(
-        run_with_store(&store, "9999-12-31", "check-in", &ids)
+        dispatch(&store, "9999-12-31", "check-in", &ids)
             .await
             .is_err()
     );
     assert!(
-        run_with_store(&store, "2024-02-29", "check-ins", &[])
+        dispatch(&store, "2024-02-29", "check-ins", &[])
             .await
             .is_err()
     );
@@ -53,7 +53,7 @@ async fn rejects_bad_todo_args() {
     let directory = std::env::temp_dir().join(format!("vesper-cli-todo-{}", uuid::Uuid::new_v4()));
     let store = ::todo::Store::new(directory.join("vesper.sqlite3"));
 
-    let error = run_with_store(&store, "2026-08-23", "create", &[])
+    let error = dispatch(&store, "2026-08-23", "create", &[])
         .await
         .unwrap_err();
 
@@ -62,7 +62,7 @@ async fn rejects_bad_todo_args() {
 }
 
 #[tokio::test]
-async fn calendar_reads_roll_over_to_today() {
+async fn calendar_rollover() {
     let directory = tempfile::tempdir().unwrap();
     let store = ::todo::Store::new(directory.path().join("vesper.sqlite3"));
     let today = ::todo::current_date().unwrap();
@@ -70,7 +70,7 @@ async fn calendar_reads_roll_over_to_today() {
     let list = store.create(previous, "Carry", None).await.unwrap();
     let id = &list.items[0].id;
     store.set_rollover(previous, id, true).await.unwrap();
-    run_with_store(&store, "9999-12-31", "sync-ics", &[])
+    dispatch(&store, "9999-12-31", "sync-ics", &[])
         .await
         .unwrap();
     assert!(store.get(&today, id).await.is_ok());
@@ -78,7 +78,7 @@ async fn calendar_reads_roll_over_to_today() {
 }
 
 #[tokio::test]
-async fn invalid_import_does_not_advance_tasks() {
+async fn invalid_import() {
     let directory = tempfile::tempdir().unwrap();
     let store = ::todo::Store::new(directory.path().join("vesper.sqlite3"));
     let previous = "2024-02-29";
@@ -94,7 +94,7 @@ async fn invalid_import_does_not_advance_tasks() {
         .to_string_lossy()
         .into_owned();
     assert!(
-        run_with_store(&store, previous, "import-ics", &[missing])
+        dispatch(&store, previous, "import-ics", &[missing])
             .await
             .is_err()
     );

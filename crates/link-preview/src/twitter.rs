@@ -183,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_non_status_and_unsafe_urls() {
+    fn invalid_urls() {
         for url in [
             "https://x.com/example",
             "https://x.com/a/status/no",

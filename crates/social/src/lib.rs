@@ -1,3 +1,4 @@
+pub mod publications;
 pub mod telegram;
 mod text;
 pub mod x;
@@ -5,9 +6,8 @@ pub mod x;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
+use std::path::Path;
 use vault::Stored;
-
-const MEMO_ORIGIN: &str = "https://memos.you-find.me/memo";
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,11 +24,20 @@ pub enum PublicationVisibility {
     Private,
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PublicationProvider {
     Telegram,
     X,
+}
+
+impl PublicationProvider {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Telegram => "telegram",
+            Self::X => "x",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -42,7 +51,6 @@ pub struct PublishedPost {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Configured {
-    pub telegram: bool,
     pub x: bool,
 }
 
@@ -60,6 +68,7 @@ pub enum PublishError {
     Session(&'static str),
     Authorization(&'static str),
     XAuthorization(&'static str),
+    Storage(&'static str),
 }
 
 impl Display for PublishError {
@@ -85,6 +94,7 @@ impl Display for PublishError {
                 write!(formatter, "Telegram authorization failed: {message}")
             }
             Self::XAuthorization(message) => write!(formatter, "X authorization failed: {message}"),
+            Self::Storage(message) => write!(formatter, "publication record failed: {message}"),
         }
     }
 }
@@ -100,7 +110,8 @@ impl std::error::Error for PublishError {
             | Self::Protocol(..)
             | Self::Session(..)
             | Self::Authorization(..)
-            | Self::XAuthorization(..) => None,
+            | Self::XAuthorization(..)
+            | Self::Storage(..) => None,
         }
     }
 }
@@ -113,12 +124,29 @@ impl From<vault::Error> for PublishError {
 
 pub fn configured() -> Result<Configured, PublishError> {
     Ok(Configured {
-        telegram: matches!(telegram::credentials::read()?, Stored::Ready(_)),
         x: matches!(x::credentials::read()?, Stored::Ready(_)),
     })
 }
 
-fn memo_url(memo: &MemoPublication) -> Result<String, PublishError> {
+pub async fn publish(
+    memo: &MemoPublication,
+    provider: PublicationProvider,
+    path: &Path,
+) -> Result<PublishedPost, PublishError> {
+    if publications::exists(path, &memo.id, provider)? {
+        return Err(PublishError::InvalidMemo(
+            "it is already published to this provider",
+        ));
+    }
+    let post = match provider {
+        PublicationProvider::Telegram => telegram::publish(memo, path).await?,
+        PublicationProvider::X => x::publish(memo).await?,
+    };
+    publications::record(path, &memo.id, &post)?;
+    Ok(post)
+}
+
+fn validate(memo: &MemoPublication) -> Result<(), PublishError> {
     if !matches!(memo.visibility, PublicationVisibility::Public) {
         return Err(PublishError::InvalidMemo(
             "only public memos can be published",
@@ -136,7 +164,7 @@ fn memo_url(memo: &MemoPublication) -> Result<String, PublishError> {
     if memo.content.trim().is_empty() {
         return Err(PublishError::InvalidMemo("the content is empty"));
     }
-    Ok(format!("{MEMO_ORIGIN}/{}", memo.id))
+    Ok(())
 }
 
 #[cfg(test)]
@@ -145,7 +173,7 @@ mod tests {
 
     #[test]
     fn rejects_memo_id() {
-        let result = memo_url(&MemoPublication {
+        let result = validate(&MemoPublication {
             id: "../secret".to_owned(),
             content: "content".to_owned(),
             visibility: PublicationVisibility::Public,
@@ -155,7 +183,7 @@ mod tests {
 
     #[test]
     fn rejects_private_memo() {
-        let result = memo_url(&MemoPublication {
+        let result = validate(&MemoPublication {
             id: "memo-1".to_owned(),
             content: "content".to_owned(),
             visibility: PublicationVisibility::Private,

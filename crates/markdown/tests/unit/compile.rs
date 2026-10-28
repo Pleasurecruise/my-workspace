@@ -37,7 +37,7 @@ fn rejects_bad_mermaid() {
 }
 
 #[test]
-fn renders_svg_canvases_with_distinct_profiles() {
+fn svg_canvases() {
     let html = render_without_data(
         r#"```embed:architecture
 align: left
@@ -70,7 +70,7 @@ align: right
 }
 
 #[test]
-fn upgrades_structured_diagrams_to_svg_canvases() {
+fn structured_diagrams() {
     let html = render_without_data(
         "```embed:architecture\nalign: wide\nflowchart LR\nClient --> API\nAPI --> Database\n```\n\n```embed:storyboard\ntitle: 发布流程\nstep: 编写 | 完成 Markdown 内容\nstep: 构建 | 编译并验证内容\nstep: 发布 | 上传生成的产物\n```",
     )
@@ -166,7 +166,7 @@ fn strips_front_matter() {
 }
 
 #[test]
-fn preserves_indented_body_after_front_matter() {
+fn indented_body() {
     let source = "---\ntitle: Example\n---\n\n    let value = 1;  \n";
 
     assert_eq!(knowledge::body(source), "    let value = 1;  ");
@@ -210,7 +210,7 @@ fn renders_knowledge() {
 }
 
 #[test]
-fn compiles_canvas_in_knowledge_without_polluting_excerpt() {
+fn canvas_excerpt() {
     let output = compile_without_data(
         "# Design\n\nExplain the flow.\n\n```embed:storyboard\nalign: left\n<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 50\"><title>Flow</title><desc>A hand-drawn flow.</desc><path class=\"scribble\" d=\"M0 25 C20 20 40 30 60 25\"/></svg>\n```",
     )
@@ -222,7 +222,7 @@ fn compiles_canvas_in_knowledge_without_polluting_excerpt() {
 }
 
 #[test]
-fn plain_compilation_preserves_content_embeds_as_code() {
+fn plain_embeds() {
     let output = knowledge::fallback("# Article\n\n```embed:github\nrepo: owner/repository\n```");
 
     assert!(output.html.contains("language-embed:github"));
@@ -246,7 +246,7 @@ fn blocks_unsafe_destinations() {
 }
 
 #[tokio::test]
-async fn compiles_media_in_publication_and_knowledge() {
+async fn media() {
     let source = "# Listen\n\nBefore.\n\n```embed:media\ntype: audio\nsrc: https://example.com/clip.mp3\ncaption: A short recording\n```\n\nAfter.";
     let publication = publication::render(source).await.unwrap();
     let knowledge = knowledge::compile(source, HashMap::new()).await.unwrap();
@@ -267,14 +267,14 @@ async fn compiles_media_in_publication_and_knowledge() {
 }
 
 #[test]
-fn heading_suffixes_do_not_collide_with_authored_headings() {
+fn heading_suffixes() {
     let output = compile_without_data("# Repeat\n\n# Repeat\n\n# Repeat-2\n\n# Repeat").unwrap();
     let ids: std::collections::HashSet<_> = output.toc.iter().map(|entry| &entry.id).collect();
     assert_eq!(ids.len(), output.toc.len());
 }
 
 #[tokio::test]
-async fn ignores_embeds_in_knowledge_front_matter() {
+async fn front_matter_embeds() {
     let output = knowledge::compile(
         "---\n```embed:media\ntype: invalid\nsrc: https://example.com/a\n```\n---\n\n# Visible",
         HashMap::new(),
@@ -285,7 +285,7 @@ async fn ignores_embeds_in_knowledge_front_matter() {
 }
 
 #[tokio::test]
-async fn unindexed_article_shortcuts_are_disabled_in_both_hosts() {
+async fn unindexed_shortcuts() {
     let source = "# Reading\n\n- First\n\n  ```embed:article\n  id: first-article\n  title: First article\n  ```\n\n- Second\n\n  ```embed:article\n  url: https://example.com/story\n  title: External story\n  description: External summary\n  ```";
     let publication = publication::render(source).await.unwrap();
     let knowledge = knowledge::compile(source, HashMap::new()).await.unwrap();
@@ -304,7 +304,7 @@ async fn unindexed_article_shortcuts_are_disabled_in_both_hosts() {
 }
 
 #[tokio::test]
-async fn knowledge_uses_authorized_article_metadata() {
+async fn article_metadata() {
     let mut metadata = HashMap::new();
     metadata.insert(
         "article-123".to_owned(),
@@ -323,7 +323,7 @@ async fn knowledge_uses_authorized_article_metadata() {
 }
 
 #[tokio::test]
-async fn compiles_url_list_cards_with_host_metadata_and_in_app_routes() {
+async fn url_list_cards() {
     let url = "https://knowledge.you-find.me/articles/11111111-1111-4111-8111-111111111111";
     let metadata = std::collections::HashMap::from([(
         url.to_owned(),
@@ -347,7 +347,7 @@ async fn compiles_url_list_cards_with_host_metadata_and_in_app_routes() {
 }
 
 #[tokio::test]
-async fn article_loading_never_fetches_unknown_websites() {
+async fn unknown_websites() {
     let source = "```embed:article\nhttps://127.0.0.1:1/private\n```\n\n```embed:article\nurl: https://example.invalid/story\n```";
     let data = crate::providers::read(source, HashMap::new())
         .await
@@ -356,7 +356,7 @@ async fn article_loading_never_fetches_unknown_websites() {
 }
 
 #[test]
-fn reading_statistics_count_prose_without_markdown_configuration() {
+fn reading_statistics() {
     let source = "---\ntitle: metadata not counted\n---\n# 标题 Hello\n\n正文 **world** [链接](https://example.com/long/path)\n\nhttps://example.com/bare/url\n\n![Image description](https://example.com/image.png)\n\n`inline code` $x+y$\n\n```rust\nlet code = 123;\n```\n\n```embed:media\ntype: audio\nsrc: https://example.com/audio.mp3\ncaption: hidden configuration\n```";
     let compiled = knowledge::fallback(source);
     assert_eq!(compiled.stats.word_count, 8);
@@ -366,7 +366,7 @@ fn reading_statistics_count_prose_without_markdown_configuration() {
 }
 
 #[tokio::test]
-async fn reading_statistics_survive_embed_fallback() {
+async fn embed_fallback_statistics() {
     let source = "# Example\n\n中文 text\n\n```embed:media\ntype: audio\nsrc: https://example.com/audio.mp3\n```";
     let enriched = knowledge::compile(source, HashMap::new()).await.unwrap();
     let plain = knowledge::fallback(source);
@@ -376,7 +376,7 @@ async fn reading_statistics_survive_embed_fallback() {
 }
 
 #[test]
-fn reading_time_uses_mixed_language_rates() {
+fn mixed_language_reading() {
     let source = format!("{} {}", "字".repeat(350), "word ".repeat(200));
     let compiled = knowledge::fallback(&source);
     assert_eq!(compiled.stats.word_count, 550);
@@ -389,7 +389,7 @@ fn reading_time_uses_mixed_language_rates() {
 }
 
 #[tokio::test]
-async fn document_embeds_keep_fence_newlines_consistent() {
+async fn fence_newlines() {
     let patch = "title: Changes\n---\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-<old>\n+<new>";
     let source = format!(
         "~~~embed:quote\nauthor: A & B\nurl: https://example.com\n---\nFirst\n\n<script>plain text</script>\n\n~~~\n\n~~~embed:diff\n{patch}\n~~~"
@@ -407,7 +407,7 @@ async fn document_embeds_keep_fence_newlines_consistent() {
 }
 
 #[tokio::test]
-async fn bare_embed_examples_do_not_swallow_following_live_blocks() {
+async fn bare_embed_examples() {
     let source = "```\n```embed:github\nrepo: example/source-only\n```\n```\n\n```embed:annotation\nmark: text\nnote: note\n---\nLive text.\n```";
     let knowledge = knowledge::compile(source, HashMap::new()).await.unwrap();
     assert!(knowledge.html.contains("language-markdown"));
@@ -425,7 +425,7 @@ async fn bare_embed_examples_do_not_swallow_following_live_blocks() {
 }
 
 #[test]
-fn image_shortcodes_render_in_articles_and_publication() {
+fn image_shortcodes() {
     let source = "## Heading :suzume5_01:\n\n:baishengnv_117: `:suzume5_01:` $:suzume5_01:$";
     let plain = knowledge::fallback(source);
     let enriched = compile_without_data(source).unwrap();

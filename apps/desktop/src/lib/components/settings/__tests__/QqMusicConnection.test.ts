@@ -22,9 +22,9 @@ it.each(["complete", "failed", "scanned"])(
 		});
 		let beginCount = 0;
 		invoke.mockImplementation((command: string) => {
-			if (command === "begin_qq_music_login")
+			if (command === "begin_qq_login")
 				return Promise.resolve({ status: "ready", data: { image: `qr-${++beginCount}` } });
-			if (command === "poll_qq_music_login") return pending;
+			if (command === "poll_qq_login") return pending;
 			return Promise.resolve({ status: "ready", data: null });
 		});
 		const onconnected = vi.fn();
@@ -35,7 +35,7 @@ it.each(["complete", "failed", "scanned"])(
 			await tick();
 			await vi.advanceTimersByTimeAsync(0);
 			await vi.advanceTimersByTimeAsync(1500);
-			expect(invoke).toHaveBeenCalledWith("poll_qq_music_login");
+			expect(invoke).toHaveBeenCalledWith("poll_qq_login");
 			target.querySelector<HTMLButtonElement>('[aria-label="Close QQ Music login"]')?.click();
 			await tick();
 			await vi.advanceTimersByTimeAsync(0);
@@ -69,7 +69,7 @@ it("cancels a pending QR creation on unmount and never starts polling its late r
 		finish = resolve;
 	});
 	invoke.mockImplementation((command: string) =>
-		command === "begin_qq_music_login" ? pending : Promise.resolve({ status: "ready", data: null }),
+		command === "begin_qq_login" ? pending : Promise.resolve({ status: "ready", data: null }),
 	);
 	const target = document.createElement("div");
 	const onconnected = vi.fn();
@@ -78,9 +78,9 @@ it("cancels a pending QR creation on unmount and never starts polling its late r
 	await tick();
 	await vi.advanceTimersByTimeAsync(0);
 	await unmount(view);
-	expect(invoke).toHaveBeenCalledWith("cancel_qq_music_login");
+	expect(invoke).toHaveBeenCalledWith("cancel_qq_login");
 	finish({ status: "ready", data: { image: "late-qr" } });
 	await vi.advanceTimersByTimeAsync(5000);
-	expect(invoke).not.toHaveBeenCalledWith("poll_qq_music_login");
+	expect(invoke).not.toHaveBeenCalledWith("poll_qq_login");
 	expect(onconnected).not.toHaveBeenCalled();
 });

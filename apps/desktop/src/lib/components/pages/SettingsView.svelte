@@ -107,6 +107,7 @@
 		appLock: "",
 		notion: "",
 		codexResets: false,
+		telegram: { apiId: "", apiHash: "", channel: "" },
 	});
 	let initialized = false;
 	let formErrors = $state<Record<keyof typeof saving, string | null>>({
@@ -191,7 +192,10 @@
 			Number.isInteger(Number(telegramApiId)) &&
 			Number(telegramApiId) > 0 &&
 			telegramApiHash.length === 32 &&
-			telegramChannel.trim() !== "",
+			telegramChannel.trim() !== "" &&
+			(telegramApiId.trim() !== saved.telegram.apiId ||
+				telegramApiHash !== saved.telegram.apiHash ||
+				telegramChannel.trim() !== saved.telegram.channel.trim()),
 	});
 
 	$effect(() => {
@@ -231,6 +235,12 @@
 				ntfyToken = initial.ntfy.data.token;
 				saved.ntfy = { ...initial.ntfy.data };
 			}
+			if (initial.telegram.status === "ready") {
+				telegramApiId = String(initial.telegram.data.apiId);
+				telegramApiHash = initial.telegram.data.apiHash;
+				telegramChannel = initial.telegram.data.channelUsername;
+				saved.telegram = { apiId: telegramApiId, apiHash: telegramApiHash, channel: telegramChannel };
+			}
 			if (initial.appLock.status === "ready") {
 				appLockPassword = initial.appLock.data;
 				saved.appLock = appLockPassword;
@@ -240,7 +250,7 @@
 	});
 
 	$effect(() => {
-		if (configuration?.publication.telegram !== true) {
+		if (configuration?.telegram.status !== "ready") {
 			telegramAuthorization = null;
 			telegramAuthorizationChecked = false;
 			return;
@@ -378,7 +388,7 @@
 			formErrors.telegram = response.message;
 			return;
 		}
-		if (telegramApiHash === credentials.apiHash) telegramApiHash = "";
+		saved.telegram = { apiId: telegramApiId.trim(), apiHash: credentials.apiHash, channel: credentials.channelUsername };
 		telegramApiHashVisible = false;
 		telegramAuthorizationChecked = true;
 		await onconfigurationchanged();
@@ -524,7 +534,7 @@
 		<CardHeader class="settings-card-header settings-card-header-status">
 			<span class="settings-icon"><Send size={16} /></span>
 			<div><CardTitle class="settings-card-title">Telegram Channel</CardTitle><CardDescription class="settings-card-description">Publish public Memos through an authorized Telegram user account.</CardDescription></div>
-			{#if configuration?.publication.telegram}<ConfigurationBadge />{/if}
+			{#if configuration?.telegram.status === "ready"}<ConfigurationBadge />{/if}
 		</CardHeader>
 		<form onsubmit={saveTelegram}>
 			<CardContent class="settings-card-content">
@@ -546,7 +556,7 @@
 			</CardContent>
 			<CardFooter class="settings-card-footer"><span class="settings-footer-copy">Save credentials before authorizing the Telegram account.</span><Button class="settings-save-button" size="sm" type="submit" disabled={!canSave.telegram}>{saving.telegram ? "Saving…" : "Save"}</Button></CardFooter>
 		</form>
-		{#if configuration?.publication.telegram}
+		{#if configuration?.telegram.status === "ready"}
 			{#if telegramAuthorization?.status === "ready"}
 				<div class="settings-row telegram-authorization"><div><Label>User authorization</Label><p>The local MTProto session is ready to publish.</p></div><ConfigurationBadge label="Authorized" /></div>
 			{:else}

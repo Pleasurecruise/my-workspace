@@ -1,7 +1,7 @@
 use super::run;
 
 #[tokio::test]
-async fn reads_content_files_without_changing_newlines() {
+async fn content_newlines() {
     let path = std::env::temp_dir().join(format!("vesper-cli-input-{}.md", uuid::Uuid::new_v4()));
     let content = "# 标题\n\n第一段\n第二段\n";
     tokio::fs::write(&path, content).await.unwrap();
@@ -22,7 +22,7 @@ async fn reads_content_files_without_changing_newlines() {
 }
 
 #[tokio::test]
-async fn rejects_invalid_consumer_queries_before_authentication() {
+async fn invalid_queries() {
     for arguments in [
         vec!["memo", "get", ""],
         vec!["photo", "get", ""],

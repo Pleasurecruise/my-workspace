@@ -483,7 +483,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn disconnects_on_protocol_error() {
+    async fn protocol_error() {
         let child = fake_pi("read -r line; printf 'not json\\n'");
         let (sender, receiver) = mpsc::channel(16);
         let (events, mut snapshots) = mpsc::unbounded_channel();

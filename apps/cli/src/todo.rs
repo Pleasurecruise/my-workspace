@@ -50,10 +50,10 @@ pub async fn run(
         }
         None => ::todo::current_date().map_err(|error| error.to_string())?,
     };
-    run_with_store(&store, &date, action, arguments).await
+    dispatch(&store, &date, action, arguments).await
 }
 
-async fn run_with_store(
+async fn dispatch(
     store: &::todo::Store,
     date: &str,
     action: &str,

@@ -40,7 +40,7 @@ fn load(path: &std::path::Path) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn malformed_environment_does_not_expose_values() {
+    fn malformed_environment() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("test.env");
         std::fs::write(&path, "MEMOS_API_KEY=\"synthetic-secret").unwrap();
@@ -51,7 +51,7 @@ mod tests {
     }
 
     #[test]
-    fn partial_overrides_are_incomplete() {
+    fn partial_overrides() {
         let result = super::variables(["VESPER_TEST_PARTIAL_A", "PATH"], "test");
         assert!(matches!(
             result,

@@ -23,7 +23,7 @@
 		const version = ++generation;
 		starting = true;
 		error = null;
-		const response = await invoke<CommandResponse<QqQr>>("begin_qq_music_login");
+		const response = await invoke<CommandResponse<QqQr>>("begin_qq_login");
 		if (disposed || version !== generation) return;
 		starting = false;
 		if (response.status === "failed") { error = response.message; return; }
@@ -37,7 +37,7 @@
 
 	async function poll(version: number) {
 		if (disposed || version !== generation || qqQr === null) return;
-		const response = await invoke<CommandResponse<QqLoginStatus>>("poll_qq_music_login");
+		const response = await invoke<CommandResponse<QqLoginStatus>>("poll_qq_login");
 		if (disposed || version !== generation) return;
 		if (response.status === "failed") { error = response.message; qqQr = null; return; }
 		if (response.data.status === "complete") {
@@ -55,7 +55,7 @@
 		qqQr = null;
 		starting = false;
 		cancelling = true;
-		const response = await invoke<CommandResponse<null>>("cancel_qq_music_login");
+		const response = await invoke<CommandResponse<null>>("cancel_qq_login");
 		if (disposed) return;
 		cancelling = false;
 		if (response.status === "failed") error = response.message;
@@ -65,7 +65,7 @@
 		disposed = true;
 		++generation;
 		if (timer !== null) clearTimeout(timer);
-		if (starting || qqQr !== null) void invoke<CommandResponse<null>>("cancel_qq_music_login");
+		if (starting || qqQr !== null) void invoke<CommandResponse<null>>("cancel_qq_login");
 	});
 </script>
 

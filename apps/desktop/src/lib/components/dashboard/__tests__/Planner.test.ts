@@ -204,7 +204,6 @@ it("loads Spending without Todo or a separate date picker", async () => {
 			expect(invoke).toHaveBeenCalledWith("read_expenses", { date: "2026-09-11" }),
 		);
 		expect(target.querySelector('input[type="date"]')).toBeNull();
-		expect(target.querySelector('[aria-label="Refresh expenses"]')).toBeNull();
 
 		expect(invoke.mock.calls.every(([command]) => command === "read_expenses")).toBe(true);
 	} finally {

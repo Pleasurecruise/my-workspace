@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn renders_twitter_text_and_unavailable_cards() {
+fn twitter_cards() {
     let mut data = Data::default();
     let url = "https://x.com/example/status/12345";
     data.tweets.insert(
@@ -39,7 +39,7 @@ fn renders_twitter_text_and_unavailable_cards() {
 }
 
 #[test]
-fn twitter_media_preserves_text_and_rejects_unsafe_urls() {
+fn twitter_media() {
     let mut data = Data::default();
     let mut post: link_preview::twitter::Post = serde_json::from_str(include_str!(
         "../../../link-preview/tests/fixtures/tweet.json"
@@ -80,7 +80,7 @@ fn twitter_media_preserves_text_and_rejects_unsafe_urls() {
 }
 
 #[test]
-fn twitter_entities_decode_after_indexing() {
+fn twitter_entities() {
     let mut post: link_preview::twitter::Post = serde_json::from_str(include_str!(
         "../../../link-preview/tests/fixtures/tweet.json"
     ))
@@ -560,7 +560,7 @@ fn finds_footnote_media() {
 }
 
 #[test]
-fn validates_before_collecting_references() {
+fn reference_validation() {
     for source in [
         "```embed:github\nrepo: owner/repo\nalign: invalid\n```",
         "```embed:github\nrepo: owner/repo\nextra: invalid\n```",

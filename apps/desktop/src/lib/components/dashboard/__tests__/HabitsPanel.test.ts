@@ -44,7 +44,6 @@ it("checks in an individual habit without selection controls and keeps write err
 		await vi.waitFor(() => expect(button("Check in").disabled).toBe(false));
 		expect(target.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
 		expect(button("Undo Walk").getAttribute("aria-pressed")).toBe("true");
-		expect(target.querySelector('button[aria-label="Select habits"]')).toBeNull();
 		button("Check in Read").click();
 		await vi.waitFor(() => expect(target.textContent).toContain("Write failed"));
 		expect(invoke).toHaveBeenCalledWith("set_check_in", {

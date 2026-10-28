@@ -247,7 +247,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_and_clamps_usage_windows() {
+    fn usage_windows() {
         let response: UsageResponse = serde_json::from_value(serde_json::json!({
             "five_hour": { "utilization": 12.5, "resets_at": "2026-09-01T12:00:00Z" },
             "seven_day": { "utilization": 104, "resets_at": "2026-09-07T12:00:00Z" }
@@ -266,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_credentials_and_plan() {
+    fn credentials_plan() {
         let credentials = parse_credentials(
             r#"{"claudeAiOauth":{"accessToken":"oauth-token","subscriptionType":"max_20x","expiresAt":4102444800000}}"#,
         )
@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_payload_without_supported_windows() {
+    fn unsupported_windows() {
         let response: UsageResponse = serde_json::from_value(serde_json::json!({
             "five_hour": { "utilization": null }
         }))
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_file_is_signed_out() {
+    async fn missing_file() {
         let directory = tempfile::tempdir().unwrap();
         let error = read_credentials_file(&directory.path().join(".credentials.json"))
             .await
@@ -404,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_plan_and_window() {
+    fn plan_window() {
         assert_eq!(plan_name(" team ").as_deref(), Some("Team"));
         assert_eq!(plan_name("enterprise").as_deref(), Some("Enterprise"));
         assert!(plan_name("").is_none());

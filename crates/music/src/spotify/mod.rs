@@ -656,7 +656,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancels_library_on_shutdown() {
+    async fn library_shutdown() {
         let (spotify, server) = mock_library(vec![(200, "", saved_page("old", None))]).await;
         let token = spotify.token.lock().await;
         let read = spotify.liked_songs();
@@ -707,7 +707,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stops_on_quota_exhaustion() {
+    async fn quota_exhaustion() {
         let (spotify, server) = mock_library(vec![(
             429,
             "Retry-After: 1\r\n",

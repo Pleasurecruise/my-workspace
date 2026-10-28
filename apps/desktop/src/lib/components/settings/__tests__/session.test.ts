@@ -25,7 +25,8 @@ it.each<"ready" | "failed">(["ready", "failed"])(
 			appLockDev: false,
 			spotify: { status: "missing" },
 			qqMusic: { status: "ready", data: "Connected" },
-			publication: { telegram: false, x: false },
+			publication: { x: false },
+			telegram: { status: "missing" },
 		};
 		let finish: (response: CommandResponse<ConfigurationStatus>) => void = () => {
 			throw new Error("Read not started");

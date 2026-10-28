@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn provider_selection_cancels_playback_before_it_reaches_the_runtime() {
+async fn provider_selection() {
     let actions = PlaybackActions::default();
     let spotify_playing = AtomicBool::new(false);
     let qq_playing = AtomicBool::new(false);
@@ -27,7 +27,7 @@ async fn provider_selection_cancels_playback_before_it_reaches_the_runtime() {
 }
 
 #[tokio::test]
-async fn failed_commands_release_the_action_for_retry() {
+async fn failed_commands() {
     let actions = PlaybackActions::default();
     let failed = actions
         .run(async {

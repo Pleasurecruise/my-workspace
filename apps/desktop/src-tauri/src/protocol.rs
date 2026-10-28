@@ -101,7 +101,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn serves_only_supported_image_types() {
+    fn image_types() {
         assert_eq!(image_type("img/a.PNG"), Some("image/png"));
         assert_eq!(image_type("img/a.jpeg"), Some("image/jpeg"));
         assert_eq!(image_type("img/a.webp"), Some("image/webp"));

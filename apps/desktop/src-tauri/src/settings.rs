@@ -19,6 +19,7 @@ pub(crate) struct Configuration {
     spotify: Saved<String>,
     qq_music: Saved<String>,
     publication: social::Configured,
+    telegram: Saved<social::telegram::credentials::Credentials>,
 }
 
 #[derive(serde::Serialize)]
@@ -95,6 +96,7 @@ pub(crate) async fn read_configuration(app: tauri::AppHandle) -> CommandResponse
             spotify,
             qq_music,
             publication: social::configured()?,
+            telegram: social::telegram::credentials::read()?.into(),
         })
     };
     result.await.into()

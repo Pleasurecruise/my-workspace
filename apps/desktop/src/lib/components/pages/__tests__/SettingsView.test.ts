@@ -41,7 +41,8 @@ const initial: ConfigurationStatus = {
 	appLockDev: false,
 	spotify: { status: "missing" },
 	qqMusic: { status: "missing" },
-	publication: { telegram: false, x: false },
+	publication: { x: false },
+	telegram: { status: "missing" },
 };
 
 const views: ReturnType<typeof mount>[] = [];
@@ -330,4 +331,24 @@ it("prefills an enabled Codex Resets subscription without marking it dirty", asy
 	});
 	expect(field("codex-resets-enabled").checked).toBe(true);
 	expect(button("codex-resets-enabled").disabled).toBe(true);
+});
+
+it("prefills saved Telegram credentials without marking them dirty", async () => {
+	const form = await setup({
+		...initial,
+		telegram: {
+			status: "ready",
+			data: {
+				apiId: 12345,
+				apiHash: "0123456789abcdef0123456789abcdef",
+				channelUsername: "vesper",
+			},
+		},
+	});
+	expect(form.field("telegram-api-id").value).toBe("12345");
+	expect(form.field("telegram-api-hash").value).toBe("0123456789abcdef0123456789abcdef");
+	expect(form.field("telegram-channel").value).toBe("vesper");
+	expect(form.button("telegram-channel").disabled).toBe(true);
+	await form.edit("telegram-channel", "vesper_news");
+	expect(form.button("telegram-channel").disabled).toBe(false);
 });

@@ -247,10 +247,10 @@ pub async fn tags() -> Result<Vec<TagCount>, ApiError> {
 }
 
 pub async fn create(content: &str, visibility: Visibility) -> Result<MemoView, ApiError> {
-    create_with_favorite(content, visibility, false).await
+    submit(content, visibility, false).await
 }
 
-async fn create_with_favorite(
+async fn submit(
     content: &str,
     visibility: Visibility,
     favorite: bool,
@@ -294,7 +294,7 @@ pub async fn import_x(source_url: &str, visibility: Visibility) -> Result<MemoVi
     .await?;
     let post: XPostResponse = response.json().await?;
     let content = format_x_post(post.tweet)?;
-    create_with_favorite(&content, visibility, true).await
+    submit(&content, visibility, true).await
 }
 
 pub async fn update(id: &str, input: &Update) -> Result<MemoView, ApiError> {
@@ -333,7 +333,7 @@ pub async fn delete(id: &str) -> Result<(), ApiError> {
     }
 }
 
-fn strip_tags(content: &str) -> String {
+pub fn strip_tags(content: &str) -> String {
     let characters: Vec<char> = content.chars().collect();
     let mut output = String::with_capacity(content.len());
     let mut index = 0;

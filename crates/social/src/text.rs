@@ -2,21 +2,15 @@ use pulldown_cmark::{Event, Options, Parser, TagEnd};
 
 const TELEGRAM_LIMIT: usize = 4_096;
 const X_LIMIT: usize = 280;
-const X_URL_WEIGHT: usize = 23;
 
-pub(super) fn render_telegram(content: &str, memo_url: &str) -> String {
-    let plain = render_plain(content);
-    let suffix = format!("\n\n{memo_url}");
-    let body_limit = TELEGRAM_LIMIT.saturating_sub(suffix.encode_utf16().count());
-    let body = truncate(&plain, body_limit, |text| text.encode_utf16().count());
-    format!("{body}{suffix}")
+pub(super) fn render_telegram(content: &str) -> String {
+    truncate(&render_plain(content), TELEGRAM_LIMIT, |text| {
+        text.encode_utf16().count()
+    })
 }
 
-pub(super) fn render_x(content: &str, memo_url: &str) -> String {
-    let plain = render_plain(content);
-    let body_limit = X_LIMIT - 2 - X_URL_WEIGHT;
-    let body = truncate(&plain, body_limit, measure_x);
-    format!("{body}\n\n{memo_url}")
+pub(super) fn render_x(content: &str) -> String {
+    truncate(&render_plain(content), X_LIMIT, measure_x)
 }
 
 fn truncate(text: &str, limit: usize, measure: impl Fn(&str) -> usize) -> String {
@@ -92,33 +86,22 @@ mod tests {
 
     #[test]
     fn renders_markdown() {
-        let text = render_telegram(
-            "# Release\n\nA **useful** [memo](https://example.com).",
-            "https://memos.you-find.me/memo/example",
-        );
-        assert_eq!(
-            text,
-            "Release\n\nA useful memo.\n\nhttps://memos.you-find.me/memo/example"
-        );
+        let text = render_telegram("# Release\n\nA **useful** [memo](https://example.com).");
+        assert_eq!(text, "Release\n\nA useful memo.");
     }
 
     #[test]
     fn limits_telegram() {
-        let text = render_telegram(
-            &"😀".repeat(3_000),
-            "https://memos.you-find.me/memo/example",
-        );
+        let text = render_telegram(&"😀".repeat(3_000));
         assert!(text.encode_utf16().count() <= TELEGRAM_LIMIT);
-        assert!(text.ends_with("https://memos.you-find.me/memo/example"));
         assert!(text.contains('…'));
     }
 
     #[test]
     fn limits_x() {
-        let url = "https://memos.you-find.me/memo/example";
-        let text = render_x(&"发布内容".repeat(100), url);
-        let body = text.strip_suffix(url).unwrap();
-        assert!(measure_x(body) + X_URL_WEIGHT <= X_LIMIT);
+        let text = render_x(&"发布内容".repeat(100));
+        assert!(measure_x(&text) <= X_LIMIT);
+        assert!(!text.contains("https://"));
         assert!(text.contains('…'));
     }
 }

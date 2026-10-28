@@ -375,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn projects_tools_and_redacts_errors() {
+    fn tool_errors() {
         let mut state = ChatSnapshot::default();
         state
             .apply(&json!({"type":"message_start","message":{"role":"assistant","content":[]}}))
@@ -424,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn projects_tool_progress_and_failure() {
+    fn tool_progress() {
         let mut snapshot = ChatSnapshot::default();
         snapshot.apply(&json!({"type":"message_start","message":{"role":"assistant","content":[{"type":"toolCall","id":"read","name":"read","arguments":{"path":"a"}}]}})).unwrap();
         snapshot

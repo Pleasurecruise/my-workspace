@@ -1,7 +1,7 @@
 pub mod credentials;
 
 use super::text::render_telegram;
-use super::{MemoPublication, PublicationProvider, PublishError, PublishedPost, memo_url};
+use super::{MemoPublication, PublicationProvider, PublishError, PublishedPost, validate};
 use diesel::prelude::*;
 use grammers_client::{
     Client, SenderPool, SignInError,
@@ -291,7 +291,7 @@ pub async fn begin_login(
     let credentials = read_credentials()?;
     let phone =
         normalize_phone(phone).ok_or(PublishError::Authorization("the phone number is invalid"))?;
-    let (client, runner, authorized) = connect_and_check(session_path, credentials.api_id).await?;
+    let (client, runner, authorized) = connect(session_path, credentials.api_id).await?;
     if authorized {
         client.disconnect();
         return Ok((Authorization::Ready, None));
@@ -323,7 +323,7 @@ pub async fn read_auth(session_path: &Path) -> Result<Authorization, PublishErro
     if !exists {
         return Ok(Authorization::Disconnected);
     }
-    let (client, _runner, authorized) = connect_and_check(session_path, credentials.api_id).await?;
+    let (client, _runner, authorized) = connect(session_path, credentials.api_id).await?;
     client.disconnect();
     Ok(if authorized {
         Authorization::Ready
@@ -332,14 +332,14 @@ pub async fn read_auth(session_path: &Path) -> Result<Authorization, PublishErro
     })
 }
 
-pub async fn publish(
+pub(crate) async fn publish(
     memo: &MemoPublication,
     session_path: &Path,
 ) -> Result<PublishedPost, PublishError> {
-    let memo_url = memo_url(memo)?;
+    validate(memo)?;
     let credentials = read_credentials()?;
-    let text = render_telegram(&memo.content, &memo_url);
-    let (client, _runner, authorized) = connect_and_check(session_path, credentials.api_id).await?;
+    let text = render_telegram(&memo.content);
+    let (client, _runner, authorized) = connect(session_path, credentials.api_id).await?;
     if !authorized {
         client.disconnect();
         return Err(PublishError::Session("the user account is not authorized"));
@@ -411,19 +411,7 @@ fn read_credentials() -> Result<credentials::Credentials, PublishError> {
     }
 }
 
-async fn connect_and_check(
-    session_path: &Path,
-    api_id: i32,
-) -> Result<(Client, Runner, bool), PublishError> {
-    let (client, runner) = connect(session_path, api_id).await?;
-    let authorized = tokio::time::timeout(TIMEOUT, client.is_authorized())
-        .await
-        .map_err(|_| PublishError::Authorization("the authorization check timed out"))?
-        .map_err(|_| PublishError::Authorization("could not check the Telegram session"))?;
-    Ok((client, runner, authorized))
-}
-
-async fn connect(session_path: &Path, api_id: i32) -> Result<(Client, Runner), PublishError> {
+async fn connect(session_path: &Path, api_id: i32) -> Result<(Client, Runner, bool), PublishError> {
     if let Some(parent) = session_path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -434,7 +422,13 @@ async fn connect(session_path: &Path, api_id: i32) -> Result<(Client, Runner), P
             .map_err(|_| PublishError::Session("could not open local storage"))?,
     );
     let SenderPool { runner, handle, .. } = SenderPool::new(session, api_id);
-    Ok((Client::new(handle), Runner(tokio::spawn(runner.run()))))
+    let client = Client::new(handle);
+    let runner = Runner(tokio::spawn(runner.run()));
+    let authorized = tokio::time::timeout(TIMEOUT, client.is_authorized())
+        .await
+        .map_err(|_| PublishError::Authorization("the authorization check timed out"))?
+        .map_err(|_| PublishError::Authorization("could not check the Telegram session"))?;
+    Ok((client, runner, authorized))
 }
 
 #[cfg(test)]
@@ -452,7 +446,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn retains_session_on_error() {
+    async fn failed_persist() {
         let directory =
             std::env::temp_dir().join(format!("vesper-session-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();

@@ -30,7 +30,7 @@ mod tests {
     use std::time::Duration;
 
     #[tokio::test]
-    async fn collects_locations_in_order() {
+    async fn location_order() {
         let active = AtomicUsize::new(0);
         let peak = AtomicUsize::new(0);
         let (locations, failures) = collect_locations((0..8).map(|index| {

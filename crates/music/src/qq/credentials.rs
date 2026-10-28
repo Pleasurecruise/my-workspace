@@ -54,7 +54,7 @@ mod tests {
     }
 
     #[test]
-    fn requires_identity_and_playback_cookie_fields() {
+    fn required_cookies() {
         assert!(validate(&credentials("")).is_err());
         assert!(validate(&credentials("uin=123")).is_err());
         assert!(validate(&credentials("qm_keyst=secret")).is_err());

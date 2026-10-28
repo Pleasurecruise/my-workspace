@@ -596,7 +596,7 @@ async fn codex_preserves_local_state() {
 }
 
 #[tokio::test]
-async fn codex_rollover_is_unique() {
+async fn codex_rollover() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::new(directory.path().join(database::FILE_NAME));
     let remote = Item {
@@ -699,7 +699,7 @@ async fn isolates_source_failures() {
 }
 
 #[tokio::test]
-async fn codex_setting_is_local() {
+async fn codex_setting() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join(database::FILE_NAME);
     let store = Store::new(path.clone());
@@ -718,7 +718,7 @@ async fn codex_setting_is_local() {
 }
 
 #[tokio::test]
-async fn codex_save_waits_for_sync() {
+async fn codex_save() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join(database::FILE_NAME);
     let store = Store::new(path.clone());
@@ -767,7 +767,7 @@ async fn retains_codex_lock() {
 }
 
 #[tokio::test]
-async fn ics_tasks_own_local_content() {
+async fn ics_content() {
     let (directory, store) = test_store();
     let date = "2026-09-30";
     let source = directory.path().join("work.ics");
@@ -820,7 +820,7 @@ async fn ics_tasks_own_local_content() {
 }
 
 #[tokio::test]
-async fn remote_followups_become_editable() {
+async fn remote_followups() {
     let (_directory, store) = test_store();
     let date = "2026-09-30";
     for prefix in ["notion:", "codex:"] {

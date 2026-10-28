@@ -28,7 +28,7 @@
 		}
 	}
 
-	function closeProfileEditorOnBlur(event: FocusEvent) {
+	function dismiss(event: FocusEvent) {
 		const next = event.relatedTarget;
 		if (next instanceof Node && profilePopover?.contains(next)) return;
 		window.setTimeout(() => {
@@ -111,7 +111,7 @@
 	});
 </script>
 
-<div class="profile-popover-anchor" class:compact bind:this={profilePopover} onfocusout={closeProfileEditorOnBlur}>
+<div class="profile-popover-anchor" class:compact bind:this={profilePopover} onfocusout={dismiss}>
 	{#if profileEditing}
 		<div class="profile-editor" role="dialog" aria-label="Edit local profile">
 		<form onsubmit={saveProfile}>

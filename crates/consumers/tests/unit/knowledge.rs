@@ -146,7 +146,7 @@ async fn paginates_overview() {
 }
 
 #[test]
-fn decodes_markdown_without_slug() {
+fn missing_slug() {
     let response: ArticleResponse<Article> = serde_json::from_value(serde_json::json!({
         "article": {
             "id": "019c1234-1234-7000-8000-123456789abc",
@@ -234,7 +234,7 @@ async fn rejects_unsafe_article_ids() {
 }
 
 #[test]
-fn index_entries_omit_document_bodies() {
+fn index_entries() {
     let summary = Summary {
         id: "article-1".to_owned(),
         editions: HashMap::from([(

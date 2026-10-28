@@ -140,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_payload_without_supported_quotas() {
+    fn unsupported_quotas() {
         assert!(parse_usage(br#"{"quota_snapshots": {}}"#).is_err());
     }
 

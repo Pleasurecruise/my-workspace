@@ -207,16 +207,16 @@ pub fn run() {
             ledger::update_expense,
             ledger::delete_expense,
             music::connect_spotify,
-            music::begin_qq_music_login,
-            music::poll_qq_music_login,
-            music::cancel_qq_music_login,
+            music::begin_qq_login,
+            music::poll_qq_login,
+            music::cancel_qq_login,
             music::read_music_tracks,
             music::read_music_playback,
             music::play_music_track,
             music::resume_music,
             music::pause_music,
             music::seek_music,
-            music::set_music_playback_order,
+            music::set_playback_order,
             music::read_music_lyrics,
             settings::read_configuration,
             settings::save_ugos_configuration,
@@ -227,6 +227,7 @@ pub fn run() {
             settings::save_codex_resets,
             social::publish_telegram,
             social::publish_x,
+            social::read_publications,
             social::save_telegram,
             social::connect_x,
             social::read_auth,
@@ -291,7 +292,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn command_errors_become_failed_responses() {
+    fn command_errors() {
         let result: Result<u8, CommandError> = (|| {
             let value: u8 = "300".parse()?;
             Ok(value)

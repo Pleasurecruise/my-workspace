@@ -17,12 +17,12 @@
     "test": "vp test --run"
   },
   "dependencies": {
-    "@lucide/svelte": "1.55.0",
-    "@milkdown/kit": "7.22.3",
+    "@lucide/svelte": "1.62.0",
+    "@milkdown/kit": "7.23.0",
     "@my-workspace/ui": "workspace:*",
-    "@tauri-apps/api": "2.12.3",
-    "@tauri-apps/plugin-notification": "2.6.0",
-    "@tauri-apps/plugin-opener": "2.7.1",
+    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/plugin-notification": "2.7.0",
+    "@tauri-apps/plugin-opener": "2.7.2",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
     "remark-frontmatter": "5.0.0",
@@ -32,11 +32,11 @@
     "@my-workspace/tsconfig": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@tailwindcss/vite": "4.3.3",
-    "@tauri-apps/cli": "2.12.2",
+    "@tauri-apps/cli": "2.12.4",
     "@types/mdast": "4.0.4",
-    "happy-dom": "21.0.1",
-    "svelte": "5.57.2",
-    "svelte-check": "4.7.6",
+    "happy-dom": "21.0.4",
+    "svelte": "5.57.3",
+    "svelte-check": "4.7.7",
     "tailwindcss": "4.3.3"
   }
 }

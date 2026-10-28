@@ -6,6 +6,8 @@ import type {
 	ChannelView,
 	MemoView,
 	MemoUpdate,
+	Publication,
+	PublicationProvider,
 	PublishedPost,
 	MemoTagCount,
 } from "@/lib/contracts/content";
@@ -78,6 +80,8 @@ export function createMemosSession(context: {
 	let loadingMore = $state(false);
 	let request = 0;
 	const tags = createMemosTags();
+	const publications = new SvelteSet<string>();
+	let publicationError = $state<string | null>(null);
 	let memoDisplay = $state<MemoDisplay>("active");
 	let memoFilterRequest = 0;
 	let memoSearch = "";
@@ -335,16 +339,31 @@ export function createMemosSession(context: {
 		return response;
 	}
 
-	async function publishMemoToTelegram(memo: MemoView): Promise<CommandResponse<PublishedPost>> {
-		return invoke<CommandResponse<PublishedPost>>("publish_telegram", { id: memo.id });
+	async function publish(
+		memo: MemoView,
+		provider: PublicationProvider,
+	): Promise<CommandResponse<PublishedPost>> {
+		const response = await invoke<CommandResponse<PublishedPost>>(`publish_${provider}`, {
+			id: memo.id,
+		});
+		if (response.status === "ready") publications.add(`${provider}:${memo.id}`);
+		return response;
 	}
 
-	async function publishMemoToX(memo: MemoView): Promise<CommandResponse<PublishedPost>> {
-		return invoke<CommandResponse<PublishedPost>>("publish_x", { id: memo.id });
+	async function readPublications() {
+		const response = await invoke<CommandResponse<Publication[]>>("read_publications");
+		if (response.status === "failed") {
+			publicationError = response.message;
+			return;
+		}
+		publicationError = null;
+		for (const publication of response.data)
+			publications.add(`${publication.provider}:${publication.memoId}`);
 	}
 
 	onMount(() => {
 		void tags.refresh();
+		void readPublications();
 		function poll() {
 			if (!context.active) return;
 			if (Date.now() - tags.settledAt >= TAGS_MAX_AGE) void tags.refresh();
@@ -387,6 +406,11 @@ export function createMemosSession(context: {
 		initialize,
 		loadMore,
 		tags,
+		publications,
+		get publicationError() {
+			return publicationError;
+		},
+		readPublications,
 		get memoDisplay() {
 			return memoDisplay;
 		},
@@ -400,8 +424,7 @@ export function createMemosSession(context: {
 		importXMemo,
 		updateMemo,
 		deleteMemo,
-		publishMemoToTelegram,
-		publishMemoToX,
+		publish,
 		filterMemos,
 		revealMemo,
 	};

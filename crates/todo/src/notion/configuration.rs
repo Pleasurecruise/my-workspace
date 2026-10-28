@@ -63,7 +63,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accepts_only_notion_view_links() {
+    fn view_links() {
         let mut configuration = Configuration {
             view_url: "https://www.notion.so/calendar?v=248104cd477e80fdb757e945d38000bd".into(),
         };

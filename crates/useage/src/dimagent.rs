@@ -286,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_zero_credits_and_nullable_metadata() {
+    fn zero_credits() {
         let usage = parse_usage(&serde_json::json!({
             "subscription": { "current_term": { "end_at": "2026-10-18T00:00:00Z" } },
             "credits": {

@@ -4,7 +4,7 @@ pub mod credentials;
 pub use auth::{authenticate, authorization};
 
 use super::text::render_x;
-use super::{MemoPublication, PublicationProvider, PublishError, PublishedPost, memo_url};
+use super::{MemoPublication, PublicationProvider, PublishError, PublishedPost, validate};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -28,8 +28,8 @@ struct Post {
     id: String,
 }
 
-pub async fn publish(memo: &MemoPublication) -> Result<PublishedPost, PublishError> {
-    let memo_url = memo_url(memo)?;
+pub(crate) async fn publish(memo: &MemoPublication) -> Result<PublishedPost, PublishError> {
+    validate(memo)?;
     let mut credentials = match credentials::read()? {
         Stored::Ready(credentials) => credentials,
         Stored::Missing => return Err(PublishError::MissingCredentials("X")),
@@ -38,7 +38,7 @@ pub async fn publish(memo: &MemoPublication) -> Result<PublishedPost, PublishErr
         credentials = auth::refresh(&credentials).await?;
         credentials::save(credentials.clone())?;
     }
-    let text = render_x(&memo.content, &memo_url);
+    let text = render_x(&memo.content);
     let client = reqwest::Client::builder()
         .timeout(TIMEOUT)
         .user_agent(concat!("vesper/", env!("CARGO_PKG_VERSION")))

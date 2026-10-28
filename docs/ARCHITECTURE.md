@@ -226,8 +226,11 @@ After registration starts, objects remain available for reconciliation because t
 committed them.
 
 Outbound Memo publication belongs to `crates/social`. Commands reread a Memo by ID; the social
-boundary independently rejects non-public content before sending bounded text and its canonical URL.
-Telegram session persistence and X OAuth credentials use their respective storage boundaries.
+boundary independently rejects non-public content before sending bounded text without a Memo
+link; X posts also drop Memo `#tags` through `memos::strip_tags`. `social::publications` records each sent
+post in `memo_publications` keyed by Memo and provider, so `social::publish` refuses a second send and
+the Memos view shows published channels as locked. Telegram session persistence and X OAuth
+credentials use their respective storage boundaries.
 
 ## Local persistence
 

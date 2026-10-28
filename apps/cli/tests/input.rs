@@ -2,7 +2,7 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 #[test]
-fn reads_json_from_stdin_before_consumer_requests() {
+fn stdin_json() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_vesper"))
         .args(["knowledge", "create", "--stdin"])
         .stdin(Stdio::piped())

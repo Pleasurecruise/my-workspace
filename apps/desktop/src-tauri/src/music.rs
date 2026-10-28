@@ -229,7 +229,7 @@ fn provider_name(provider: Provider) -> String {
 }
 
 #[tauri::command]
-pub(crate) async fn begin_qq_music_login(app: tauri::AppHandle) -> CommandResponse<music::QqQr> {
+pub(crate) async fn begin_qq_login(app: tauri::AppHandle) -> CommandResponse<music::QqQr> {
     let state = app.state::<Music>();
     let Some(_operation) = state.qq_login_operation.enter() else {
         return CommandResponse::Failed {
@@ -249,9 +249,7 @@ pub(crate) async fn begin_qq_music_login(app: tauri::AppHandle) -> CommandRespon
 }
 
 #[tauri::command]
-pub(crate) async fn poll_qq_music_login(
-    app: tauri::AppHandle,
-) -> CommandResponse<music::QqLoginStatus> {
+pub(crate) async fn poll_qq_login(app: tauri::AppHandle) -> CommandResponse<music::QqLoginStatus> {
     let state = app.state::<Music>();
     let Some(_operation) = state.qq_login_operation.enter() else {
         return CommandResponse::Failed {
@@ -290,7 +288,7 @@ pub(crate) async fn poll_qq_music_login(
 }
 
 #[tauri::command]
-pub(crate) async fn cancel_qq_music_login(app: tauri::AppHandle) -> CommandResponse<()> {
+pub(crate) async fn cancel_qq_login(app: tauri::AppHandle) -> CommandResponse<()> {
     let state = app.state::<Music>();
     let mut login = state.qq_login.lock().await;
     state.qq_login_generation.fetch_add(1, Ordering::AcqRel);
@@ -432,7 +430,7 @@ pub(crate) async fn seek_music(
 }
 
 #[tauri::command]
-pub(crate) async fn set_music_playback_order(
+pub(crate) async fn set_playback_order(
     provider: Provider,
     order: music::PlaybackOrder,
     app: tauri::AppHandle,

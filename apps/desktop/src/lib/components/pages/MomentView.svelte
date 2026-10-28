@@ -84,6 +84,12 @@
 	});
 
 	$effect(() => {
+		if (copiedPhotoId === null) return;
+		const timer = window.setTimeout(() => (copiedPhotoId = null), 2000);
+		return () => window.clearTimeout(timer);
+	});
+
+	$effect(() => {
 		const photoId = selectedPhotoId;
 		if (photoId === null) return;
 		editingPhotoId = null;

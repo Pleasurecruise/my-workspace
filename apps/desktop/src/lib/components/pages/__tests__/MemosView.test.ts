@@ -29,8 +29,8 @@ it("retains a composer draft across navigation and keeps edits made during a sav
 		onimportx: vi.fn(),
 		onupdate: vi.fn(),
 		ondelete: vi.fn(),
-		onpublishtelegram: vi.fn(),
-		onpublishx: vi.fn(),
+		publications: new Set<string>(),
+		onpublish: vi.fn(),
 	};
 	const target = document.createElement("div");
 	document.body.append(target);
@@ -112,8 +112,8 @@ it.each(["active", "favorites"] as const)(
 				.mockResolvedValueOnce({ status: "failed", message: "Save unavailable" })
 				.mockResolvedValueOnce({ status: "ready", data: { ...memo, content: "Revised" } }),
 			ondelete: vi.fn().mockResolvedValue({ status: "ready", data: memo.id }),
-			onpublishtelegram: vi.fn(),
-			onpublishx: vi.fn(),
+			publications: new Set<string>(),
+			onpublish: vi.fn(),
 		};
 		const target = document.createElement("div");
 		document.body.append(target);
@@ -197,8 +197,8 @@ it("can remove a selected tag after it disappears from the refreshed index", asy
 			onimportx: vi.fn(),
 			onupdate: vi.fn(),
 			ondelete: vi.fn(),
-			onpublishtelegram: vi.fn(),
-			onpublishx: vi.fn(),
+			publications: new Set<string>(),
+			onpublish: vi.fn(),
 		},
 	});
 	await tick();
@@ -248,8 +248,8 @@ it("shows tag edge controls only for hidden tags and scrolls to both ends", asyn
 			onimportx: vi.fn(),
 			onupdate: vi.fn(),
 			ondelete: vi.fn(),
-			onpublishtelegram: vi.fn(),
-			onpublishx: vi.fn(),
+			publications: new Set<string>(),
+			onpublish: vi.fn(),
 		},
 	});
 	await tick();
@@ -298,14 +298,64 @@ it("restores the applied search after remounting so clearing it resets the feed"
 			onimportx: vi.fn(),
 			onupdate: vi.fn(),
 			ondelete: vi.fn(),
-			onpublishtelegram: vi.fn(),
-			onpublishx: vi.fn(),
+			publications: new Set<string>(),
+			onpublish: vi.fn(),
 		},
 	});
 	await tick();
 	expect(findElement<HTMLInputElement>(target, '[aria-label="Search memos"]').value).toBe("kept");
 	findElement<HTMLButtonElement>(target, ".clear-search").click();
 	await vi.waitFor(() => expect(onfilter).toHaveBeenLastCalledWith("", [], false, "active"));
+	await unmount(view);
+	target.remove();
+});
+
+it("locks a channel once the memo is published there", async () => {
+	const memo: MemoView = {
+		id: "public-memo",
+		r2Key: "public-memo.md",
+		content: "Original",
+		html: "<p>Original</p>",
+		tags: [],
+		createdAt: "2026-09-05",
+		updatedAt: "2026-09-05",
+		visibility: "public",
+		pinned: false,
+		favorite: false,
+		archived: false,
+		metadataComplete: true,
+	};
+	const props = {
+		memos: [memo],
+		tags: [],
+		display: "active" as const,
+		filters: { search: "", tags: [], sortByUpdated: false },
+		onfilter: vi.fn().mockResolvedValue(null),
+		onopenmemo: vi.fn(),
+		oncreate: vi.fn(),
+		onimportx: vi.fn(),
+		onupdate: vi.fn(),
+		ondelete: vi.fn(),
+		publications: new Set(["telegram:public-memo"]),
+		onpublish: vi
+			.fn()
+			.mockResolvedValue({ status: "ready", data: { provider: "x", externalId: "1", url: null } }),
+	};
+	const target = document.createElement("div");
+	document.body.append(target);
+	const view = mount(MemosView, { target, props });
+	await tick();
+	const telegram = findElement<HTMLButtonElement>(
+		target,
+		'button[aria-label="Published to Telegram"]',
+	);
+	expect(telegram.disabled).toBe(true);
+	expect(telegram.classList.contains("published")).toBe(true);
+	telegram.click();
+	findElement<HTMLButtonElement>(target, 'button[aria-label="Publish to X"]').click();
+	await tick();
+	expect(props.onpublish).toHaveBeenCalledTimes(1);
+	expect(props.onpublish).toHaveBeenCalledWith(memo, "x");
 	await unmount(view);
 	target.remove();
 });

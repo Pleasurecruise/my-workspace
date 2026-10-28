@@ -71,7 +71,7 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn reads_the_keychain_once_for_multiple_providers() {
+fn single_keychain_read() {
     let fixture = Fixture::new();
     fixture.backend.0.lock().unwrap().encoded =
         Some(r#"{"entries":{"my-memos-api":"memo-token","cloudflare-r2":"r2-token"}}"#.to_owned());
@@ -91,7 +91,7 @@ fn reads_the_keychain_once_for_multiple_providers() {
 }
 
 #[test]
-fn missing_credentials_do_not_write_a_keychain_entry() {
+fn missing_credentials() {
     let fixture = Fixture::new();
     let mut store = fixture.store();
     assert!(matches!(
@@ -108,7 +108,7 @@ fn missing_credentials_do_not_write_a_keychain_entry() {
 }
 
 #[test]
-fn coordinates_cached_readers_and_preserves_other_provider_updates() {
+fn cached_readers() {
     let fixture = Fixture::new();
     let mut desktop = fixture.store();
     let mut cli = fixture.store();
@@ -140,7 +140,7 @@ fn coordinates_cached_readers_and_preserves_other_provider_updates() {
 }
 
 #[test]
-fn failed_writes_do_not_replace_cached_credentials() {
+fn failed_writes() {
     let fixture = Fixture::new();
     let mut store = fixture.store();
     store
@@ -158,7 +158,7 @@ fn failed_writes_do_not_replace_cached_credentials() {
 }
 
 #[test]
-fn rejects_unreadable_or_invalid_credentials_without_overwriting_them() {
+fn invalid_credentials() {
     let fixture = Fixture::new();
     let mut store = fixture.store();
     fixture.backend.0.lock().unwrap().fail_read = true;
@@ -177,7 +177,7 @@ fn rejects_unreadable_or_invalid_credentials_without_overwriting_them() {
 }
 
 #[test]
-fn deletion_survives_restart_and_preserves_other_credentials() {
+fn deletion() {
     let fixture = Fixture::new();
     let mut store = fixture.store();
     store
@@ -198,7 +198,7 @@ fn deletion_survives_restart_and_preserves_other_credentials() {
 }
 
 #[test]
-fn concurrent_writers_preserve_each_provider() {
+fn concurrent_writers() {
     let fixture = Fixture::new();
     let barrier = Arc::new(std::sync::Barrier::new(8));
     std::thread::scope(|scope| {

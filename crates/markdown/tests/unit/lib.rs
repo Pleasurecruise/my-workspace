@@ -183,7 +183,7 @@ fn rich_roundtrip() {
 }
 
 #[test]
-fn image_shortcodes_reach_all_markdown_entrypoints() {
+fn image_shortcodes() {
     for compiled in [
         super::render("Before :suzume5_01: after :baishengnv_117: :suzume_思考: :suzume_期待:"),
         super::render_memo(
@@ -197,7 +197,7 @@ fn image_shortcodes_reach_all_markdown_entrypoints() {
 }
 
 #[test]
-fn fragment_retains_document_reference_definitions() {
+fn fragment_references() {
     let context = "$x$ and [site][ref] and [^note]\n\n[ref]: https://example.com\n\n[^note]: Footnote body\n    continuation\n";
     let fragment = super::fragment("$x$ and [site][ref] and [^note]", context);
     let html = render(&fragment);

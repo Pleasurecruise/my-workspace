@@ -2,7 +2,7 @@ use super::super::{Edition, Visibility, project_summary};
 use super::*;
 
 #[tokio::test]
-async fn compiles_draft_dialects_and_reports_invalid_source() {
+async fn draft_dialects() {
     let source = "```embed:annotation\nmark: Example\nnote: Kept note\n---\nExample body\n```\n\n:suzume_思考:";
     let result = preview(source, source).await.unwrap();
     assert!(result.html.contains("content-embed-annotation"));

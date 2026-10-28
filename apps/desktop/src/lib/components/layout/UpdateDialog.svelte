@@ -78,7 +78,7 @@
 		}
 	}
 
-	function keepUpdateDialogFocus(event: KeyboardEvent) {
+	function trapFocus(event: KeyboardEvent) {
 		if (event.key !== "Tab" || updateDialog === null) return;
 		const controls = updateDialog.querySelectorAll<HTMLElement>("button:not(:disabled)");
 		if (controls.length === 0) return;
@@ -115,7 +115,7 @@
 
 {#if updateAvailable !== null && !locked}
 	<div class="update-overlay" role="presentation">
-		<div bind:this={updateDialog} class="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title" tabindex="-1" onkeydown={keepUpdateDialogFocus}>
+		<div bind:this={updateDialog} class="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title" tabindex="-1" onkeydown={trapFocus}>
 			<p>Application update</p>
 			<h1 id="update-title">Vesper {updateAvailable.version} is available</h1>
 			<span>Installed version: {updateAvailable.currentVersion}</span>

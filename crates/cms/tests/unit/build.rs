@@ -122,7 +122,7 @@ fn temporary_directory(name: &str) -> PathBuf {
 }
 
 #[tokio::test]
-async fn copies_local_media_beside_compiled_articles() {
+async fn local_media() {
     let repository = temporary_directory("media");
     let content = repository.join("content");
     fs::create_dir_all(content.join("posts")).unwrap();
@@ -151,7 +151,7 @@ async fn copies_local_media_beside_compiled_articles() {
 }
 
 #[tokio::test]
-async fn rejects_missing_or_unpublished_media() {
+async fn missing_media() {
     let repository = temporary_directory("invalid-media");
     let content = repository.join("content");
     fs::create_dir_all(&content).unwrap();

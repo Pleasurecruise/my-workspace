@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn only_remote_telemetry_widgets_enable_ugos() {
+fn telemetry_widgets() {
     for widget in [
         Widget::Cpu,
         Widget::Memory,

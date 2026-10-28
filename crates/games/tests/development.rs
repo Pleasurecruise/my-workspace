@@ -4,7 +4,7 @@ use games::session::{Provider, Session};
 use vault::Stored;
 
 #[test]
-fn steam_environment_overrides_file_without_hiding_invalid_configuration() {
+fn steam_environment() {
     if let Ok(case) = std::env::var("VESPER_STEAM_TEST_CASE") {
         games::session::save(&Session::Steam {
             api_key: "file-key".into(),
@@ -39,10 +39,7 @@ fn steam_environment_overrides_file_without_hiding_invalid_configuration() {
         let directory = tempfile::tempdir().unwrap();
         let mut command = std::process::Command::new(std::env::current_exe().unwrap());
         command
-            .args([
-                "--exact",
-                "steam_environment_overrides_file_without_hiding_invalid_configuration",
-            ])
+            .args(["--exact", "steam_environment"])
             .env("VESPER_STEAM_TEST_CASE", case)
             .env("HOME", directory.path())
             .env("USERPROFILE", directory.path())

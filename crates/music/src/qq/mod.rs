@@ -941,7 +941,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn automatic_failure_is_visible() {
+    async fn automatic_failure() {
         let music = super::QqMusic::new(super::credentials::Credentials {
             cookie: String::new(),
         })

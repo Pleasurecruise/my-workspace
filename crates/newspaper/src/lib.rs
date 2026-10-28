@@ -286,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn drops_items_without_web_links() {
+    fn linkless_items() {
         let daily = project(envelope("javascript:alert(1)")).expect("valid daily");
 
         assert!(daily.sections.is_empty());

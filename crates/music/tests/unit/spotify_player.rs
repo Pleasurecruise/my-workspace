@@ -153,7 +153,7 @@ async fn ignores_stale_load_events() {
 }
 
 #[tokio::test]
-async fn paused_end_does_not_advance() {
+async fn paused_end() {
     let state = Arc::new(RwLock::new(State {
         track_id: Some("current".to_owned()),
         request_id: Some(1),
@@ -239,7 +239,7 @@ async fn rejects_playback_account() {
 }
 
 #[tokio::test]
-async fn exits_on_free_account() {
+async fn free_account() {
     const PROBE: &str = "VESPER_TEST_LIBRESPOT_FREE_ACCOUNT";
     if std::env::var_os(PROBE).is_some() {
         let session = Session::new(SessionConfig::default(), None);
@@ -247,7 +247,7 @@ async fn exits_on_free_account() {
         panic!("expected librespot to exit");
     }
     let status = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "spotify::player::tests::exits_on_free_account"])
+        .args(["--exact", "spotify::player::tests::free_account"])
         .env(PROBE, "1")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

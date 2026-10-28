@@ -362,7 +362,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_latest_device_launch_can_start() {
+    fn latest_launch() {
         let runtime = Runtime::default();
         runtime
             .launches

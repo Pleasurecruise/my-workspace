@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn preserves_feature_arguments_and_normalizes_options() {
+fn feature_arguments() {
     let cases = [
         (
             vec!["todo", "list", "--date", "2026-09-20"],
@@ -46,7 +46,7 @@ fn preserves_feature_arguments_and_normalizes_options() {
 }
 
 #[test]
-fn knowledge_delete_requires_and_preserves_both_version_fields() {
+fn knowledge_delete_versions() {
     let input = [
         "vesper",
         "knowledge",
@@ -64,7 +64,7 @@ fn knowledge_delete_requires_and_preserves_both_version_fields() {
 }
 
 #[test]
-fn photo_upload_and_filters_use_existing_inputs() {
+fn photo_inputs() {
     for (args, expected) in [
         (
             vec![

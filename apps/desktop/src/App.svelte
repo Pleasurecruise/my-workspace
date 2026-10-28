@@ -207,7 +207,7 @@
 		handle.addEventListener("pointercancel", finish);
 	}
 
-	function resizeSidebarByKey(event: KeyboardEvent) {
+	function resizeSidebar(event: KeyboardEvent) {
 		if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
 		event.preventDefault();
 		const delta = event.key === "ArrowLeft" ? -8 : 8;
@@ -324,7 +324,7 @@
 			class="sidebar-resizer"
 			aria-label={`Resize sidebar, currently ${sidebarWidth} pixels wide`}
 			onpointerdown={beginSidebarResize}
-			onkeydown={resizeSidebarByKey}
+			onkeydown={resizeSidebar}
 		></button>
 	</aside>
 
@@ -395,12 +395,15 @@
 					<NewspaperView daily={newspaper.daily} error={newspaper.error} loading={newspaper.loading} onretry={newspaper.refresh} />
 				{:else if content !== null}
 					{#if content.channel === "memos"}
-						<MemosView memos={content.memos} tags={memos.tags.tags} display={memos.memoDisplay} filters={memos.filters} onfilter={memos.filterMemos} onopenmemo={memos.revealMemo} oncreate={memos.createMemo} onimportx={memos.importXMemo} onupdate={memos.updateMemo} ondelete={memos.deleteMemo} onpublishtelegram={memos.publishMemoToTelegram} onpublishx={memos.publishMemoToX}>
+						<MemosView memos={content.memos} tags={memos.tags.tags} display={memos.memoDisplay} filters={memos.filters} onfilter={memos.filterMemos} onopenmemo={memos.revealMemo} oncreate={memos.createMemo} onimportx={memos.importXMemo} onupdate={memos.updateMemo} ondelete={memos.deleteMemo} publications={memos.publications} onpublish={memos.publish}>
 							{#snippet tagStatus()}
 						{#if memos.tags.error}
 							<div class="tag-notice" role="alert"><span>Tags unavailable: {memos.tags.error}</span><button type="button" disabled={memos.tags.loading} onclick={() => void memos.tags.refresh()}>Retry tags</button></div>
 						{:else if memos.tags.loading && memos.tags.tags.length === 0}
 							<p class="tag-status" role="status">Loading tags…</p>
+						{/if}
+						{#if memos.publicationError}
+							<div class="tag-notice" role="alert"><span>Publication status unavailable: {memos.publicationError}</span><button type="button" onclick={() => void memos.readPublications()}>Retry</button></div>
 						{/if}
 							{/snippet}
 						</MemosView>

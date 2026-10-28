@@ -20,10 +20,17 @@ export interface MemoView extends Memo {
 	metadataComplete: boolean;
 }
 
+export type PublicationProvider = "telegram" | "x";
+
 export interface PublishedPost {
-	provider: "telegram" | "x";
+	provider: PublicationProvider;
 	externalId: string;
 	url: string | null;
+}
+
+export interface Publication {
+	memoId: string;
+	provider: PublicationProvider;
 }
 
 export interface MemoTagCount {

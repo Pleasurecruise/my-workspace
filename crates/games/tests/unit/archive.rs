@@ -80,7 +80,7 @@ fn rejects_invalid_batches() {
 }
 
 #[test]
-fn corrupt_store_is_not_replaced() {
+fn corrupt_store() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("games.sqlite");
     std::fs::write(&path, "damaged archive").unwrap();

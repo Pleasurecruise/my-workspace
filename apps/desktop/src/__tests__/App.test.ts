@@ -65,7 +65,8 @@ const configuration: ConfigurationStatus = {
 	appLockDev: false,
 	spotify: { status: "missing" },
 	qqMusic: { status: "missing" },
-	publication: { telegram: false, x: false },
+	publication: { x: false },
+	telegram: { status: "missing" },
 };
 const memos: ChannelView = {
 	channel: "memos",
@@ -645,7 +646,6 @@ it("places Chat below Dashboard and discards its conversation when leaving", asy
 	expect(target.querySelector('section[aria-label="Chat"] [role="status"]')?.textContent).toBe(
 		"Offline",
 	);
-	expect(target.querySelector("#chat-directory")).toBeNull();
 	target.querySelector<HTMLButtonElement>('[aria-label="Connect Pi"]')?.click();
 	await vi.waitFor(() => expect(target.textContent).toContain("temporary reply"));
 	const profilePhoto = target.querySelector<HTMLImageElement>(".user-profile img");

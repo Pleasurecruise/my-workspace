@@ -12,6 +12,7 @@ export default defineConfig({
 		name: "desktop",
 		environment: "happy-dom",
 		include: ["src/**/*.test.ts"],
+		server: { deps: { inline: ["@lucide/svelte"] } },
 	},
 	clearScreen: false,
 	server: {

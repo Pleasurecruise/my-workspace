@@ -76,7 +76,7 @@ pub(crate) async fn refresh(client_id: &str, refresh_token: &str) -> Result<Acce
 #[cfg(test)]
 mod tests {
     #[tokio::test]
-    async fn rejects_invalid_client_ids_before_listening() {
+    async fn invalid_client_ids() {
         for client_id in ["invalid", "0123456789abcdef0123456789abcdeg", ""] {
             let error = super::web_authorization(Some(client_id)).await.err();
             assert!(

@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS notification_cursor (
     last_id TEXT
 );
 CREATE TABLE IF NOT EXISTS telegram_session (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS memo_publications (
+    memo_id TEXT NOT NULL, provider TEXT NOT NULL, external_id TEXT NOT NULL, url TEXT,
+    published_at BIGINT NOT NULL, PRIMARY KEY(memo_id, provider)
+);
 CREATE TABLE IF NOT EXISTS game_accounts (
     game TEXT NOT NULL, uid TEXT NOT NULL, name TEXT NOT NULL, region TEXT NOT NULL,
     role_id TEXT NOT NULL, synced_at BIGINT NOT NULL, PRIMARY KEY(game, uid)

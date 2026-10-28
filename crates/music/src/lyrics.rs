@@ -129,7 +129,7 @@ mod tests {
     use super::{from_lrc, parse_lrc};
 
     #[test]
-    fn parses_and_orders_timed_lines() {
+    fn timed_lines() {
         let lines = parse_lrc("[00:10.50]Second\n[00:02.00]First");
         assert_eq!(lines[0].start_ms, Some(2_000));
         assert_eq!(lines[1].text, "Second");
@@ -137,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn skips_metadata_blank_and_malformed_lines() {
+    fn skipped_lines() {
         let source = "[ar:Artist]\n[00:01.00]\n[xx:01.00]Bad minutes\n[00:aa]Bad seconds\nno stamp\n[01:02.345]  Kept  ";
         let lines = parse_lrc(source);
         assert_eq!(lines.len(), 1);

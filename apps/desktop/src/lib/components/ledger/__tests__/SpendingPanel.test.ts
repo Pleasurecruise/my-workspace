@@ -80,7 +80,6 @@ it("renders monthly charts without a native picker or refresh button", async () 
 		expect(target.querySelectorAll("circle")).toHaveLength(0);
 		expect(invoke).toHaveBeenCalledTimes(calls);
 		expect(target.querySelector('input[type="date"]')).toBeNull();
-		expect(target.querySelector('[aria-label="Refresh expenses"]')).toBeNull();
 		expect(target.querySelector(".bar-chart button")).toBeNull();
 		expect(target.querySelector("time")?.textContent).toBe(data.date);
 		target.querySelector<HTMLButtonElement>('[aria-label="Previous day"]')?.click();

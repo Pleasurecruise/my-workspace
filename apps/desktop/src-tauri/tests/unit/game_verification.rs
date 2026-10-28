@@ -20,7 +20,7 @@ fn allowed_origins() {
 }
 
 #[test]
-fn parent_domain_session_is_available_to_record_subdomains() {
+fn parent_domain_session() {
     let expected: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::from([
         ("ltuid".into(), "123".into()),
         ("ltoken".into(), "test-token".into()),

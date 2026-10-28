@@ -130,7 +130,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn locked_session_requires_valid_password_to_clear() {
+    fn unlock_password() {
         let state = AppLock::default();
         state.0.store(true, Ordering::SeqCst);
         assert!(state.locked());

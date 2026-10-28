@@ -63,7 +63,7 @@ async fn token_server(status: &str, body: &str) -> (String, tokio::task::JoinHan
 }
 
 #[tokio::test]
-async fn exchanges_pkce_code_through_loopback_callback() {
+async fn pkce_exchange() {
     let (endpoint, request) = token_server("200 OK", r#"{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600}"#).await;
     let authorization = authorize(
         "client",
@@ -133,7 +133,7 @@ async fn cancellation_releases_callback_port() {
 }
 
 #[tokio::test]
-async fn refreshes_with_optional_rotation() {
+async fn refresh_rotation() {
     for rotated in [false, true] {
         let body = if rotated {
             r#"{"access_token":"new","refresh_token":"rotated","token_type":"Bearer","expires_in":7200}"#

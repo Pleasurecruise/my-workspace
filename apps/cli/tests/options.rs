@@ -1,7 +1,7 @@
 use std::process::Command;
 
 #[test]
-fn version_flags_print_package_version_without_initializing_logging() {
+fn version_flags() {
     for flag in ["--version", "-V"] {
         let output = Command::new(env!("CARGO_BIN_EXE_vesper"))
             .arg(flag)
@@ -18,7 +18,7 @@ fn version_flags_print_package_version_without_initializing_logging() {
 }
 
 #[test]
-fn help_does_not_initialize_runtime() {
+fn help_skips_runtime() {
     for arguments in [
         vec![],
         vec!["help"],
@@ -42,7 +42,7 @@ fn help_does_not_initialize_runtime() {
 }
 
 #[test]
-fn usage_errors_precede_runtime_initialization() {
+fn usage_errors() {
     for arguments in [
         vec!["unknown"],
         vec!["memo", "lsit"],

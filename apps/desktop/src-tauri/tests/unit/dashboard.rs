@@ -2,7 +2,7 @@ use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[tokio::test]
-async fn inactive_or_superseded_routes_do_not_start_reads() {
+async fn inactive_routes() {
     let (active, receiver) = watch::channel(false);
     let reads = AtomicUsize::new(0);
     assert!(
@@ -23,7 +23,7 @@ async fn inactive_or_superseded_routes_do_not_start_reads() {
 }
 
 #[tokio::test]
-async fn navigation_drops_inflight_read_and_reentry_can_read_again() {
+async fn navigation_reentry() {
     let (active, receiver) = watch::channel(true);
     let (started, waiting) = tokio::sync::oneshot::channel();
     let (reply, response) = tokio::sync::oneshot::channel::<()>();
@@ -43,7 +43,7 @@ async fn navigation_drops_inflight_read_and_reentry_can_read_again() {
 }
 
 #[tokio::test]
-async fn navigation_cancels_reads_waiting_for_a_source_lock() {
+async fn navigation_lock() {
     let lock = Arc::new(sync::Mutex::new(()));
     let guard = lock.lock().await;
     let (active, receiver) = watch::channel(true);
@@ -61,7 +61,7 @@ async fn navigation_cancels_reads_waiting_for_a_source_lock() {
 }
 
 #[tokio::test]
-async fn absent_widgets_and_invalid_layouts_never_start_provider_io() {
+async fn absent_widgets() {
     let reads = AtomicUsize::new(0);
     for enabled in [Ok(false), Err("invalid layout".to_owned())] {
         let response = optional(Source::Codex, enabled.clone(), async {

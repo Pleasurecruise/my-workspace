@@ -70,7 +70,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_during_a_write() {
+    fn concurrent_read() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join(FILE_NAME);
         let mut writer = open(&path).unwrap();
@@ -84,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn reopening_preserves_records_and_enforces_layout_constraints() {
+    fn reopening() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join(FILE_NAME);
         open(&path).unwrap().batch_execute("INSERT INTO dashboard_widgets VALUES ('todo', 0, '{}'); INSERT INTO dashboard_layout VALUES (1, 'todo');").unwrap();

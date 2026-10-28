@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn subscription_only_connects_on_active_route_and_stops_on_exit() {
+async fn route_subscription() {
     let mut subscription = Subscription::default();
     let no_connection = |_| async { panic!("inactive or unchanged route must not connect") };
     subscription.update(None, no_connection).await.unwrap();
@@ -33,7 +33,7 @@ async fn subscription_only_connects_on_active_route_and_stops_on_exit() {
 }
 
 #[tokio::test]
-async fn credential_restart_stops_old_stream_before_starting_replacement() {
+async fn credential_restart() {
     let mut subscription = Subscription::default();
     let (sender, receiver) = tokio::sync::oneshot::channel::<()>();
     subscription
@@ -60,7 +60,7 @@ async fn credential_restart_stops_old_stream_before_starting_replacement() {
 }
 
 #[tokio::test]
-async fn leaving_inbox_waits_for_accepted_message_to_commit() {
+async fn leave_commit() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("notifications.sqlite3");
     let state = Arc::new(Store::new(path.clone()));
@@ -106,7 +106,7 @@ async fn leaving_inbox_waits_for_accepted_message_to_commit() {
 }
 
 #[tokio::test]
-async fn stream_accepts_only_valid_data_lines() {
+async fn data_lines() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::new(directory.path().join("inbox.sqlite3"));
     let updates = Arc::new(std::sync::Mutex::new(Vec::new()));

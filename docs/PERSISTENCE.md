@@ -37,6 +37,7 @@ file stores nor falls back to them; normal reads and writes use the shared datab
 | `game_accounts`, `game_pulls`, `game_reports` | Games             | Accounts, deduplicated history and official reports                 |
 | `game_diagnostic`                             | Games             | Latest bounded verification metadata, excluding secrets             |
 | `telegram_session`                            | Social            | MTProto session state                                               |
+| `memo_publications`                           | Social            | Sent Telegram and X posts keyed by Memo and provider                |
 | `credentials`                                 | Vault, debug only | Development credentials and renewable sessions                      |
 
 Typed provider unions, report payloads and credential values may use JSON inside a database field.

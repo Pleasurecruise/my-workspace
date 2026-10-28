@@ -567,7 +567,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn floating_until_uses_the_same_clock_as_start() {
+    fn floating_until() {
         let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:floating\nSUMMARY:Floating\nDTSTART:20260901T090000\nRRULE:FREQ=DAILY;UNTIL=20260902T100000\nEND:VEVENT\nEND:VCALENDAR";
         let events = parse(input).unwrap();
         assert!(
@@ -603,7 +603,7 @@ mod tests {
     }
 
     #[test]
-    fn gap_starts_preserve_civil_dates_and_count() {
+    fn gap_starts() {
         for (zone, start, first) in [
             (
                 "Europe/London",
@@ -640,7 +640,7 @@ mod tests {
     }
 
     #[test]
-    fn absolute_until_compares_instants_across_a_fold() {
+    fn absolute_until() {
         for (until, expected) in [("20261025T001500Z", false), ("20261025T004500Z", true)] {
             let input = format!(
                 "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:fold\nSUMMARY:Fold\nDTSTART;TZID=Europe/London:20261024T013000\nRRULE:FREQ=DAILY;UNTIL={until}\nEND:VEVENT\nEND:VCALENDAR"
@@ -755,7 +755,7 @@ mod tests {
     }
 
     #[test]
-    fn exclusions_do_not_extend_count() {
+    fn exclusion_count() {
         let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:daily\nSUMMARY:Daily\nDTSTART;VALUE=DATE:20260901\nRRULE:FREQ=DAILY;COUNT=2\nEXDATE;VALUE=DATE:20260902\nEND:VEVENT\nEND:VCALENDAR\n";
         assert_eq!(
             occurrences(input, time::macros::date!(2026 - 09 - 01))
@@ -776,7 +776,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_quoted_parameters_and_ignores_alarm_properties() {
+    fn quoted_parameters() {
         let input = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:daily\r\nSUMMARY;ALTREP=\"https://example.com/a;b\":Study\r\nDTSTART;TZID=\"Europe/London\":20260901T090000\r\nBEGIN:VALARM\r\nSUMMARY:Reminder\r\nDESCRIPTION:Not the event description\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         let events = parse(input).unwrap();
         assert_eq!(events[0].summary, "Study");
@@ -784,7 +784,7 @@ mod tests {
     }
 
     #[test]
-    fn daily_rules_apply_weekday_filters() {
+    fn weekday_filters() {
         let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:daily\nSUMMARY:Weekdays\nDTSTART:20260904\nRRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR;COUNT=2\nEND:VEVENT\nEND:VCALENDAR\n";
         assert!(
             occurrences(input, time::macros::date!(2026 - 09 - 05))
@@ -805,7 +805,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_mismatched_components_and_duplicate_rules() {
+    fn invalid_rules() {
         for body in [
             "END:VTODO\nEND:VCALENDAR",
             "END:VEVENT\nEND:VTODO",
@@ -822,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn respects_month_lengths_until_and_dst() {
+    fn month_lengths() {
         let monthly = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:monthly\nSUMMARY:Monthly\nDTSTART:20260131\nRRULE:FREQ=MONTHLY;COUNT=2\nEND:VEVENT\nEND:VCALENDAR\n";
         assert!(
             occurrences(monthly, time::macros::date!(2026 - 02 - 28))
@@ -857,7 +857,7 @@ mod tests {
     }
 
     #[test]
-    fn midnight_dst_does_not_hide_daytime_events() {
+    fn midnight_dst() {
         let input = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:daily\nSUMMARY:Daily\nDTSTART;TZID=America/Santiago:20260901T090000\nRRULE:FREQ=DAILY\nEND:VEVENT\nEND:VCALENDAR\n";
         let event = parse(input).unwrap().remove(0);
         for date in [
@@ -871,7 +871,7 @@ mod tests {
     }
 
     #[test]
-    fn decodes_case_insensitive_text_once() {
+    fn text_decoding() {
         for name in ["SUMMARY", "summary", "Summary"] {
             let input = format!(
                 "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:text\n{name}:Study\\, review\\nmore\\\\notes\nDTSTART:20260901\nEND:VEVENT\nEND:VCALENDAR\n"

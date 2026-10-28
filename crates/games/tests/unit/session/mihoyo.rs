@@ -36,7 +36,7 @@ fn separate_games() {
 }
 
 #[test]
-fn rejects_obsolete_sessions_and_invalid_bindings() {
+fn obsolete_sessions() {
     let encoded = serde_json::to_string(&session("1", "token")).unwrap();
     assert!(serde_json::from_str::<Accounts>(&encoded).is_err());
     let mut accounts = Accounts::default();

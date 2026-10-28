@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_to_legacy_totals() {
+    fn legacy_totals() {
         let usage = parse_usage(&json!({
             "config": { "monthlyLimit": { "val": 2_000 }, "used": { "val": 500 } }
         }))
@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn recognizes_official_zero_usage_shape() {
+    fn official_zero_usage() {
         let usage = parse_usage(&json!({
             "config": {
                 "isUnifiedBillingUser": true,
@@ -320,7 +320,7 @@ mod tests {
     }
 
     #[test]
-    fn does_not_pair_historical_period_with_current_totals() {
+    fn historical_period() {
         assert!(
             parse_usage(&json!({
                 "config": {

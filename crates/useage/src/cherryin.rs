@@ -322,7 +322,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rotates_tokens_without_overwriting_a_changed_session() {
+    async fn token_rotation() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("cherrystudio.sqlite");
         let connection = Connection::open(&path).unwrap();

@@ -102,7 +102,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
     #[tokio::test]
-    async fn caches_failures_until_expiry_then_recovers() {
+    async fn failure_expiry() {
         let cache = Cache::new();
         let ttl = Duration::from_secs(60);
         assert_eq!(
@@ -119,7 +119,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_cancelled_fetch_does_not_block_the_next_read() {
+    async fn cancelled_fetch() {
         let cache = Cache::new();
         {
             let mut read =

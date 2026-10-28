@@ -532,7 +532,7 @@ mod tests {
     }
     #[cfg(unix)]
     #[test]
-    fn local_terminal_survives_tailnet_changes_and_idle_but_closes_on_lock() {
+    fn local_lifecycle() {
         let sessions = Sessions::default();
         let id = uuid::Uuid::new_v4().to_string();
         let mut command = CommandBuilder::new("/bin/sh");

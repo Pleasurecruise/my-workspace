@@ -217,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn projects_sun_and_moon() {
+    fn sun_moon() {
         let astronomy = project("Shanghai", "上海, 中国".to_owned(), forecast())
             .expect("valid astronomy projection");
 

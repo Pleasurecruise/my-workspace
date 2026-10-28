@@ -8,14 +8,11 @@ struct Sample {
 }
 
 #[test]
-fn development_reads_and_writes_stay_in_local_storage() {
+fn local_storage() {
     if std::env::var_os("VESPER_CREDENTIAL_TEST_CHILD").is_none() {
         let directory = tempfile::tempdir().unwrap();
         let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                "development_reads_and_writes_stay_in_local_storage",
-            ])
+            .args(["--exact", "local_storage"])
             .env("VESPER_CREDENTIAL_TEST_CHILD", "1")
             .env("HOME", directory.path())
             .env("USERPROFILE", directory.path())

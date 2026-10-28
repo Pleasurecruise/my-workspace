@@ -112,14 +112,14 @@ mod tests {
     }
 
     #[test]
-    fn refreshes_within_a_minute_of_expiry() {
+    fn refresh_window() {
         assert!(expires_soon(&credentials(0)));
         assert!(expires_soon(&credentials(now() + 30)));
         assert!(!expires_soon(&credentials(now() + 600)));
     }
 
     #[test]
-    fn maps_oauth_failures_without_response_bodies() {
+    fn oauth_failures() {
         assert!(matches!(
             oauth_error(oauth::Error::Configuration),
             PublishError::Protocol("X authorization")

@@ -12,7 +12,7 @@ async fn isolates_corrupt_notification_storage() {
 }
 
 #[tokio::test]
-async fn failed_replacement_preserves_notification_state() {
+async fn failed_replacement() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("notifications.sqlite3");
     let state = Store::new(path.clone());
@@ -136,7 +136,7 @@ fn message(id: &str, body: &str) -> Message {
 }
 
 #[tokio::test]
-async fn projects_envelopes_and_falls_back_to_plain_text() {
+async fn envelopes() {
     let directory = tempfile::tempdir().unwrap();
     let state = Store::new(directory.path().join("inbox.sqlite3"));
     let envelope = r#"{"source":" Gmail ","title":"Digest","body":"Three new mails"}"#;
@@ -157,7 +157,7 @@ async fn projects_envelopes_and_falls_back_to_plain_text() {
 }
 
 #[tokio::test]
-async fn ignores_control_events_and_rejects_invalid_metadata() {
+async fn control_events() {
     let directory = tempfile::tempdir().unwrap();
     let state = Store::new(directory.path().join("inbox.sqlite3"));
     let mut keepalive = message("a", "body");
@@ -193,7 +193,7 @@ async fn ignores_control_events_and_rejects_invalid_metadata() {
 }
 
 #[tokio::test]
-async fn keeps_the_newest_notifications_within_the_limit() {
+async fn notification_limit() {
     let directory = tempfile::tempdir().unwrap();
     let state = Store::new(directory.path().join("inbox.sqlite3"));
     for index in 0..=LIMIT {
