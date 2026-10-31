@@ -64,6 +64,12 @@ Knowledge reads authenticated summary and detail responses by article ID. Canoni
 UUIDs; opening one extracts its ID and reads the detail endpoint directly. Article cards resolve
 metadata through the authorized summary index.
 
+## Memory
+
+`crates/nowledge` reads the remote Nowledge Mem server directly (`NOWLEDGE_API_URL` and
+`NOWLEDGE_API_KEY` in debug builds) on page entry and explicit refresh. The server has no terrain
+endpoint, so Rust classifies `/graph/overview` nodes and the 3D view derives elevation locally.
+
 ## Public feeds
 
 `crates/weather`, `crates/market-data`, and `crates/quotes` own the public Dashboard feeds.

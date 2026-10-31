@@ -5,6 +5,7 @@ import type {
 	ApiConfiguration,
 	CodexResets,
 	ConfigurationStatus,
+	NowledgeCredentials,
 	NtfyConfig,
 	NotionCalendar,
 	R2Configuration,
@@ -104,6 +105,14 @@ export function createSettingsSession(effects: {
 		return response;
 	}
 
+	async function saveNowledge(credentials: NowledgeCredentials): Promise<CommandResponse<string>> {
+		const response = await invoke<CommandResponse<string>>("save_nowledge_configuration", {
+			credentials,
+		});
+		if (response.status === "ready") await loadConfiguration();
+		return response;
+	}
+
 	async function saveAppLock(password: string): Promise<CommandResponse<string>> {
 		const response = await invoke<CommandResponse<string>>("save_app_lock", { password });
 		if (response.status === "ready") await loadConfiguration();
@@ -135,6 +144,7 @@ export function createSettingsSession(effects: {
 		saveApiConfiguration,
 		connectSpotify,
 		saveNtfy,
+		saveNowledge,
 		saveNotionCalendar,
 		saveCodexResets,
 		saveAppLock,

@@ -9,11 +9,12 @@
 	import PageSkeleton from "./lib/components/layout/PageSkeleton.svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
-	import { Archive, ArrowLeft, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, MessageCircle, Lock, Menu, Moon, Music2, Newspaper, Settings, Sun, X } from "@lucide/svelte";
+	import { Archive, ArrowLeft, Bell, BookOpen, CloudOff, Heart, Home, Image, LayoutDashboard, MessageCircle, Lock, Menu, Moon, Music2, Newspaper, Settings, Sun, Waypoints, X } from "@lucide/svelte";
 	import { onMount, untrack } from "svelte";
 	import MemosView from "./lib/components/pages/MemosView.svelte";
 	import MomentView from "./lib/components/pages/MomentView.svelte";
 	import MusicView from "./lib/components/pages/MusicView.svelte";
+	import MemoryView from "./lib/components/pages/MemoryView.svelte";
 	import KnowledgeView from "./lib/components/pages/KnowledgeView.svelte";
 	import InboxView from "./lib/components/pages/InboxView.svelte";
 	import NewspaperView from "./lib/components/pages/NewspaperView.svelte";
@@ -33,9 +34,10 @@
 	import { createMomentSession } from "./lib/components/moment/session.svelte";
 	import { createKnowledgeSession } from "./lib/components/knowledge/session.svelte";
 	import { createNewspaperSession } from "./lib/components/newspaper/session.svelte";
+	import { createMemorySession } from "./lib/components/memory/session.svelte";
 	import { applyTheme, initTheme } from "./lib/theme";
 
-	type View = "chat" | "terminal" | "dashboard" | "inbox" | "music" | "newspaper" | "settings" | Channel;
+	type View = "chat" | "terminal" | "dashboard" | "inbox" | "memory" | "music" | "newspaper" | "settings" | Channel;
 
 	const navigation: Array<{ id: View; label: string }> = [
 		{ id: "dashboard", label: "Dashboard" },
@@ -43,6 +45,7 @@
 		{ id: "newspaper", label: "Newspaper" },
 		{ id: "memos", label: "Memos" },
 		{ id: "moment", label: "Moment" },
+		{ id: "memory", label: "Memory" },
 		{ id: "music", label: "Music" },
 		{ id: "knowledge", label: "Knowledge" },
 		{ id: "settings", label: "Settings" },
@@ -90,6 +93,7 @@
 	const dashboardSession = createDashboardSession(() => selected === "dashboard");
 	const inbox = createInboxSession(() => selected === "inbox");
 	const newspaper = createNewspaperSession(() => selected === "newspaper");
+	const memory = createMemorySession();
 	const settings = createSettingsSession({
 		resetChannel: (channel) => {
 			if (channel === "memos") memos.reset();
@@ -107,6 +111,7 @@
 			case "knowledge": return configuration?.api.knowledge.status === "ready";
 			case "music": return configuration?.spotify.status === "ready" || configuration?.qqMusic.status === "ready";
 			case "inbox": return configuration?.ntfy.status === "ready";
+			case "memory": return configuration?.nowledge.status === "ready";
 			default: return true;
 		}
 	}
@@ -144,6 +149,7 @@
 		selected = view;
 		void inbox.activate(view === "inbox");
 		if (view === "newspaper") void newspaper.refresh();
+		if (view === "memory") void memory.refresh();
 		const activation = dashboardSession.activate(view === "dashboard");
 		sidebarOpen = false;
 		await activeContent?.enter();
@@ -280,7 +286,7 @@
 					title={item.label}
 					onclick={() => void select(item.id)}
 				>
-					{#if item.id === "dashboard"}<LayoutDashboard size={15} />{:else if item.id === "chat"}<MessageCircle size={15} />{:else if item.id === "memos"}<Home size={15} />{:else if item.id === "moment"}<Image size={15} />{:else if item.id === "music"}<Music2 size={15} />{:else if item.id === "newspaper"}<Newspaper size={15} />{:else if item.id === "knowledge"}<BookOpen size={15} />{:else}<Settings size={15} />{/if}
+					{#if item.id === "dashboard"}<LayoutDashboard size={15} />{:else if item.id === "chat"}<MessageCircle size={15} />{:else if item.id === "memos"}<Home size={15} />{:else if item.id === "moment"}<Image size={15} />{:else if item.id === "memory"}<Waypoints size={15} />{:else if item.id === "music"}<Music2 size={15} />{:else if item.id === "newspaper"}<Newspaper size={15} />{:else if item.id === "knowledge"}<BookOpen size={15} />{:else}<Settings size={15} />{/if}
 					<span>{item.label}</span>
 				</button>
 			{/each}
@@ -329,7 +335,7 @@
 	</aside>
 
 	<main
-		class:fill-shell={selected === "chat"}
+		class:fill-shell={selected === "chat" || selected === "memory"}
 		class:terminal-shell={selected === "terminal"}
 		class:player-shell={selected === "music" && musicPlayerVisible}
 		bind:this={mainElement}
@@ -346,7 +352,7 @@
 			</button>
 			<strong>vesper</strong>
 		</header>
-		<div class="canvas page-layout" data-fill={selected === "chat"}>
+		<div class="canvas page-layout" data-fill={selected === "chat" || selected === "memory"}>
 			<div class="page-content" bind:clientWidth={contentWidth} data-stacked={contentWidth <= 640}>
 				{#each terminals.openTerminals as target (target)}
 					<TerminalView {target} active={selected === "terminal" && terminals.selected === target} {locked} />
@@ -355,6 +361,8 @@
 					{#if terminals.openTerminals.length === 0}<section><header class="page-header"><div><h1>Terminals</h1><p class="page-description">Select this device or a Tailscale device in the sidebar to open its terminal.</p></div></header></section>{/if}
 				{:else if selected === "chat"}
 					<ChatView session={chat} {profileAvatar} />
+				{:else if selected === "memory"}
+					<MemoryView session={memory} />
 				{:else if selected === "dashboard"}
 					<DashboardView session={dashboardSession} {layoutSession} />
 				{:else if selected === "settings"}
@@ -366,6 +374,7 @@
 						onsaver2={settings.saveR2Configuration}
 						onsaveapi={settings.saveApiConfiguration}
 						onsaventfy={settings.saveNtfy}
+						onsavenowledge={settings.saveNowledge}
 						onsavenotion={settings.saveNotionCalendar}
 						onsavecodexresets={settings.saveCodexResets}
 						onsaveapplock={settings.saveAppLock}
@@ -473,7 +482,7 @@
 						<Music2 size={15} />
 					</button>
 				{/if}
-				<ScrollToTop />
+				{#if selected !== "chat" && selected !== "memory" && selected !== "settings"}<ScrollToTop />{/if}
 			{/if}
 		</div>
 	</main>

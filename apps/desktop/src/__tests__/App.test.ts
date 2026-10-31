@@ -67,6 +67,7 @@ const configuration: ConfigurationStatus = {
 	qqMusic: { status: "missing" },
 	publication: { x: false, xAvailable: true },
 	telegram: { status: "missing" },
+	nowledge: { status: "missing" },
 };
 const memos: ChannelView = {
 	channel: "memos",

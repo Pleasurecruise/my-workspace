@@ -26,6 +26,11 @@ export interface NtfyConfig {
 	development: boolean;
 }
 
+export interface NowledgeCredentials {
+	url: string;
+	apiKey: string;
+}
+
 export interface TelegramCredentials {
 	apiId: number;
 	apiHash: string;
@@ -58,4 +63,5 @@ export interface ConfigurationStatus {
 	qqMusic: StoredConfiguration<string>;
 	publication: { x: boolean; xAvailable: boolean };
 	telegram: StoredConfiguration<TelegramCredentials>;
+	nowledge: StoredConfiguration<NowledgeCredentials>;
 }

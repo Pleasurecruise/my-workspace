@@ -272,6 +272,9 @@ impl ChatSnapshot {
                         text.push_str(&content);
                     }
                 }
+                if let MessagePart::Text { text, html } = part {
+                    *html = markdown::render(text);
+                }
             }
             Event::MessageEnd { message: completed } if completed.role == "assistant" => {
                 if let Some(message) = self
@@ -356,13 +359,13 @@ mod tests {
             .unwrap();
         for (index, kind, delta) in [
             (0, "thinking_delta", "why"),
-            (1, "text_delta", "hello"),
-            (1, "text_delta", " world"),
+            (1, "text_delta", "**hello"),
+            (1, "text_delta", "** world"),
         ] {
             state.apply(&json!({"type":"message_update","assistantMessageEvent":{"type":kind,"contentIndex":index,"delta":delta}})).unwrap();
         }
         assert!(
-            matches!(&state.messages[0].parts[1], MessagePart::Text {text,..} if text == "hello world")
+            matches!(&state.messages[0].parts[1], MessagePart::Text {text, html} if text == "**hello** world" && html.contains("<strong>hello</strong>"))
         );
         state.apply(&json!({"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"final"}]}})).unwrap();
         assert!(

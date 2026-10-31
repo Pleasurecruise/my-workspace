@@ -13,6 +13,7 @@ mod island;
 mod ledger;
 mod music;
 mod newspaper;
+mod nowledge;
 mod protocol;
 mod settings;
 mod social;
@@ -158,6 +159,7 @@ pub fn run() {
             content::initialize_views,
             content::read_channel,
             newspaper::read_newspaper,
+            nowledge::read_memory_graph,
             content::memos::read_memo_tags,
             content::memos::create_memo,
             content::memos::import_x_memo,
@@ -220,6 +222,7 @@ pub fn run() {
             music::read_music_lyrics,
             settings::read_configuration,
             settings::save_ugos_configuration,
+            settings::save_nowledge_configuration,
             settings::save_r2_configuration,
             settings::save_api_configuration,
             settings::save_ntfy_configuration,

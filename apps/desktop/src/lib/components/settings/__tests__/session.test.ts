@@ -27,6 +27,7 @@ it.each<"ready" | "failed">(["ready", "failed"])(
 			qqMusic: { status: "ready", data: "Connected" },
 			publication: { x: false, xAvailable: true },
 			telegram: { status: "missing" },
+			nowledge: { status: "missing" },
 		};
 		let finish: (response: CommandResponse<ConfigurationStatus>) => void = () => {
 			throw new Error("Read not started");

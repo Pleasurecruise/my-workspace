@@ -12,6 +12,7 @@ path = "src/main.rs"
 clap.workspace = true
 github.workspace = true
 market-data.workspace = true
+nowledge.workspace = true
 quotes.workspace = true
 service-status.workspace = true
 tracing-subscriber.workspace = true

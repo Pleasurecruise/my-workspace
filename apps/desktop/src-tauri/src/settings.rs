@@ -20,6 +20,7 @@ pub(crate) struct Configuration {
     qq_music: Saved<String>,
     publication: social::Configured,
     telegram: Saved<social::telegram::credentials::Credentials>,
+    nowledge: Saved<nowledge::credentials::Credentials>,
 }
 
 #[derive(serde::Serialize)]
@@ -97,6 +98,7 @@ pub(crate) async fn read_configuration(app: tauri::AppHandle) -> CommandResponse
             qq_music,
             publication: social::configured()?,
             telegram: social::telegram::credentials::read()?.into(),
+            nowledge: nowledge::credentials::read()?.into(),
         })
     };
     result.await.into()
@@ -113,6 +115,13 @@ pub(crate) async fn save_ntfy_configuration(
         Ok::<_, CommandError>("ntfy-notifications".to_owned())
     };
     result.await.into()
+}
+
+#[tauri::command]
+pub(crate) fn save_nowledge_configuration(
+    credentials: nowledge::credentials::Credentials,
+) -> CommandResponse<String> {
+    CommandResponse::from(nowledge::credentials::save(credentials).map(|()| "nowledge".to_owned()))
 }
 
 #[tauri::command]

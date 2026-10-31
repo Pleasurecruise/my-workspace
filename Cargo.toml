@@ -16,6 +16,7 @@ members = [
   "crates/md-dialect",
   "crates/music",
   "crates/newspaper",
+  "crates/nowledge",
   "crates/oauth",
   "crates/quotes",
   "crates/service-status",
@@ -79,6 +80,7 @@ md-dialect = { path = "crates/md-dialect" }
 music = { path = "crates/music" }
 ledger = { path = "crates/ledger" }
 newspaper = { path = "crates/newspaper" }
+nowledge = { path = "crates/nowledge" }
 quotes = { path = "crates/quotes" }
 social = { path = "crates/social" }
 todo = { path = "crates/todo" }

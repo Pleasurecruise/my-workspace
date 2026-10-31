@@ -1,6 +1,6 @@
 <script lang="ts">
 	import "../settings/settings.css";
-	import { CalendarDays, BellRing, Cloud, Eye, EyeOff, KeyRound, Lock, Music2, QrCode, Send } from "@lucide/svelte";
+	import { CalendarDays, BellRing, Brain, Cloud, Eye, EyeOff, KeyRound, Lock, Music2, QrCode, Send } from "@lucide/svelte";
 	import QqMusicConnection from "../settings/QqMusicConnection.svelte";
 	import ConfigurationBadge from "../settings/ConfigurationBadge.svelte";
 	import {
@@ -29,7 +29,7 @@
 		{ id: "publishing", label: "Publishing", icon: Send },
 	];
 	import type { CommandResponse } from "@/lib/contracts/command";
-	import type { ApiConfiguration, CodexResets, ConfigurationStatus, NtfyConfig, NotionCalendar, R2Configuration, TelegramAuthorizationStatus, TelegramCredentials, UgosConfiguration } from "@/lib/contracts/settings";
+	import type { ApiConfiguration, CodexResets, ConfigurationStatus, NowledgeCredentials, NtfyConfig, NotionCalendar, R2Configuration, TelegramAuthorizationStatus, TelegramCredentials, UgosConfiguration } from "@/lib/contracts/settings";
 
 	let {
 		reconnectMihoyo,
@@ -39,6 +39,7 @@
 		onsaver2,
 		onsaveapi,
 		onsaventfy,
+		onsavenowledge,
 		onsavenotion,
 		onsavecodexresets,
 		onsaveapplock,
@@ -55,6 +56,7 @@
 		onsavecodexresets: (configuration: CodexResets) => Promise<CommandResponse<string>>;
 		onsavenotion: (configuration: NotionCalendar) => Promise<CommandResponse<string>>;
 		onsaventfy: (configuration: NtfyConfig) => Promise<CommandResponse<string>>;
+		onsavenowledge: (credentials: NowledgeCredentials) => Promise<CommandResponse<string>>;
 		onsaveapplock: (password: string) => Promise<CommandResponse<string>>;
 		onremoveapplock: () => Promise<CommandResponse<string>>;
 		onconnectspotify: (clientId: string) => Promise<CommandResponse<string>>;
@@ -85,6 +87,8 @@
 	let notionSaving = $state(false);
 	let notionError = $state<string | null>(null);
 	let ntfyToken = $state("");
+	let nowledgeUrl = $state("");
+	let nowledgeApiKey = $state("");
 	let appLockPassword = $state("");
 	let saving = $state({
 		"app-lock": false,
@@ -94,6 +98,7 @@
 		moment: false,
 		knowledge: false,
 		ntfy: false,
+		nowledge: false,
 		spotify: false,
 		telegram: false,
 		"telegram-auth": false,
@@ -104,6 +109,7 @@
 		r2: { accessKeyId: "", secretAccessKey: "" },
 		api: { memos: "", moment: "", knowledge: "" },
 		ntfy: { token: "", development: false },
+		nowledge: { url: "", apiKey: "" },
 		appLock: "",
 		notion: "",
 		codexResets: false,
@@ -118,6 +124,7 @@
 		moment: null,
 		knowledge: null,
 		ntfy: null,
+		nowledge: null,
 		spotify: null,
 		telegram: null,
 		"telegram-auth": null,
@@ -129,6 +136,7 @@
 	let momentKeyVisible = $state(false);
 	let knowledgeKeyVisible = $state(false);
 	let ntfyTokenVisible = $state(false);
+	let nowledgeKeyVisible = $state(false);
 	let appLockPasswordVisible = $state(false);
 	let telegramApiId = $state("");
 	let telegramApiHash = $state("");
@@ -164,6 +172,12 @@
 			!saving.ntfy &&
 			ntfyToken.trim() !== "" &&
 			ntfyToken.trim() !== saved.ntfy.token.trim(),
+		nowledge:
+			configuration !== null &&
+			!saving.nowledge &&
+			nowledgeUrl.trim() !== "" &&
+			nowledgeApiKey.trim() !== "" &&
+			(nowledgeUrl.trim() !== saved.nowledge.url || nowledgeApiKey.trim() !== saved.nowledge.apiKey),
 		"app-lock":
 			configuration !== null &&
 			!saving["app-lock"] &&
@@ -234,6 +248,11 @@
 			if (initial.ntfy.status === "ready") {
 				ntfyToken = initial.ntfy.data.token;
 				saved.ntfy = { ...initial.ntfy.data };
+			}
+			if (initial.nowledge.status === "ready") {
+				nowledgeUrl = initial.nowledge.data.url;
+				nowledgeApiKey = initial.nowledge.data.apiKey;
+				saved.nowledge = { ...initial.nowledge.data };
 			}
 			if (initial.telegram.status === "ready") {
 				telegramApiId = String(initial.telegram.data.apiId);
@@ -365,6 +384,21 @@
 			return;
 		}
 		saved.ntfy = submitted;
+	}
+
+	async function saveNowledge(event: SubmitEvent) {
+		event.preventDefault();
+		if (!canSave.nowledge) return;
+		saving.nowledge = true;
+		formErrors.nowledge = null;
+		const submitted = { url: nowledgeUrl.trim(), apiKey: nowledgeApiKey.trim() };
+		const response = await onsavenowledge(submitted);
+		saving.nowledge = false;
+		if (response.status === "failed") {
+			formErrors.nowledge = response.message;
+			return;
+		}
+		saved.nowledge = submitted;
 	}
 
 	async function saveTelegram(event: SubmitEvent) {
@@ -758,6 +792,31 @@
 	</Card>
 
 
+
+	<Card>
+		<CardHeader class="settings-card-header settings-card-header-status">
+			<span class="settings-icon"><Brain size={16} /></span>
+			<div><CardTitle class="settings-card-title">Nowledge Mem</CardTitle><CardDescription class="settings-card-description">Read the memory graph from a remote Nowledge Mem server.</CardDescription></div>
+			{#if configuration?.nowledge.status === "ready"}<ConfigurationBadge />{/if}
+		</CardHeader>
+		{@render failure(formErrors["nowledge"])}
+		<form onsubmit={saveNowledge}>
+			<CardContent class="settings-card-content">
+				<div class="settings-row">
+					<div><Label for="nowledge-url">Server URL</Label><p>The remote server address used by Access Anywhere.</p></div>
+					<Input id="nowledge-url" class="settings-input" type="url" bind:value={nowledgeUrl} autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="https://mem.example.com" required />
+				</div>
+				<div class="settings-row">
+					<div><Label for="nowledge-api-key">API key</Label><p>The Access Anywhere key shown by nmem key.</p></div>
+					<div class="secret-field">
+						<Input id="nowledge-api-key" class="settings-input settings-secret-input" type={nowledgeKeyVisible ? "text" : "password"} bind:value={nowledgeApiKey} autocomplete="off" autocapitalize="none" spellcheck="false" required />
+						<Button type="button" class="settings-secret-toggle" variant="ghost" size="icon" onclick={() => (nowledgeKeyVisible = !nowledgeKeyVisible)} aria-label={nowledgeKeyVisible ? "Hide Nowledge Mem API key" : "Show Nowledge Mem API key"}>{#if nowledgeKeyVisible}<EyeOff size={14} />{:else}<Eye size={14} />{/if}</Button>
+					</div>
+				</div>
+			</CardContent>
+			<CardFooter class="settings-card-footer"><span class="settings-footer-copy">Vesper connects to this server directly.</span><Button class="settings-save-button" size="sm" type="submit" disabled={!canSave.nowledge}>{saving.nowledge ? "Saving…" : "Save"}</Button></CardFooter>
+		</form>
+	</Card>
 
 	<Card>
 		<CardHeader class="settings-card-header settings-card-header-status">

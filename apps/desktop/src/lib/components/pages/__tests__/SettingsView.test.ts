@@ -7,6 +7,7 @@ import type {
 	ApiConfiguration,
 	CodexResets,
 	ConfigurationStatus,
+	NowledgeCredentials,
 	NtfyConfig,
 	NotionCalendar,
 	R2Configuration,
@@ -43,6 +44,7 @@ const initial: ConfigurationStatus = {
 	qqMusic: { status: "missing" },
 	publication: { x: false, xAvailable: true },
 	telegram: { status: "missing" },
+	nowledge: { status: "missing" },
 };
 
 const views: ReturnType<typeof mount>[] = [];
@@ -62,6 +64,7 @@ async function setup(initialConfiguration: ConfigurationStatus = initial) {
 			(
 				input:
 					| ApiConfiguration
+					| NowledgeCredentials
 					| NtfyConfig
 					| NotionCalendar
 					| CodexResets
@@ -86,6 +89,7 @@ async function setup(initialConfiguration: ConfigurationStatus = initial) {
 				onsavenotion: save,
 				onsavecodexresets: save,
 				onsaventfy: save,
+				onsavenowledge: save,
 				onsaveapplock: save,
 				onremoveapplock: vi.fn().mockResolvedValue({ status: "ready", data: "Removed" }),
 				onconnectspotify: connectSpotify,

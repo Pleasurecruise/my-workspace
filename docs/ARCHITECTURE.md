@@ -23,6 +23,7 @@ stores artifacts. This repository does not host a cloud application backend.
 | `crates/ledger`         | Local GBP expenses and monthly statistics                             |
 | `crates/music`          | Spotify and QQ Music authentication, library and playback             |
 | `crates/newspaper`      | AIHOT daily reads with ETag revalidation                              |
+| `crates/nowledge`       | Remote Nowledge Mem credentials, graph overview and memory reads      |
 | `crates/oauth`          | Shared OAuth PKCE, loopback callbacks and token transport             |
 | `crates/games`          | Game accounts, daily notes, Steam and pull archives                   |
 | `crates/github`         | GitHub CLI dashboard and repository reads                             |
@@ -287,7 +288,7 @@ Command hierarchy follows business ownership, independently of desktop page and 
 
 | Boundary                | CLI surface                                                        | Desktop relationship                                                                                                       |
 | ----------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| Independent domains     | `memo`, `knowledge`, `photo`, `todo`, `ledger`, `game`             | Own records and operations through shared Rust crates. Spending is a widget, but its Ledger domain is independent of Todo. |
+| Independent domains     | `memo`, `knowledge`, `photo`, `todo`, `ledger`, `game`, `memory`   | Own records and operations through shared Rust crates. Spending is a widget, but its Ledger domain is independent of Todo. |
 | Domain capabilities     | `todo notion`, Todo habit check-ins, `photo object`, game archives | Stay under the owning domain instead of becoming top-level commands for each panel or control.                             |
 | Provider projections    | `status <source>`                                                  | Expose useful reads such as weather, usage and balances without reproducing Dashboard composition or polling.              |
 | Publication workflow    | `build`, `publish`                                                 | Explicit local-content operations, separate from individual consumer records.                                              |

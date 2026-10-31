@@ -7,6 +7,7 @@ mod game;
 mod knowledge;
 mod ledger;
 mod memo;
+mod memory;
 mod photo;
 mod status;
 mod todo;
@@ -85,6 +86,7 @@ async fn run(arguments: impl Iterator<Item = String>) -> Result<(), String> {
         [domain, action, rest @ ..] if domain == "memo" => memo::run(action, rest).await,
         [domain, action, rest @ ..] if domain == "knowledge" => knowledge::run(action, rest).await,
         [domain, action, rest @ ..] if domain == "photo" => photo::run(action, rest).await,
+        [domain, action, rest @ ..] if domain == "memory" => memory::run(action, rest).await,
         [domain, flag, date, action, rest @ ..] if domain == "todo" && flag == "--date" => {
             todo::run(action, rest, Some(date)).await
         }

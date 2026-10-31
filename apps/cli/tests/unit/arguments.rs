@@ -33,6 +33,15 @@ fn feature_arguments() {
             vec!["photo", "object", "put", "moment/original/a.png", "a.png"],
             vec!["photo", "object-put", "moment/original/a.png", "a.png"],
         ),
+        (
+            vec!["memory", "graph"],
+            vec!["memory", "graph", "--limit", "300"],
+        ),
+        (
+            vec!["memory", "search", "remote", "graph", "--limit", "5"],
+            vec!["memory", "search", "--limit", "5", "remote", "graph"],
+        ),
+        (vec!["memory", "get", "abc"], vec!["memory", "get", "abc"]),
     ];
     for (input, expected) in cases {
         let parsed = parse(

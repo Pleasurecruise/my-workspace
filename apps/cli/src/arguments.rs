@@ -87,6 +87,11 @@ fn normalize(command: &Command, matches: &ArgMatches, output: &mut Vec<String>) 
         output.remove(1);
         output[1] = format!("object-{}", command.get_name());
     }
+    if output.first().is_some_and(|value| value == "memory")
+        && let Some(limit) = matches.try_get_one::<u32>("limit").ok().flatten()
+    {
+        output.extend(["--limit".to_owned(), limit.to_string()]);
+    }
     for argument in command.get_positionals() {
         let id = argument.get_id().as_str();
         if id == "input" {
@@ -437,6 +442,33 @@ fn command() -> Command {
             }),
         );
 
+    let memory = Command::new("memory")
+        .about("Read the remote Nowledge Mem server")
+        .subcommand_required(true)
+        .arg_required_else_help(true)
+        .subcommand(
+            Command::new("graph")
+                .about("Read the knowledge graph overview")
+                .arg(
+                    arg!(--limit <COUNT> "Maximum nodes (1–1000)")
+                        .value_parser(clap::value_parser!(u32).range(1..=1000))
+                        .default_value("300"),
+                ),
+        )
+        .subcommand(
+            Command::new("search").about("Search memories").args([
+                arg!(<QUERY> ...),
+                arg!(--limit <COUNT> "Maximum results (1–50)")
+                    .value_parser(clap::value_parser!(u32).range(1..=50))
+                    .default_value("10"),
+            ]),
+        )
+        .subcommand(
+            Command::new("get")
+                .about("Read one memory")
+                .args([arg!(<ID>)]),
+        );
+
     let status = Command::new("status")
         .about("Read provider status; omit a source to read all usage sources")
         .subcommands(
@@ -490,7 +522,7 @@ fn command() -> Command {
         .subcommand(Command::new("build").about("Validate local content using temporary output"))
         .subcommand(Command::new("publish").about("Build and preview publication to R2")
             .arg(Arg::new("live").long("live").action(ArgAction::SetTrue).help("Upload the build to R2")))
-        .subcommands([memo, knowledge, photo, todo, ledger, game, status])
+        .subcommands([memo, knowledge, photo, todo, ledger, game, memory, status])
         .after_help("Use 'vesper <command> --help' for details and 'vesper help <command>' to explore commands.")
 }
 
